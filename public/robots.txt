@@ -1,0 +1,26 @@
+User-agent: *
+Allow: /$
+Allow: /login
+Allow: /sales-monitoring-app
+Allow: /download
+
+# Authenticated application areas — no value being indexed
+Disallow: /admin
+Disallow: /agent
+Disallow: /agents
+Disallow: /dashboard
+Disallow: /end-user-records
+Disallow: /map
+Disallow: /partners
+Disallow: /payment-models
+Disallow: /profile
+Disallow: /sales
+Disallow: /settings
+Disallow: /stove-management
+Disallow: /stove-manager
+Disallow: /stove-transfer-history
+Disallow: /super-admin-agent
+Disallow: /super-admin-agents
+Disallow: /user-management
+
+Sitemap: https://sales.atmosfair.com.ng/sitemap.xml

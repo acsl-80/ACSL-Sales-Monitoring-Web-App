@@ -1,0 +1,27 @@
+{
+  "name": "Atmosfair Sales Monitoring",
+  "short_name": "Sales Monitor",
+  "description": "Real-time field sales monitoring, agent tracking, and performance analytics for the Save80 / Atmosfair programme.",
+  "id": "/",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "orientation": "portrait-primary",
+  "background_color": "#ffffff",
+  "theme_color": "#1d4ed8",
+  "categories": ["business", "productivity"],
+  "icons": [
+    {
+      "src": "/android-chrome-192x192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any maskable"
+    },
+    {
+      "src": "/android-chrome-512x512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any maskable"
+    }
+  ]
+}
