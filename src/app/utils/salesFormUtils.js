@@ -146,12 +146,19 @@ export const populateFormDataForEdit = (saleData, lgaCatalogue = {}) => {
     partnerName: saleData.partnerName || saleData.partner_name || "",
     retailerBranch: saleData.retailerBranch || saleData.retailer_branch || "",
     amount: saleData.amount ? saleData.amount.toString() : "",
+    // The collected figure lives in `total_paid` (there is no
+    // `amount_received` column on `sales` — create-sale/update-sale both
+    // persist it there), so that must be the primary source, not a last resort.
     amountReceived:
       saleData.amountReceived != null
         ? saleData.amountReceived.toString()
         : saleData.amount_received != null
           ? saleData.amount_received.toString()
-          : "",
+          : saleData.total_paid != null
+            ? saleData.total_paid.toString()
+            : saleData.totalPaid != null
+              ? saleData.totalPaid.toString()
+              : "",
     addressData: {
       fullAddress:
         saleData.addressData?.fullAddress ||

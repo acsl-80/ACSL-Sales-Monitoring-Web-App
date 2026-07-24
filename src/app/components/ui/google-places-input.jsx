@@ -212,7 +212,10 @@ const GooglePlacesInput = ({
         locationBiasRef.current = {
           center: { lat: loc.lat(), lng: loc.lng() },
           // Tighter radius when an LGA is chosen, wider for state-only.
-          radius: lga ? 20000 : 60000,
+          // Google caps locationBias circle radius at 50,000 m — going over
+          // (the old 60,000) throws "Radius must be between 0 and 50,000 meters"
+          // and kills autocomplete entirely.
+          radius: lga ? 20000 : 50000,
         };
       })
       .catch(() => {

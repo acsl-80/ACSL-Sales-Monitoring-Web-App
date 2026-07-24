@@ -1,6 +1,7 @@
 // Update the end-user portion of a sale.
-// Allowed roles: super_admin, acsl_agent_manager, partner (partner is scoped
-// to their own organization_id). Sets updated_at / updated_by.
+// Allowed roles: super_admin, acsl_agent_manager, acsl_agent, partner,
+// partner_agent (partner/partner_agent are scoped to their own
+// organization_id). Sets updated_at / updated_by.
 
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 
@@ -67,7 +68,14 @@ Deno.serve(async (req) => {
       .maybeSingle();
     if (profileError || !profile) return jsonError("Profile not found", 403);
 
-    const ALLOWED = ["super_admin", "acsl_agent_manager", "partner", "admin"];
+    const ALLOWED = [
+      "super_admin",
+      "acsl_agent_manager",
+      "acsl_agent",
+      "partner",
+      "partner_agent",
+      "admin",
+    ];
     if (!ALLOWED.includes(profile.role)) {
       return jsonError("You do not have permission to edit sales", 403);
     }
@@ -80,9 +88,12 @@ Deno.serve(async (req) => {
       .maybeSingle();
     if (saleErr || !sale) return jsonError("Sale not found", 404);
 
-    // Partner scoping: only their own org.
+    // Partner-side roles are scoped to their own org; ACSL roles (agent,
+    // agent manager, super admin) have system-wide access.
     if (
-      (profile.role === "partner" || profile.role === "admin") &&
+      (profile.role === "partner" ||
+        profile.role === "admin" ||
+        profile.role === "partner_agent") &&
       sale.organization_id !== profile.organization_id
     ) {
       return jsonError("You can only edit sales for your own organization", 403);
@@ -205,8 +216,10 @@ Deno.serve(async (req) => {
       }
       saleUpdate.amount = parsed;
     }
+    // Mirrors create-sale: what the customer actually paid is stored as
+    // `total_paid`, not `amount_received` (no such column on `sales`).
     if (amountReceived !== undefined) {
-      saleUpdate.amount_received =
+      saleUpdate.total_paid =
         amountReceived === null || amountReceived === ""
           ? null
           : Number(amountReceived);
