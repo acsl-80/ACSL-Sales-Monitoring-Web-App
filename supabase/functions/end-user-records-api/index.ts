@@ -46,12 +46,17 @@ interface Params {
   limit: number;
   dateFrom?: string;
   dateTo?: string;
+  updatedSince?: string;
   state?: string;
   lga?: string;
   partner_id?: string;
+  stove_serial_no?: string;
+  status?: string[];
   search?: string;
   include_cancelled: boolean;
 }
+
+const VALID_STATUSES = ["completed", "pending", "incomplete"];
 
 async function parseParams(req: Request): Promise<Params> {
   const url = new URL(req.url);
@@ -69,14 +74,25 @@ async function parseParams(req: Request): Promise<Params> {
   const limit = Math.min(Math.max(1, rawLimit), 500);
   const includeCancelledRaw = get("include_cancelled");
   const include_cancelled = includeCancelledRaw === "true" || includeCancelledRaw === "1";
+
+  // status accepts a single value or a comma-separated list; unknown values are
+  // dropped so a typo can never silently widen the result set.
+  const rawStatus = body["status"] ?? q.get("status");
+  const statusList = (Array.isArray(rawStatus) ? rawStatus : String(rawStatus ?? "").split(","))
+    .map((s) => String(s).trim().toLowerCase())
+    .filter((s) => VALID_STATUSES.includes(s));
+
   return {
     page,
     limit,
     dateFrom: get("dateFrom") || get("date_from"),
     dateTo: get("dateTo") || get("date_to"),
+    updatedSince: get("updatedSince") || get("updated_since"),
     state: get("state"),
     lga: get("lga"),
     partner_id: get("partner_id"),
+    stove_serial_no: get("stove_serial_no") || get("stoveSerialNo"),
+    status: statusList.length > 0 ? statusList : undefined,
     search: get("search"),
     include_cancelled,
   };
@@ -172,6 +188,27 @@ async function attachPaymentRecords(admin: any, rows: any[]) {
   }
 }
 
+// `sales_reference` is the ERP's batch reference. It lives on `stove_ids`, not
+// on `sales`, so it is looked up by serial and attached here — it is the join
+// key back to the ERP sales order.
+async function attachStoveMeta(admin: any, rows: any[]) {
+  const serials = Array.from(
+    new Set(rows.map((r) => r.stove_serial_no).filter(Boolean))
+  );
+  if (serials.length === 0) return;
+  const { data } = await admin
+    .from("stove_ids")
+    .select("stove_id, sales_reference, factory")
+    .in("stove_id", serials);
+  const bySerial = new Map<string, any>();
+  for (const s of data || []) bySerial.set(s.stove_id, s);
+  for (const r of rows) {
+    const s = r.stove_serial_no ? bySerial.get(r.stove_serial_no) : null;
+    r.sales_reference = s?.sales_reference ?? null;
+    r.factory = s?.factory ?? null;
+  }
+}
+
 async function attachCancellation(admin: any, rows: any[]) {
   const ids = rows.map((r) => r.id).filter(Boolean);
   if (ids.length === 0) return;
@@ -214,12 +251,32 @@ Deno.serve(async (req) => {
     );
 
     let q = admin.from("sales").select(SELECT, { count: "exact" });
-    q = params.include_cancelled ? q : q.eq("is_archived", false);
+
+    // Excluding cancelled sales means BOTH the archive flag and a row in
+    // cancelled_sales — a sale can be cancelled without being archived, and
+    // filtering on is_archived alone used to let those through.
+    if (!params.include_cancelled) {
+      q = q.eq("is_archived", false);
+      const { data: cancelledRows, error: cancelledErr } = await admin
+        .from("cancelled_sales")
+        .select("sale_id");
+      if (cancelledErr) return json(500, { success: false, error: cancelledErr.message });
+      const cancelledIds = (cancelledRows || [])
+        .map((r: { sale_id: string | null }) => r.sale_id)
+        .filter(Boolean);
+      if (cancelledIds.length > 0) {
+        q = q.not("id", "in", `(${cancelledIds.join(",")})`);
+      }
+    }
+
     if (params.dateFrom) q = q.gte("sales_date", params.dateFrom);
     if (params.dateTo) q = q.lte("sales_date", params.dateTo);
+    if (params.updatedSince) q = q.gte("updated_at", params.updatedSince);
     if (params.state) q = q.eq("state_backup", params.state);
     if (params.lga) q = q.eq("lga_backup", params.lga);
     if (params.partner_id) q = q.eq("organization_id", params.partner_id);
+    if (params.stove_serial_no) q = q.eq("stove_serial_no", params.stove_serial_no);
+    if (params.status) q = q.in("status", params.status);
     if (params.search) {
       const s = params.search.replace(/[(),]/g, " ").trim();
       q = q.or(
@@ -236,17 +293,28 @@ Deno.serve(async (req) => {
     }
 
     const offset = (params.page - 1) * params.limit;
-    q = q.order("sales_date", { ascending: false, nullsFirst: false });
+    // sales_date is neither unique nor NOT NULL, so it cannot order pages on its
+    // own — ties would let rows repeat or vanish between pages mid-sync. `id`
+    // breaks the tie deterministically.
+    q = q
+      .order("sales_date", { ascending: false, nullsFirst: false })
+      .order("id", { ascending: true });
 
     const { data, error, count } = await q.range(offset, offset + params.limit - 1);
     if (error) return json(500, { success: false, error: error.message });
 
-    const rows = data || [];
+    const rows: any[] = data || [];
     await Promise.all([
       attachProfiles(admin, rows),
       attachPaymentRecords(admin, rows),
       attachCancellation(admin, rows),
+      attachStoveMeta(admin, rows),
     ]);
+
+    // Explicit sync gate, so consumers never have to re-derive the rule.
+    for (const r of rows) {
+      r.is_ready_to_sync = r.status === "completed" && !r.is_cancelled;
+    }
 
     return json(200, {
       success: true,
