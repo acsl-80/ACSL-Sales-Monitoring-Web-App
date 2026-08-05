@@ -209,21 +209,44 @@ async function attachStoveMeta(admin: any, rows: any[]) {
   }
 }
 
+// Cancellation is recorded on the `sales` row itself — archiving the sale and
+// stamping cancelled_at / cancelled_by / cancel_reason in one update (see
+// adminSalesService.cancelSale). There is no separate cancellations table in
+// this project; `cancelled_sales` belongs to the ERP.
+//
+// The metadata columns are fetched separately and tolerantly: cancelSale has a
+// fallback path for deployments where they were never added, so a missing
+// column must degrade to nulls rather than fail the whole request.
 async function attachCancellation(admin: any, rows: any[]) {
+  for (const r of rows) {
+    r.is_cancelled = Boolean(r.is_archived);
+    r.cancellation_reason = null;
+    r.cancelled_by = null;
+    r.cancelled_at = null;
+  }
+
   const ids = rows.map((r) => r.id).filter(Boolean);
   if (ids.length === 0) return;
-  const { data } = await admin
-    .from("cancelled_sales")
-    .select("sale_id, cancellation_reason, cancelled_by, cancelled_at")
-    .in("sale_id", ids);
+
+  const { data, error } = await admin
+    .from("sales")
+    .select("id, cancelled_at, cancelled_by, cancel_reason")
+    .in("id", ids);
+  if (error) {
+    console.warn("Cancellation metadata unavailable:", error.message);
+    return;
+  }
+
   const bySale = new Map<string, any>();
-  for (const c of data || []) bySale.set(c.sale_id, c);
+  for (const c of data || []) bySale.set(c.id, c);
   for (const r of rows) {
     const c = bySale.get(r.id);
-    r.is_cancelled = Boolean(c) || Boolean(r.is_archived);
-    r.cancellation_reason = c?.cancellation_reason || null;
-    r.cancelled_by = c?.cancelled_by || null;
-    r.cancelled_at = c?.cancelled_at || null;
+    if (!c) continue;
+    r.cancellation_reason = c.cancel_reason ?? null;
+    r.cancelled_by = c.cancelled_by ?? null;
+    r.cancelled_at = c.cancelled_at ?? null;
+    // A stamped cancellation counts even if the archive flag was missed.
+    if (c.cancelled_at) r.is_cancelled = true;
   }
 }
 
@@ -252,22 +275,9 @@ Deno.serve(async (req) => {
 
     let q = admin.from("sales").select(SELECT, { count: "exact" });
 
-    // Excluding cancelled sales means BOTH the archive flag and a row in
-    // cancelled_sales — a sale can be cancelled without being archived, and
-    // filtering on is_archived alone used to let those through.
-    if (!params.include_cancelled) {
-      q = q.eq("is_archived", false);
-      const { data: cancelledRows, error: cancelledErr } = await admin
-        .from("cancelled_sales")
-        .select("sale_id");
-      if (cancelledErr) return json(500, { success: false, error: cancelledErr.message });
-      const cancelledIds = (cancelledRows || [])
-        .map((r: { sale_id: string | null }) => r.sale_id)
-        .filter(Boolean);
-      if (cancelledIds.length > 0) {
-        q = q.not("id", "in", `(${cancelledIds.join(",")})`);
-      }
-    }
+    // Cancelling a sale sets is_archived in the same update that stamps the
+    // cancellation metadata, so the archive flag is a complete exclusion.
+    if (!params.include_cancelled) q = q.eq("is_archived", false);
 
     if (params.dateFrom) q = q.gte("sales_date", params.dateFrom);
     if (params.dateTo) q = q.lte("sales_date", params.dateTo);
