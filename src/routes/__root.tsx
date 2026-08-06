@@ -78,6 +78,16 @@ function ErrorComponent({ error, reset }: { error: Error; reset: () => void }) {
   console.error(error);
   const router = useRouter();
 
+  // A stale-asset failure after a deploy is recoverable: reload once so the
+  // browser fetches the current asset manifest instead of missing chunks.
+  useEffect(() => {
+    if (isChunkLoadError(error)) {
+      reloadForStaleChunks();
+    }
+  }, [error]);
+
+
+
   return (
     <div className="flex min-h-screen items-center justify-center bg-background px-4">
       <div className="max-w-md text-center">
