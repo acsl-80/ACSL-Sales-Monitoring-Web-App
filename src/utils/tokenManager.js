@@ -16,12 +16,20 @@ import { createClientComponentClient } from "@/lib/supabaseClient";
 
 class TokenManager {
   constructor() {
-    this.supabase = createClientComponentClient();
     this.tokenData = null;
     this.refreshPromise = null;
     this.REFRESH_THRESHOLD = 5 * 60 * 1000; // 5 minutes in milliseconds
     this.TOKEN_STORAGE_KEY = "transaction_app_token";
     this.loadTokenFromStorage();
+  }
+
+  // Built on first use, not at module import. `tokenManager` is a module-level
+  // singleton, so constructing the Supabase client eagerly meant a bad/blank
+  // config threw while the SSR bundle was still loading — taking down every
+  // route with a 500 instead of failing at the one call site that needs auth.
+  get supabase() {
+    if (!this._supabase) this._supabase = createClientComponentClient();
+    return this._supabase;
   }
 
   /**

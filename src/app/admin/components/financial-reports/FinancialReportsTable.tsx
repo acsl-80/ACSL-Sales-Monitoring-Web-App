@@ -50,6 +50,12 @@ const getAmountPaid = (sale: AdminSales): number => sale.total_paid ?? 0;
 const getAmountOwed = (sale: AdminSales): number =>
   Math.max(0, (sale.amount ?? 0) - getAmountPaid(sale));
 
+// A sale can be settled ahead of schedule (lump-sum / one-off payment), in which
+// case the schedule-derived installment_summary still reports installments left
+// and a next due date. Balance is the source of truth for "done".
+const isSettled = (sale: AdminSales): boolean =>
+  sale.payment_status === "fully_paid" || getAmountOwed(sale) <= 0;
+
 
 const FinancialReportsTable: React.FC<FinancialReportsTableProps> = ({
   data, loading, currentPage, pageSize, totalRecords,
@@ -129,9 +135,11 @@ const FinancialReportsTable: React.FC<FinancialReportsTableProps> = ({
                           {sale.installment_summary.total_installments} installments
                         </div>
                         <div className="text-[11px] text-gray-600">
-                          {sale.installment_summary.paid_installments} paid · {sale.installment_summary.left_installments} left
+                          {isSettled(sale)
+                            ? `${sale.installment_summary.total_installments} paid · 0 left`
+                            : `${sale.installment_summary.paid_installments} paid · ${sale.installment_summary.left_installments} left`}
                         </div>
-                        {sale.installment_summary.left_installments > 0 && sale.installment_summary.next_due_date ? (
+                        {!isSettled(sale) && sale.installment_summary.left_installments > 0 && sale.installment_summary.next_due_date ? (
                           <div className="text-[11px] font-medium text-[#4a5d0f]">
                             Next due: {formatDate(sale.installment_summary.next_due_date)}
                           </div>

@@ -25,6 +25,8 @@ import {
   Info,
   CheckCircle2,
   XCircle,
+  Pencil,
+  X,
 } from "lucide-react";
 import DateRangePicker from "@/app/components/ui/date-range-picker";
 import GooglePlacesInput from "@/app/components/ui/google-places-input";
@@ -85,6 +87,12 @@ const CreateSalesForm = ({
   const [loading, setLoading] = useState(false);
   const [availableStoves, setAvailableStoves] = useState([]);
   const [stovesLoading, setStovesLoading] = useState(true);
+  const [gpsCapturing, setGpsCapturing] = useState(false);
+  const [gpsError, setGpsError] = useState(null);
+  // Once an address is confirmed (Google pick, "use as entered", or the field
+  // loses focus with text in it) the search input collapses into a compact
+  // card — mirrors the selected-partner chip pattern elsewhere in this form.
+  const [addressConfirmed, setAddressConfirmed] = useState(false);
   const [error, setError] = useState(null);
   const [success, setSuccess] = useState(false);
 
@@ -744,6 +752,28 @@ const CreateSalesForm = ({
   };
 
 
+  // Edit mode loads an existing address — show it collapsed immediately
+  // rather than as an open search field.
+  useEffect(() => {
+    if (isEditMode && formData.addressData?.fullAddress?.trim()) {
+      setAddressConfirmed(true);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isEditMode, initialData?.id]);
+
+  const handleClearAddress = () => {
+    handleAddressSelect({
+      fullAddress: "",
+      street: "",
+      city: "",
+      state: "",
+      country: "Nigeria",
+      latitude: null,
+      longitude: null,
+    });
+    setAddressConfirmed(false);
+  };
+
   const handleAddressSelect = (addressData) => {
     setFormData((prev) => ({
       ...prev,
@@ -767,6 +797,43 @@ const CreateSalesForm = ({
       }));
     }
   };
+
+  // For rural/village addresses Google Places can't resolve, silently capture
+  // raw GPS coordinates from the browser in the background — no button, no
+  // blocking prompt beyond the browser's own permission dialog. Only fills in
+  // coordinates that are still empty, so it never overwrites a Google pick.
+  useEffect(() => {
+    if (isEditMode) return;
+    if (typeof navigator === "undefined" || !navigator.geolocation) return;
+    setGpsCapturing(true);
+    navigator.geolocation.getCurrentPosition(
+      (position) => {
+        setGpsCapturing(false);
+        setFormData((prev) =>
+          prev.addressData.latitude != null && prev.addressData.longitude != null
+            ? prev
+            : {
+                ...prev,
+                addressData: {
+                  ...prev.addressData,
+                  latitude: position.coords.latitude,
+                  longitude: position.coords.longitude,
+                },
+              }
+        );
+      },
+      (err) => {
+        setGpsCapturing(false);
+        // Silent by default — only surface if the user explicitly denied,
+        // which they may want to fix for future sales.
+        if (err.code === err.PERMISSION_DENIED) {
+          setGpsError("Location permission denied — enable it to auto-capture GPS.");
+        }
+      },
+      { enableHighAccuracy: true, timeout: 15000 }
+    );
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isEditMode]);
 
   const handleStateChange = (stateValue) => {
     if (!stateValue) return;
@@ -1645,18 +1712,58 @@ const CreateSalesForm = ({
             </FormField>
             <div className="md:col-span-2 lg:col-span-3">
               <FormField label="Residential Address *" error={errors.address || errors.location} htmlFor="address">
-                <GooglePlacesInput
-                  value={formData.addressData}
-                  onChange={handleAddressSelect}
-                  biasState={formData.stateBackup}
-                  biasLga={formData.lgaBackup}
-                  placeholder={
-                    formData.stateBackup
-                      ? `Search address in ${formData.lgaBackup || formData.stateBackup}...`
-                      : "Select state & LGA first for better matches..."
-                  }
-                  className={`w-full ${errors.address ? "border-red-500" : ""}`}
-                />
+                {addressConfirmed && formData.addressData?.fullAddress ? (
+                  <div className="flex items-center gap-2 rounded-lg border border-[#4a5d0f] bg-[#4a5d0f]/10 px-3 py-2.5">
+                    <CheckCircle2 className="h-4 w-4 shrink-0 text-[#4a5d0f]" />
+                    <span className="flex-1 min-w-0 truncate text-sm font-medium text-[#4a5d0f]">
+                      {formData.addressData.fullAddress}
+                    </span>
+                    <button
+                      type="button"
+                      onClick={() => setAddressConfirmed(false)}
+                      className="rounded p-1 text-[#4a5d0f] hover:bg-[#4a5d0f]/15"
+                      aria-label="Edit address"
+                    >
+                      <Pencil className="h-3.5 w-3.5" />
+                    </button>
+                    <button
+                      type="button"
+                      onClick={handleClearAddress}
+                      className="rounded p-1 text-gray-400 hover:bg-gray-200 hover:text-gray-600"
+                      aria-label="Clear address"
+                    >
+                      <X className="h-3.5 w-3.5" />
+                    </button>
+                  </div>
+                ) : (
+                  <div>
+                    <GooglePlacesInput
+                      value={formData.addressData}
+                      onChange={handleAddressSelect}
+                      onConfirm={() => setAddressConfirmed(true)}
+                      biasState={formData.stateBackup}
+                      biasLga={formData.lgaBackup}
+                      placeholder={
+                        formData.stateBackup
+                          ? `Search address in ${formData.lgaBackup || formData.stateBackup}...`
+                          : "Select state & LGA first for better matches..."
+                      }
+                      className={`w-full ${errors.address ? "border-red-500" : ""}`}
+                      autoFocus={Boolean(formData.addressData?.fullAddress)}
+                    />
+                    <p className="mt-1 text-xs text-gray-500">
+                      Type the address freely — you don&apos;t have to pick a Google result.
+                      For villages or areas Google doesn&apos;t recognise, use it as entered
+                      from the dropdown.
+                    </p>
+                    {gpsCapturing && (
+                      <p className="mt-1 flex items-center gap-1.5 text-xs text-gray-500">
+                        <Loader2 className="h-3 w-3 animate-spin" /> Capturing your location…
+                      </p>
+                    )}
+                    {gpsError && <p className="mt-1 text-xs text-amber-700">{gpsError}</p>}
+                  </div>
+                )}
               </FormField>
             </div>
             {formData.addressData.latitude && formData.addressData.longitude && (

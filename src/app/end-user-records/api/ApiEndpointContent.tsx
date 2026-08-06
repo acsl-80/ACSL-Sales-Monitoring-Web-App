@@ -13,6 +13,7 @@ import {
   XCircle,
   Calendar as CalendarIcon,
   RotateCcw,
+  Download,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -42,6 +43,7 @@ import {
 } from "@/lib/supabaseConfig";
 import { createClientComponentClient } from "@/lib/supabaseClient";
 import { getGeoData, getGeoDataSync } from "@/lib/geoDataService";
+import { downloadApiDocsPdf } from "./apiDocsPdf";
 
 const ENDPOINT_URL = `${supabaseUrl}/functions/v1/end-user-records-api`;
 const KEY_FN_URL = `${supabaseUrl}/functions/v1/get-end-user-api-key`;
@@ -57,19 +59,25 @@ interface ParamDef {
 const PARAMS: ParamDef[] = [
   { name: "page", type: "integer", required: false, default: "1", description: "Page number, starting at 1." },
   { name: "limit", type: "integer", required: false, default: "100", description: "Records per page. Maximum 500." },
+  { name: "status", type: "string", required: false, description: "Filter by completeness: completed, pending, or incomplete. Accepts a comma-separated list. Use status=completed to pull only records that are ready to synchronise." },
+  { name: "updatedSince", type: "string (ISO 8601)", required: false, description: "Only records whose updated_at is on or after this timestamp. Use this for incremental syncs instead of re-pulling the full dataset." },
   { name: "dateFrom", type: "string (YYYY-MM-DD)", required: false, description: "Include sales on or after this date (sales_date)." },
   { name: "dateTo", type: "string (YYYY-MM-DD)", required: false, description: "Include sales on or before this date (sales_date)." },
   { name: "state", type: "string", required: false, description: "Filter by state (matches state_backup)." },
   { name: "lga", type: "string", required: false, description: "Filter by LGA (matches lga_backup)." },
   { name: "partner_id", type: "uuid", required: false, description: "Filter by partner organization id." },
+  { name: "stove_serial_no", type: "string", required: false, description: "Exact match on a single stove serial number." },
   { name: "search", type: "string", required: false, description: "Search across end user name, contact person, phone, stove serial, transaction id, and partner name." },
-  { name: "include_cancelled", type: "boolean", required: false, default: "false", description: "Set true to include archived / cancelled records." },
+  { name: "include_cancelled", type: "boolean", required: false, default: "false", description: "Set true to include archived / cancelled records. When false, both archived sales and sales with a cancellation record are excluded." },
 ];
 
 const FIELDS: { name: string; description: string }[] = [
   { name: "id", description: "Sale UUID." },
   { name: "transaction_id", description: "Human-readable transaction reference (e.g. ASY1O4)." },
-  { name: "sales_reference", description: "External sales reference, if any." },
+  { name: "is_ready_to_sync", description: "True when the record is complete and not cancelled — equivalent to status = completed and is_cancelled = false. Use this as the synchronisation gate." },
+  { name: "status", description: "Completeness of the record. completed = every field the sales form requires is present, including a customer signature. pending = all required fields present but no valid signature. incomplete = at least one required field missing. Recalculated on every create and edit." },
+  { name: "sales_reference", description: "The ERP batch reference for this stove, resolved from the stove serial. Join key back to the ERP sales order. Null when the serial has no ERP reference." },
+  { name: "factory", description: "Factory the stove was produced at, resolved from the stove serial." },
   { name: "sales_date", description: "Date of the sale." },
   { name: "created_at / updated_at", description: "Record timestamps." },
   { name: "end_user_name", description: "End user's full name." },
@@ -86,7 +94,7 @@ const FIELDS: { name: string; description: string }[] = [
   { name: "amount / total_paid / deposit / balance", description: "Sale amount, running total paid, initial deposit, and outstanding balance." },
   { name: "payment_records", description: "All installment payment rows: id, amount, payment_date, payment_method, notes, recorded_by, created_at." },
   { name: "payment_status / is_installment", description: "Payment status and whether the sale is on installments." },
-  { name: "status / is_archived", description: "Sale status and archive flag." },
+  { name: "is_archived", description: "Archive flag." },
   { name: "is_cancelled / cancellation_reason / cancelled_by / cancelled_at", description: "Cancellation metadata (present for cancelled sales)." },
   { name: "retailer_branch / pot_quantity / heat_retention_device", description: "Additional sale attributes captured on the form." },
   { name: "previous_stove_type / previous_stove_other / meals_per_day / cooking_fuel_source / cooking_location", description: "End-user cooking profile captured on the sales form." },
@@ -242,24 +250,50 @@ const ApiEndpointContent = () => {
     }
   }, [apiKey, tryParams, callEndpoint]);
 
+  const [pdfLoading, setPdfLoading] = useState(false);
+
+  const handleDownloadPdf = useCallback(async () => {
+    setPdfLoading(true);
+    try {
+      await downloadApiDocsPdf({
+        endpointUrl: ENDPOINT_URL,
+        params: PARAMS,
+        fields: FIELDS,
+        // Only embed a sample when one has already loaded successfully.
+        sampleResponse:
+          sample && sample.status >= 200 && sample.status < 300 ? sample.body : undefined,
+      });
+      toast.success("API documentation downloaded");
+    } catch (e) {
+      console.error("Failed to build API docs PDF:", e);
+      toast.error("Could not generate the PDF. Please try again.");
+    } finally {
+      setPdfLoading(false);
+    }
+  }, [sample]);
+
   const displayKey = reveal ? apiKey : maskKey(apiKey);
 
   const curlSnippet = useMemo(() => {
     const key = reveal && apiKey ? apiKey : "YOUR_API_KEY";
-    return `curl -X GET '${ENDPOINT_URL}?page=1&limit=100' \\
+    return `# Records ready to synchronise, changed since the last run
+curl -X GET '${ENDPOINT_URL}?status=completed&updatedSince=2026-07-01T00:00:00Z&page=1&limit=500' \\
   -H 'Authorization: Bearer ${key}'`;
   }, [reveal, apiKey]);
 
   const jsSnippet = useMemo(() => {
     const key = reveal && apiKey ? apiKey : "YOUR_API_KEY";
-    return `const res = await fetch("${ENDPOINT_URL}?page=1&limit=100", {
-  method: "GET",
-  headers: {
-    "Authorization": "Bearer ${key}",
-  },
+    return `const params = new URLSearchParams({
+  status: "completed",        // only records ready to sync
+  updatedSince: lastRunIso,   // incremental — omit for a full pull
+  page: "1",
+  limit: "500",
 });
-const data = await res.json();
-console.log(data);`;
+
+const res = await fetch(\`${ENDPOINT_URL}?\${params}\`, {
+  headers: { "Authorization": "Bearer ${key}" },
+});
+const { data, pagination } = await res.json();`;
   }, [reveal, apiKey]);
 
   return (
@@ -269,11 +303,29 @@ console.log(data);`;
       description="Public API for external integrations"
     >
       <div className="p-6 space-y-4 max-w-5xl">
-        <PageHeader
-          icon={Plug}
-          title="End User Records API"
-          description="Retrieve every End User Record — including all the fields shown in the details modal — over authenticated HTTP."
-        />
+        <div className="flex items-start justify-between gap-4 flex-wrap">
+          <PageHeader
+            icon={Plug}
+            title="End User Records API"
+            description="Retrieve every End User Record — including all the fields shown in the details modal — over authenticated HTTP."
+          />
+          {isSuperAdmin && (
+            <Button
+              variant="outline"
+              size="sm"
+              className="h-9 rounded-none shrink-0"
+              onClick={handleDownloadPdf}
+              disabled={pdfLoading}
+            >
+              {pdfLoading ? (
+                <Loader2 className="h-4 w-4 mr-1.5 animate-spin" />
+              ) : (
+                <Download className="h-4 w-4 mr-1.5" />
+              )}
+              Download PDF
+            </Button>
+          )}
+        </div>
 
         {!isSuperAdmin && (
           <div className="p-4 bg-red-50 border border-red-200 rounded text-red-700 text-sm">
@@ -464,6 +516,40 @@ console.log(data);`;
                   />
                 </div>
 
+                {/* Status */}
+                <div>
+                  <Label className="text-xs">status</Label>
+                  <Select
+                    value={tryParams.status || "__all__"}
+                    onValueChange={(v) =>
+                      setTryParams((s) => ({ ...s, status: v === "__all__" ? "" : v }))
+                    }
+                  >
+                    <SelectTrigger className="h-9 text-sm bg-white shadow-none">
+                      <SelectValue placeholder="Any status" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="__all__">Any status</SelectItem>
+                      <SelectItem value="completed">completed (ready to sync)</SelectItem>
+                      <SelectItem value="pending">pending</SelectItem>
+                      <SelectItem value="incomplete">incomplete</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+
+                {/* Stove serial */}
+                <div>
+                  <Label className="text-xs">stove_serial_no</Label>
+                  <Input
+                    className="h-9 text-sm bg-white shadow-none"
+                    placeholder="Exact serial"
+                    value={tryParams.stove_serial_no || ""}
+                    onChange={(e) =>
+                      setTryParams((s) => ({ ...s, stove_serial_no: e.target.value }))
+                    }
+                  />
+                </div>
+
                 {/* State */}
                 <div>
                   <Label className="text-xs">state</Label>
@@ -606,6 +692,19 @@ console.log(data);`;
                       />
                     </PopoverContent>
                   </Popover>
+                </div>
+
+                {/* Updated since */}
+                <div>
+                  <Label className="text-xs">updatedSince</Label>
+                  <Input
+                    className="h-9 text-sm bg-white shadow-none"
+                    placeholder="2026-07-01T00:00:00Z"
+                    value={tryParams.updatedSince || ""}
+                    onChange={(e) =>
+                      setTryParams((s) => ({ ...s, updatedSince: e.target.value }))
+                    }
+                  />
                 </div>
 
                 {/* Search */}

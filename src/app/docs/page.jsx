@@ -1,6 +1,7 @@
 
-import React from "react";
+import React, { useEffect } from "react";
 import Link from "@/compat/Link";
+import { useRouter } from "@/compat/navigation";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -20,7 +21,16 @@ import {
 } from "lucide-react";
 import { DOC_METADATA } from "./constants/content";
 
+
+
 const DocumentationIndex = () => {
+
+  const router = useRouter();
+
+  useEffect(() => {
+    router.replace("/end-user-records/api");
+  }, [router]);
+
   const adminFeatures = [
     { icon: Database, name: "Dashboard Analytics", description: "Organization-specific metrics and KPIs" },
     { icon: ShoppingCart, name: "Sales Management", description: "Create, update, and track sales within your organization" },

@@ -4,6 +4,7 @@
 // organization_id). Sets updated_at / updated_by.
 
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { resolveSaleStatus } from "../_shared/saleStatus.ts";
 
 function withCors(res: Response): Response {
   res.headers.set("Access-Control-Allow-Origin", "*");
@@ -80,10 +81,18 @@ Deno.serve(async (req) => {
       return jsonError("You do not have permission to edit sales", 403);
     }
 
-    // Load current sale (need address_id + organization_id for scoping)
+    // Load current sale (need address_id + organization_id for scoping, plus
+    // every status-relevant column so `status` can be recomputed against the
+    // merged before/after picture — some of these are immutable here).
     const { data: sale, error: saleErr } = await supabase
       .from("sales")
-      .select("id, organization_id, address_id, phone")
+      .select(
+        `id, organization_id, address_id, phone,
+         transaction_id, stove_serial_no, partner_name, sales_date, amount,
+         contact_person, contact_phone, end_user_name, state_backup, lga_backup,
+         signature,
+         address:addresses!left(full_address)`
+      )
       .eq("id", saleId)
       .maybeSingle();
     if (saleErr || !sale) return jsonError("Sale not found", 404);
@@ -238,6 +247,39 @@ Deno.serve(async (req) => {
     if (signature !== undefined && signature !== null && signature !== "") saleUpdate.signature = signature;
     if (stoveImageId !== undefined && stoveImageId !== "") saleUpdate.stove_image_id = stoveImageId || null;
     if (agreementImageId !== undefined && agreementImageId !== "") saleUpdate.agreement_image_id = agreementImageId || null;
+
+    // Recompute completeness from the merged before/after state. Without this a
+    // sale saved as incomplete would stay incomplete forever, even once the
+    // missing fields were supplied — see _shared/saleStatus.ts.
+    {
+      const merged = (col: string, incoming: unknown) =>
+        Object.prototype.hasOwnProperty.call(saleUpdate, col)
+          ? saleUpdate[col]
+          : incoming;
+      const currentAddress = Array.isArray(sale.address)
+        ? sale.address[0]
+        : sale.address;
+      saleUpdate.status = resolveSaleStatus({
+        // Immutable on this endpoint — always taken from the stored row.
+        transactionId: sale.transaction_id,
+        stoveSerialNo: sale.stove_serial_no,
+        partnerName: sale.partner_name,
+        salesDate: merged("sales_date", sale.sales_date),
+        amount: merged("amount", sale.amount),
+        contactPerson: merged("contact_person", sale.contact_person),
+        contactPhone: merged("contact_phone", sale.contact_phone),
+        endUserName: merged("end_user_name", sale.end_user_name),
+        phone: merged("phone", sale.phone),
+        stateBackup: merged("state_backup", sale.state_backup),
+        lgaBackup: merged("lga_backup", sale.lga_backup),
+        fullAddress:
+          addressData && sale.address_id
+            ? addressData.fullAddress
+            : currentAddress?.full_address,
+        signature: merged("signature", sale.signature),
+      });
+      console.log("📋 Sale status recomputed:", saleUpdate.status);
+    }
 
     const { data: updated, error: updErr } = await supabase
       .from("sales")

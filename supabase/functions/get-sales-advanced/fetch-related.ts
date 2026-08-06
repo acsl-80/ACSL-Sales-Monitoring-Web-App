@@ -322,8 +322,23 @@ async function fetchInstallmentSummaries(supabase: any, sales: any[]) {
     }
 
     const totalInstallments = sale.payment_model?.duration_months || 1;
-    const paidInstallments = paymentCountMap.get(sale.id) || 0;
-    const leftInstallments = Math.max(0, totalInstallments - paidInstallments);
+    const paymentCount = paymentCountMap.get(sale.id) || 0;
+
+    // A sale can be settled ahead of schedule (lump-sum / one-off payment), so
+    // the payment-row count understates progress. Balance is the source of
+    // truth: once nothing is owed the schedule is closed out — no installments
+    // left, no next due date.
+    const amount = Number(sale.amount ?? 0);
+    const totalPaid = Number(sale.total_paid ?? 0);
+    const settled =
+      sale.payment_status === "fully_paid" || (amount > 0 && totalPaid >= amount);
+
+    const paidInstallments = settled
+      ? totalInstallments
+      : Math.min(paymentCount, totalInstallments);
+    const leftInstallments = settled
+      ? 0
+      : Math.max(0, totalInstallments - paidInstallments);
 
     let nextDueDate: string | null = null;
     if (leftInstallments > 0) {

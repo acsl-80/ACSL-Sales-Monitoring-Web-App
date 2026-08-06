@@ -1,6 +1,6 @@
 import { useState, useRef, useEffect, useCallback } from "react";
 import { Input } from "@/components/ui/input";
-import { MapPin, X, Loader2 } from "lucide-react";
+import { MapPin, X, Loader2, CheckCircle2 } from "lucide-react";
 
 const SCRIPT_ID = "gmaps-places-script";
 const CALLBACK_NAME = "__gmInitPlaces";
@@ -89,11 +89,13 @@ function mapAddressComponents(components = []) {
 const GooglePlacesInput = ({
   value,
   onChange,
+  onConfirm,
   placeholder = "Search for address...",
   disabled = false,
   className = "",
   biasState = "",
   biasLga = "",
+  autoFocus = false,
 }) => {
   const [scriptStatus, setScriptStatus] = useState("loading"); // loading | ready | unavailable
   const [suggestionsError, setSuggestionsError] = useState(null);
@@ -101,6 +103,7 @@ const GooglePlacesInput = ({
   const [showSuggestions, setShowSuggestions] = useState(false);
   const [inputValue, setInputValue] = useState(value?.fullAddress || "");
   const [searching, setSearching] = useState(false);
+  const [isFocused, setIsFocused] = useState(false);
 
   const placesLibRef = useRef(null); // { AutocompleteSuggestion, AutocompleteSessionToken }
   const geocoderRef = useRef(null); // google.maps.Geocoder for LGA/State biasing
@@ -242,14 +245,16 @@ const GooglePlacesInput = ({
       }
       const { suggestions } =
         await lib.AutocompleteSuggestion.fetchAutocompleteSuggestions(request);
+      // Don't touch showSuggestions here — it's driven by whether there's
+      // typed text (see handleInputChange), not by whether Google found a
+      // match. A zero-result address (village, landmark) must still show the
+      // dropdown so "Use as entered" stays reachable.
       setPredictions(suggestions || []);
-      setShowSuggestions((suggestions || []).length > 0);
       setSuggestionsError(null);
     } catch (err) {
       // eslint-disable-next-line no-console
       console.error("[GooglePlacesInput] fetchAutocompleteSuggestions failed", err);
       setPredictions([]);
-      setShowSuggestions(false);
       const msg = String(err?.message || err || "");
       if (/REQUEST_DENIED|ApiNotActivated|not.*enabled/i.test(msg)) {
         setSuggestionsError(
@@ -267,23 +272,31 @@ const GooglePlacesInput = ({
     const text = e.target.value;
     setInputValue(text);
 
-    // Always emit a free-text update so the form can save even without a pick.
+    // Always emit a free-text update so the form can save even without a
+    // pick — the typed text IS the address either way, selecting "Use as
+    // entered" or a suggestion is just an explicit confirmation, not a
+    // requirement. Preserve any GPS coords already captured (e.g. the
+    // background auto-capture) — typing an address must not wipe them.
     emitChange({
       fullAddress: text,
       street: "",
       city: "",
       state: "",
       country: value?.country || "Nigeria",
-      latitude: null,
-      longitude: null,
+      latitude: value?.latitude ?? null,
+      longitude: value?.longitude ?? null,
     });
 
     if (debounceRef.current) clearTimeout(debounceRef.current);
-    if (!text.trim() || scriptStatus !== "ready") {
+    if (!text.trim()) {
       setPredictions([]);
       setShowSuggestions(false);
       return;
     }
+    // Show the dropdown as soon as there's typed text — independent of
+    // Google having a match — so "Use as entered" is always reachable.
+    setShowSuggestions(true);
+    if (scriptStatus !== "ready") return;
     debounceRef.current = setTimeout(() => fetchSuggestions(text.trim()), 250);
   };
 
@@ -326,6 +339,7 @@ const GooglePlacesInput = ({
         sessionTokenRef.current = new lib.AutocompleteSessionToken();
       }
       emitChange(addressData);
+      onConfirm?.();
     } catch (err) {
       // eslint-disable-next-line no-console
       console.error("[GooglePlacesInput] place details fetch failed", err);
@@ -361,25 +375,40 @@ const GooglePlacesInput = ({
           onChange={handleInputChange}
           placeholder={placeholder}
           disabled={disabled}
-          className={`pl-10 pr-10 ${className}`}
+          autoFocus={autoFocus}
+          className={`pl-10 pr-16 ${className}`}
           onFocus={() => {
-            if (predictions.length > 0) setShowSuggestions(true);
+            setIsFocused(true);
+            if (predictions.length > 0 || inputValue.trim()) setShowSuggestions(true);
           }}
           onBlur={() => {
-            setTimeout(() => setShowSuggestions(false), 200);
+            setIsFocused(false);
+            // Deferred so a click on a suggestion/"use as entered" (which
+            // already calls onConfirm directly and prevents this blur via
+            // onMouseDown+preventDefault) always wins the race. This only
+            // fires for a genuine "typed then looked away" blur.
+            setTimeout(() => {
+              setShowSuggestions(false);
+              if (inputValue.trim()) onConfirm?.();
+            }, 200);
           }}
         />
         {searching ? (
           <Loader2 className="absolute right-3 top-1/2 transform -translate-y-1/2 text-gray-400 h-4 w-4 animate-spin" />
         ) : inputValue ? (
-          <button
-            onClick={clearAddress}
-            className="absolute right-3 top-1/2 transform -translate-y-1/2 text-gray-400 hover:text-gray-600"
-            type="button"
-            tabIndex={-1}
-          >
-            <X className="h-4 w-4" />
-          </button>
+          <div className="absolute right-2 top-1/2 transform -translate-y-1/2 flex items-center gap-1">
+            {/* Confirms an address is set — only once the agent isn't actively
+                editing, so it doesn't compete with the suggestions dropdown. */}
+            {!isFocused && <CheckCircle2 className="h-4 w-4 text-[#4a5d0f]" />}
+            <button
+              onClick={clearAddress}
+              className="p-0.5 text-gray-400 hover:text-gray-600"
+              type="button"
+              tabIndex={-1}
+            >
+              <X className="h-4 w-4" />
+            </button>
+          </div>
         ) : null}
       </div>
 
@@ -389,8 +418,42 @@ const GooglePlacesInput = ({
         </div>
       )}
 
-      {showSuggestions && predictions.length > 0 && (
+      {showSuggestions && (predictions.length > 0 || inputValue.trim()) && (
         <div className="absolute top-full left-0 right-0 bg-white border border-gray-300 rounded-md mt-1 max-h-60 overflow-y-auto z-20 shadow-lg">
+          {inputValue.trim() && (
+            <button
+              type="button"
+              className="w-full text-left px-4 py-3 hover:bg-[#4a5d0f]/15 border-b border-gray-100 focus:bg-[#4a5d0f]/15 focus:outline-none bg-[#4a5d0f]/10"
+              onMouseDown={(e) => e.preventDefault()}
+              onClick={() => {
+                setShowSuggestions(false);
+                setPredictions([]);
+                // Address is already being emitted on every keystroke — this
+                // just confirms the typed text as-is (no Google match) for
+                // addresses (villages, landmarks) Google doesn't resolve.
+                emitChange({
+                  fullAddress: inputValue,
+                  street: "",
+                  city: "",
+                  state: "",
+                  country: value?.country || "Nigeria",
+                  latitude: value?.latitude ?? null,
+                  longitude: value?.longitude ?? null,
+                });
+                onConfirm?.();
+              }}
+            >
+              <div className="flex items-start">
+                <MapPin className="h-4 w-4 text-[#4a5d0f] mt-0.5 mr-3 flex-shrink-0" />
+                <div>
+                  <div className="text-sm font-semibold text-[#4a5d0f]">
+                    Use &quot;{inputValue}&quot; as entered
+                  </div>
+                  <div className="text-xs text-[#4a5d0f]/70">No Google match needed</div>
+                </div>
+              </div>
+            </button>
+          )}
           {predictions.map((suggestion, idx) => {
             const pp = suggestion.placePrediction;
             if (!pp) return null;
