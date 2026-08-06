@@ -26,6 +26,7 @@ import {
   ShieldCheck,
   FileText,
   BarChart3,
+  BookOpen,
 } from "lucide-react";
 import { usePermissions } from "../hooks/usePermissions";
 import Link from "@/compat/Link";
@@ -117,7 +118,7 @@ const Sidebar = ({ isOpen, onClose, currentRoute }) => {
   const navItems = allNavItems
     .map((item) => {
       // Documentation is restricted to super admins only.
-      if (item.route === "docs" && !isSuperAdmin) return null;
+      if ((item.route === "docs" || item.route === "system-documentation") && !isSuperAdmin) return null;
       if (item.children) {
         const visibleChildren = item.children.filter((c) => canRoute(c.route));
         if (visibleChildren.length === 0) return null;
