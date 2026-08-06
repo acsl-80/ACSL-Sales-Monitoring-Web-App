@@ -5,20 +5,6 @@
 
 ---
 
-1. [System Overview](#1-system-overview)
-2. [Architecture](#2-architecture)
-3. [Repository Structure](#3-repository-structure)
-4. [Local Development Setup](#4-local-development-setup)
-5. [Configuration and Environment Variables](#5-configuration-and-environment-variables)
-6. [Data Model](#6-data-model)
-7. [API Reference](#7-api-reference)
-8. [Authentication and Authorisation](#8-authentication-and-authorisation)
-9. [Third-Party Services and Dependencies](#9-third-party-services-and-dependencies)
-10. [Deployment](#10-deployment)
-11. [Operations and Troubleshooting](#11-operations-and-troubleshooting)
-12. [Glossary](#12-glossary)
-
----
 
 ## 1. System Overview
 
