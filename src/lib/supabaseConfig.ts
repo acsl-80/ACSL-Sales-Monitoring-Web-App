@@ -6,10 +6,16 @@
 // hardcoded fallbacks here. Env vars still win when present.
 
 // `import.meta.env` is absent in some SSR/serverless bundles, so guard the read.
-const env = ((typeof import.meta !== "undefined" && import.meta.env) || {}) as Record<
+// On the server (Vercel/Node) also consider process.env.
+const viteEnv = ((typeof import.meta !== "undefined" && import.meta.env) || {}) as Record<
   string,
   string | undefined
 >;
+const nodeEnv = ((typeof process !== "undefined" && process.env) || {}) as Record<
+  string,
+  string | undefined
+>;
+const env: Record<string, string | undefined> = { ...nodeEnv, ...viteEnv };
 
 // An env var that is *defined but blank* (a common Vercel dashboard slip) must
 // count as missing. `??` only falls through on null/undefined, so `""` would
