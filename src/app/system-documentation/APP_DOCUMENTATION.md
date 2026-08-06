@@ -1,14 +1,9 @@
-# ACSL Stove Sales & Transactions Platform — Handover Documentation
+# ACSL Stove Sales & Transactions Platform — Documentation
 
 **Version:** 1.0  
 **Last updated:** 2026-08-06  
-**Audience:** A competent developer taking ownership of this codebase with no prior exposure to it.
-
-This document is intended to be sufficient on its own to run, understand, deploy and maintain the application.
 
 ---
-
-## Table of Contents
 
 1. [System Overview](#1-system-overview)
 2. [Architecture](#2-architecture)

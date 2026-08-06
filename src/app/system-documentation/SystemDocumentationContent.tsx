@@ -65,7 +65,7 @@ export default function SystemDocumentationContent() {
       <div className="space-y-4">
         <PageHeader
           title="App Documentation"
-          description={`Technical handover documentation for this application · last updated ${DOC_LAST_UPDATED}`}
+          description={`Technical documentation for this application · last updated ${DOC_LAST_UPDATED}`}
           icon={BookOpen}
           right={
             <Button
