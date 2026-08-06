@@ -8,9 +8,14 @@ import {
   HeadContent,
   Scripts,
 } from "@tanstack/react-router";
-import { type ReactNode } from "react";
+import { useEffect, type ReactNode } from "react";
 
 import appCss from "../styles.css?url";
+import {
+  installChunkReloadHandler,
+  isChunkLoadError,
+  reloadForStaleChunks,
+} from "@/lib/chunk-reload";
 import { AuthProvider } from "@/app/contexts/AuthContext";
 import { ToastProvider } from "@/app/contexts/ToastContext";
 import { SidebarProvider } from "@/app/contexts/SidebarContext";
@@ -72,6 +77,16 @@ function NotFoundComponent() {
 function ErrorComponent({ error, reset }: { error: Error; reset: () => void }) {
   console.error(error);
   const router = useRouter();
+
+  // A stale-asset failure after a deploy is recoverable: reload once so the
+  // browser fetches the current asset manifest instead of missing chunks.
+  useEffect(() => {
+    if (isChunkLoadError(error)) {
+      reloadForStaleChunks();
+    }
+  }, [error]);
+
+
 
   return (
     <div className="flex min-h-screen items-center justify-center bg-background px-4">
@@ -211,6 +226,12 @@ function RootShell({ children }: { children: ReactNode }) {
 
 function RootComponent() {
   const { queryClient } = Route.useRouteContext();
+
+  useEffect(() => {
+    installChunkReloadHandler();
+  }, []);
+
+
 
   return (
     <QueryClientProvider client={queryClient}>
