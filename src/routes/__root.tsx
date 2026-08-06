@@ -8,9 +8,14 @@ import {
   HeadContent,
   Scripts,
 } from "@tanstack/react-router";
-import { type ReactNode } from "react";
+import { useEffect, type ReactNode } from "react";
 
 import appCss from "../styles.css?url";
+import {
+  installChunkReloadHandler,
+  isChunkLoadError,
+  reloadForStaleChunks,
+} from "@/lib/chunk-reload";
 import { AuthProvider } from "@/app/contexts/AuthContext";
 import { ToastProvider } from "@/app/contexts/ToastContext";
 import { SidebarProvider } from "@/app/contexts/SidebarContext";
