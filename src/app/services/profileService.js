@@ -4,8 +4,15 @@ import { createClientComponentClient } from "@/lib/supabaseClient";
 
 class ProfileService {
   constructor() {
-    this.supabase = createClientComponentClient();
     this.STORAGE_KEY = "user_profile";
+  }
+
+  // Route modules are imported during SSR. Creating the browser client in the
+  // constructor made this singleton crash the entire Vercel render whenever
+  // client-side environment variables were unavailable at module-load time.
+  // Resolve it only when an actual profile operation runs.
+  get supabase() {
+    return createClientComponentClient();
   }
 
   // Fetch user profile with organization data (similar to Flutter code)
