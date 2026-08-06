@@ -1,38 +1,40 @@
-## Plan to make LGA recall on Edit Sale work reliably
+# App Documentation — handover guide in-app
 
-I checked the current edit flow and confirmed these points:
-- The sales list data includes `lga_backup` for the affected record, for example `Kano Municipal`.
-- `get-sale` selects `*` from `sales`, so the detailed edit payload should also include `lga_backup`.
-- `populateFormDataForEdit()` already maps `lga_backup` into `formData.lgaBackup`.
-- The visible failure is in the UI select: State shows `Kano`, but LGA shows the placeholder. This matches a known Radix/shadcn Select issue where a controlled Select can render blank if its value and matching option are not available in the same render cycle.
+Add a sidebar link **App Documentation** that opens a new **System Documentation** view containing a complete, self-contained handover document for a developer who has never seen this codebase.
 
-## Fix
+## 1. Sidebar link
 
-1. **Normalize the saved State/LGA before putting it into form state**
-   - Move the State/LGA reconciliation into the edit-data population step, not after the form has already rendered.
-   - Trim saved values and match them case-insensitively against the LGA catalogue.
-   - Example: saved `kano municipal ` becomes canonical `Kano Municipal` before the Select renders.
+- Add to `src/app/components/Sidebar.jsx`, immediately after **API Documentation**:
+  - name: `App Documentation`, icon `BookOpen`, route `app-docs`, href `/system-documentation`
+  - Gated to super admins only (same explicit `isSuperAdmin` check used by API Documentation).
+- Map the route in `DashboardLayout.tsx` active-route logic so `/system-documentation` highlights **App Documentation** (not another item).
 
-2. **Make the LGA options list always contain the selected LGA**
-   - Build a stable `lgaOptionsForSelectedState` list with `useMemo`.
-   - If `formData.lgaBackup` is set but missing from the catalogue, insert it as the first option.
-   - This prevents the selected value from ever being orphaned.
+## 2. New view
 
-3. **Force the LGA Select to remount when edit data/options become ready**
-   - Add a `key` to the LGA Select based on `stateBackup`, `lgaBackup`, and the options count.
-   - This resolves the Radix/shadcn timing problem where the trigger remains blank even after the option later appears.
+- Route: `src/routes/system-documentation/index.tsx` → lazy-loads `src/app/system-documentation/page.tsx`, wrapped in `ProtectedRoute` (super admin).
+- Content component `SystemDocumentationContent.tsx`, styled to match existing views (green `#4a5d0f` header, white cards, no shadows/alternating rows):
+  - Page header: title, "handover documentation" subtitle, last-updated date.
+  - Sticky **Table of Contents** sidebar (anchor links to each section) + scrollable document body.
+  - Utility buttons: **Print / Save as PDF** (browser print of the doc area) and **Download Markdown** (serves the raw `.md` file).
+- The document text lives in one Markdown file (`src/app/system-documentation/APP_DOCUMENTATION.md`), rendered with the existing Markdown rendering approach already used by the docs pages, so the same file is both the on-screen doc and the downloadable artifact.
 
-4. **Prevent accidental clearing during edit initialization**
-   - Update `handleStateChange` so it only clears LGA when the user actually changes State.
-   - During edit initialization/reconciliation, State changes must preserve the original LGA.
+## 3. Document sections (all required, written from actual code)
 
-5. **Add a safe fallback display**
-   - If the Select still has a value but cannot resolve a label, render the saved `formData.lgaBackup` as the visible selected text instead of showing `Select LGA`.
-   - This guarantees the user sees the returned LGA like every other field.
+1. **System Overview** — what the platform does (clean-cookstove sales, partners/agents, installment payment models, stove ID tracking, end-user records), primary user journeys.
+2. **Architecture** — React 19 + TanStack Start (Vite) frontend, Supabase (Postgres + Auth + Storage) backend, ~50 Edge Functions as the service layer, external ERP/CSV sync, Brevo/Resend email, Google Maps/Places. ASCII diagrams for request flow and the sale-creation flow.
+3. **Repository Structure** — annotated tree of `src/app` (feature folders), `src/routes` (file-based routing + `routeTree.gen.ts` caveat), `src/compat` (Next.js shims: `Link`, `Image`, `navigation`), `src/lib`, `src/services`, `supabase/functions`, `supabase/sql`.
+4. **Local Development Setup** — prerequisites, `bun install`, `.env.local` from `.env.example`, `bun run dev` on port 8080, Supabase CLI usage, edge-function deploy/serve commands, common startup failures.
+5. **Configuration & Environment Variables** — table of every `VITE_*` client var and every Edge Function secret in use (Supabase URL/keys, `END_USER_RECORDS_API_KEY`, Google keys, email keys), where each is read, and which are safe to expose.
+6. **Data Model** — table-by-table reference generated from `supabase/SUPABASE_TABLE_OVERVIEW.md`: columns, keys, RLS policies, plus an entity-relationship diagram covering `profiles`, `organizations`, `sales`, `stove_ids`, `installment_payments`, `payment_models`, `organization_payment_models`, `acsl_agent_organizations`, `acsl_agent_states`, `credentials`, `addresses`, `email_*`, `app_settings`, `app_releases`, sync/audit tables. Key lifecycles documented: stove ID status transitions, sale status transitions, cancellation/archive flow.
+7. **API Reference** — every Edge Function grouped by domain (sales, stove IDs, users/profiles, organizations, payment models, dashboards, sync/reconciliation, settings/tokens, geo, email), with method, purpose, auth requirement, request/response shape for the important ones; full documentation of the public **End User Records API** (bearer key, filters, pagination, sample payloads).
+8. **Authentication & Authorisation** — Supabase Auth + the custom `login-with-credentials` username-or-email flow, session/profile caching (`authCache.ts`, `profileService`), the five roles (`super_admin`, `acsl_agent_manager`, `acsl_agent`, `partner`, `partner_agent`), the `permissions.ts` / `usePermissions` feature-key model, `ProtectedRoute` and `RoleGate`, RLS patterns and why the service role is confined to Edge Functions.
+9. **Third-Party Services & Dependencies** — Supabase, Vercel, Google Maps/Places, Resend/Brevo, pdfjs-dist/jsPDF, Recharts, Radix/shadcn, Tailwind v4; what breaks if each credential lapses.
+10. **Deployment** — Vercel build config and known pitfalls (lockfile, `@lovable.dev/vite-tanstack-config` pin, SSR-safe lazy Supabase client, stale-chunk auto-reload), edge-function deployment, secrets management, migration/SQL script process, rollback.
+11. **Operations & Troubleshooting** — runbook of the recurring issues (duplicate phone validation, LGA recall, stale asset 404s, user deletion cleanup, missing API key errors), where to look first.
+12. **Glossary** — ACSL, partner, partner agent, stove ID, sales model, sell-through, LGA, end user, on-behalf sale, records collected, etc.
 
-6. **Verify against the real edit modal**
-   - Open the sale edit modal from Sales Records.
-   - Confirm the Location section shows both:
-     - State: `Kano`
-     - LGA: the saved value, e.g. `Kano Municipal`
-   - Confirm changing State manually still resets the LGA so users cannot save a mismatched State/LGA pair.
+## Technical notes
+
+- Documentation content is static Markdown — no new database tables, Edge Functions, or migrations.
+- Data-model section is derived from the committed `supabase/SUPABASE_TABLE_OVERVIEW.md`; if a table there is stale the doc will note the refresh command rather than guess.
+- No existing behaviour changes beyond the sidebar entry and active-route mapping.
