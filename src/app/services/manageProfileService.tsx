@@ -52,12 +52,15 @@ interface ApiResponse<T> {
 }
 
 class ManageProfileService {
-  private supabase;
+  private client: ReturnType<typeof createClientComponentClient> | null = null;
   private baseUrl =
     "https://oeiwnpngbnkhcismhpgs.supabase.co/functions/v1/manage-profile";
 
-  constructor() {
-    this.supabase = createClientComponentClient();
+  // Created lazily: this module is imported during SSR, where creating a
+  // Supabase client at module scope would crash the request.
+  private get supabase() {
+    if (!this.client) this.client = createClientComponentClient();
+    return this.client;
   }
 
   /**
