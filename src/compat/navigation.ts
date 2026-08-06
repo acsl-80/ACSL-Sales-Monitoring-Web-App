@@ -48,7 +48,9 @@ export function useSearchParams(): URLSearchParams {
 }
 
 export function useParams<T = Record<string, string>>(): T {
-  return useTanstackParams({ strict: false }) as T;
+  return (useTanstackParams as (opts: { strict: false }) => unknown)({
+    strict: false,
+  }) as T;
 }
 
 // Imperative redirect (mirrors next/navigation redirect). Throws a TanStack
