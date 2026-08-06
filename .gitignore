@@ -42,3 +42,4 @@ dist-ssr
 
 # Claude Code local agent worktrees & session state
 .claude/
+.gstack/
