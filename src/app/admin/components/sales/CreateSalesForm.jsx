@@ -709,6 +709,17 @@ const CreateSalesForm = ({
     }
   }, [visiblePaymentModels, selectedModelId, isInstallment, isEditMode]);
 
+  // Once the customer has paid the full sale amount up front, installments
+  // no longer make sense — drop back to full payment and hide the models.
+  const isFullyPaid =
+    Number(formData.amount) > 0 &&
+    Number(formData.amountReceived) >= Number(formData.amount);
+
+  useEffect(() => {
+    if (isEditMode || !isInstallment || !isFullyPaid) return;
+    handlePaymentTypeChange("full_payment");
+  }, [isEditMode, isInstallment, isFullyPaid]);
+
   // Update selected model details when model ID changes
   useEffect(() => {
     if (selectedModelId) {
@@ -1625,14 +1636,19 @@ const CreateSalesForm = ({
                   </SelectTrigger>
                   <SelectContent>
                     <SelectItem value="full_payment">Full Payment</SelectItem>
-                    {visiblePaymentModels.map((model) => (
+                    {!isFullyPaid && visiblePaymentModels.map((model) => (
                       <SelectItem key={model.id} value={model.id}>
                         {model.name} — {formatCurrency(model.fixed_price)} / {model.duration_months} mo
                       </SelectItem>
                     ))}
                   </SelectContent>
                 </Select>
-                {partnerModelsUnresolved && (
+                {isFullyPaid ? (
+                  <p className="mt-1 text-xs text-muted-foreground">
+                    Amount received covers the full sale amount, so
+                    installment plans aren&apos;t available for this sale.
+                  </p>
+                ) : partnerModelsUnresolved && (
                   <p className="mt-1 text-xs text-amber-600">
                     This partner is assigned {orgPaymentModelIds.length} sales
                     model{orgPaymentModelIds.length === 1 ? "" : "s"} that
