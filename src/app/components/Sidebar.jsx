@@ -70,8 +70,6 @@ const allNavItems = [
       { name: "Cancelled Transactions", route: "sales-cancelled", href: "/sales/cancelled" },
       { name: "Purchases from ACSL", route: "stove-transfer-history", href: "/stove-transfer-history" },
       { name: "Cancelled Purchases", route: "sales-cancelled-purchases", href: "/sales/cancelled-purchases" },
-      { name: "Agreement Images", route: "agreement-images", href: "/agreement-images" },
-      { name: "Map", route: "map", href: "/map" },
     ],
   },
 
