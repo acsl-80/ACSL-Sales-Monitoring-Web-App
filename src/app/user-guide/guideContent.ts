@@ -181,14 +181,14 @@ With every group expanded you can see the whole structure of the platform in one
 
 {{figure:sidebar-full}}
 
+### The top bar
 
-    ### The top bar
+The top bar runs across the top of every screen. It shows the company logo, the menu toggle, the app name, your current role, and the logout button.
 
-    The top bar runs across the top of every screen. It shows the company logo, the menu toggle, the app name, your current role, and the logout button.
+{{figure:topbar-header}}
 
-    {{figure:topbar-header}}
+From the account menu you can open your profile or sign out.
 
-    From the account menu you can open your profile or sign out.
 
 ### Page layout
 
