@@ -895,38 +895,8 @@ Use the search box and filters to narrow the list, then export the filtered resu
   },
 
   {
-    id: "agreement-images",
-    title: "14. Agreement images",
-    routeKeys: ["agreement-images"],
-    body: `**Sidebar → Manage Sales → Agreement Images**. Use this screen to retrieve the signed agreement for any stove.
-
-1. Type or paste the **stove serial** into the lookup box.
-2. Press Enter.
-
-**What you get back**
-
-- If an agreement image was uploaded or photographed at the point of sale, it is displayed. Click it to zoom.
-- If no image was captured, the platform builds the **sales agreement document** for that stove from the sale record and shows a preview of the PDF under *User Agreement (Generated)*.
-
-Either way you can **download** what is shown. If the serial has no sale against it at all, the screen tells you so rather than showing a blank page.`,
-  },
-
-  {
-    id: "map",
-    title: "15. Map",
-    routeKeys: ["map"],
-    body: `**Sidebar → Manage Sales → Map** plots recorded sales geographically so you can see coverage at a glance.
-
-- Each marker is a sale location derived from the state and LGA captured on the sales form.
-- Zoom and pan with the usual map controls; clusters split into individual markers as you zoom in.
-- Click a marker to see the sale summary behind it.
-
-Because the map is built from the location fields on the sales form, choosing the correct state and LGA when recording a sale is what keeps it accurate.`,
-  },
-
-  {
     id: "settings",
-    title: "16. Settings",
+    title: "14. Settings",
     routeKeys: [
       "settings",
       "settings-payment-models",
