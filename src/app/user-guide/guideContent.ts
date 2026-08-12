@@ -153,6 +153,8 @@ If you type or follow a link to a screen your role cannot open, the platform sho
         boxes: [{ x: 25, y: 60, w: 55, h: 30 }],
       },
     ],
+  },
+
 
 
   {
