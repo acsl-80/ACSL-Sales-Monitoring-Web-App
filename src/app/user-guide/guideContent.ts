@@ -17,6 +17,8 @@ import partnerAgentsProfilesShot from "@/assets/guide/07-partner-agents-profiles
 import agentsPerformanceShot from "@/assets/guide/08-agents-performance.png.asset.json";
 import agentsKpiModalShot from "@/assets/guide/08-agents-kpi-modal.png.asset.json";
 import statesPerformanceShot from "@/assets/guide/08-states-performance.png.asset.json";
+import sellStoveFormShot from "@/assets/guide/09-sell-stove-form-full.png.asset.json";
+import salesRecordsPayShot from "@/assets/guide/09-sales-records.png.asset.json";
 
 
 export const GUIDE_LAST_UPDATED = "2026-08-12";
