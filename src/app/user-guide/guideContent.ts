@@ -926,7 +926,7 @@ Administrative utilities for data maintenance and one-off corrections. Each tool
 
   {
     id: "api-documentation",
-    title: "17. API documentation",
+    title: "15. API documentation",
     routeKeys: ["docs"],
     superAdminOnly: true,
     body: `**Sidebar → API Documentation** (super admins only) describes the public **End User Records** endpoint that external systems can call to pull stove-user data.
@@ -946,19 +946,19 @@ Keep the API key secret — anyone holding it can read the same data.`,
 
   {
     id: "workflows",
-    title: "18. Complete workflows",
+    title: "16. Complete workflows",
     body: `Screens make more sense when you can see how information moves through the system end to end.
 
-### 18.1 Stock to sale to payment
+### 16.1 Stock to sale to payment
 
 1. **Stoves arrive.** Serials are added to Track Stoves (individually or by CSV import) with the status *available*.
 2. **Allocation.** ACSL allocates a batch to a partner. The serials move to that partner and the batch appears under *Purchases from ACSL*.
-3. **Sale.** An agent opens **Sell Stove**, selects the partner, sales model and serial, captures the buyer and end user, location, agreement image and signature, and submits.
-4. **Immediately after submission** the serial becomes *sold*, the sale appears in **Sales Records**, the customer appears in **Stove Users Data**, and the agreement is retrievable from **Agreement Images**.
+3. **Sale.** An agent opens **Sell Stove**, selects the partner, sales model and serial, captures the buyer and end user, location, and signature, and submits.
+4. **Immediately after submission** the serial becomes *sold*, the sale appears in **Sales Records**, and the customer appears in **Stove Users Data**.
 5. **Collection.** For instalment plans the schedule starts. Each morning, use the tracking bar on Sales Records (*Overdue*, *Due today*, *Due in 7 days*) to see who to chase. Record each payment with **Pay**; the balance, next due date and payment history update at once.
 6. **Reporting.** Every step feeds the dashboard and the agent, partner and state performance reports, and can be exported to CSV.
 
-### 18.2 Onboarding a new person
+### 16.2 Onboarding a new person
 
 1. A super admin (or a manager, within their scope) creates the account in **User Manager** and picks the user group.
 2. For ACSL agents, the manager and the partners or states they cover are set at the same time; for partner agents, the partner is set.
