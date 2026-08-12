@@ -272,6 +272,10 @@ export default function UserGuideContent() {
             {sections.map((section, index) => {
               const prev = sections[index - 1];
               const next = sections[index + 1];
+              const figures = section.figures ?? [];
+              // Split the body on {{figure:id}} tokens so screenshots sit with their steps.
+              const parts = section.body.split(/\{\{figure:([a-z0-9-]+)\}\}/i);
+              let figureNumber = 0;
               return (
                 <article
                   key={section.id}
@@ -285,10 +289,32 @@ export default function UserGuideContent() {
                     {section.title}
                   </h2>
                   <div className="doc-prose text-sm text-gray-700 leading-relaxed">
-                    <ReactMarkdown remarkPlugins={[remarkGfm]} components={markdownComponents}>
-                      {section.body}
-                    </ReactMarkdown>
+                    {parts.map((part, i) => {
+                      if (i % 2 === 1) {
+                        const figure = figures.find((f) => f.id === part);
+                        if (!figure) return null;
+                        figureNumber += 1;
+                        return (
+                          <GuideFigure
+                            key={`${section.id}-fig-${part}`}
+                            figure={figure}
+                            index={figureNumber}
+                          />
+                        );
+                      }
+                      if (!part.trim()) return null;
+                      return (
+                        <ReactMarkdown
+                          key={`${section.id}-md-${i}`}
+                          remarkPlugins={[remarkGfm]}
+                          components={markdownComponents}
+                        >
+                          {part}
+                        </ReactMarkdown>
+                      );
+                    })}
                   </div>
+
 
                   <div className="flex items-center justify-between gap-2 mt-6 pt-3 border-t border-gray-200">
                     {prev ? (
