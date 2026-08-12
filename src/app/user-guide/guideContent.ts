@@ -3,6 +3,8 @@ import loginShot from "@/assets/guide/02-login-page.png.asset.json";
 import profileShot from "@/assets/guide/02-change02-profile-page.png.asset.json";
 import sidebarFullShot from "@/assets/guide/03-sidebar-full.png.asset.json";
 import sidebarCollapsedShot from "@/assets/guide/03-sidebar-collapsed.png.asset.json";
+import mobileMenuOpenShot from "@/assets/guide/03-mobile-menu-open.png.asset.json";
+import mobileMenuClosedShot from "@/assets/guide/03-mobile-menu-closed.png.asset.json";
 import dashboardShot from "@/assets/guide/04-dashboard-full.png.asset.json";
 
 export const GUIDE_LAST_UPDATED = "2026-08-12";
@@ -170,6 +172,10 @@ The **Control Panel** menu on the left is the main navigation. It only lists the
 - The item you are currently on is highlighted in solid green; the active sub-item is shown in green text.
 - On phones and small tablets the sidebar is hidden. Tap the menu button in the top bar to slide it out, and tap outside it (or the X) to close it.
 
+{{figure:mobile-menu-open}}
+
+{{figure:mobile-menu-closed}}
+
 With every group expanded you can see the whole structure of the platform in one view:
 
 {{figure:sidebar-full}}
@@ -205,6 +211,23 @@ Most screens follow the same pattern, top to bottom:
           { n: 2, label: "An arrow on the right means the item is a group — click it to expand.", x: 90, y: 24, arrowDirection: "left" },
           { n: 3, label: "Items without an arrow open a screen directly.", x: 78, y: 65, arrowDirection: "left" },
         ],
+      },
+      {
+        id: "mobile-menu-open",
+        src: mobileMenuOpenShot.url,
+        caption: "On a phone the sidebar slides out over the page.",
+        alt: "Mobile sidebar slid out over the page with the X close button",
+        markers: [
+          { n: 1, label: "X — closes the menu. Tapping the dimmed area outside it also closes it.", x: 56, y: 6 },
+          { n: 2, label: "Tap any item to open that screen; the menu closes automatically.", x: 40, y: 15, arrow: false },
+        ],
+      },
+      {
+        id: "mobile-menu-closed",
+        src: mobileMenuClosedShot.url,
+        caption: "With the menu closed, tap the menu button in the top bar to open it again.",
+        alt: "Mobile top bar with the menu button and logo",
+        markers: [{ n: 1, label: "Menu button — slides the sidebar out.", x: 14, y: 50 }],
       },
       {
         id: "sidebar-full",
