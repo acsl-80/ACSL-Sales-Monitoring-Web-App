@@ -14,6 +14,9 @@ import editPartnerModalShot from "@/assets/guide/06-edit-partner-modal.png.asset
 import partnerCredentialsShot from "@/assets/guide/06-partner-credentials.png.asset.json";
 import agentsProfilesTableShot from "@/assets/guide/07-agents-profiles-table.png.asset.json";
 import partnerAgentsProfilesShot from "@/assets/guide/07-partner-agents-profiles.png.asset.json";
+import agentsPerformanceShot from "@/assets/guide/08-agents-performance.png.asset.json";
+import agentsKpiModalShot from "@/assets/guide/08-agents-kpi-modal.png.asset.json";
+import statesPerformanceShot from "@/assets/guide/08-states-performance.png.asset.json";
 
 
 export const GUIDE_LAST_UPDATED = "2026-08-12";
