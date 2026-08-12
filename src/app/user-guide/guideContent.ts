@@ -404,10 +404,6 @@ Each time records are transferred:
 
 A partner becomes selectable on the sales form and in filters as soon as it exists in the app.
 
-### Adding a partner manually
-
-If a partner has to be captured ahead of an ERP transfer, click **Add Partner** and enter the organisation name, contact person, phone, email, state and LGA, then save.
-
 ### Editing a partner
 
 Open the edit action on the row, change the details and save. Most partner information can be edited in the Sales & Monitoring App — contact person, phone numbers, email, address, state, branch — but the **partner name cannot be changed**, because it is the link back to the ERP record.
@@ -419,15 +415,6 @@ From the partner row you can see the total number of agents assigned to the part
 ### Partner credentials
 
 Administrators can open a partner's credential details to view the username and password, copy them, and share them with the partner. Partners are prompted to change these default credentials the first time they log in.
-
-
-### Assigning agents
-
-Use the assign-agent action to link ACSL agents to the partner. This controls whose figures the partner appears in and who can record sales on its behalf.
-
-### Assigning payment models
-
-Use the payment-models action to choose which sales (payment) models the partner may use. On the sales form, only the models assigned to the selected partner are offered. If a partner has no models assigned yet, all active models are shown so that a sale is never blocked.
 
 ### Purchases from ACSL
 
