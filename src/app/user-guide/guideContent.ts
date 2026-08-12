@@ -12,6 +12,8 @@ import createUserFormShot from "@/assets/guide/05-create-user-form.png.asset.jso
 import partnerProfilesTableShot from "@/assets/guide/06-partner-profiles-table.png.asset.json";
 import editPartnerModalShot from "@/assets/guide/06-edit-partner-modal.png.asset.json";
 import partnerCredentialsShot from "@/assets/guide/06-partner-credentials.png.asset.json";
+import agentsProfilesTableShot from "@/assets/guide/07-agents-profiles-table.png.asset.json";
+import partnerAgentsProfilesShot from "@/assets/guide/07-partner-agents-profiles.png.asset.json";
 
 
 export const GUIDE_LAST_UPDATED = "2026-08-12";
