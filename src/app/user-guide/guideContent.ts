@@ -553,6 +553,12 @@ Figures are live: they recalculate as sales are recorded, so a partner agent who
 
 Shows each ACSL agent with their user group as a small blue superscript, the states they cover, their stove and sales figures and their sell-through. Click the **States Assigned** value to see the full list of states. Search by agent name, or filter by user group.
 
+{{figure:agents-performance}}
+
+The **Records Collected** chart above the table plots, month by month, the sales recorded by agents only — partner sales are not included.
+
+{{figure:agents-kpi-modal}}
+
 ### 8.2 Partners Performance
 
 The same for partner organisations. Search by partner name or filter by state. Each row's figures open the matching stove list.
@@ -561,10 +567,53 @@ The same for partner organisations. Search by partner name or filter by state. E
 
 Aggregates everything by state, with gradient summary cards at the top, a sortable table and a sell-through bar per state. Clicking a state opens a breakdown of the partners and agents operating there; those in turn open their own stove lists. Large figures are shown with thousands separators.
 
+{{figure:states-performance}}
+
 ### Exporting
 
 Every drill-down window has an **Export** button. The file downloads to your browser's normal download location and can be opened in Excel.`,
+    figures: [
+      {
+        id: "agents-performance",
+        src: agentsPerformanceShot.url,
+        caption: "Agents Performance Report — filters, KPI cards, Records Collected chart and the agents table.",
+        alt: "Agents Performance Report showing search and role filters, four KPI cards, a monthly records collected chart and a table of agents",
+        markers: [
+          { n: 1, label: "Search by name or email, filter by status, role or date range.", x: 14, y: 12 },
+          { n: 2, label: "KPI cards — click any card to list the stove IDs behind the number.", x: 37, y: 24 },
+          { n: 3, label: "Records Collected: sales recorded by agents, month by month.", x: 50, y: 50 },
+          { n: 4, label: "Agents Performance table with its own search and user group filter.", x: 22, y: 78 },
+          { n: 5, label: "Sell-through bar — share of the agent's stoves that have been sold.", x: 92, y: 84, arrowDirection: "left" },
+        ],
+      },
+      {
+        id: "agents-kpi-modal",
+        src: agentsKpiModalShot.url,
+        caption: "Clicking a KPI card opens the full stove list, with search and export.",
+        alt: "Stoves Sold / Retrieved window listing stove IDs with partner name, state, branch, agent and sales date",
+        markers: [
+          { n: 1, label: "Search the list by stove ID, partner, state, branch or agent.", x: 25, y: 30 },
+          { n: 2, label: "Export downloads the list as a CSV file.", x: 90, y: 30, arrowDirection: "left" },
+          { n: 3, label: "Count of stoves in the list.", x: 8, y: 45 },
+          { n: 4, label: "One row per stove, with where and when it was sold.", x: 45, y: 80 },
+        ],
+      },
+      {
+        id: "states-performance",
+        src: statesPerformanceShot.url,
+        caption: "States Performance Report — tabs, summary cards and the sortable state table.",
+        alt: "States Performance Report with tabs, five gradient summary cards, a state search box, Export CSV button and a table of states",
+        markers: [
+          { n: 1, label: "Tabs switch between the agents, partners and states reports.", x: 76, y: 8 },
+          { n: 2, label: "Summary cards for states, partners, stoves, sold and not sold.", x: 50, y: 32 },
+          { n: 3, label: "Search a state, or use Export CSV to download the table.", x: 92, y: 53, arrowDirection: "left" },
+          { n: 4, label: "Click a column heading to sort; click a figure to open its stove list.", x: 47, y: 70 },
+          { n: 5, label: "Sell-through bar per state.", x: 88, y: 87, arrowDirection: "left" },
+        ],
+      },
+    ],
   },
+
 
   {
     id: "sell-stove",
