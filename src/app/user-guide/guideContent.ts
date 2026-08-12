@@ -194,6 +194,31 @@ Most screens follow the same pattern, top to bottom:
 - Icon buttons in an **Actions** column show a tooltip describing what they do when you hover over them.
 - Numbers that look like links (for example the figures inside a KPI card) are usually clickable and open a detailed list.
 - Anything destructive — deleting or cancelling — always asks you to confirm first.`,
+    figures: [
+      {
+        id: "sidebar-collapsed",
+        src: sidebarCollapsedShot.url,
+        caption: "The sidebar with all groups collapsed.",
+        alt: "Control Panel sidebar with collapsed menu groups",
+        markers: [
+          { n: 1, label: "The page you are on is highlighted in solid green.", x: 78, y: 15, arrowDirection: "left" },
+          { n: 2, label: "An arrow on the right means the item is a group — click it to expand.", x: 90, y: 24, arrowDirection: "left" },
+          { n: 3, label: "Items without an arrow open a screen directly.", x: 78, y: 65, arrowDirection: "left" },
+        ],
+      },
+      {
+        id: "sidebar-full",
+        src: sidebarFullShot.url,
+        caption: "The sidebar fully expanded, showing every group and its sub-items.",
+        alt: "Control Panel sidebar fully expanded",
+        markers: [
+          { n: 1, label: "User Management — User Manager and User Groups.", x: 80, y: 12, arrowDirection: "left" },
+          { n: 2, label: "Agent Management — ACSL Agents Profile and Partner Agents Profile.", x: 80, y: 26, arrowDirection: "left" },
+          { n: 3, label: "Manage Sales — Sell Stove, Sales Records, cancellations, Agreement Images and Map.", x: 80, y: 42, arrowDirection: "left" },
+          { n: 4, label: "Settings — Payment Models, Credentials, System Configuration and Tools.", x: 80, y: 87, arrowDirection: "left" },
+        ],
+      },
+    ],
   },
 
   {
@@ -202,21 +227,42 @@ Most screens follow the same pattern, top to bottom:
     routeKeys: ["dashboard"],
     body: `The dashboard is the first screen after you sign in and gives a summary of activity you are allowed to see. A partner agent sees only their own figures; a partner sees their organisation; a super admin sees everything.
 
+{{figure:dashboard}}
+
 ### What is on the dashboard
 
-- **Sales overview doughnut chart** — the split of stoves by status at a glance. Hover a segment to see the exact count.
-- **Financial snapshot** — total value sold, amount collected and amount outstanding.
-- **Monthly sales chart** — the number and value of sales per month, so you can see the trend across the year.
-- **Quick actions** — shortcut buttons to the screens you use most, such as managing agents, sales or stoves.
+- **Stove Inventory doughnut** — how the stoves you can see split between **Sold** and **Available**. Hover a segment for the exact count and percentage; the centre shows total stoves received.
+- **Sales by Models doughnut** — total sales split by sales (payment) model, so you can see which model is used most.
+- **Financial snapshot** — three cards: **Expected Receivable Amount** (total value of sales), **Amount Received** (collected so far) and **Outstanding Balance** (still owed).
+- **Monthly Sales chart** — sales per month across the selected year, with a trend line over the bars.
+- **Sales by States chart** — number of sales in each state.
 
 ### Filters
 
-Where your role allows a wider view, filter controls at the top let you narrow the whole dashboard by period, partner or state. Clearing the filters returns the dashboard to its default view.
+The green **Sales Overview** bar carries the filters: **Filter by date range**, a **month** dropdown and a **year** dropdown. They apply to the whole dashboard. Use the **X** on the right of the bar to clear them and return to the default view.
 
 ### What to do next
 
-The dashboard is a read-only summary. To act on anything you see, use the sidebar or a quick action button to open the relevant module.`,
+The dashboard is a read-only summary. To act on anything you see, use the sidebar to open the relevant module.`,
+    figures: [
+      {
+        id: "dashboard",
+        src: dashboardShot.url,
+        caption: "The dashboard, top to bottom.",
+        alt: "Dashboard showing stove inventory and sales doughnuts, financial snapshot cards, monthly sales and sales by state charts",
+        markers: [
+          { n: 1, label: "Filters: date range, month and year — plus the X to clear them.", x: 66, y: 6 },
+          { n: 2, label: "Stove Inventory — sold versus available, with total stoves received in the centre.", x: 27, y: 21 },
+          { n: 3, label: "Sales by Models — total sales split by sales model.", x: 74, y: 21 },
+          { n: 4, label: "Financial snapshot: expected receivable, amount received and outstanding balance.", x: 19, y: 40 },
+          { n: 5, label: "Monthly Sales — sales per month for the selected year.", x: 56, y: 57 },
+          { n: 6, label: "Sales by States — number of sales per state.", x: 23, y: 82 },
+        ],
+        boxes: [{ x: 3, y: 35, w: 94, h: 9 }],
+      },
+    ],
   },
+
 
   {
     id: "user-management",
