@@ -965,7 +965,7 @@ Keep the API key secret — anyone holding it can read the same data.`,
 3. The person signs in with the temporary password and is required to set their own.
 4. Their sidebar shows only what their group allows, and their new figures start appearing in the performance reports as soon as they record their first sale.
 
-### 18.3 Correcting or reversing a mistake
+### 16.3 Correcting or reversing a mistake
 
 - **Wrong details on a sale** — use the pencil (Edit Sale) icon on Sales Records and correct the record. The change is stamped with your name.
 - **The sale should not have happened** — cancel it with a reason. It moves to Cancelled Transactions and the stove serial returns to available stock.
