@@ -7,6 +7,9 @@ import mobileMenuOpenShot from "@/assets/guide/03-mobile-menu-open.png.asset.jso
 import mobileMenuClosedShot from "@/assets/guide/03-mobile-menu-closed.png.asset.json";
 import topbarHeaderShot from "@/assets/guide/03-topbar-header.png.asset.json";
 import dashboardShot from "@/assets/guide/04-dashboard-full.png.asset.json";
+import userManagerTableShot from "@/assets/guide/05-user-manager-table.png.asset.json";
+import createUserFormShot from "@/assets/guide/05-create-user-form.png.asset.json";
+
 
 export const GUIDE_LAST_UPDATED = "2026-08-12";
 
