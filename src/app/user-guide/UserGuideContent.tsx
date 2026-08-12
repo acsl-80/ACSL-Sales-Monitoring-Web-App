@@ -16,6 +16,7 @@ import PageHeader from "../components/PageHeader";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { usePermissions } from "../hooks/usePermissions";
+import GuideFigure from "./GuideFigure";
 import { GUIDE_LAST_UPDATED, GUIDE_SECTIONS, type GuideSection } from "./guideContent";
 
 const GREEN = "#4a5d0f";
@@ -114,7 +115,15 @@ export default function UserGuideContent() {
       "# ACSL Stove Sales & Transactions Platform — User Guide",
       `_Last updated ${GUIDE_LAST_UPDATED}_`,
       "",
-      ...sections.map((s) => `## ${s.title}\n\n${s.body}\n`),
+      ...sections.map((s) => {
+        const body = s.body.replace(/\{\{figure:([a-z0-9-]+)\}\}/gi, (_m, id: string) => {
+          const fig = (s.figures ?? []).find((f) => f.id === id);
+          if (!fig) return "";
+          const legend = (fig.markers ?? []).map((m) => `${m.n}. ${m.label}`).join("\n");
+          return `![${fig.caption}](${fig.src})\n\n_${fig.caption}_\n\n${legend}`;
+        });
+        return `## ${s.title}\n\n${body}\n`;
+      }),
     ].join("\n");
     const blob = new Blob([markdown], { type: "text/markdown;charset=utf-8" });
     const url = URL.createObjectURL(blob);
@@ -272,6 +281,10 @@ export default function UserGuideContent() {
             {sections.map((section, index) => {
               const prev = sections[index - 1];
               const next = sections[index + 1];
+              const figures = section.figures ?? [];
+              // Split the body on {{figure:id}} tokens so screenshots sit with their steps.
+              const parts = section.body.split(/\{\{figure:([a-z0-9-]+)\}\}/i);
+              let figureNumber = 0;
               return (
                 <article
                   key={section.id}
@@ -285,10 +298,32 @@ export default function UserGuideContent() {
                     {section.title}
                   </h2>
                   <div className="doc-prose text-sm text-gray-700 leading-relaxed">
-                    <ReactMarkdown remarkPlugins={[remarkGfm]} components={markdownComponents}>
-                      {section.body}
-                    </ReactMarkdown>
+                    {parts.map((part, i) => {
+                      if (i % 2 === 1) {
+                        const figure = figures.find((f) => f.id === part);
+                        if (!figure) return null;
+                        figureNumber += 1;
+                        return (
+                          <GuideFigure
+                            key={`${section.id}-fig-${part}`}
+                            figure={figure}
+                            index={figureNumber}
+                          />
+                        );
+                      }
+                      if (!part.trim()) return null;
+                      return (
+                        <ReactMarkdown
+                          key={`${section.id}-md-${i}`}
+                          remarkPlugins={[remarkGfm]}
+                          components={markdownComponents}
+                        >
+                          {part}
+                        </ReactMarkdown>
+                      );
+                    })}
                   </div>
+
 
                   <div className="flex items-center justify-between gap-2 mt-6 pt-3 border-t border-gray-200">
                     {prev ? (

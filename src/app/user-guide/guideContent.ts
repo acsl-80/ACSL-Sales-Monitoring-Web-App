@@ -1,6 +1,39 @@
 import type { RouteKey } from "@/lib/permissions";
+import loginShot from "@/assets/guide/02-login-page.png.asset.json";
+import profileShot from "@/assets/guide/02-change02-profile-page.png.asset.json";
+import sidebarFullShot from "@/assets/guide/03-sidebar-full.png.asset.json";
+import sidebarCollapsedShot from "@/assets/guide/03-sidebar-collapsed.png.asset.json";
+import dashboardShot from "@/assets/guide/04-dashboard-full.png.asset.json";
 
 export const GUIDE_LAST_UPDATED = "2026-08-12";
+
+/** A numbered annotation marker placed on a screenshot (percentages of the image). */
+export interface GuideMarker {
+  n: number;
+  label: string;
+  x: number;
+  y: number;
+  arrow?: boolean;
+  arrowDirection?: "left" | "right";
+}
+
+/** A highlight box drawn on a screenshot (percentages of the image). */
+export interface GuideBox {
+  x: number;
+  y: number;
+  w: number;
+  h: number;
+}
+
+export interface GuideFigure {
+  /** Referenced from the body with {{figure:id}} */
+  id: string;
+  src: string;
+  caption: string;
+  alt?: string;
+  markers?: GuideMarker[];
+  boxes?: GuideBox[];
+}
 
 export interface GuideSection {
   id: string;
@@ -11,7 +44,10 @@ export interface GuideSection {
   superAdminOnly?: boolean;
   /** Markdown body. Use ### for sub-headings (they become TOC sub-items). */
   body: string;
+  /** Annotated screenshots, placed in the body with a {{figure:id}} line. */
+  figures?: GuideFigure[];
 }
+
 
 export const GUIDE_SECTIONS: GuideSection[] = [
   {
@@ -46,8 +82,11 @@ This guide is **role aware**. You only see chapters for the parts of the system 
     body: `### Signing in
 
 1. Open the application address in your browser.
-2. Enter the **email address** and **password** given to you by your administrator.
-3. Click **Sign In**.
+2. Enter the **username or email address** given to you by your administrator.
+3. Enter your **password**.
+4. Click **Login**.
+
+{{figure:login}}
 
 If the details are wrong you will see an error message above the form. Check for stray spaces and that Caps Lock is off. If you still cannot get in, ask an administrator to reset your password — there is no self-service reset.
 
@@ -69,23 +108,72 @@ Super admin accounts are not asked to do this.
 
 ### Your profile
 
-Open **Profile** from the top-right user menu to see your name, email and user group, and to change your own password.
+Open **Profile** from the top-right user menu. The profile window shows your name, username, email and organisation, and holds the password change form.
+
+{{figure:profile}}
+
+### Changing your password
+
+Your password is changed from the same profile window, in the **Security → Change Password** block:
+
+1. Type your **current password**.
+2. Type the **new password**, then repeat it in **Confirm new password**. Both must match.
+3. Click **Update Password**. The button stays disabled until all three fields are filled.
+4. A confirmation message appears when the change is saved. Use the new password the next time you sign in.
+
+Use the eye icon at the end of any password field to reveal what you have typed.
 
 ### "You are not authorised to view this page"
 
 If you type or follow a link to a screen your role cannot open, the platform shows the **Unauthorized** page. Use the sidebar to go back to a screen you do have access to. If you believe you should have access, contact a super admin — access is controlled by your user group.`,
+    figures: [
+      {
+        id: "login",
+        src: loginShot.url,
+        caption: "The login screen.",
+        alt: "Login screen with username or email, password and Login button",
+        markers: [
+          { n: 1, label: "Username or Email — the username or email your administrator gave you.", x: 22, y: 47 },
+          { n: 2, label: "Password.", x: 22, y: 68 },
+          { n: 3, label: "Login — signs you in and opens your dashboard.", x: 22, y: 83 },
+        ],
+        boxes: [{ x: 26, y: 40, w: 44, h: 12 }],
+      },
+      {
+        id: "profile",
+        src: profileShot.url,
+        caption: "The Profile window — your details and the Change Password form.",
+        alt: "Profile window showing full name, username, email, organisation and the change password form",
+        markers: [
+          { n: 1, label: "Your name and email, as recorded on your account.", x: 15, y: 11, arrow: true },
+          { n: 2, label: "Your profile details: full name, username, email and organisation.", x: 15, y: 38 },
+          { n: 3, label: "Change Password — current password, new password and confirmation.", x: 15, y: 68 },
+          { n: 4, label: "Update Password — saves the new password. Disabled until all three fields are filled.", x: 15, y: 89 },
+        ],
+        boxes: [{ x: 25, y: 60, w: 55, h: 30 }],
+      },
+    ],
   },
+
+
 
   {
     id: "navigation",
     title: "3. Finding your way around",
     body: `### The sidebar
 
-The dark-labelled menu on the left is the main navigation. It only lists the areas your role can open, so it is shorter for some users than for others.
+The **Control Panel** menu on the left is the main navigation. It only lists the areas your role can open, so it is shorter for some users than for others.
+
+{{figure:sidebar-collapsed}}
 
 - A menu item with a small arrow on the right is a **group**. Click it to expand or collapse it and reveal its sub-items.
-- The item you are currently on is highlighted in solid green; the active sub-item is highlighted in pale green.
+- The item you are currently on is highlighted in solid green; the active sub-item is shown in green text.
 - On phones and small tablets the sidebar is hidden. Tap the menu button in the top bar to slide it out, and tap outside it (or the X) to close it.
+
+With every group expanded you can see the whole structure of the platform in one view:
+
+{{figure:sidebar-full}}
+
 
 ### The top bar
 
@@ -106,6 +194,31 @@ Most screens follow the same pattern, top to bottom:
 - Icon buttons in an **Actions** column show a tooltip describing what they do when you hover over them.
 - Numbers that look like links (for example the figures inside a KPI card) are usually clickable and open a detailed list.
 - Anything destructive — deleting or cancelling — always asks you to confirm first.`,
+    figures: [
+      {
+        id: "sidebar-collapsed",
+        src: sidebarCollapsedShot.url,
+        caption: "The sidebar with all groups collapsed.",
+        alt: "Control Panel sidebar with collapsed menu groups",
+        markers: [
+          { n: 1, label: "The page you are on is highlighted in solid green.", x: 78, y: 15, arrowDirection: "left" },
+          { n: 2, label: "An arrow on the right means the item is a group — click it to expand.", x: 90, y: 24, arrowDirection: "left" },
+          { n: 3, label: "Items without an arrow open a screen directly.", x: 78, y: 65, arrowDirection: "left" },
+        ],
+      },
+      {
+        id: "sidebar-full",
+        src: sidebarFullShot.url,
+        caption: "The sidebar fully expanded, showing every group and its sub-items.",
+        alt: "Control Panel sidebar fully expanded",
+        markers: [
+          { n: 1, label: "User Management — User Manager and User Groups.", x: 80, y: 12, arrowDirection: "left" },
+          { n: 2, label: "Agent Management — ACSL Agents Profile and Partner Agents Profile.", x: 80, y: 26, arrowDirection: "left" },
+          { n: 3, label: "Manage Sales — Sell Stove, Sales Records, cancellations, Agreement Images and Map.", x: 80, y: 42, arrowDirection: "left" },
+          { n: 4, label: "Settings — Payment Models, Credentials, System Configuration and Tools.", x: 80, y: 87, arrowDirection: "left" },
+        ],
+      },
+    ],
   },
 
   {
@@ -114,21 +227,42 @@ Most screens follow the same pattern, top to bottom:
     routeKeys: ["dashboard"],
     body: `The dashboard is the first screen after you sign in and gives a summary of activity you are allowed to see. A partner agent sees only their own figures; a partner sees their organisation; a super admin sees everything.
 
+{{figure:dashboard}}
+
 ### What is on the dashboard
 
-- **Sales overview doughnut chart** — the split of stoves by status at a glance. Hover a segment to see the exact count.
-- **Financial snapshot** — total value sold, amount collected and amount outstanding.
-- **Monthly sales chart** — the number and value of sales per month, so you can see the trend across the year.
-- **Quick actions** — shortcut buttons to the screens you use most, such as managing agents, sales or stoves.
+- **Stove Inventory doughnut** — how the stoves you can see split between **Sold** and **Available**. Hover a segment for the exact count and percentage; the centre shows total stoves received.
+- **Sales by Models doughnut** — total sales split by sales (payment) model, so you can see which model is used most.
+- **Financial snapshot** — three cards: **Expected Receivable Amount** (total value of sales), **Amount Received** (collected so far) and **Outstanding Balance** (still owed).
+- **Monthly Sales chart** — sales per month across the selected year, with a trend line over the bars.
+- **Sales by States chart** — number of sales in each state.
 
 ### Filters
 
-Where your role allows a wider view, filter controls at the top let you narrow the whole dashboard by period, partner or state. Clearing the filters returns the dashboard to its default view.
+The green **Sales Overview** bar carries the filters: **Filter by date range**, a **month** dropdown and a **year** dropdown. They apply to the whole dashboard. Use the **X** on the right of the bar to clear them and return to the default view.
 
 ### What to do next
 
-The dashboard is a read-only summary. To act on anything you see, use the sidebar or a quick action button to open the relevant module.`,
+The dashboard is a read-only summary. To act on anything you see, use the sidebar to open the relevant module.`,
+    figures: [
+      {
+        id: "dashboard",
+        src: dashboardShot.url,
+        caption: "The dashboard, top to bottom.",
+        alt: "Dashboard showing stove inventory and sales doughnuts, financial snapshot cards, monthly sales and sales by state charts",
+        markers: [
+          { n: 1, label: "Filters: date range, month and year — plus the X to clear them.", x: 66, y: 6 },
+          { n: 2, label: "Stove Inventory — sold versus available, with total stoves received in the centre.", x: 27, y: 21 },
+          { n: 3, label: "Sales by Models — total sales split by sales model.", x: 74, y: 21 },
+          { n: 4, label: "Financial snapshot: expected receivable, amount received and outstanding balance.", x: 19, y: 40 },
+          { n: 5, label: "Monthly Sales — sales per month for the selected year.", x: 56, y: 57 },
+          { n: 6, label: "Sales by States — number of sales per state.", x: 23, y: 82 },
+        ],
+        boxes: [{ x: 3, y: 35, w: 94, h: 9 }],
+      },
+    ],
   },
+
 
   {
     id: "user-management",
