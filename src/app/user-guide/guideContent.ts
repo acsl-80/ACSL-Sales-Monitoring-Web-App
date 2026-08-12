@@ -393,15 +393,33 @@ Use **Search by name or email...** to filter the list, and the **All Status** an
 
 Each row is one partner, with its name, state and contact details, plus action icons at the end of the row.
 
-### Adding a partner
+### How partners are created
 
-1. Click **Add Partner**.
-2. Enter the organisation name, contact person, phone, email, state and LGA.
-3. Save. The partner immediately becomes selectable on the sales form and in filters.
+Partner records and partner accounts are created automatically when sales records are transferred from the ERP into the Sales & Monitoring App. You do not normally create partners by hand.
+
+Each time records are transferred:
+
+1. New partners found in the transfer are created, together with their partner account.
+2. Existing partners are left in place and their stove IDs are updated with the newly transferred serials.
+
+A partner becomes selectable on the sales form and in filters as soon as it exists in the app.
+
+### Adding a partner manually
+
+If a partner has to be captured ahead of an ERP transfer, click **Add Partner** and enter the organisation name, contact person, phone, email, state and LGA, then save.
 
 ### Editing a partner
 
-Open the edit action on the row, change the details and save.
+Open the edit action on the row, change the details and save. Most partner information can be edited in the Sales & Monitoring App — contact person, phone numbers, email, address, state, branch — but the **partner name cannot be changed**, because it is the link back to the ERP record.
+
+### Partner figures at a glance
+
+From the partner row you can see the total number of agents assigned to the partner, and the total stoves received and sold by that partner.
+
+### Partner credentials
+
+Administrators can open a partner's credential details to view the username and password, copy them, and share them with the partner. Partners are prompted to change these default credentials the first time they log in.
+
 
 ### Assigning agents
 
