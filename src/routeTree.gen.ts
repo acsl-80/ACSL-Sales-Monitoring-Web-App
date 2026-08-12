@@ -11,6 +11,7 @@
 import { Route as rootRouteImport } from './routes/__root'
 import { Route as IndexRouteImport } from './routes/index'
 import { Route as UserManagementIndexRouteImport } from './routes/user-management/index'
+import { Route as UserGuideIndexRouteImport } from './routes/user-guide/index'
 import { Route as UnauthorizedIndexRouteImport } from './routes/unauthorized/index'
 import { Route as SystemDocumentationIndexRouteImport } from './routes/system-documentation/index'
 import { Route as SuperAdminAgentsIndexRouteImport } from './routes/super-admin-agents/index'
@@ -79,6 +80,11 @@ const IndexRoute = IndexRouteImport.update({
 const UserManagementIndexRoute = UserManagementIndexRouteImport.update({
   id: '/user-management/',
   path: '/user-management/',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const UserGuideIndexRoute = UserGuideIndexRouteImport.update({
+  id: '/user-guide/',
+  path: '/user-guide/',
   getParentRoute: () => rootRouteImport,
 } as any)
 const UnauthorizedIndexRoute = UnauthorizedIndexRouteImport.update({
@@ -424,6 +430,7 @@ export interface FileRoutesByFullPath {
   '/super-admin-agents/': typeof SuperAdminAgentsIndexRoute
   '/system-documentation/': typeof SystemDocumentationIndexRoute
   '/unauthorized/': typeof UnauthorizedIndexRoute
+  '/user-guide/': typeof UserGuideIndexRoute
   '/user-management/': typeof UserManagementIndexRoute
   '/admin/agents/': typeof AdminAgentsIndexRoute
   '/admin/agreement-images/': typeof AdminAgreementImagesIndexRoute
@@ -487,6 +494,7 @@ export interface FileRoutesByTo {
   '/super-admin-agents': typeof SuperAdminAgentsIndexRoute
   '/system-documentation': typeof SystemDocumentationIndexRoute
   '/unauthorized': typeof UnauthorizedIndexRoute
+  '/user-guide': typeof UserGuideIndexRoute
   '/user-management': typeof UserManagementIndexRoute
   '/admin/agents': typeof AdminAgentsIndexRoute
   '/admin/agreement-images': typeof AdminAgreementImagesIndexRoute
@@ -551,6 +559,7 @@ export interface FileRoutesById {
   '/super-admin-agents/': typeof SuperAdminAgentsIndexRoute
   '/system-documentation/': typeof SystemDocumentationIndexRoute
   '/unauthorized/': typeof UnauthorizedIndexRoute
+  '/user-guide/': typeof UserGuideIndexRoute
   '/user-management/': typeof UserManagementIndexRoute
   '/admin/agents/': typeof AdminAgentsIndexRoute
   '/admin/agreement-images/': typeof AdminAgreementImagesIndexRoute
@@ -616,6 +625,7 @@ export interface FileRouteTypes {
     | '/super-admin-agents/'
     | '/system-documentation/'
     | '/unauthorized/'
+    | '/user-guide/'
     | '/user-management/'
     | '/admin/agents/'
     | '/admin/agreement-images/'
@@ -679,6 +689,7 @@ export interface FileRouteTypes {
     | '/super-admin-agents'
     | '/system-documentation'
     | '/unauthorized'
+    | '/user-guide'
     | '/user-management'
     | '/admin/agents'
     | '/admin/agreement-images'
@@ -742,6 +753,7 @@ export interface FileRouteTypes {
     | '/super-admin-agents/'
     | '/system-documentation/'
     | '/unauthorized/'
+    | '/user-guide/'
     | '/user-management/'
     | '/admin/agents/'
     | '/admin/agreement-images/'
@@ -806,6 +818,7 @@ export interface RootRouteChildren {
   SuperAdminAgentsIndexRoute: typeof SuperAdminAgentsIndexRoute
   SystemDocumentationIndexRoute: typeof SystemDocumentationIndexRoute
   UnauthorizedIndexRoute: typeof UnauthorizedIndexRoute
+  UserGuideIndexRoute: typeof UserGuideIndexRoute
   UserManagementIndexRoute: typeof UserManagementIndexRoute
   AdminAgentsIndexRoute: typeof AdminAgentsIndexRoute
   AdminAgreementImagesIndexRoute: typeof AdminAgreementImagesIndexRoute
@@ -855,6 +868,13 @@ declare module '@tanstack/react-router' {
       path: '/user-management'
       fullPath: '/user-management/'
       preLoaderRoute: typeof UserManagementIndexRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/user-guide/': {
+      id: '/user-guide/'
+      path: '/user-guide'
+      fullPath: '/user-guide/'
+      preLoaderRoute: typeof UserGuideIndexRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/unauthorized/': {
@@ -1302,6 +1322,7 @@ const rootRouteChildren: RootRouteChildren = {
   SuperAdminAgentsIndexRoute: SuperAdminAgentsIndexRoute,
   SystemDocumentationIndexRoute: SystemDocumentationIndexRoute,
   UnauthorizedIndexRoute: UnauthorizedIndexRoute,
+  UserGuideIndexRoute: UserGuideIndexRoute,
   UserManagementIndexRoute: UserManagementIndexRoute,
   AdminAgentsIndexRoute: AdminAgentsIndexRoute,
   AdminAgreementImagesIndexRoute: AdminAgreementImagesIndexRoute,
