@@ -739,6 +739,10 @@ Columns cover the transaction reference, date, partner, agent, end user, stove s
 
 Above the table is a row of coloured chips: **Overdue**, **Due today**, **Due in 7 days**, **Due in 14 days**, **Due in 30 days**, each with a live count. Click a chip to filter the table to just those sales; click it again to clear. Use this every morning to see who to call.
 
+{{figure:sales-tracking-bar}}
+
+The green **Total Sales** chip on the left is a count only — it shows how many sales are in the current view and cannot be clicked. **Cancel** at the end of the row clears the chip filter and appears only while a chip is active.
+
 ### Filters
 
 The filter row lets you narrow by search text, partner, agent, state, sales model, status, and month/year, plus a date-range picker (future dates cannot be selected). **Clear filters** resets everything. The record count is shown directly above the table.
