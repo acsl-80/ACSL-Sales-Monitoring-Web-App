@@ -259,7 +259,7 @@ Most screens follow the same pattern, top to bottom:
         markers: [
           { n: 1, label: "User Management — User Manager and User Groups.", x: 80, y: 12, arrowDirection: "left" },
           { n: 2, label: "Agent Management — ACSL Agents Profile and Partner Agents Profile.", x: 80, y: 26, arrowDirection: "left" },
-          { n: 3, label: "Manage Sales — Sell Stove, Sales Records, cancellations, Agreement Images and Map.", x: 80, y: 42, arrowDirection: "left" },
+          { n: 3, label: "Manage Sales — Sell Stove, Sales Records, cancellations and Purchases from ACSL.", x: 80, y: 42, arrowDirection: "left" },
           { n: 4, label: "Settings — Payment Models, Credentials, System Configuration and Tools.", x: 80, y: 87, arrowDirection: "left" },
         ],
       },
