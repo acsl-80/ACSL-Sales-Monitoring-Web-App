@@ -53,13 +53,13 @@ export const GUIDE_SECTIONS: GuideSection[] = [
   {
     id: "introduction",
     title: "1. Introduction",
-    body: `The ACSL Stove Sales & Transactions Platform is the system used to track clean-cookstoves from the moment they enter stock, through their sale to an end user, and on to the collection of instalment payments and reporting.
+    body: `The ACSL Stove Sales & Monitoring Platform is the system used to track clean cookstoves from their allocation to sales partners, through their sale to end users, while monitoring instalment payments and capturing end-user information for tracking, monitoring, and reporting.
 
 Everything in the platform is built around three things:
 
-- **Stoves** — each physical stove has a unique **stove serial / stove ID** and a status (available, allocated to a partner, sold, and so on).
+- **Stoves** — each physical stove has a unique **stove serial (stove ID)**.
 - **Sales** — a sale links one stove serial to one end user, one partner, one sales (payment) model and the person who recorded it.
-- **People** — super admins, ACSL agent managers, ACSL agents, partners and partner agents. What you can see and do depends entirely on which of these you are.
+- **Users** — super admins, ACSL agent managers, ACSL agents, partners and partner agents. What you can see and do depends entirely on which of these you are.
 
 ### Who uses the platform
 
