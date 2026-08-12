@@ -678,8 +678,46 @@ If submission fails, the message tells you why — see the troubleshooting chapt
 
 ### 9.3 Editing a sale you already recorded
 
-From **Sales Records**, click the pencil (Edit Sale) icon on the row. The same form opens with every value recalled, including the state and LGA. All the editable details — amounts, names, phone numbers, location, images and signature — can be changed. The partner and stove serial stay locked because they identify the sale. Save to apply; the change is stamped with your name and the time.`,
+From **Sales Records**, click the pencil (Edit Sale) icon on the row. The same form opens with every value recalled, including the state and LGA. All the editable details — amounts, names, phone numbers, location, images and signature — can be changed. The partner and stove serial stay locked because they identify the sale. Save to apply; the change is stamped with your name and the time.
+
+### 9.4 Collecting later payments — the Pay button
+
+Recording the sale only captures the **first** payment (the amount received at the point of sale). Every payment collected **after** that is added from **Sales Records** using the green **Pay** button on the sale's row.
+
+{{figure:sales-records-pay}}
+
+- The **Pay** button on the Sales Record view is for collecting subsequent payments on a transaction — you do not re-enter the sale or edit the sales form to take a payment.
+- Click **Pay**, enter the amount received, the payment method and the date, add a note if needed, then save. The amount cannot be more than the outstanding balance.
+- The **Paid**, **Balance** and next due date columns update immediately, and the payment is listed under **Payment History & Receipts** with your name against it.
+- When the balance reaches zero the sale is marked **Completed** and the **Pay** button no longer appears on that row.`,
+    figures: [
+      {
+        id: "sell-stove-form",
+        src: sellStoveFormShot.url,
+        caption: "Record a New Sale — the form is grouped into Transaction Information, Buyer & End User, and Sale & Payment.",
+        alt: "Sell stove form showing sales date, partner, state and branch fields, end user and contact person fields, and stove serial, payment type and amount fields",
+        markers: [
+          { n: 1, label: "Transaction Information: sales date, partner, state and branch (state first, then branch).", x: 50, y: 26 },
+          { n: 2, label: "Buyer & End User: end user names and phone, AKA, then the contact person fields.", x: 30, y: 44 },
+          { n: 3, label: "Tick this to copy the end user's details into Contact Person / Buyer.", x: 20, y: 58, arrowDirection: "right" },
+          { n: 4, label: "Sale & Payment: stove serial, payment type, sale amount and the amount received now.", x: 50, y: 83 },
+        ],
+      },
+      {
+        id: "sales-records-pay",
+        src: salesRecordsPayShot.url,
+        caption: "Sales Record view — the Pay button collects subsequent payments on a transaction.",
+        alt: "Sales Record table with filter row, sales tracking chips and rows showing model, expected, paid, balance and action buttons including Pay",
+        markers: [
+          { n: 1, label: "Filters and the sales tracking chips (due in 30/14/7 days, due today, overdue).", x: 30, y: 32 },
+          { n: 2, label: "Model column shows the plan and how many instalments are paid or left.", x: 55, y: 82 },
+          { n: 3, label: "Expected, Paid and Balance for the transaction.", x: 72, y: 68 },
+          { n: 4, label: "Pay — record the next instalment on this sale. It disappears once the balance is zero.", x: 95, y: 74, arrowDirection: "left" },
+        ],
+      },
+    ],
   },
+
 
   {
     id: "sales-records",
