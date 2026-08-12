@@ -21,6 +21,8 @@ import sellStoveFormShot from "@/assets/guide/09-sell-stove-form-full.png.asset.
 import salesRecordsPayShot from "@/assets/guide/09-sales-records.png.asset.json";
 import salesTrackingBarShot from "@/assets/guide/10-sales-tracking-bar.png.asset.json";
 import cancelSaleShot from "@/assets/guide/10-cancel-sale.png.asset.json";
+import endUserRecordsShot from "@/assets/guide/end-user-1-blurred.png.asset.json";
+
 
 
 export const GUIDE_LAST_UPDATED = "2026-08-12";
@@ -824,6 +826,8 @@ Cancelling is not deletion: the record stays for audit, but the stove serial ret
     routeKeys: ["end-user-records"],
     body: `**Sidebar → Stove Users Data** is the register of the people who own the stoves — one row per end user record created by a sale.
 
+{{figure:end-user-records-table}}
+
 ### The table
 
 Columns cover the end user's name and phone, the stove serial, the partner and agent, the location, the sale date and the **last modified by** audit column with the name and date of the last change.
@@ -843,7 +847,24 @@ Columns cover the end user's name and phone, the stove serial, the partner and a
 ### Searching and exporting
 
 Use the search box and filters to narrow the list, then export the filtered results as CSV.`,
+    figures: [
+      {
+        id: "end-user-records-table",
+        src: endUserRecordsShot.url,
+        caption: "The End User Records table with filters, pagination and action icons.",
+        alt: "End User Records table showing columns such as Sales Date, End User, State, LGA, Contact Person, Phone Number, Partner, Stove ID, Last Modified By and Actions",
+        markers: [
+          { n: 1, label: "Search by name, phone number or stove serial.", x: 15, y: 25 },
+          { n: 2, label: "State and date-range filters narrow the list.", x: 48, y: 25 },
+          { n: 3, label: "Pagination and rows-per-page selector at the bottom of the table.", x: 82, y: 52 },
+          { n: 4, label: "View the full record.", x: 92, y: 82 },
+          { n: 5, label: "Edit the record.", x: 95, y: 82 },
+          { n: 6, label: "Delete the record with a reason.", x: 98, y: 82 },
+        ],
+      },
+    ],
   },
+
 
   {
     id: "stove-tracking",
