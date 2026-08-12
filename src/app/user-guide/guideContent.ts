@@ -12,6 +12,8 @@ import createUserFormShot from "@/assets/guide/05-create-user-form.png.asset.jso
 import partnerProfilesTableShot from "@/assets/guide/06-partner-profiles-table.png.asset.json";
 import editPartnerModalShot from "@/assets/guide/06-edit-partner-modal.png.asset.json";
 import partnerCredentialsShot from "@/assets/guide/06-partner-credentials.png.asset.json";
+import agentsProfilesTableShot from "@/assets/guide/07-agents-profiles-table.png.asset.json";
+import partnerAgentsProfilesShot from "@/assets/guide/07-partner-agents-profiles.png.asset.json";
 
 
 export const GUIDE_LAST_UPDATED = "2026-08-12";
@@ -483,17 +485,55 @@ Search by partner name, or use the state dropdown to show only partners in one s
 
 Lists ACSL agents with their user group, the manager they report to, the partners and states they cover, and live performance figures (stoves allocated, sold, outstanding).
 
-- Use the search box to find an agent by name, or the group filter to show only agents or only managers.
+- Use the search box to find an agent by name, email or phone, or the role filter to show only agents or only managers.
+- **Reset Filters** clears the search and role filter, and the record count on the right of the filter bar shows how many agents match.
+- The user group appears as a small green superscript beside the agent's name.
+- **States Assigned** and **Partners Assigned** show how wide that agent's coverage is.
 - The **Manage Agent** button on a row opens that person's record in the user edit form, so you can correct details, change assignments or reset the password without leaving the flow.
+
+{{figure:agents-profiles-table}}
 
 ### 7.2 Partner Agents Profile
 
-The same view for agents that belong to partner organisations, showing which partner each agent works for along with their sales figures.
+The same view for agents that belong to partner organisations, showing the agent's name, phone, the partner they work for and the state that partner operates in.
+
+- Search by name, phone, partner or state; **Reset Filters** clears it.
+- Rows are read-only here — partner agents are maintained by their partner organisation.
+
+{{figure:partner-agents-profiles}}
 
 ### What the numbers mean
 
 Figures are live: they recalculate as sales are recorded, so a partner agent who sells a stove will show an increased count here within moments.`,
+    figures: [
+      {
+        id: "agents-profiles-table",
+        src: agentsProfilesTableShot.url,
+        caption: "Agents Profile — filter bar and one agent row with its action.",
+        alt: "Agents Profile table showing agent name, phone, supervisor, states assigned, partners assigned and a Manage Agent button",
+        markers: [
+          { n: 1, label: "Search an agent by name, email or phone.", x: 14, y: 41 },
+          { n: 2, label: "Role filter, with Reset Filters to clear it.", x: 34, y: 41 },
+          { n: 3, label: "Count of agents matching the current filters.", x: 91, y: 41, arrowDirection: "left" },
+          { n: 4, label: "Agent name with the user group as a green superscript.", x: 8, y: 90 },
+          { n: 5, label: "States and partners the agent covers.", x: 64, y: 90 },
+          { n: 6, label: "Manage Agent opens the record in the user edit form.", x: 94, y: 90, arrowDirection: "left" },
+        ],
+      },
+      {
+        id: "partner-agents-profiles",
+        src: partnerAgentsProfilesShot.url,
+        caption: "Partner Agents Profile — agents belonging to partner organisations.",
+        alt: "Partner Agents Profile table showing agent name, phone number, partner name and state",
+        markers: [
+          { n: 1, label: "Search by name, phone, partner or state.", x: 17, y: 44 },
+          { n: 2, label: "Reset Filters clears the search.", x: 39, y: 44 },
+          { n: 3, label: "The partner the agent belongs to, and that partner's state.", x: 72, y: 91 },
+        ],
+      },
+    ],
   },
+
 
   {
     id: "performance-reports",
