@@ -27,6 +27,8 @@ import {
   FileText,
   BarChart3,
   BookOpen,
+  HelpCircle,
+
 } from "lucide-react";
 import { usePermissions } from "../hooks/usePermissions";
 import Link from "@/compat/Link";
