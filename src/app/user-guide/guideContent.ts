@@ -82,8 +82,11 @@ This guide is **role aware**. You only see chapters for the parts of the system 
     body: `### Signing in
 
 1. Open the application address in your browser.
-2. Enter the **email address** and **password** given to you by your administrator.
-3. Click **Sign In**.
+2. Enter the **username or email address** given to you by your administrator.
+3. Enter your **password**.
+4. Click **Login**.
+
+{{figure:login}}
 
 If the details are wrong you will see an error message above the form. Check for stray spaces and that Caps Lock is off. If you still cannot get in, ask an administrator to reset your password — there is no self-service reset.
 
@@ -105,12 +108,52 @@ Super admin accounts are not asked to do this.
 
 ### Your profile
 
-Open **Profile** from the top-right user menu to see your name, email and user group, and to change your own password.
+Open **Profile** from the top-right user menu. The profile window shows your name, username, email and organisation, and holds the password change form.
+
+{{figure:profile}}
+
+### Changing your password
+
+Your password is changed from the same profile window, in the **Security → Change Password** block:
+
+1. Type your **current password**.
+2. Type the **new password**, then repeat it in **Confirm new password**. Both must match.
+3. Click **Update Password**. The button stays disabled until all three fields are filled.
+4. A confirmation message appears when the change is saved. Use the new password the next time you sign in.
+
+Use the eye icon at the end of any password field to reveal what you have typed.
 
 ### "You are not authorised to view this page"
 
 If you type or follow a link to a screen your role cannot open, the platform shows the **Unauthorized** page. Use the sidebar to go back to a screen you do have access to. If you believe you should have access, contact a super admin — access is controlled by your user group.`,
-  },
+    figures: [
+      {
+        id: "login",
+        src: loginShot.url,
+        caption: "The login screen.",
+        alt: "Login screen with username or email, password and Login button",
+        markers: [
+          { n: 1, label: "Username or Email — the username or email your administrator gave you.", x: 22, y: 47 },
+          { n: 2, label: "Password.", x: 22, y: 68 },
+          { n: 3, label: "Login — signs you in and opens your dashboard.", x: 22, y: 83 },
+        ],
+        boxes: [{ x: 26, y: 40, w: 44, h: 12 }],
+      },
+      {
+        id: "profile",
+        src: profileShot.url,
+        caption: "The Profile window — your details and the Change Password form.",
+        alt: "Profile window showing full name, username, email, organisation and the change password form",
+        markers: [
+          { n: 1, label: "Your name and email, as recorded on your account.", x: 15, y: 11, arrow: true },
+          { n: 2, label: "Your profile details: full name, username, email and organisation.", x: 15, y: 38 },
+          { n: 3, label: "Change Password — current password, new password and confirmation.", x: 15, y: 68 },
+          { n: 4, label: "Update Password — saves the new password. Disabled until all three fields are filled.", x: 15, y: 89 },
+        ],
+        boxes: [{ x: 25, y: 60, w: 55, h: 30 }],
+      },
+    ],
+
 
   {
     id: "navigation",
