@@ -3,6 +3,8 @@ import loginShot from "@/assets/guide/02-login-page.png.asset.json";
 import profileShot from "@/assets/guide/02-change02-profile-page.png.asset.json";
 import sidebarFullShot from "@/assets/guide/03-sidebar-full.png.asset.json";
 import sidebarCollapsedShot from "@/assets/guide/03-sidebar-collapsed.png.asset.json";
+import mobileMenuOpenShot from "@/assets/guide/03-mobile-menu-open.png.asset.json";
+import mobileMenuClosedShot from "@/assets/guide/03-mobile-menu-closed.png.asset.json";
 import dashboardShot from "@/assets/guide/04-dashboard-full.png.asset.json";
 
 export const GUIDE_LAST_UPDATED = "2026-08-12";
