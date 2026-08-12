@@ -67,7 +67,7 @@ export default function GuideFigure({ figure, index }: Props) {
   );
 
   return (
-    <figure className="my-5">
+    <figure className="my-5 max-w-[560px]">
       <button
         type="button"
         onClick={() => setZoomed(true)}
