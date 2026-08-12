@@ -162,11 +162,18 @@ If you type or follow a link to a screen your role cannot open, the platform sho
     title: "3. Finding your way around",
     body: `### The sidebar
 
-The dark-labelled menu on the left is the main navigation. It only lists the areas your role can open, so it is shorter for some users than for others.
+The **Control Panel** menu on the left is the main navigation. It only lists the areas your role can open, so it is shorter for some users than for others.
+
+{{figure:sidebar-collapsed}}
 
 - A menu item with a small arrow on the right is a **group**. Click it to expand or collapse it and reveal its sub-items.
-- The item you are currently on is highlighted in solid green; the active sub-item is highlighted in pale green.
+- The item you are currently on is highlighted in solid green; the active sub-item is shown in green text.
 - On phones and small tablets the sidebar is hidden. Tap the menu button in the top bar to slide it out, and tap outside it (or the X) to close it.
+
+With every group expanded you can see the whole structure of the platform in one view:
+
+{{figure:sidebar-full}}
+
 
 ### The top bar
 
