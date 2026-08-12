@@ -5,6 +5,7 @@ import sidebarFullShot from "@/assets/guide/03-sidebar-full.png.asset.json";
 import sidebarCollapsedShot from "@/assets/guide/03-sidebar-collapsed.png.asset.json";
 import mobileMenuOpenShot from "@/assets/guide/03-mobile-menu-open.png.asset.json";
 import mobileMenuClosedShot from "@/assets/guide/03-mobile-menu-closed.png.asset.json";
+import topbarHeaderShot from "@/assets/guide/03-topbar-header.png.asset.json";
 import dashboardShot from "@/assets/guide/04-dashboard-full.png.asset.json";
 
 export const GUIDE_LAST_UPDATED = "2026-08-12";
@@ -181,9 +182,13 @@ With every group expanded you can see the whole structure of the platform in one
 {{figure:sidebar-full}}
 
 
-### The top bar
+    ### The top bar
 
-The top bar shows the current page title and your account menu. From the account menu you can open your profile or sign out.
+    The top bar runs across the top of every screen. It shows the company logo, the menu toggle, the app name, your current role, and the logout button.
+
+    {{figure:topbar-header}}
+
+    From the account menu you can open your profile or sign out.
 
 ### Page layout
 
