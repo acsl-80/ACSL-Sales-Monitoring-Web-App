@@ -40,7 +40,9 @@ export type RouteKey =
   | "end-user-records"
   | "performance-report"
   | "sales-cancelled-purchases"
+  | "user-guide"
   | "partner-agents-profiles";
+
 
 export type FeatureKey =
   | "global-filters"
