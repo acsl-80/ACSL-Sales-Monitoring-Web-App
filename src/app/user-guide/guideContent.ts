@@ -9,6 +9,9 @@ import topbarHeaderShot from "@/assets/guide/03-topbar-header.png.asset.json";
 import dashboardShot from "@/assets/guide/04-dashboard-full.png.asset.json";
 import userManagerTableShot from "@/assets/guide/05-user-manager-table.png.asset.json";
 import createUserFormShot from "@/assets/guide/05-create-user-form.png.asset.json";
+import partnerProfilesTableShot from "@/assets/guide/06-partner-profiles-table.png.asset.json";
+import editPartnerModalShot from "@/assets/guide/06-edit-partner-modal.png.asset.json";
+import partnerCredentialsShot from "@/assets/guide/06-partner-credentials.png.asset.json";
 
 
 export const GUIDE_LAST_UPDATED = "2026-08-12";
