@@ -5,6 +5,7 @@ import sidebarFullShot from "@/assets/guide/03-sidebar-full.png.asset.json";
 import sidebarCollapsedShot from "@/assets/guide/03-sidebar-collapsed.png.asset.json";
 import mobileMenuOpenShot from "@/assets/guide/03-mobile-menu-open.png.asset.json";
 import mobileMenuClosedShot from "@/assets/guide/03-mobile-menu-closed.png.asset.json";
+import topbarHeaderShot from "@/assets/guide/03-topbar-header.png.asset.json";
 import dashboardShot from "@/assets/guide/04-dashboard-full.png.asset.json";
 
 export const GUIDE_LAST_UPDATED = "2026-08-12";
@@ -181,9 +182,13 @@ With every group expanded you can see the whole structure of the platform in one
 {{figure:sidebar-full}}
 
 
-### The top bar
+    ### The top bar
 
-The top bar shows the current page title and your account menu. From the account menu you can open your profile or sign out.
+    The top bar runs across the top of every screen. It shows the company logo, the menu toggle, the app name, your current role, and the logout button.
+
+    {{figure:topbar-header}}
+
+    From the account menu you can open your profile or sign out.
 
 ### Page layout
 
@@ -239,6 +244,19 @@ Most screens follow the same pattern, top to bottom:
           { n: 2, label: "Agent Management — ACSL Agents Profile and Partner Agents Profile.", x: 80, y: 26, arrowDirection: "left" },
           { n: 3, label: "Manage Sales — Sell Stove, Sales Records, cancellations, Agreement Images and Map.", x: 80, y: 42, arrowDirection: "left" },
           { n: 4, label: "Settings — Payment Models, Credentials, System Configuration and Tools.", x: 80, y: 87, arrowDirection: "left" },
+        ],
+      },
+      {
+        id: "topbar-header",
+        src: topbarHeaderShot.url,
+        caption: "The top bar across the application.",
+        alt: "Top bar showing menu toggle, logo, app name, user role and logout",
+        markers: [
+          { n: 1, label: "Menu toggle — opens or closes the sidebar.", x: 2, y: 50 },
+          { n: 2, label: "Atmosfair logo and tagline.", x: 12, y: 50 },
+          { n: 3, label: "Sales Monitoring App — the current application name.", x: 68, y: 50, arrowDirection: "left" },
+          { n: 4, label: "Your account menu — shows your role; click to open your profile.", x: 85, y: 50, arrowDirection: "left" },
+          { n: 5, label: "Logout — signs you out and returns you to the login screen.", x: 96, y: 50, arrowDirection: "left" },
         ],
       },
     ],
