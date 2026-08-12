@@ -213,6 +213,23 @@ Most screens follow the same pattern, top to bottom:
         ],
       },
       {
+        id: "mobile-menu-open",
+        src: mobileMenuOpenShot.url,
+        caption: "On a phone the sidebar slides out over the page.",
+        alt: "Mobile sidebar slid out over the page with the X close button",
+        markers: [
+          { n: 1, label: "X — closes the menu. Tapping the dimmed area outside it also closes it.", x: 56, y: 6 },
+          { n: 2, label: "Tap any item to open that screen; the menu closes automatically.", x: 40, y: 15, arrow: false },
+        ],
+      },
+      {
+        id: "mobile-menu-closed",
+        src: mobileMenuClosedShot.url,
+        caption: "With the menu closed, tap the menu button in the top bar to open it again.",
+        alt: "Mobile top bar with the menu button and logo",
+        markers: [{ n: 1, label: "Menu button — slides the sidebar out.", x: 14, y: 50 }],
+      },
+      {
         id: "sidebar-full",
         src: sidebarFullShot.url,
         caption: "The sidebar fully expanded, showing every group and its sub-items.",
