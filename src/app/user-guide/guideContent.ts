@@ -819,8 +819,35 @@ Cancelling is not deletion: the record stays for audit, but the stove serial ret
   },
 
   {
+    id: "end-user-records",
+    title: "12. Stove Users Data",
+    routeKeys: ["end-user-records"],
+    body: `**Sidebar → Stove Users Data** is the register of the people who own the stoves — one row per end user record created by a sale.
+
+### The table
+
+Columns cover the end user's name and phone, the stove serial, the partner and agent, the location, the sale date and the **last modified by** audit column with the name and date of the last change.
+
+### Actions
+
+| Icon | Action |
+| --- | --- |
+| Eye | View the full record, including everything captured on the sales form |
+| Pencil | Edit the record |
+| Trash | Delete the record |
+
+**Editing** opens a window where every detail can be corrected. Save, and the record is stamped with your name and the current date in *last modified by*.
+
+**Deleting** shows a warning first and requires a **reason**. The linked sale is moved to cancelled transactions and the stove serial is released back to available stock, so use this only for genuine errors.
+
+### Searching and exporting
+
+Use the search box and filters to narrow the list, then export the filtered results as CSV.`,
+  },
+
+  {
     id: "stove-tracking",
-    title: "12. Track stoves",
+    title: "13. Track stoves",
     routeKeys: ["stove-management", "stove-manager"],
     body: `**Sidebar → Track Stoves**. This is the register of every stove serial in the system.
 
@@ -844,33 +871,6 @@ Cancelling is not deletion: the record stays for audit, but the stove serial ret
 ### Purchases from ACSL
 
 **Sidebar → Manage Sales → Purchases from ACSL** shows the transfer history: every batch a partner received, when, how many and which serials. This is the paper trail behind a partner's stock figure.`,
-  },
-
-  {
-    id: "end-user-records",
-    title: "13. Stove Users Data",
-    routeKeys: ["end-user-records"],
-    body: `**Sidebar → Stove Users Data** is the register of the people who own the stoves — one row per end user record created by a sale.
-
-### The table
-
-Columns cover the end user's name and phone, the stove serial, the partner and agent, the location, the sale date and the **last modified by** audit column with the name and date of the last change.
-
-### Actions
-
-| Icon | Action |
-| --- | --- |
-| Eye | View the full record, including everything captured on the sales form |
-| Pencil | Edit the record |
-| Trash | Delete the record |
-
-**Editing** opens a window where every detail can be corrected. Save, and the record is stamped with your name and the current date in *last modified by*.
-
-**Deleting** shows a warning first and requires a **reason**. The linked sale is moved to cancelled transactions and the stove serial is released back to available stock, so use this only for genuine errors.
-
-### Searching and exporting
-
-Use the search box and filters to narrow the list, then export the filtered results as CSV.`,
   },
 
   {
