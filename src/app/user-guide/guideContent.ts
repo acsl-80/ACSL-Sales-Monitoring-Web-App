@@ -951,8 +951,8 @@ Keep the API key secret — anyone holding it can read the same data.`,
 
 ### 16.1 Stock to sale to payment
 
-1. **Stoves arrive.** Serials are added to Track Stoves (individually or by CSV import) with the status *available*.
-2. **Allocation.** ACSL allocates a batch to a partner. The serials move to that partner and the batch appears under *Purchases from ACSL*.
+1. **Stoves arrive.** Stoves arrive when transfers are made from the ERP. The primary way stoves arrive is when a transfer is received from the ERP.
+2. **Allocation.** Stoves associated with the partner from the ERP are automatically assigned to the partner. The serials move to that partner and the batch appears under *Purchases from ACSL*.
 3. **Sale.** An agent opens **Sell Stove**, selects the partner, sales model and serial, captures the buyer and end user, location, and signature, and submits.
 4. **Immediately after submission** the serial becomes *sold*, the sale appears in **Sales Records**, and the customer appears in **Stove Users Data**.
 5. **Collection.** For instalment plans the schedule starts. Each morning, use the tracking bar on Sales Records (*Overdue*, *Due today*, *Due in 7 days*) to see who to chase. Record each payment with **Pay**; the balance, next due date and payment history update at once.
