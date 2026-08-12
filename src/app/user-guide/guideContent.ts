@@ -246,6 +246,19 @@ Most screens follow the same pattern, top to bottom:
           { n: 4, label: "Settings — Payment Models, Credentials, System Configuration and Tools.", x: 80, y: 87, arrowDirection: "left" },
         ],
       },
+      {
+        id: "topbar-header",
+        src: topbarHeaderShot.url,
+        caption: "The top bar across the application.",
+        alt: "Top bar showing menu toggle, logo, app name, user role and logout",
+        markers: [
+          { n: 1, label: "Menu toggle — opens or closes the sidebar.", x: 2, y: 50 },
+          { n: 2, label: "Atmosfair logo and tagline.", x: 12, y: 50 },
+          { n: 3, label: "Sales Monitoring App — the current application name.", x: 68, y: 50, arrowDirection: "left" },
+          { n: 4, label: "Your account menu — shows your role; click to open your profile.", x: 85, y: 50, arrowDirection: "left" },
+          { n: 5, label: "Logout — signs you out and returns you to the login screen.", x: 96, y: 50, arrowDirection: "left" },
+        ],
+      },
     ],
   },
 
