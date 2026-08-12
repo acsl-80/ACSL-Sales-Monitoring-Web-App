@@ -1,6 +1,39 @@
 import type { RouteKey } from "@/lib/permissions";
+import loginShot from "@/assets/guide/02-login-page.png.asset.json";
+import profileShot from "@/assets/guide/02-change02-profile-page.png.asset.json";
+import sidebarFullShot from "@/assets/guide/03-sidebar-full.png.asset.json";
+import sidebarCollapsedShot from "@/assets/guide/03-sidebar-collapsed.png.asset.json";
+import dashboardShot from "@/assets/guide/04-dashboard-full.png.asset.json";
 
 export const GUIDE_LAST_UPDATED = "2026-08-12";
+
+/** A numbered annotation marker placed on a screenshot (percentages of the image). */
+export interface GuideMarker {
+  n: number;
+  label: string;
+  x: number;
+  y: number;
+  arrow?: boolean;
+  arrowDirection?: "left" | "right";
+}
+
+/** A highlight box drawn on a screenshot (percentages of the image). */
+export interface GuideBox {
+  x: number;
+  y: number;
+  w: number;
+  h: number;
+}
+
+export interface GuideFigure {
+  /** Referenced from the body with {{figure:id}} */
+  id: string;
+  src: string;
+  caption: string;
+  alt?: string;
+  markers?: GuideMarker[];
+  boxes?: GuideBox[];
+}
 
 export interface GuideSection {
   id: string;
@@ -11,7 +44,10 @@ export interface GuideSection {
   superAdminOnly?: boolean;
   /** Markdown body. Use ### for sub-headings (they become TOC sub-items). */
   body: string;
+  /** Annotated screenshots, placed in the body with a {{figure:id}} line. */
+  figures?: GuideFigure[];
 }
+
 
 export const GUIDE_SECTIONS: GuideSection[] = [
   {
