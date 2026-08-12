@@ -208,7 +208,7 @@ export default function UserGuideContent() {
 
         <div className="grid grid-cols-1 lg:grid-cols-[280px_1fr] gap-4">
           {/* Dynamic table of contents */}
-          <aside className="lg:sticky lg:top-4 lg:self-start lg:max-h-[calc(100vh-6rem)] lg:overflow-y-auto bg-white border border-gray-200 rounded-lg p-3">
+          <aside className="lg:sticky lg:top-4 lg:self-start bg-white border border-gray-200 rounded-lg p-3">
             <div className="relative mb-2">
               <Search className="h-3.5 w-3.5 absolute left-2.5 top-1/2 -translate-y-1/2 text-gray-400" />
               <Input
@@ -221,7 +221,7 @@ export default function UserGuideContent() {
             <p className="text-[11px] font-semibold uppercase tracking-wide text-gray-500 px-1 mb-1">
               Contents
             </p>
-            <nav className="space-y-0.5 max-h-[70vh] overflow-y-auto pr-1">
+            <nav className="space-y-0.5 pr-1">
               {tocSections.map((section) => {
                 const children = subHeadings[section.id] ?? [];
                 const isActive = activeId === section.id;
