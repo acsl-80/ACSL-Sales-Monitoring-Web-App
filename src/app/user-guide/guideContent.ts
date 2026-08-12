@@ -632,6 +632,8 @@ Have ready: the stove serial number, the buyer's and end user's details, the loc
 
 ### 9.1 Filling in the form
 
+{{figure:sell-stove-form}}
+
 **Sale details**
 
 | Field | Meaning | Required |
