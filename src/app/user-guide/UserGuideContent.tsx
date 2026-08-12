@@ -115,7 +115,15 @@ export default function UserGuideContent() {
       "# ACSL Stove Sales & Transactions Platform — User Guide",
       `_Last updated ${GUIDE_LAST_UPDATED}_`,
       "",
-      ...sections.map((s) => `## ${s.title}\n\n${s.body}\n`),
+      ...sections.map((s) => {
+        const body = s.body.replace(/\{\{figure:([a-z0-9-]+)\}\}/gi, (_m, id: string) => {
+          const fig = (s.figures ?? []).find((f) => f.id === id);
+          if (!fig) return "";
+          const legend = (fig.markers ?? []).map((m) => `${m.n}. ${m.label}`).join("\n");
+          return `![${fig.caption}](${fig.src})\n\n_${fig.caption}_\n\n${legend}`;
+        });
+        return `## ${s.title}\n\n${body}\n`;
+      }),
     ].join("\n");
     const blob = new Blob([markdown], { type: "text/markdown;charset=utf-8" });
     const url = URL.createObjectURL(blob);
