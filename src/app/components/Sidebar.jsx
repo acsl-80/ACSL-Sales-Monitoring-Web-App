@@ -81,12 +81,15 @@ const allNavItems = [
 
   { name: "API Documentation", icon: FileText, route: "docs", href: "/end-user-records/api" },
 
+  { name: "User Guide", icon: HelpCircle, route: "user-guide", href: "/user-guide" },
+
   {
     name: "App Documentation",
     icon: BookOpen,
     route: "system-documentation",
     href: "/system-documentation",
   },
+
 
   {
     name: "Settings",
