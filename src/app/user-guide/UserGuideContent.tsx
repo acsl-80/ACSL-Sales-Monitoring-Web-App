@@ -16,6 +16,7 @@ import PageHeader from "../components/PageHeader";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { usePermissions } from "../hooks/usePermissions";
+import GuideFigure from "./GuideFigure";
 import { GUIDE_LAST_UPDATED, GUIDE_SECTIONS, type GuideSection } from "./guideContent";
 
 const GREEN = "#4a5d0f";
