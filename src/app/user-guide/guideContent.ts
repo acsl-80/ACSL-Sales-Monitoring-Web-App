@@ -7,6 +7,9 @@ import mobileMenuOpenShot from "@/assets/guide/03-mobile-menu-open.png.asset.jso
 import mobileMenuClosedShot from "@/assets/guide/03-mobile-menu-closed.png.asset.json";
 import topbarHeaderShot from "@/assets/guide/03-topbar-header.png.asset.json";
 import dashboardShot from "@/assets/guide/04-dashboard-full.png.asset.json";
+import userManagerTableShot from "@/assets/guide/05-user-manager-table.png.asset.json";
+import createUserFormShot from "@/assets/guide/05-create-user-form.png.asset.json";
+
 
 export const GUIDE_LAST_UPDATED = "2026-08-12";
 
@@ -313,18 +316,22 @@ The dashboard is a read-only summary. To act on anything you see, use the sideba
 
 ### 5.1 User Manager
 
-The **User Manager** table lists accounts you are allowed to manage, with the person's name, email, user group (shown as a colour-coded badge), status and the actions available to you.
+The **User Manager** table lists accounts you are allowed to manage, with the person's name, user group (shown as a colour-coded badge next to the name), email, phone, status, when the person was last seen and the actions available to you.
+
+{{figure:user-manager-table}}
 
 **Creating a user**
 
-1. Click **Add User** in the page header.
-2. Enter the **full name**, **email address** and **phone number**. The email is the login name and must be unique.
-3. Choose the **user group**. This single choice decides every screen and action the person will have.
+1. Click **Create User** in the top right of the page header.
+2. Enter the **Full Name**, **Email** and **Phone**. The email is the login name and must be unique. Fields marked with a red asterisk are required.
+3. Choose the **User Group**. This single choice decides every screen and action the person will have.
 4. Depending on the group, extra fields appear:
    - *ACSL agent* — choose the **manager** the agent reports to and the **partners / states** they cover.
    - *Partner agent* — choose the **partner organisation** they belong to.
-5. Set a temporary **password**. The person will be asked to change it the first time they sign in.
-6. Click **Save**. The account is created immediately and the person can sign in straight away.
+5. Leave **Auto-generate password** ticked to have the platform create a temporary password, or untick it to type one yourself. The person is asked to change it the first time they sign in.
+6. Click **Create User**. The account is created immediately and the person can sign in straight away. **Cancel**, or **Back to User Management** in the top right, returns you to the table without saving.
+
+{{figure:create-user-form}}
 
 **Editing a user**
 
@@ -332,18 +339,49 @@ Click the edit (pencil) action on the row. The same form opens with the record l
 
 If you change a name, the new name appears everywhere that record is referenced (for example in *Recorded by* and *Cancelled by* columns).
 
-**Deleting a user**
+**Disabling and deleting a user**
 
-Click the delete action and confirm in the warning window. The platform first detaches the account from anything that depends on it — partner and state assignments, manager links and credentials — and then removes the login. Records the person created (sales, payments) are kept for audit purposes.
+The second action disables (or re-enables) the login, which is the safer option when someone leaves temporarily — the **Status** badge changes between *Enabled* and *Disabled*. The bin icon deletes the account: confirm in the warning window and the platform first detaches it from anything that depends on it — partner and state assignments, manager links and credentials — and then removes the login. Records the person created (sales, payments) are kept for audit purposes. The three-dot menu holds any remaining options for the row.
 
 **Finding people**
 
-Use the search box to filter by name or email, and the group filter to show only one user group. The table paginates at the bottom, 10 rows per page by default.
+Use **Search by name or email...** to filter the list, and the **All Status** and **All Roles** dropdowns to narrow it to one status or user group. **Reset Filters** clears them all, and the count on the right of the filter bar shows how many users match. The table paginates at the bottom, 10 rows per page by default.
 
 ### 5.2 User Groups
 
 **Sidebar → User Management → User Groups** shows the permission matrix: every user group and the screens and abilities it grants. Use it as the reference when deciding which group a new colleague needs. Permissions are set by group — they are not edited person by person.`,
+    figures: [
+      {
+        id: "user-manager-table",
+        src: userManagerTableShot.url,
+        caption: "User Manager — header, filter bar and the top of the accounts table.",
+        alt: "User Management screen with search and filter bar, Create User button and a table row showing name, email, phone, status, last seen and action icons",
+        markers: [
+          { n: 1, label: "Create User — opens the Create New User form.", x: 92, y: 12, arrowDirection: "left" },
+          { n: 2, label: "Search by name or email.", x: 14, y: 38 },
+          { n: 3, label: "Status and Roles filters, with Reset Filters to clear them.", x: 40, y: 38 },
+          { n: 4, label: "Count of users matching the current filters.", x: 89, y: 38, arrowDirection: "left" },
+          { n: 5, label: "User group badge shown beside the person's name.", x: 14, y: 88 },
+          { n: 6, label: "Status badge — Enabled or Disabled.", x: 63, y: 88 },
+          { n: 7, label: "Row actions: edit, disable/enable, delete and more.", x: 89, y: 88, arrowDirection: "left" },
+        ],
+      },
+      {
+        id: "create-user-form",
+        src: createUserFormShot.url,
+        caption: "The Create New User form.",
+        alt: "Create New User form with Full Name, Email, Phone and User Group fields, an Auto-generate password checkbox, and Cancel and Create User buttons",
+        markers: [
+          { n: 1, label: "Back to User Management — leaves without saving.", x: 90, y: 8, arrowDirection: "left" },
+          { n: 2, label: "Required details: Full Name and Email.", x: 14, y: 45 },
+          { n: 3, label: "User Group — decides everything the person can see and do.", x: 86, y: 45, arrowDirection: "left" },
+          { n: 4, label: "Auto-generate password — untick to set one yourself.", x: 12, y: 66 },
+          { n: 5, label: "Create User saves the account; Cancel discards it.", x: 92, y: 87, arrowDirection: "left" },
+        ],
+      },
+    ],
   },
+
 
   {
     id: "partner-management",
