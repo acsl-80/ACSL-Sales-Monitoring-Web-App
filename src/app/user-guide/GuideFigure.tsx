@@ -67,14 +67,19 @@ export default function GuideFigure({ figure, index }: Props) {
   );
 
   return (
-    <figure className="my-5 max-w-[560px]">
+    <figure className="my-5">
       <button
         type="button"
         onClick={() => setZoomed(true)}
-        className="group relative block w-full overflow-hidden rounded-lg border border-gray-200 bg-gray-50"
+        className="group relative block w-fit max-w-[420px] overflow-hidden rounded-lg border border-gray-200 bg-gray-50"
         aria-label={`Enlarge screenshot: ${figure.caption}`}
       >
-        <img src={figure.src} alt={figure.alt ?? figure.caption} className="block w-full" loading="lazy" />
+        <img
+          src={figure.src}
+          alt={figure.alt ?? figure.caption}
+          className="block h-auto max-w-full"
+          loading="lazy"
+        />
         {overlay(false)}
         <span className="absolute right-2 top-2 flex items-center gap-1 rounded bg-white/90 px-1.5 py-0.5 text-[10px] font-medium text-gray-600 opacity-0 transition-opacity group-hover:opacity-100">
           <ZoomIn className="h-3 w-3" /> Click to enlarge
