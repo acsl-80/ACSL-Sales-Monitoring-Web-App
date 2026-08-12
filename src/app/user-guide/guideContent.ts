@@ -172,6 +172,10 @@ The **Control Panel** menu on the left is the main navigation. It only lists the
 - The item you are currently on is highlighted in solid green; the active sub-item is shown in green text.
 - On phones and small tablets the sidebar is hidden. Tap the menu button in the top bar to slide it out, and tap outside it (or the X) to close it.
 
+{{figure:mobile-menu-open}}
+
+{{figure:mobile-menu-closed}}
+
 With every group expanded you can see the whole structure of the platform in one view:
 
 {{figure:sidebar-full}}
