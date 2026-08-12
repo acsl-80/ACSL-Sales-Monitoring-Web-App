@@ -259,7 +259,7 @@ Most screens follow the same pattern, top to bottom:
         markers: [
           { n: 1, label: "User Management — User Manager and User Groups.", x: 80, y: 12, arrowDirection: "left" },
           { n: 2, label: "Agent Management — ACSL Agents Profile and Partner Agents Profile.", x: 80, y: 26, arrowDirection: "left" },
-          { n: 3, label: "Manage Sales — Sell Stove, Sales Records, cancellations, Agreement Images and Map.", x: 80, y: 42, arrowDirection: "left" },
+          { n: 3, label: "Manage Sales — Sell Stove, Sales Records, cancellations and Purchases from ACSL.", x: 80, y: 42, arrowDirection: "left" },
           { n: 4, label: "Settings — Payment Models, Credentials, System Configuration and Tools.", x: 80, y: 87, arrowDirection: "left" },
         ],
       },
@@ -895,38 +895,8 @@ Use the search box and filters to narrow the list, then export the filtered resu
   },
 
   {
-    id: "agreement-images",
-    title: "14. Agreement images",
-    routeKeys: ["agreement-images"],
-    body: `**Sidebar → Manage Sales → Agreement Images**. Use this screen to retrieve the signed agreement for any stove.
-
-1. Type or paste the **stove serial** into the lookup box.
-2. Press Enter.
-
-**What you get back**
-
-- If an agreement image was uploaded or photographed at the point of sale, it is displayed. Click it to zoom.
-- If no image was captured, the platform builds the **sales agreement document** for that stove from the sale record and shows a preview of the PDF under *User Agreement (Generated)*.
-
-Either way you can **download** what is shown. If the serial has no sale against it at all, the screen tells you so rather than showing a blank page.`,
-  },
-
-  {
-    id: "map",
-    title: "15. Map",
-    routeKeys: ["map"],
-    body: `**Sidebar → Manage Sales → Map** plots recorded sales geographically so you can see coverage at a glance.
-
-- Each marker is a sale location derived from the state and LGA captured on the sales form.
-- Zoom and pan with the usual map controls; clusters split into individual markers as you zoom in.
-- Click a marker to see the sale summary behind it.
-
-Because the map is built from the location fields on the sales form, choosing the correct state and LGA when recording a sale is what keeps it accurate.`,
-  },
-
-  {
     id: "settings",
-    title: "16. Settings",
+    title: "14. Settings",
     routeKeys: [
       "settings",
       "settings-payment-models",
@@ -956,7 +926,7 @@ Administrative utilities for data maintenance and one-off corrections. Each tool
 
   {
     id: "api-documentation",
-    title: "17. API documentation",
+    title: "15. API documentation",
     routeKeys: ["docs"],
     superAdminOnly: true,
     body: `**Sidebar → API Documentation** (super admins only) describes the public **End User Records** endpoint that external systems can call to pull stove-user data.
@@ -976,26 +946,26 @@ Keep the API key secret — anyone holding it can read the same data.`,
 
   {
     id: "workflows",
-    title: "18. Complete workflows",
+    title: "16. Complete workflows",
     body: `Screens make more sense when you can see how information moves through the system end to end.
 
-### 18.1 Stock to sale to payment
+### 16.1 Stock to sale to payment
 
 1. **Stoves arrive.** Serials are added to Track Stoves (individually or by CSV import) with the status *available*.
 2. **Allocation.** ACSL allocates a batch to a partner. The serials move to that partner and the batch appears under *Purchases from ACSL*.
-3. **Sale.** An agent opens **Sell Stove**, selects the partner, sales model and serial, captures the buyer and end user, location, agreement image and signature, and submits.
-4. **Immediately after submission** the serial becomes *sold*, the sale appears in **Sales Records**, the customer appears in **Stove Users Data**, and the agreement is retrievable from **Agreement Images**.
+3. **Sale.** An agent opens **Sell Stove**, selects the partner, sales model and serial, captures the buyer and end user, location, and signature, and submits.
+4. **Immediately after submission** the serial becomes *sold*, the sale appears in **Sales Records**, and the customer appears in **Stove Users Data**.
 5. **Collection.** For instalment plans the schedule starts. Each morning, use the tracking bar on Sales Records (*Overdue*, *Due today*, *Due in 7 days*) to see who to chase. Record each payment with **Pay**; the balance, next due date and payment history update at once.
 6. **Reporting.** Every step feeds the dashboard and the agent, partner and state performance reports, and can be exported to CSV.
 
-### 18.2 Onboarding a new person
+### 16.2 Onboarding a new person
 
 1. A super admin (or a manager, within their scope) creates the account in **User Manager** and picks the user group.
 2. For ACSL agents, the manager and the partners or states they cover are set at the same time; for partner agents, the partner is set.
 3. The person signs in with the temporary password and is required to set their own.
 4. Their sidebar shows only what their group allows, and their new figures start appearing in the performance reports as soon as they record their first sale.
 
-### 18.3 Correcting or reversing a mistake
+### 16.3 Correcting or reversing a mistake
 
 - **Wrong details on a sale** — use the pencil (Edit Sale) icon on Sales Records and correct the record. The change is stamped with your name.
 - **The sale should not have happened** — cancel it with a reason. It moves to Cancelled Transactions and the stove serial returns to available stock.
