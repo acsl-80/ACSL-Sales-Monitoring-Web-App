@@ -19,6 +19,8 @@ import agentsKpiModalShot from "@/assets/guide/08-agents-kpi-modal.png.asset.jso
 import statesPerformanceShot from "@/assets/guide/08-states-performance.png.asset.json";
 import sellStoveFormShot from "@/assets/guide/09-sell-stove-form-full.png.asset.json";
 import salesRecordsPayShot from "@/assets/guide/09-sales-records.png.asset.json";
+import salesTrackingBarShot from "@/assets/guide/10-sales-tracking-bar.png.asset.json";
+import cancelSaleShot from "@/assets/guide/10-cancel-sale.png.asset.json";
 
 
 export const GUIDE_LAST_UPDATED = "2026-08-12";
@@ -737,20 +739,25 @@ Columns cover the transaction reference, date, partner, agent, end user, stove s
 
 Above the table is a row of coloured chips: **Overdue**, **Due today**, **Due in 7 days**, **Due in 14 days**, **Due in 30 days**, each with a live count. Click a chip to filter the table to just those sales; click it again to clear. Use this every morning to see who to call.
 
+{{figure:sales-tracking-bar}}
+
+The green **Total Sales** chip on the left is a count only — it shows how many sales are in the current view and cannot be clicked. **Cancel** at the end of the row clears the chip filter and appears only while a chip is active.
+
 ### Filters
 
 The filter row lets you narrow by search text, partner, agent, state, sales model, status, and month/year, plus a date-range picker (future dates cannot be selected). **Clear filters** resets everything. The record count is shown directly above the table.
 
 ### Actions on a row
 
-| Action | What it does |
-| --- | --- |
-| **Pay** | Records an instalment payment against the sale |
-| **Pencil (Edit Sale)** | Reopens the sale in the sales form for correction |
-| **Payment History & Receipts** | Shows every payment taken, who recorded each one, the running balance and the receipt for each payment |
-| **Receipt** | Opens the printable receipt; print it or save it as a PDF |
-| **Attachments** | Shows the agreement image and signature captured at the point of sale |
-| **Cancel** | Cancels the sale — a reason is compulsory |
+The **Pencil (Edit Sale)** and green **Pay** buttons sit directly in the Actions column. Everything else is on the **hamburger menu** — the three-dot (⋮) button at the end of the row. Click it to open the menu with **View Transaction Details**, **Payment Histories & Receipts** and **Cancel Sale**.
+
+| Action | Where it is | What it does |
+| --- | --- | --- |
+| **Pay** | Actions column | Records an instalment payment against the sale |
+| **Pencil (Edit Sale)** | Actions column | Reopens the sale in the sales form for correction |
+| **View Transaction Details** | Hamburger (⋮) menu | Shows the full sale record, including attachments and signature |
+| **Payment Histories & Receipts** | Hamburger (⋮) menu | Shows every payment taken, who recorded each one, the running balance and the receipt for each payment |
+| **Cancel Sale** | Hamburger (⋮) menu | Cancels the sale — a reason is compulsory |
 
 ### Taking a payment
 
@@ -760,11 +767,40 @@ The filter row lets you narrow by search text, partner, agent, state, sales mode
 
 ### Cancelling a sale
 
-Click **Cancel**, read the warning, type the **reason for cancellation** (this is compulsory) and confirm. The sale moves to **Cancelled Transactions**, the stove serial is released back to available stock so it can be sold again, and your name is recorded as the person who cancelled it.
+**Cancel Sale is not a button on the row — it lives under the hamburger menu.** On the sale's row in Sales Records, click the three-dot (⋮) hamburger button at the far right of the Actions column, then choose **Cancel Sale** (shown in red at the bottom of the menu).
+
+{{figure:cancel-sale}}
+
+Read the warning, type the **reason for cancellation** (this is compulsory) and confirm. The sale moves to **Cancelled Transactions**, the stove serial is released back to available stock so it can be sold again, and your name is recorded as the person who cancelled it.
 
 ### Exporting and printing
 
 Use the export button to download the current, filtered view as a CSV file for Excel. Receipts print directly from the receipt window.`,
+    figures: [
+      {
+        id: "sales-tracking-bar",
+        src: salesTrackingBarShot.url,
+        caption: "The sales tracking bar above the Sales Records table — each chip filters the table and shows a live count.",
+        alt: "Row of chips: Total Sales, Due in 30 days, Due in 14 days, Due in 7 days, Due Today, Overdue, and a Cancel link",
+        markers: [
+          { n: 1, label: "Total Sales — a count of the sales in the current view (display only).", x: 8, y: 50 },
+          { n: 2, label: "Due in 30 / 14 / 7 days — click to see instalments falling due in that window.", x: 42, y: 50 },
+          { n: 3, label: "Due Today and Overdue — the two chips to work through first each morning.", x: 76, y: 50 },
+          { n: 4, label: "Cancel — clears the active chip filter. It appears only while a chip is selected.", x: 96, y: 50, arrowDirection: "left" },
+        ],
+      },
+      {
+        id: "cancel-sale",
+        src: cancelSaleShot.url,
+        caption: "Sales Records row actions — Cancel Sale is inside the hamburger (three-dot) menu.",
+        alt: "Sales record row with pencil and Pay buttons and an open three-dot menu showing View Transaction Details, Payment Histories & Receipts and Cancel Sale",
+        markers: [
+          { n: 1, label: "Pencil (Edit Sale) and the green Pay button sit in the Actions column.", x: 90, y: 29 },
+          { n: 2, label: "The hamburger (⋮) button at the end of the row — click it to open the row menu.", x: 96, y: 29, arrowDirection: "left" },
+          { n: 3, label: "Cancel Sale — the red option at the bottom of the menu. A reason is compulsory.", x: 72, y: 96, arrowDirection: "left" },
+        ],
+      },
+    ],
   },
 
   {
