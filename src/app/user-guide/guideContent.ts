@@ -393,6 +393,8 @@ Use **Search by name or email...** to filter the list, and the **All Status** an
 
 Each row is one partner, with its name, state and contact details, plus action icons at the end of the row.
 
+{{figure:partner-profiles-table}}
+
 ### How partners are created
 
 Partner records and partner accounts are created automatically when sales records are transferred from the ERP into the Sales & Monitoring App. You do not normally create partners by hand.
@@ -408,6 +410,8 @@ A partner becomes selectable on the sales form and in filters as soon as it exis
 
 Open the edit action on the row, change the details and save. Most partner information can be edited in the Sales & Monitoring App — contact person, phone numbers, email, address, state, branch — but the **partner name cannot be changed**, because it is the link back to the ERP record.
 
+{{figure:edit-partner-modal}}
+
 ### Partner figures at a glance
 
 From the partner row you can see the total number of agents assigned to the partner, and the total stoves received and sold by that partner.
@@ -416,6 +420,8 @@ From the partner row you can see the total number of agents assigned to the part
 
 Administrators can open a partner's credential details to view the username and password, copy them, and share them with the partner. Partners are prompted to change these default credentials the first time they log in.
 
+{{figure:partner-credentials}}
+
 ### Purchases from ACSL
 
 The transfer-history action on the row opens the list of stove batches that partner has bought from ACSL, with dates, quantities and serials.
@@ -423,7 +429,46 @@ The transfer-history action on the row opens the list of stove batches that part
 ### Filters
 
 Search by partner name, or use the state dropdown to show only partners in one state.`,
+    figures: [
+      {
+        id: "partner-profiles-table",
+        src: partnerProfilesTableShot.url,
+        caption: "Partner Profiles — filter bar and one partner row with its actions.",
+        alt: "Partner Profiles table showing partner name, state, branch, phone, assigned agents, total stoves purchased and action buttons",
+        markers: [
+          { n: 1, label: "Search by partner, branch, phone or email.", x: 13, y: 40 },
+          { n: 2, label: "State and partner dropdowns, with Reset Filters to clear them.", x: 42, y: 40 },
+          { n: 3, label: "Count of partners matching the current filters.", x: 90, y: 40, arrowDirection: "left" },
+          { n: 4, label: "Assigned agents and total stoves purchased for this partner.", x: 55, y: 90 },
+          { n: 5, label: "Row actions: Details, Credentials, Edit and Purchases from ACSL.", x: 88, y: 90, arrowDirection: "left" },
+        ],
+      },
+      {
+        id: "edit-partner-modal",
+        src: editPartnerModalShot.url,
+        caption: "Edit Partner Details — the partner name is fixed; the rest can be updated.",
+        alt: "Edit Partner Details window with partner type, contact person, phone numbers, email and street address fields",
+        markers: [
+          { n: 1, label: "Partner name and code — shown for reference only, not editable.", x: 15, y: 14 },
+          { n: 2, label: "Partner type and contact person.", x: 70, y: 37 },
+          { n: 3, label: "Contact details: phone, alternative phone, email and address.", x: 25, y: 62 },
+          { n: 4, label: "Save Changes applies the edit; Cancel discards it.", x: 86, y: 91, arrowDirection: "left" },
+        ],
+      },
+      {
+        id: "partner-credentials",
+        src: partnerCredentialsShot.url,
+        caption: "Credential Details — the partner's login, ready to be shared.",
+        alt: "Credential Details window showing username, masked password and a Copy All Credentials button",
+        markers: [
+          { n: 1, label: "Username the partner signs in with.", x: 17, y: 34 },
+          { n: 2, label: "Password — use the eye icon to reveal it, the icon beside it to copy.", x: 88, y: 48, arrowDirection: "left" },
+          { n: 3, label: "Copy All Credentials copies both, ready to send to the partner.", x: 50, y: 74 },
+        ],
+      },
+    ],
   },
+
 
   {
     id: "agent-management",
