@@ -13,12 +13,14 @@ Add annotated screenshots (arrows, numbered markers, highlight boxes, callouts) 
 
 ## Screenshot list by chapter
 
-### 2. Getting started
-1. `02-login-page.png` — login screen with email/password fields
-2. `02-password-change-modal.png` — first-time password change modal
-3. `02-profile-page.png` — Profile view
-4. `02-change-password-modal.png` — Change password modal
-5. `02-unauthorized.png` — the Unauthorized page
+### 2. Getting started — received, ready to wire up
+1. `02-login-page.png` (received) — login screen. Annotations: 1 = Username or Email, 2 = Password, 3 = Login button.
+2. `02-change02-profile-page.png` (received) — Profile view. This one screenshot covers both the profile details and changing your password: annotations 1 = name/email header, 2 = profile details (full name, username, email, organization), 3 = Change Password block (current / new / confirm), 4 = Update Password button. It is used twice in the chapter — once under "View your profile", once under "Change your password" — cropped to the relevant region each time.
+
+Still useful later (optional, send when convenient):
+3. `02-password-change-modal.png` — first-time forced password change modal (non-super-admin login)
+4. `02-unauthorized.png` — the Unauthorized page
+
 
 ### 3. Finding your way around
 6. `03-sidebar-full.png` — full sidebar, groups expanded
