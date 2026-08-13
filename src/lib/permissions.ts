@@ -40,7 +40,9 @@ export type RouteKey =
   | "end-user-records"
   | "performance-report"
   | "sales-cancelled-purchases"
+  | "user-guide"
   | "partner-agents-profiles";
+
 
 export type FeatureKey =
   | "global-filters"
@@ -107,6 +109,7 @@ const ALL_ROUTES: RouteKey[] = [
   "docs",
   "sales-monitoring-app",
   "end-user-records",
+  "user-guide",
 ];
 
 const ALL_FEATURES: FeatureKey[] = [
@@ -162,6 +165,7 @@ export const PERMISSIONS: Record<string, RolePermissions> = {
       "user-management-users",
       "end-user-records",
       "profile",
+      "user-guide",
       "sales-monitoring-app",
     ],
     features: [
@@ -193,6 +197,7 @@ export const PERMISSIONS: Record<string, RolePermissions> = {
       "agreement-images",
       "end-user-records",
       "profile",
+      "user-guide",
       "sales-monitoring-app",
     ],
     features: ["my-partners-filter", "stove-allocation", "create-sale", "org-sales-view"],
@@ -218,6 +223,7 @@ export const PERMISSIONS: Record<string, RolePermissions> = {
       "user-management-users",
       "end-user-records",
       "profile",
+      "user-guide",
       "sales-monitoring-app",
     ],
     features: ["manage-agents", "manage-partner-agents", "org-sales-view", "create-sale", "user-management"],
@@ -231,6 +237,7 @@ export const PERMISSIONS: Record<string, RolePermissions> = {
       "stove-manager",
       "end-user-records",
       "profile",
+      "user-guide",
       "sales-monitoring-app",
     ],
     features: ["create-sale"],
@@ -244,6 +251,7 @@ export const PERMISSIONS: Record<string, RolePermissions> = {
       "stove-manager",
       "end-user-records",
       "profile",
+      "user-guide",
       "sales-monitoring-app",
     ],
     features: ["create-sale"],

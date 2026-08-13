@@ -9,7 +9,6 @@ import {
   Users,
   Settings,
   LayoutDashboard,
-  FileImage,
   Key,
   User,
   UserCheck,
@@ -20,13 +19,14 @@ import {
   ChevronDown,
   ChevronUp,
   Smartphone,
-  Map,
   CreditCard,
   Wrench,
   ShieldCheck,
   FileText,
   BarChart3,
   BookOpen,
+  HelpCircle,
+
 } from "lucide-react";
 import { usePermissions } from "../hooks/usePermissions";
 import Link from "@/compat/Link";
@@ -70,8 +70,6 @@ const allNavItems = [
       { name: "Cancelled Transactions", route: "sales-cancelled", href: "/sales/cancelled" },
       { name: "Purchases from ACSL", route: "stove-transfer-history", href: "/stove-transfer-history" },
       { name: "Cancelled Purchases", route: "sales-cancelled-purchases", href: "/sales/cancelled-purchases" },
-      { name: "Agreement Images", route: "agreement-images", href: "/agreement-images" },
-      { name: "Map", route: "map", href: "/map" },
     ],
   },
 
@@ -81,12 +79,15 @@ const allNavItems = [
 
   { name: "API Documentation", icon: FileText, route: "docs", href: "/end-user-records/api" },
 
+  { name: "User Guide", icon: HelpCircle, route: "user-guide", href: "/user-guide" },
+
   {
     name: "App Documentation",
     icon: BookOpen,
     route: "system-documentation",
     href: "/system-documentation",
   },
+
 
   {
     name: "Settings",

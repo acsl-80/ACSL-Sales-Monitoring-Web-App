@@ -136,7 +136,7 @@ const DashboardLayoutInner = ({
           user={user}
         />
 
-        <main className="flex-1 overflow-y-auto bg-white">{children}</main>
+        <main className="flex-1 bg-white">{children}</main>
       </div>
 
       {!isSuperAdmin && <FirstTimePasswordChangeModal userProfile={userProfile} />}
