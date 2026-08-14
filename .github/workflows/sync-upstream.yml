@@ -165,11 +165,37 @@ jobs:
           steps.merge.outputs.conflict == 'false' &&
           steps.risk.outputs.level == 'green' &&
           steps.build.outcome == 'success'
+        env:
+          GH_TOKEN: ${{ secrets.UPSTREAM_TOKEN }}
         run: |
           git checkout main
           git merge --ff-only "${{ steps.merge.outputs.branch }}"
-          git push origin main
-          echo "### ✅ Synced ${{ steps.check.outputs.behind }} commit(s) from ${UPSTREAM_REPO} straight to main" >> "$GITHUB_STEP_SUMMARY"
+
+          # The direct push depends on this token being able to bypass branch
+          # protection. If that ever stops being true — protection tightened,
+          # token permissions reduced, GitHub semantics changed — the push is
+          # rejected. Without this fallback the step would fail, the job would
+          # fail, and NO PR would be opened either: contractor work would stall
+          # with nothing but a red workflow run to show for it. Fail safe by
+          # degrading to the review path instead of dying.
+          if git push origin main; then
+            echo "### ✅ Synced ${{ steps.check.outputs.behind }} commit(s) from ${UPSTREAM_REPO} straight to main" >> "$GITHUB_STEP_SUMMARY"
+          else
+            echo "::warning::Direct push to main was rejected — falling back to a pull request."
+            git checkout "${{ steps.merge.outputs.branch }}"
+            git push origin "${{ steps.merge.outputs.branch }}"
+            printf '%s\n' \
+              "Automated sync from \`${UPSTREAM_REPO}\`." "" \
+              "This batch is **green** — app/UI code only, build passed — so it would normally" \
+              "have merged straight to \`main\`. The direct push was **rejected**, most likely by" \
+              "branch protection, so it is here as a PR instead." "" \
+              "Safe to merge as-is. If this keeps happening, the workflow's push permissions" \
+              "need revisiting rather than each PR being merged by hand." > /tmp/pr-body.md
+            gh pr create --base main --head "${{ steps.merge.outputs.branch }}" \
+              --title "sync: ${{ steps.check.outputs.behind }} commit(s) from ${UPSTREAM_REPO} (push to main rejected)" \
+              --body-file /tmp/pr-body.md --label "sync,needs-review"
+            echo "### ⚠️ Push to main rejected — opened a PR instead" >> "$GITHUB_STEP_SUMMARY"
+          fi
 
       - name: Open PR (needs attention)
         if: >
