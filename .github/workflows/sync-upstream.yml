@@ -117,6 +117,26 @@ jobs:
             printf "$DROPPED" > .sync-dropped.txt
           fi
 
+      # merge=ours CANNOT keep a file deleted. Upstream adding a new file under
+      # .lovable/ is not a conflict at all, and a delete/modify pair is a tree
+      # conflict that merge drivers never see. So the .gitattributes pin cannot
+      # enforce the de-Lovabling policy by itself — verified when a real merge
+      # reintroduced .lovable/plan.md plus a new plan file. This step is what
+      # actually enforces it.
+      - name: Re-remove .lovable/ (this fork stays de-Lovabled)
+        if: steps.check.outputs.behind != '0'
+        run: |
+          FILES=$(git ls-files .lovable)
+          if [ -n "$FILES" ]; then
+            COUNT=$(echo "$FILES" | wc -l)
+            git rm -r --quiet .lovable
+            git commit --quiet -m "chore: re-remove .lovable/ reintroduced by upstream merge"
+            echo "::warning::Removed $COUNT .lovable/ file(s) reintroduced by upstream:"
+            echo "$FILES" | sed 's/^/  /'
+          else
+            echo "No .lovable/ files present — nothing to remove."
+          fi
+
       - name: Classify risk
         if: steps.check.outputs.behind != '0'
         id: risk
