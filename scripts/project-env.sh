@@ -79,4 +79,20 @@ fi
 _global="$(command vercel whoami 2>/dev/null | tail -1 | tr -d '\r')"
 [ "$_global" = "gbax316" ] && echo "  · note     global vercel session is still gbax316 — the wrapper keeps it out of this shell"
 
+# ---------------------------------------------------------------------------
+# GitHub — token from the tree-level .github.local. gh prefers GH_TOKEN over
+# its stored login, per command, so the personal `gbax316` keyring entry is
+# never touched. NEVER run `gh auth login` in this tree.
+# ---------------------------------------------------------------------------
+if [ -f "$ROOT/../.github.local" ]; then
+  _gt="$(grep -E "^GH_TOKEN=" "$ROOT/../.github.local" | cut -d= -f2- | tr -d " ")"
+  if [ -n "$_gt" ]; then
+    export GH_TOKEN="$_gt"
+    echo "$_ok github   token exported (${_gt:0:8}…) — gh acts as acsl-80 in this shell"
+  else
+    echo "  · github   GH_TOKEN blank in ../.github.local — gh still acts as gbax316"
+  fi
+  unset _gt
+fi
+
 unset ROOT _ok _no _email _who _global
