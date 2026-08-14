@@ -1,0 +1,50 @@
+name: CI
+
+# The safety floor. On the green sync path this is the ONLY check between a
+# contractor commit and production, so `build` must stay blocking.
+#
+# Everything else is non-blocking on purpose — this repo has never run checks in
+# CI and would go permanently red on pre-existing issues, which makes a gate
+# worthless. Notably `check:upstream-clean` currently FAILS: it forbids the
+# string "lovable", but `@lovable.dev/vite-tanstack-config` is a required build
+# dependency and its registry URLs are all through bun.lock. That guard cannot
+# pass until either the dependency goes or the script narrows its scope.
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+  workflow_call:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: 1.3.13
+
+      - name: Install
+        run: bun install --frozen-lockfile
+
+      - name: Lint (non-blocking)
+        continue-on-error: true
+        run: bun run lint
+
+      - name: Typecheck (non-blocking)
+        continue-on-error: true
+        run: bunx tsc --noEmit
+
+      - name: Lovable-trace guard (non-blocking — currently failing by design)
+        continue-on-error: true
+        run: bun run check:upstream-clean
+
+      - name: Build
+        run: bun run build

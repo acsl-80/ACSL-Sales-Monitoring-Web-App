@@ -9,3 +9,10 @@ vite.config.ts merge=ours
 bunfig.toml merge=ours
 .env.example merge=ours
 .gitignore merge=ours
+
+# Force LF for anything CI executes. Relying on each contributor having
+# core.autocrlf set is not a guarantee; a CRLF shebang fails on Linux with
+#   /usr/bin/env: 'bash\r': No such file or directory
+*.sh text eol=lf
+*.yml text eol=lf
+*.yaml text eol=lf

@@ -1,0 +1,85 @@
+name: Auto-merge aged sync PRs
+
+# The escape valve that stops the owner being a bottleneck.
+#
+# An amber sync PR that is green, unlabelled `hold`, and older than the timeout
+# merges itself. The owner is a gate that defaults to OPEN: being unavailable
+# costs at most TIMEOUT_HOURS of latency, and never stalls contractors.
+#
+# Deliberately excluded from auto-merge, regardless of age:
+#   `hold`         — the owner has explicitly blocked it
+#   `conflict`     — needs human resolution
+#   `build-failed` — broken code must never reach production unattended
+#
+# To block a PR: add the `hold` label. To ship it now: merge it yourself.
+
+on:
+  schedule:
+    - cron: '30 * * * *'     # hourly, offset from the sync job
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  pull-requests: write
+  checks: read
+
+env:
+  TIMEOUT_HOURS: '24'
+
+jobs:
+  release-aged:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Merge eligible PRs
+        env:
+          GH_TOKEN: ${{ secrets.UPSTREAM_TOKEN }}
+        run: |
+          set -euo pipefail
+          NOW=$(date -u +%s)
+
+          gh pr list --state open --label sync --json number,createdAt,labels,mergeable,statusCheckRollup \
+            > /tmp/prs.json
+
+          COUNT=$(jq 'length' /tmp/prs.json)
+          echo "Open sync PRs: $COUNT"
+          [ "$COUNT" -eq 0 ] && exit 0
+
+          jq -c '.[]' /tmp/prs.json | while read -r pr; do
+            NUM=$(echo "$pr" | jq -r '.number')
+            CREATED=$(echo "$pr" | jq -r '.createdAt')
+            LABELS=$(echo "$pr" | jq -r '[.labels[].name] | join(",")')
+            MERGEABLE=$(echo "$pr" | jq -r '.mergeable')
+
+            AGE_H=$(( (NOW - $(date -u -d "$CREATED" +%s)) / 3600 ))
+            echo "--- PR #$NUM  age=${AGE_H}h  labels=[$LABELS]  mergeable=$MERGEABLE"
+
+            for BLOCKER in hold conflict build-failed; do
+              if echo "$LABELS" | grep -qw "$BLOCKER"; then
+                echo "    skipped: labelled '$BLOCKER'"
+                continue 2
+              fi
+            done
+
+            if [ "$AGE_H" -lt "${TIMEOUT_HOURS}" ]; then
+              echo "    skipped: younger than ${TIMEOUT_HOURS}h"
+              continue
+            fi
+
+            if [ "$MERGEABLE" != "MERGEABLE" ]; then
+              echo "    skipped: not mergeable ($MERGEABLE)"
+              continue
+            fi
+
+            FAILING=$(echo "$pr" | jq -r '[.statusCheckRollup[]? | select(.conclusion != null and .conclusion != "SUCCESS" and .conclusion != "NEUTRAL" and .conclusion != "SKIPPED")] | length')
+            if [ "$FAILING" != "0" ]; then
+              echo "    skipped: $FAILING failing check(s)"
+              continue
+            fi
+
+            echo "    merging (aged past ${TIMEOUT_HOURS}h, green, not held)"
+            gh pr comment "$NUM" --body "Auto-merged: green, unlabelled \`hold\`, and older than ${TIMEOUT_HOURS}h. Add \`hold\` to block future syncs."
+            gh pr merge "$NUM" --merge --delete-branch
+          done
