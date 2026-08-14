@@ -1,0 +1,211 @@
+name: Sync upstream
+
+# Pulls contractor work from upstream and decides how it reaches production:
+#
+#   GREEN  — app/UI code only + build passes -> merged to main, no human needed.
+#   AMBER  — touches schema/CI/integrations/deps -> PR, waits for review.
+#            auto-merge-aged.yml releases it after the timeout unless `hold`.
+#   RED    — conflict or failing build -> PR, never auto-merges.
+#
+# UPSTREAMS FOR THIS REPO — there are two contributors:
+#   Brain-codes/frontend-transactions   PUBLIC   configured below
+#   shakarho/sales-monitoring-web       PRIVATE  *** NOT CONFIGURED ***
+#
+# shakarho is the DOMINANT upstream (38 merges vs 5) but the acsl-80 account
+# has no read access to it. Once access is granted, add it to the matrix.
+# Until then that contributor's work must still be merged by hand.
+#
+# REQUIRED SETUP (one-off):
+#   secrets.UPSTREAM_TOKEN — PAT on the acsl-80 account with `repo` scope.
+#     Needed even for a public upstream: PRs opened with the default
+#     GITHUB_TOKEN do not trigger CI, so the gate would never run.
+
+on:
+  schedule:
+    - cron: '0 6 * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  pull-requests: write
+
+concurrency:
+  group: sync-upstream
+  cancel-in-progress: false
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    strategy:
+      max-parallel: 1
+      matrix:
+        include:
+          - name: braincodes
+            repo: Brain-codes/frontend-transactions
+            branch: main
+          # - name: shakarho
+          #   repo: shakarho/sales-monitoring-web
+          #   branch: main
+    env:
+      UPSTREAM_REPO: ${{ matrix.repo }}
+      UPSTREAM_BRANCH: ${{ matrix.branch }}
+      HIGH_RISK: '^(supabase/|\.github/|src/integrations/|src/lib/(supabaseConfig|permissions)|package\.json|bun\.lock|vercel\.json|[^/]*\.config\.(ts|js))'
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          token: ${{ secrets.UPSTREAM_TOKEN }}
+
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: 1.3.13
+
+      # Without this, every merge=ours entry in .gitattributes is silently
+      # ignored and upstream overwrites our de-Lovabled files.
+      - name: Register merge drivers
+        run: bash scripts/setup-merge-drivers.sh
+
+      - name: Configure git identity
+        run: |
+          git config user.name  "acsl-sync-bot"
+          git config user.email "atmosfairng@gmail.com"
+
+      - name: Fetch upstream
+        run: |
+          git remote add upstream "https://x-access-token:${{ secrets.UPSTREAM_TOKEN }}@github.com/${UPSTREAM_REPO}.git" 2>/dev/null || true
+          git fetch upstream "${UPSTREAM_BRANCH}"
+
+      - name: Check for new commits
+        id: check
+        run: |
+          BEHIND=$(git rev-list --count HEAD..upstream/${UPSTREAM_BRANCH})
+          echo "behind=$BEHIND" >> "$GITHUB_OUTPUT"
+          echo "base_sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
+          echo "$BEHIND new commit(s) from ${UPSTREAM_REPO}."
+
+      - name: Create sync branch and merge
+        if: steps.check.outputs.behind != '0'
+        id: merge
+        run: |
+          BRANCH="sync/${{ matrix.name }}-$(date -u +%Y%m%d-%H%M%S)"
+          echo "branch=$BRANCH" >> "$GITHUB_OUTPUT"
+          git checkout -b "$BRANCH"
+          if git merge --no-edit "upstream/${UPSTREAM_BRANCH}"; then
+            echo "conflict=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "conflict=true" >> "$GITHUB_OUTPUT"
+            git add -A
+            git commit -m "sync: MERGE CONFLICT from ${UPSTREAM_REPO} — needs manual resolution" || true
+          fi
+
+      # merge=ours discards upstream edits to pinned files. Intended, but it
+      # must never happen silently or a contractor's work vanishes untraced.
+      - name: Report changes dropped by merge=ours pins
+        if: steps.check.outputs.behind != '0'
+        run: |
+          BASE="${{ steps.check.outputs.base_sha }}"
+          PINNED=$(grep -E 'merge=ours' .gitattributes | awk '{print $1}' || true)
+          DROPPED=""
+          for f in $PINNED; do
+            if git diff --quiet "$BASE" "upstream/${UPSTREAM_BRANCH}" -- "$f" 2>/dev/null; then continue; fi
+            DROPPED="${DROPPED}  - ${f}\n"
+          done
+          if [ -n "$DROPPED" ]; then
+            echo "::warning::Upstream changed pinned files; our versions were kept:"
+            printf "$DROPPED"
+            printf "$DROPPED" > .sync-dropped.txt
+          fi
+
+      # merge=ours CANNOT keep a file deleted. Upstream adding a new file under
+      # .lovable/ is not a conflict at all, and a delete/modify pair is a tree
+      # conflict that merge drivers never see. So the .gitattributes pin cannot
+      # enforce the de-Lovabling policy by itself — verified when a real merge
+      # reintroduced .lovable/plan.md plus a new plan file. This step is what
+      # actually enforces it.
+      - name: Re-remove .lovable/ (this fork stays de-Lovabled)
+        if: steps.check.outputs.behind != '0'
+        run: |
+          FILES=$(git ls-files .lovable)
+          if [ -n "$FILES" ]; then
+            COUNT=$(echo "$FILES" | wc -l)
+            git rm -r --quiet .lovable
+            git commit --quiet -m "chore: re-remove .lovable/ reintroduced by upstream merge"
+            echo "::warning::Removed $COUNT .lovable/ file(s) reintroduced by upstream:"
+            echo "$FILES" | sed 's/^/  /'
+          else
+            echo "No .lovable/ files present — nothing to remove."
+          fi
+
+      - name: Classify risk
+        if: steps.check.outputs.behind != '0'
+        id: risk
+        run: |
+          CHANGED=$(git diff --name-only "${{ steps.check.outputs.base_sha }}"..HEAD)
+          if echo "$CHANGED" | grep -qE "$HIGH_RISK"; then
+            echo "level=amber" >> "$GITHUB_OUTPUT"
+            echo "$CHANGED" | grep -E "$HIGH_RISK" > .sync-risky.txt
+            echo "High-risk paths touched."
+          else
+            echo "level=green" >> "$GITHUB_OUTPUT"
+            echo "App/UI code only."
+          fi
+
+      - name: Build
+        if: steps.check.outputs.behind != '0' && steps.merge.outputs.conflict == 'false'
+        id: build
+        continue-on-error: true
+        run: |
+          bun install --frozen-lockfile
+          bun run build
+
+      - name: Merge to main (green path)
+        if: >
+          steps.check.outputs.behind != '0' &&
+          steps.merge.outputs.conflict == 'false' &&
+          steps.risk.outputs.level == 'green' &&
+          steps.build.outcome == 'success'
+        run: |
+          git checkout main
+          git merge --ff-only "${{ steps.merge.outputs.branch }}"
+          git push origin main
+          echo "### ✅ Synced ${{ steps.check.outputs.behind }} commit(s) from ${UPSTREAM_REPO} straight to main" >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Open PR (needs attention)
+        if: >
+          steps.check.outputs.behind != '0' && (
+            steps.merge.outputs.conflict == 'true' ||
+            steps.risk.outputs.level == 'amber' ||
+            steps.build.outcome != 'success'
+          )
+        env:
+          GH_TOKEN: ${{ secrets.UPSTREAM_TOKEN }}
+        run: |
+          git push origin "${{ steps.merge.outputs.branch }}"
+          LABELS="sync"
+          TITLE="sync: ${{ steps.check.outputs.behind }} commit(s) from ${UPSTREAM_REPO}"
+          BODY="Automated sync from \`${UPSTREAM_REPO}\`.\n\n"
+
+          if [ "${{ steps.merge.outputs.conflict }}" = "true" ]; then
+            LABELS="$LABELS,conflict"; TITLE="CONFLICT — $TITLE"
+            BODY="${BODY}**Merge conflict.** Resolve locally; will not auto-merge.\n\n"
+          fi
+          if [ "${{ steps.build.outcome }}" != "success" ]; then
+            LABELS="$LABELS,build-failed"
+            BODY="${BODY}**Build failed.** Will not auto-merge regardless of age.\n\n"
+          fi
+          if [ "${{ steps.risk.outputs.level }}" = "amber" ]; then
+            LABELS="$LABELS,needs-review"
+            BODY="${BODY}**High-risk paths touched** — review before merging:\n\n"
+            BODY="${BODY}$(sed 's/^/- /' .sync-risky.txt 2>/dev/null)\n\n"
+            BODY="${BODY}Auto-merges after the timeout unless labelled \`hold\`.\n\n"
+          fi
+          if [ -f .sync-dropped.txt ]; then
+            BODY="${BODY}**Upstream changes discarded by \`merge=ours\` pins:**\n\n"
+            BODY="${BODY}$(cat .sync-dropped.txt)\n\n"
+          fi
+
+          rm -f .sync-risky.txt .sync-dropped.txt
+          printf "$BODY" > /tmp/pr-body.md
+          gh pr create --base main --head "${{ steps.merge.outputs.branch }}" \
+            --title "$TITLE" --body-file /tmp/pr-body.md --label "$LABELS" || true
