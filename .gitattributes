@@ -3,9 +3,24 @@
 #   git config merge.ours.driver true
 # (scripts/setup-merge-drivers.sh does this for you)
 # Lovable's scratch plan file was removed from this fork; upstream keeps editing
-# it, which conflicts on every merge. Keep our version (deleted).
+# it, which conflicts on every merge.
+#
+# NOTE: merge=ours does NOT keep these deleted, despite what this line looks
+# like it promises. A merge driver only resolves CONTENT conflicts. Upstream
+# adding a new file under .lovable/ is not a conflict, and a delete/modify pair
+# is a tree-level conflict the driver never sees — so the files come back.
+# Verified in practice. The actual enforcement is the "Re-remove .lovable/"
+# step in .github/workflows/sync-upstream.yml. This entry is kept only for the
+# case where both sides modified the same tracked file.
 .lovable/** merge=ours
 vite.config.ts merge=ours
 bunfig.toml merge=ours
 .env.example merge=ours
 .gitignore merge=ours
+
+# Force LF for anything CI executes. Relying on each contributor having
+# core.autocrlf set is not a guarantee; a CRLF shebang fails on Linux with
+#   /usr/bin/env: 'bash\r': No such file or directory
+*.sh text eol=lf
+*.yml text eol=lf
+*.yaml text eol=lf
