@@ -709,16 +709,20 @@ const CreateSalesForm = ({
     }
   }, [visiblePaymentModels, selectedModelId, isInstallment, isEditMode]);
 
-  // Once the customer has paid the full sale amount up front, installments
-  // no longer make sense — drop back to full payment and hide the models.
-  const isFullyPaid =
-    Number(formData.amount) > 0 &&
-    Number(formData.amountReceived) >= Number(formData.amount);
+  // A full payment means the customer settles the whole sale amount up front,
+  // so sale amount and amount received are the same number — we collect it once
+  // and mirror it into both fields rather than asking twice.
+  const isSingleAmountField = !isEditMode && !isInstallment;
 
+  // If an installment sale is paid off in full at the point of sale it isn't an
+  // installment sale at all — drop it back to full payment.
   useEffect(() => {
-    if (isEditMode || !isInstallment || !isFullyPaid) return;
-    handlePaymentTypeChange("full_payment");
-  }, [isEditMode, isInstallment, isFullyPaid]);
+    if (isEditMode || !isInstallment) return;
+    const amount = Number(formData.amount);
+    if (amount > 0 && Number(formData.amountReceived) >= amount) {
+      handlePaymentTypeChange("full_payment", { keepAmount: true });
+    }
+  }, [isEditMode, isInstallment, formData.amount, formData.amountReceived]);
 
   // Update selected model details when model ID changes
   useEffect(() => {
@@ -738,6 +742,9 @@ const CreateSalesForm = ({
     setFormData((prev) => ({
       ...prev,
       [field]: value,
+      // Full payment collects one figure that serves as both the sale amount
+      // and the amount received.
+      ...(field === "amount" && isSingleAmountField ? { amountReceived: value } : {}),
     }));
 
     // Live format check for phone fields — flag invalid format on every keystroke.
@@ -928,7 +935,7 @@ const CreateSalesForm = ({
   };
 
   // Handle payment type dropdown change
-  const handlePaymentTypeChange = (value) => {
+  const handlePaymentTypeChange = (value, { keepAmount = false } = {}) => {
     if (value === "full_payment") {
       setIsInstallment(false);
       setSelectedModelId("");
@@ -937,11 +944,19 @@ const CreateSalesForm = ({
       setInitialPaymentMethod("");
       setInitialPaymentProofImageId("");
       setInitialPaymentProofPreview(null);
-      handleInputChange("amount", "");
+      if (keepAmount) {
+        // Full payment collapses to one number — received matches the sale amount.
+        setFormData((prev) => ({ ...prev, amountReceived: prev.amount }));
+      } else {
+        setFormData((prev) => ({ ...prev, amount: "", amountReceived: "" }));
+      }
     } else {
       // value is a payment model ID
       setIsInstallment(true);
       setSelectedModelId(value);
+      // The model fixes the sale amount; the received figure becomes the
+      // initial payment, so it must be re-entered.
+      setFormData((prev) => ({ ...prev, amountReceived: "" }));
     }
   };
 
@@ -1636,19 +1651,14 @@ const CreateSalesForm = ({
                   </SelectTrigger>
                   <SelectContent>
                     <SelectItem value="full_payment">Full Payment</SelectItem>
-                    {!isFullyPaid && visiblePaymentModels.map((model) => (
+                    {visiblePaymentModels.map((model) => (
                       <SelectItem key={model.id} value={model.id}>
                         {model.name} — {formatCurrency(model.fixed_price)} / {model.duration_months} mo
                       </SelectItem>
                     ))}
                   </SelectContent>
                 </Select>
-                {isFullyPaid ? (
-                  <p className="mt-1 text-xs text-muted-foreground">
-                    Amount received covers the full sale amount, so
-                    installment plans aren&apos;t available for this sale.
-                  </p>
-                ) : partnerModelsUnresolved && (
+                {partnerModelsUnresolved && (
                   <p className="mt-1 text-xs text-amber-600">
                     This partner is assigned {orgPaymentModelIds.length} sales
                     model{orgPaymentModelIds.length === 1 ? "" : "s"} that
@@ -1659,8 +1669,13 @@ const CreateSalesForm = ({
               </FormField>
             ) : null}
 
-            {/* Sale amount */}
-            <FormField label="Sale Amount (₦) *" error={errors.amount} htmlFor="amount">
+            {/* Sale amount — for a full payment this doubles as the amount
+                received, so we only ask for it once. */}
+            <FormField
+              label={isSingleAmountField ? "Sale Amount / Amount Received (₦) *" : "Sale Amount (₦) *"}
+              error={errors.amount}
+              htmlFor="amount"
+            >
               <Input
                 id="amount"
                 type="text"
@@ -1670,20 +1685,28 @@ const CreateSalesForm = ({
                 placeholder="Enter amount"
                 className={errors.amount ? "border-red-500" : ""}
               />
+              {isSingleAmountField && (
+                <p className="mt-1 text-xs text-muted-foreground">
+                  Full payment — the customer pays the sale amount in full.
+                </p>
+              )}
             </FormField>
 
-            {/* Amount received */}
-            <FormField label="Amount Received (₦)" error={errors.amountReceived} htmlFor="amountReceived">
-              <Input
-                id="amountReceived"
-                type="text"
-                inputMode="numeric"
-                value={formatAmountInput(formData.amountReceived)}
-                onChange={(e) => handleInputChange("amountReceived", parseAmountInput(e.target.value))}
-                placeholder="Enter amount received"
-                className={errors.amountReceived ? "border-red-500" : ""}
-              />
-            </FormField>
+            {/* Amount received — installments only; full payment mirrors the
+                sale amount above. */}
+            {!isSingleAmountField && (
+              <FormField label="Amount Received (₦)" error={errors.amountReceived} htmlFor="amountReceived">
+                <Input
+                  id="amountReceived"
+                  type="text"
+                  inputMode="numeric"
+                  value={formatAmountInput(formData.amountReceived)}
+                  onChange={(e) => handleInputChange("amountReceived", parseAmountInput(e.target.value))}
+                  placeholder="Enter amount received"
+                  className={errors.amountReceived ? "border-red-500" : ""}
+                />
+              </FormField>
+            )}
           </div>
         </div>
 
