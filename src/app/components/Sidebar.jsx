@@ -30,6 +30,7 @@ import {
 
 } from "lucide-react";
 import { usePermissions } from "../hooks/usePermissions";
+import { useDataCenterModuleAccess } from "../data-center/lib/useModuleAccess";
 import Link from "@/compat/Link";
 
 // Single canonical nav. Visibility is driven entirely by permissions —
@@ -111,6 +112,12 @@ const Sidebar = ({ isOpen, onClose, currentRoute }) => {
   const { isAcslAgent, isAcslAgentManager } = useAuth();
   const { canRoute, isSuperAdmin } = usePermissions();
 
+  // Data Center access is granted per USER, case by case, which the static
+  // role map cannot express. This hook (cached per session) supplements it for
+  // exactly one nav item; showing the entry is presentation, and the module
+  // and its endpoints re-check access for real.
+  const hasDataCenterAccess = useDataCenterModuleAccess(!isSuperAdmin);
+
   const [expandedItems, setExpandedItems] = useState({});
 
   const toggleExpand = (key) => {
@@ -127,6 +134,10 @@ const Sidebar = ({ isOpen, onClose, currentRoute }) => {
         const visibleChildren = item.children.filter((c) => canRoute(c.route));
         if (visibleChildren.length === 0) return null;
         return { ...item, children: visibleChildren };
+      }
+      // Per-user module access supplements the static map for this one entry.
+      if (item.route === "data-center") {
+        return canRoute(item.route) || hasDataCenterAccess ? item : null;
       }
       return canRoute(item.route) ? item : null;
     })

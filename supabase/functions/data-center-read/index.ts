@@ -84,14 +84,46 @@ function getPool(): Pool {
   return pool;
 }
 
-async function resolveFeatures(userId: string): Promise<string[]> {
+/**
+ * What each access level is entitled to, before any explicit per-feature
+ * grants are added on top. This mapping is THE authority; the copy in
+ * src/app/data-center/lib/features.ts exists only for labels. If they ever
+ * disagree, this one wins and the UI is what is wrong.
+ */
+const ROLE_FEATURES: Record<string, string[]> = {
+  viewer: ["records.view", "call_records.view", "dashboard.view"],
+  editor: [
+    "records.view",
+    "call_records.view",
+    "dashboard.view",
+    "call_records.edit",
+    "import.upload",
+    "import.exceptions",
+  ],
+};
+
+async function resolveAccess(userId: string): Promise<{
+  accessRole: string | null;
+  features: string[];
+}> {
   const connection = await getPool().connect();
   try {
-    const result = await connection.queryObject<{ feature_key: string }>({
+    const access = await connection.queryObject<{ access_role: string }>({
+      text: "select access_role from data_center.module_access where user_id = $1",
+      args: [userId],
+    });
+    const accessRole = access.rows[0]?.access_role ?? null;
+
+    const grants = await connection.queryObject<{ feature_key: string }>({
       text: "select feature_key from data_center.feature_grants where user_id = $1",
       args: [userId],
     });
-    return result.rows.map((r) => r.feature_key);
+
+    // Union of what the level implies and what was granted individually.
+    const features = new Set<string>(accessRole ? ROLE_FEATURES[accessRole] ?? [] : []);
+    for (const row of grants.rows) features.add(row.feature_key);
+
+    return { accessRole, features: [...features] };
   } finally {
     connection.release();
   }
@@ -156,14 +188,18 @@ serve(async (req) => {
     switch (body.action) {
       case "access": {
         const superAdmin = isSuperAdmin(profile.role);
-        // A super admin holds everything implicitly, exactly as the host app's
-        // usePermissions short-circuits. Everyone else holds only what the
-        // grants table says.
-        const features = superAdmin ? [] : await resolveFeatures(userId);
+        // Super admin holds everything implicitly and needs no module_access
+        // row, exactly as usePermissions short-circuits in the host app.
+        // Everyone else has access only if a row grants it, case by case.
+        const resolved = superAdmin
+          ? { accessRole: null, features: [] as string[] }
+          : await resolveAccess(userId);
         return json(
           {
             data: {
-              features,
+              hasAccess: superAdmin || resolved.accessRole !== null,
+              accessRole: resolved.accessRole,
+              features: resolved.features,
               isSuperAdmin: superAdmin,
               organizationId: profile.organization_id ?? null,
             },

@@ -7,6 +7,7 @@ import {
   ALL_DATA_CENTER_FEATURES,
   FEATURE_LABELS,
 } from "./lib/features";
+import AccessManager from "./features/access/AccessManager";
 import {
   Database,
   PhoneCall,
@@ -15,6 +16,9 @@ import {
   AlertTriangle,
   Loader2,
   Lock,
+  ShieldOff,
+  Eye,
+  Pencil,
 } from "lucide-react";
 
 // Each surface the module will grow, and the tier-2 key that unlocks it.
@@ -79,8 +83,24 @@ function SurfaceCard({ surface, unlocked }) {
   );
 }
 
+function AccessDenied() {
+  return (
+    <div className="mx-auto mt-16 max-w-md rounded-xl border border-gray-200 bg-white p-8 text-center">
+      <ShieldOff className="mx-auto h-10 w-10 text-gray-400" />
+      <h1 className="mt-4 text-lg font-semibold text-gray-900">
+        No Data Center access
+      </h1>
+      <p className="mt-2 text-sm text-gray-600">
+        Access is granted per person by an administrator. If you need it, ask a
+        super admin to add you from the Data Center's access section.
+      </p>
+    </div>
+  );
+}
+
 function DataCenterHome() {
-  const { can, loading, error, isSuperAdmin, grantedFeatures } = useFeature();
+  const { can, hasAccess, accessRole, loading, error, isSuperAdmin, grantedFeatures } =
+    useFeature();
 
   if (loading) {
     return (
@@ -107,6 +127,14 @@ function DataCenterHome() {
     );
   }
 
+  // The real tier-1 gate: super_admin always, everyone else case by case.
+  // The edge functions enforce the same rule, so this is presentation.
+  if (!hasAccess) {
+    return <AccessDenied />;
+  }
+
+  const canManageAccess = isSuperAdmin || can(DATA_CENTER_FEATURES.GRANTS_MANAGE);
+
   return (
     <div className="px-6 pb-8 pt-2">
       <div className="mb-6 overflow-hidden rounded-lg border border-[#4a5d0f]/20">
@@ -122,6 +150,16 @@ function DataCenterHome() {
               Computation and dashboards over sold stove records.
             </p>
           </div>
+          {accessRole && (
+            <span className="inline-flex items-center gap-1.5 rounded-full bg-white/15 px-3 py-1 text-xs font-medium text-white">
+              {accessRole === "editor" ? (
+                <Pencil className="h-3 w-3" />
+              ) : (
+                <Eye className="h-3 w-3" />
+              )}
+              {accessRole === "editor" ? "Editor" : "Viewer"}
+            </span>
+          )}
         </div>
       </div>
 
@@ -138,7 +176,7 @@ function DataCenterHome() {
             ? "Super admin, so every Data Center feature is available."
             : grantedFeatures.size === 0
               ? "No Data Center features have been granted to you yet."
-              : `${grantedFeatures.size} of ${ALL_DATA_CENTER_FEATURES.length} features granted.`}
+              : `${accessRole === "editor" ? "Editor" : "Viewer"} access, ${grantedFeatures.size} of ${ALL_DATA_CENTER_FEATURES.length} features.`}
         </p>
         {!isSuperAdmin && grantedFeatures.size > 0 && (
           <ul className="mt-3 flex flex-wrap gap-2">
@@ -153,23 +191,32 @@ function DataCenterHome() {
           </ul>
         )}
       </div>
+
+      {/* Access administration. Super admins, or a grants.manage holder.
+          The section is for access only. */}
+      {canManageAccess && (
+        <div className="mt-6">
+          <AccessManager />
+        </div>
+      )}
     </div>
   );
 }
 
 export default function DataCenterPage() {
   return (
-    // Tier 1: the host app's own route map decides whether this module exists
-    // for this user at all. Granted to super_admin only until the module is
-    // proven, which is what makes merging to main safe.
-    <ProtectedRoute routeKey="data-center">
+    // Session gate only: no routeKey. The host's static route map cannot
+    // express "this particular user was enabled", so tier 1 for this module is
+    // the per-user check inside DataCenterHome, backed by the same rule in
+    // every edge function. super_admin passes implicitly; everyone else needs
+    // a module_access row, granted case by case.
+    <ProtectedRoute>
       <DashboardLayout
         currentRoute="data-center"
         title="Data Center"
         description="Computation and dashboards over sold stove records"
       >
         <Suspense fallback={<div className="p-6 text-gray-500">Loading...</div>}>
-          {/* Tier 2: per-user feature grants, resolved from the database. */}
           <DataCenterAccessProvider>
             <DataCenterHome />
           </DataCenterAccessProvider>

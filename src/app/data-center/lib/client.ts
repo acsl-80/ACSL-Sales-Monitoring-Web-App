@@ -105,20 +105,64 @@ async function call<T>(fn: string, action: string, payload: unknown = {}): Promi
 }
 
 export type AccessResponse = {
-  /** Tier-2 feature keys this user actually holds. */
+  /** May this user enter the module at all? Case-by-case per user. */
+  hasAccess: boolean;
+  /** viewer | editor for granted users; null for super_admin and the denied. */
+  accessRole: "viewer" | "editor" | null;
+  /** Effective feature keys: what the level implies plus individual grants. */
   features: string[];
   /** True when the host role short-circuits every check, mirroring usePermissions. */
   isSuperAdmin: boolean;
   organizationId: string | null;
 };
 
+export type AccessListEntry = {
+  user_id: string;
+  access_role: "viewer" | "editor";
+  granted_at: string;
+  full_name: string | null;
+  email: string | null;
+  app_role: string | null;
+  granted_by_name: string | null;
+};
+
+export type UserSearchResult = {
+  id: string;
+  full_name: string | null;
+  email: string | null;
+  role: string | null;
+  current_access: "viewer" | "editor" | null;
+};
+
+export type ChangeLogEntry = {
+  id: string;
+  table_name: string;
+  record_pk: string;
+  action: "INSERT" | "UPDATE" | "DELETE";
+  changed_at: string;
+  changed_by_name: string | null;
+};
+
 export const dataCenterClient = {
   /**
-   * Resolve the caller's tier-2 grants. Called once when the module mounts.
-   * The answer is advisory to the UI and authoritative nowhere: every
-   * subsequent call re-resolves grants server-side from the same token.
+   * Resolve the caller's access. Called once when the module mounts. The
+   * answer is advisory to the UI and authoritative nowhere: every subsequent
+   * call re-resolves access server-side from the same token.
    */
   getAccess: () => call<AccessResponse>("data-center-read", "access"),
+};
+
+/** Access administration. Server-gated to super_admin or grants.manage. */
+export const dataCenterAdmin = {
+  listAccess: () => call<AccessListEntry[]>("data-center-admin", "access_list"),
+  searchUsers: (query: string) =>
+    call<UserSearchResult[]>("data-center-admin", "user_search", { query }),
+  grantAccess: (userId: string, accessRole: "viewer" | "editor") =>
+    call("data-center-admin", "access_grant", { userId, accessRole }),
+  revokeAccess: (userId: string) =>
+    call("data-center-admin", "access_revoke", { userId }),
+  changeLog: (limit = 25) =>
+    call<ChangeLogEntry[]>("data-center-admin", "change_log", { limit }),
 };
 
 export default dataCenterClient;

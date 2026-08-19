@@ -2,102 +2,114 @@ import { test, expect } from "@playwright/test";
 import { signIn, dataCentreNavLink, USERS } from "./helpers";
 
 /**
- * The two-tier permission model, exercised through the real UI.
+ * The access model, exercised through the real UI.
  *
- * Tier 1 decides whether the module exists for a user at all, and lives in the
- * host app's static route map. Tier 2 decides what they can do inside it, and
- * is resolved per user from `data_center.feature_grants`.
+ * Entry is granted per USER, case by case, never per role: super_admin always
+ * passes, everyone else needs a data_center.module_access row carrying viewer
+ * or editor. The seed grants callcentre editor and manager viewer, and leaves
+ * partner and agent with nothing, so every path is testable.
  *
- * The seed grants `callcentre` three of the nine features on purpose, so the
- * partial case is testable rather than hypothetical.
+ * This replaces the earlier static tier 1, whose gap this suite originally
+ * proved: no non-admin could reach the module, so partial grants were
+ * unprovable at the UI boundary. They are provable now, and tested below.
  */
-test.describe("tier 1: does the module exist for this user", () => {
-  test("super admin sees the nav entry and can open the module", async ({ page }) => {
+
+test.describe("entry is per user, case by case", () => {
+  test("super admin needs no grant: nav entry and module both available", async ({
+    page,
+  }) => {
     await signIn(page, USERS.admin);
 
     await expect(dataCentreNavLink(page)).toBeVisible();
-
     await page.goto("/data-center");
-    await expect(page).toHaveURL(/\/data-center/);
     await expect(page.getByRole("heading", { name: "Data Center" })).toBeVisible();
   });
 
+  test("an editor grant admits the call centre account", async ({ page }) => {
+    await signIn(page, USERS.callCentre);
+
+    // The nav entry appears through the per-user check, not the role map.
+    await expect(dataCentreNavLink(page)).toBeVisible({ timeout: 20_000 });
+
+    await page.goto("/data-center");
+    await expect(page.getByRole("heading", { name: "Data Center" })).toBeVisible();
+    await expect(page.getByText("Editor", { exact: true })).toBeVisible();
+  });
+
+  test("a viewer grant admits the manager account, read-only", async ({ page }) => {
+    await signIn(page, USERS.manager);
+
+    await page.goto("/data-center");
+    await expect(page.getByRole("heading", { name: "Data Center" })).toBeVisible();
+    await expect(page.getByText("Viewer", { exact: true })).toBeVisible();
+
+    // Viewer sees, editor changes: the import surface stays locked.
+    await expect(page.getByText("import.upload")).toBeVisible();
+  });
+
   for (const [label, email] of [
-    ["partner agent", USERS.agent],
     ["partner", USERS.partner],
+    ["partner agent", USERS.agent],
   ] as const) {
-    test(`${label} cannot see or reach the module`, async ({ page }) => {
+    test(`${label} has no grant: no nav entry, denied in the module`, async ({
+      page,
+    }) => {
       await signIn(page, email);
 
-      // Absent from the sidebar.
       await expect(dataCentreNavLink(page)).toHaveCount(0);
 
-      // And unreachable by typing the URL, which is the part that matters:
-      // hiding a nav entry is not a permission.
       await page.goto("/data-center");
-      await expect(page).toHaveURL(/\/unauthorized/, { timeout: 20_000 });
+      await expect(
+        page.getByRole("heading", { name: "No Data Center access" }),
+      ).toBeVisible();
+      await expect(page.getByRole("heading", { name: "Data Center" })).toHaveCount(0);
     });
   }
 });
 
-test.describe("tier 2: what can they do once inside", () => {
-  test("super admin short-circuits to every feature", async ({ page }) => {
-    await signIn(page, USERS.admin);
-    await page.goto("/data-center");
-
-    await expect(page.getByText(/every Data Center feature is available/i)).toBeVisible();
-
-    // No surface should be showing its locked state.
-    await expect(page.getByText(/^Requires /)).toHaveCount(0);
-  });
-
-  /**
-   * KNOWN GAP, recorded rather than papered over.
-   *
-   * The call-centre account holds three tier-2 grants in the database, and the
-   * edge function returns exactly those three when asked directly. But the
-   * account's role is `partner_agent`, which carries no `data-center` route
-   * key, so tier 1 stops it at the door and those grants are never consulted
-   * by the UI.
-   *
-   * The consequence is that **no user can currently exercise a partial grant
-   * through the interface**: the only role that reaches the module is
-   * super_admin, and super_admin short-circuits tier 2 entirely. The mechanism
-   * is proven at the function boundary and unproven at the UI boundary.
-   *
-   * This is the tier-1 limitation already recorded in ROADMAP.md Phase 7: a
-   * static, role-keyed map cannot express "this particular non-admin user has
-   * been enabled". Closing it is Phase 7 work, not a test fix, and the tests
-   * below assert today's real behaviour so the gap stays visible.
-   */
-  test("call centre is stopped by tier 1, so its tier-2 grants never apply", async ({
+test.describe("viewer and editor are different animals", () => {
+  test("editor: all four surfaces unlocked, six of nine features", async ({
     page,
   }) => {
     await signIn(page, USERS.callCentre);
     await page.goto("/data-center");
 
-    await expect(
-      page.getByRole("heading", { name: /Page Not Found/i }),
-    ).toBeVisible();
-    await expect(page.getByText(/logged in as partner_agent/i)).toBeVisible();
-
-    // The module must not render at all for this user.
-    await expect(page.getByRole("heading", { name: "Data Center" })).toHaveCount(0);
+    await expect(page.getByText(/Editor access, 6 of 9 features/)).toBeVisible();
+    // Nothing on this page is locked for an editor.
+    await expect(page.getByText(/^Requires /)).toHaveCount(0);
   });
 
-  test("the module is reachable only by super_admin today", async ({ page }) => {
+  test("viewer: view surfaces only, import stays locked", async ({ page }) => {
+    await signIn(page, USERS.manager);
+    await page.goto("/data-center");
+
+    await expect(page.getByText(/Viewer access, 3 of 9 features/)).toBeVisible();
+    await expect(page.getByText(/^Requires /)).toHaveCount(1);
+    await expect(page.getByText("import.upload")).toBeVisible();
+  });
+});
+
+test.describe("the access section is for access only", () => {
+  test("super admin sees the access manager and the tracked changes", async ({
+    page,
+  }) => {
     await signIn(page, USERS.admin);
     await page.goto("/data-center");
-    await expect(page.getByRole("heading", { name: "Data Center" })).toBeVisible();
 
-    // Everyone else, including the account holding real tier-2 grants.
-    for (const email of [USERS.callCentre, USERS.partner, USERS.agent]) {
-      const ctx = await page.context().browser()!.newContext();
-      const p = await ctx.newPage();
-      await signIn(p, email);
-      await p.goto("/data-center");
-      await expect(p.getByRole("heading", { name: "Data Center" })).toHaveCount(0);
-      await ctx.close();
-    }
+    await expect(page.getByRole("heading", { name: "Access", exact: true })).toBeVisible();
+    await expect(page.getByRole("heading", { name: "Recent changes" })).toBeVisible();
+
+    // The seeded grants are listed with their levels.
+    await expect(page.getByText("callcentre@preview.acsl.test")).toBeVisible();
+    await expect(page.getByText("manager@preview.acsl.test")).toBeVisible();
+  });
+
+  test("an editor does not see the access section", async ({ page }) => {
+    await signIn(page, USERS.callCentre);
+    await page.goto("/data-center");
+
+    await expect(page.getByRole("heading", { name: "Data Center" })).toBeVisible();
+    await expect(page.getByRole("heading", { name: "Access", exact: true })).toHaveCount(0);
+    await expect(page.getByRole("heading", { name: "Recent changes" })).toHaveCount(0);
   });
 });

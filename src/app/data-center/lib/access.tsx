@@ -25,6 +25,10 @@ import { dataCenterClient, DataCenterError } from "./client";
 import type { DataCenterFeature } from "./features";
 
 type AccessState = {
+  /** May this user enter at all? Granted case by case, per user. */
+  hasAccess: boolean;
+  /** viewer | editor for granted users; null for super_admin and the denied. */
+  accessRole: "viewer" | "editor" | null;
   features: Set<string>;
   isSuperAdmin: boolean;
   organizationId: string | null;
@@ -33,6 +37,8 @@ type AccessState = {
 };
 
 const INITIAL: AccessState = {
+  hasAccess: false,
+  accessRole: null,
   features: new Set(),
   isSuperAdmin: false,
   organizationId: null,
@@ -53,6 +59,8 @@ export function DataCenterAccessProvider({ children }: { children: ReactNode }) 
       .then((access) => {
         if (!alive) return;
         setState({
+          hasAccess: Boolean(access.hasAccess),
+          accessRole: access.accessRole ?? null,
           features: new Set(access.features ?? []),
           isSuperAdmin: Boolean(access.isSuperAdmin),
           organizationId: access.organizationId ?? null,
@@ -93,6 +101,10 @@ export function useFeature() {
         if (state.isSuperAdmin) return true;
         return state.features.has(feature);
       },
+      /** May this user enter the module at all? */
+      hasAccess: state.isSuperAdmin || state.hasAccess,
+      /** viewer | editor, null for super_admin who outranks both. */
+      accessRole: state.accessRole,
       /** True while grants are still being resolved. Render nothing gated yet. */
       loading: state.loading,
       /** Set when the lookup failed. The module grants nothing in that state. */

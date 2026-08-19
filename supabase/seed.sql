@@ -967,3 +967,14 @@ insert into data_center.feature_grants (user_id, feature_key)
 select 'b0000000-0000-4000-8000-000000000006'::uuid, k
 from unnest(array['records.view','call_records.view','call_records.edit']) k
 on conflict (user_id, feature_key) do nothing;
+
+-- ---------- Data Center module access (viewer / editor) ----------
+-- Access is granted per user, case by case, never per role. callcentre is the
+-- editor example; manager is the viewer example. admin needs no row because
+-- super_admin short-circuits, and the rest deliberately have nothing so the
+-- denied path stays testable.
+insert into data_center.module_access (user_id, access_role)
+values
+  ('b0000000-0000-4000-8000-000000000006', 'editor'),
+  ('b0000000-0000-4000-8000-000000000002', 'viewer')
+on conflict (user_id) do update set access_role = excluded.access_role;
