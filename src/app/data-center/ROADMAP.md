@@ -120,17 +120,50 @@ one transaction rather than being two steps that can half-complete.
 
 ## Phase 2: module shell and the two permission tiers
 
-- [ ] `src/routes/data-center/index.tsx`, five lines, copying
+- [x] `src/routes/data-center/index.tsx`, eight lines, copying
       `src/routes/sales/create.tsx`.
-- [ ] `src/app/data-center/page.jsx`, the shell.
-- [ ] `lib/client.ts`, the module's only data path.
-- [ ] `lib/useFeature.ts`, tier-2 hook mirroring the host's `can()` signature.
-- [ ] Tier 1: add `data-center` to `RouteKey` and `ALL_ROUTES` in
-      `src/lib/permissions.ts`, granted to `super_admin` only.
-- [ ] One nav entry in `src/app/components/Sidebar.jsx`.
-- [ ] `data-center-read` edge function, resolving grants before anything else.
+- [x] `src/app/data-center/page.jsx`, the shell. Renders each future surface as
+      a card that is locked or unlocked by its tier-2 key, so the gate is
+      visible rather than theoretical.
+- [x] `lib/features.ts`, the nine feature keys. `import.upload` and
+      `import.commit` are separate on purpose: preparing an import and landing
+      one are different privileges, because landing it moves stock.
+- [x] `lib/client.ts`, the module's only data path. Explicit timeout, response
+      shape validated, errors logged in full and surfaced calmly.
+- [x] `lib/access.tsx`, tier-2 provider and `useFeature().can()`, mirroring the
+      host's `usePermissions().can()` signature. **Fails closed**: a lookup that
+      errors grants nothing.
+- [x] Tier 1: `data-center` added to `RouteKey` and `ALL_ROUTES` in
+      `src/lib/permissions.ts`. No other role array lists it, so it is
+      `super_admin` only.
+- [x] One nav entry in `src/app/components/Sidebar.jsx`.
+- [x] `data-center-read` edge function with the `access` action, resolving
+      grants from the caller's JWT before anything else.
 
-Exactly two files outside the module change. Anything more is a design error.
+### Verified
+
+- [x] `bun run build` passes. `bunx tsc --noEmit` reports no errors in the
+      module.
+- [x] Route registered: `/data-center/` present in the generated route tree.
+- [x] Block 07: every JWT in the built client bundle decodes to `"role":"anon"`.
+      No service-role key reached the browser.
+- [x] Hand-edited files outside the module: exactly two.
+
+### An architectural consequence worth recording
+
+Because `data_center` is deliberately absent from `[api].schemas`, PostgREST
+does not expose it, so `supabase.from(...)` and `.schema(...)` **cannot reach
+it**. The `data-center-*` edge functions therefore open their own Postgres
+connection via `SUPABASE_DB_URL`, and use supabase-js only for the two things
+that live in `public`: verifying the JWT and reading the caller's role.
+
+This is a feature, not a workaround. It means there is no configuration change
+that could accidentally expose the module through the public API, and it is the
+same property that keeps `sales-mobile` out.
+
+`data-center-read` also declares an explicit CORS origin allowlist rather than
+the `*` used elsewhere in this repo, because its responses are gated on a bearer
+token and a permissive origin makes any page the user visits a potential caller.
 
 ## Phase 3: Table 1, browsable at capacity
 

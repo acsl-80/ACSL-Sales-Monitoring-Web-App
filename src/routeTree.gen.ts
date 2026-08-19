@@ -29,6 +29,7 @@ import { Route as LoginIndexRouteImport } from './routes/login/index'
 import { Route as EndUserRecordsIndexRouteImport } from './routes/end-user-records/index'
 import { Route as DownloadIndexRouteImport } from './routes/download/index'
 import { Route as DocsIndexRouteImport } from './routes/docs/index'
+import { Route as DataCenterIndexRouteImport } from './routes/data-center/index'
 import { Route as DashboardIndexRouteImport } from './routes/dashboard/index'
 import { Route as AppIndexRouteImport } from './routes/app/index'
 import { Route as AgreementImagesIndexRouteImport } from './routes/agreement-images/index'
@@ -61,7 +62,6 @@ import { Route as AdminSystemConfigIndexRouteImport } from './routes/admin/syste
 import { Route as AdminSettingsIndexRouteImport } from './routes/admin/settings/index'
 import { Route as AdminSalesIndexRouteImport } from './routes/admin/sales/index'
 import { Route as AdminPartnerAgentsIndexRouteImport } from './routes/admin/partner-agents/index'
-import { Route as AdminLogsIndexRouteImport } from './routes/admin/logs/index'
 import { Route as AdminCredentialsIndexRouteImport } from './routes/admin/credentials/index'
 import { Route as AdminBranchesIndexRouteImport } from './routes/admin/branches/index'
 import { Route as AdminAppConfigIndexRouteImport } from './routes/admin/app-config/index'
@@ -173,6 +173,11 @@ const DownloadIndexRoute = DownloadIndexRouteImport.update({
 const DocsIndexRoute = DocsIndexRouteImport.update({
   id: '/docs/',
   path: '/docs/',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const DataCenterIndexRoute = DataCenterIndexRouteImport.update({
+  id: '/data-center/',
+  path: '/data-center/',
   getParentRoute: () => rootRouteImport,
 } as any)
 const DashboardIndexRoute = DashboardIndexRouteImport.update({
@@ -347,11 +352,6 @@ const AdminPartnerAgentsIndexRoute = AdminPartnerAgentsIndexRouteImport.update({
   path: '/admin/partner-agents/',
   getParentRoute: () => rootRouteImport,
 } as any)
-const AdminLogsIndexRoute = AdminLogsIndexRouteImport.update({
-  id: '/admin/logs/',
-  path: '/admin/logs/',
-  getParentRoute: () => rootRouteImport,
-} as any)
 const AdminCredentialsIndexRoute = AdminCredentialsIndexRouteImport.update({
   id: '/admin/credentials/',
   path: '/admin/credentials/',
@@ -419,6 +419,7 @@ export interface FileRoutesByFullPath {
   '/agreement-images/': typeof AgreementImagesIndexRoute
   '/app/': typeof AppIndexRoute
   '/dashboard/': typeof DashboardIndexRoute
+  '/data-center/': typeof DataCenterIndexRoute
   '/docs/': typeof DocsIndexRoute
   '/download/': typeof DownloadIndexRoute
   '/end-user-records/': typeof EndUserRecordsIndexRoute
@@ -443,7 +444,6 @@ export interface FileRoutesByFullPath {
   '/admin/app-config/': typeof AdminAppConfigIndexRoute
   '/admin/branches/': typeof AdminBranchesIndexRoute
   '/admin/credentials/': typeof AdminCredentialsIndexRoute
-  '/admin/logs/': typeof AdminLogsIndexRoute
   '/admin/partner-agents/': typeof AdminPartnerAgentsIndexRoute
   '/admin/sales/': typeof AdminSalesIndexRoute
   '/admin/settings/': typeof AdminSettingsIndexRoute
@@ -484,6 +484,7 @@ export interface FileRoutesByTo {
   '/agreement-images': typeof AgreementImagesIndexRoute
   '/app': typeof AppIndexRoute
   '/dashboard': typeof DashboardIndexRoute
+  '/data-center': typeof DataCenterIndexRoute
   '/docs': typeof DocsIndexRoute
   '/download': typeof DownloadIndexRoute
   '/end-user-records': typeof EndUserRecordsIndexRoute
@@ -508,7 +509,6 @@ export interface FileRoutesByTo {
   '/admin/app-config': typeof AdminAppConfigIndexRoute
   '/admin/branches': typeof AdminBranchesIndexRoute
   '/admin/credentials': typeof AdminCredentialsIndexRoute
-  '/admin/logs': typeof AdminLogsIndexRoute
   '/admin/partner-agents': typeof AdminPartnerAgentsIndexRoute
   '/admin/sales': typeof AdminSalesIndexRoute
   '/admin/settings': typeof AdminSettingsIndexRoute
@@ -550,6 +550,7 @@ export interface FileRoutesById {
   '/agreement-images/': typeof AgreementImagesIndexRoute
   '/app/': typeof AppIndexRoute
   '/dashboard/': typeof DashboardIndexRoute
+  '/data-center/': typeof DataCenterIndexRoute
   '/docs/': typeof DocsIndexRoute
   '/download/': typeof DownloadIndexRoute
   '/end-user-records/': typeof EndUserRecordsIndexRoute
@@ -574,7 +575,6 @@ export interface FileRoutesById {
   '/admin/app-config/': typeof AdminAppConfigIndexRoute
   '/admin/branches/': typeof AdminBranchesIndexRoute
   '/admin/credentials/': typeof AdminCredentialsIndexRoute
-  '/admin/logs/': typeof AdminLogsIndexRoute
   '/admin/partner-agents/': typeof AdminPartnerAgentsIndexRoute
   '/admin/sales/': typeof AdminSalesIndexRoute
   '/admin/settings/': typeof AdminSettingsIndexRoute
@@ -617,6 +617,7 @@ export interface FileRouteTypes {
     | '/agreement-images/'
     | '/app/'
     | '/dashboard/'
+    | '/data-center/'
     | '/docs/'
     | '/download/'
     | '/end-user-records/'
@@ -641,7 +642,6 @@ export interface FileRouteTypes {
     | '/admin/app-config/'
     | '/admin/branches/'
     | '/admin/credentials/'
-    | '/admin/logs/'
     | '/admin/partner-agents/'
     | '/admin/sales/'
     | '/admin/settings/'
@@ -682,6 +682,7 @@ export interface FileRouteTypes {
     | '/agreement-images'
     | '/app'
     | '/dashboard'
+    | '/data-center'
     | '/docs'
     | '/download'
     | '/end-user-records'
@@ -706,7 +707,6 @@ export interface FileRouteTypes {
     | '/admin/app-config'
     | '/admin/branches'
     | '/admin/credentials'
-    | '/admin/logs'
     | '/admin/partner-agents'
     | '/admin/sales'
     | '/admin/settings'
@@ -747,6 +747,7 @@ export interface FileRouteTypes {
     | '/agreement-images/'
     | '/app/'
     | '/dashboard/'
+    | '/data-center/'
     | '/docs/'
     | '/download/'
     | '/end-user-records/'
@@ -771,7 +772,6 @@ export interface FileRouteTypes {
     | '/admin/app-config/'
     | '/admin/branches/'
     | '/admin/credentials/'
-    | '/admin/logs/'
     | '/admin/partner-agents/'
     | '/admin/sales/'
     | '/admin/settings/'
@@ -813,6 +813,7 @@ export interface RootRouteChildren {
   AgreementImagesIndexRoute: typeof AgreementImagesIndexRoute
   AppIndexRoute: typeof AppIndexRoute
   DashboardIndexRoute: typeof DashboardIndexRoute
+  DataCenterIndexRoute: typeof DataCenterIndexRoute
   DocsIndexRoute: typeof DocsIndexRoute
   DownloadIndexRoute: typeof DownloadIndexRoute
   EndUserRecordsIndexRoute: typeof EndUserRecordsIndexRoute
@@ -837,7 +838,6 @@ export interface RootRouteChildren {
   AdminAppConfigIndexRoute: typeof AdminAppConfigIndexRoute
   AdminBranchesIndexRoute: typeof AdminBranchesIndexRoute
   AdminCredentialsIndexRoute: typeof AdminCredentialsIndexRoute
-  AdminLogsIndexRoute: typeof AdminLogsIndexRoute
   AdminPartnerAgentsIndexRoute: typeof AdminPartnerAgentsIndexRoute
   AdminSalesIndexRoute: typeof AdminSalesIndexRoute
   AdminSettingsIndexRoute: typeof AdminSettingsIndexRoute
@@ -1007,6 +1007,13 @@ declare module '@tanstack/react-router' {
       path: '/docs'
       fullPath: '/docs/'
       preLoaderRoute: typeof DocsIndexRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/data-center/': {
+      id: '/data-center/'
+      path: '/data-center'
+      fullPath: '/data-center/'
+      preLoaderRoute: typeof DataCenterIndexRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/dashboard/': {
@@ -1233,13 +1240,6 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AdminPartnerAgentsIndexRouteImport
       parentRoute: typeof rootRouteImport
     }
-    '/admin/logs/': {
-      id: '/admin/logs/'
-      path: '/admin/logs'
-      fullPath: '/admin/logs/'
-      preLoaderRoute: typeof AdminLogsIndexRouteImport
-      parentRoute: typeof rootRouteImport
-    }
     '/admin/credentials/': {
       id: '/admin/credentials/'
       path: '/admin/credentials'
@@ -1325,6 +1325,7 @@ const rootRouteChildren: RootRouteChildren = {
   AgreementImagesIndexRoute: AgreementImagesIndexRoute,
   AppIndexRoute: AppIndexRoute,
   DashboardIndexRoute: DashboardIndexRoute,
+  DataCenterIndexRoute: DataCenterIndexRoute,
   DocsIndexRoute: DocsIndexRoute,
   DownloadIndexRoute: DownloadIndexRoute,
   EndUserRecordsIndexRoute: EndUserRecordsIndexRoute,
@@ -1349,7 +1350,6 @@ const rootRouteChildren: RootRouteChildren = {
   AdminAppConfigIndexRoute: AdminAppConfigIndexRoute,
   AdminBranchesIndexRoute: AdminBranchesIndexRoute,
   AdminCredentialsIndexRoute: AdminCredentialsIndexRoute,
-  AdminLogsIndexRoute: AdminLogsIndexRoute,
   AdminPartnerAgentsIndexRoute: AdminPartnerAgentsIndexRoute,
   AdminSalesIndexRoute: AdminSalesIndexRoute,
   AdminSettingsIndexRoute: AdminSettingsIndexRoute,

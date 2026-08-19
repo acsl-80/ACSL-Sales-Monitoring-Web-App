@@ -26,6 +26,7 @@ import {
   BarChart3,
   BookOpen,
   HelpCircle,
+  Database,
 
 } from "lucide-react";
 import { usePermissions } from "../hooks/usePermissions";
@@ -74,6 +75,8 @@ const allNavItems = [
   },
 
   { name: "Stove Users Data", icon: FileText, route: "end-user-records", href: "/end-user-records" },
+
+  { name: "Data Center", icon: Database, route: "data-center", href: "/data-center" },
 
   { name: "Track Stoves", icon: Tag, route: "stove-management", href: "/stove-management" },
 
