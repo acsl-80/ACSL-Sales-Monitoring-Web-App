@@ -51,9 +51,17 @@ export function useRecords(filters: RecordsFilters): RecordsState {
 
   const fetchPage = useCallback(
     async (from: RecordsCursor | null, gen: number) => {
-      if (inFlight.current) return;
+      // The guard covers "load more" only. A filter change starts a new
+      // generation and must always proceed: blocking it on a first page that
+      // is still in flight clears the rows and then never refills them, which
+      // leaves an empty table with no error and no way back. Found by the
+      // Playwright filter test, which typed into search while page one was
+      // still loading. The stale response is discarded by the generation check
+      // below rather than by refusing to start.
+      if (from && inFlight.current) return;
       inFlight.current = true;
-      from ? setLoadingMore(true) : setLoading(true);
+      if (from) setLoadingMore(true);
+      else setLoading(true);
       try {
         const page = await dataCenterClient.getRecords({
           cursor: from,
@@ -75,9 +83,13 @@ export function useRecords(filters: RecordsFilters): RecordsState {
         );
         setHasMore(false);
       } finally {
-        inFlight.current = false;
-        setLoading(false);
-        setLoadingMore(false);
+        // Only the current generation may clear the flags. A superseded
+        // request finishing late must not report the newer one as done.
+        if (gen === generation.current) {
+          inFlight.current = false;
+          setLoading(false);
+          setLoadingMore(false);
+        }
       }
     },
     [serialized],
