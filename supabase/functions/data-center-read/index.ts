@@ -34,25 +34,29 @@ const DEFAULT_ORIGINS = [
 ];
 const ORIGIN_SUFFIXES = [".vercel.app"];
 
-function resolveCors(req: Request): Record<string, string> {
-  const origin = req.headers.get("Origin") ?? "";
+function originAllowed(origin: string): boolean {
+  // No Origin header at all means a non-browser caller (curl, server to
+  // server). Those are authenticated by bearer token and are not subject to
+  // the same-origin rules this list exists to enforce.
+  if (!origin) return true;
   const configured = (Deno.env.get("DATA_CENTER_ALLOWED_ORIGINS") ?? "")
     .split(",")
     .map((o) => o.trim())
     .filter(Boolean);
-  const allowed = [...DEFAULT_ORIGINS, ...configured];
+  return (
+    [...DEFAULT_ORIGINS, ...configured].includes(origin) ||
+    ORIGIN_SUFFIXES.some((s) => origin.endsWith(s))
+  );
+}
 
-  const permitted =
-    allowed.includes(origin) || ORIGIN_SUFFIXES.some((s) => origin.endsWith(s));
-
+function resolveCors(req: Request): Record<string, string> {
+  const origin = req.headers.get("Origin") ?? "";
   const headers: Record<string, string> = {
     "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
     "Access-Control-Allow-Methods": "POST, OPTIONS",
     Vary: "Origin",
   };
-  // No header at all when the origin is not on the list: the browser then
-  // blocks the response, which is the intended outcome.
-  if (permitted && origin) headers["Access-Control-Allow-Origin"] = origin;
+  if (originAllowed(origin) && origin) headers["Access-Control-Allow-Origin"] = origin;
   return headers;
 }
 
@@ -95,6 +99,17 @@ async function resolveFeatures(userId: string): Promise<string[]> {
 
 serve(async (req) => {
   const cors = resolveCors(req);
+
+  // Enforce the allowlist in the STATUS, not only in the header.
+  //
+  // Verified locally: the Supabase API gateway (Kong) overwrites
+  // Access-Control-Allow-Origin with `*` on the way out, so omitting the header
+  // achieves nothing on its own. A proxy can rewrite a header; it cannot turn a
+  // 403 with no payload into data. This is the check that actually holds.
+  const requestOrigin = req.headers.get("Origin") ?? "";
+  if (!originAllowed(requestOrigin)) {
+    return json({ error: "Origin not permitted", code: "bad_origin" }, 403, cors);
+  }
 
   if (req.method === "OPTIONS") {
     return new Response("ok", { headers: cors });

@@ -62,27 +62,51 @@ This repository's migration history cannot do that:
 The full schema exists only in `schema-baselines/sales_public_baseline.sql`,
 which is an introspection snapshot, not part of the migration history.
 
-## Prerequisite: adopt a baseline migration
+## Prerequisite: the documented setup step this project skipped
 
-Before a Supabase branch can work, the repository needs a migration history that
-can rebuild the database from nothing:
+Confirmed against Supabase's own GitHub-integration guide, under "Preparing
+your Git repository". Their required setup is:
 
-1. Add `schema-baselines/sales_public_baseline.sql` as the **first** migration,
-   timestamped before every existing one, plus the supplemental file for auth
-   triggers and storage.
-2. Tell production it is already applied, with
-   `supabase migration repair --status applied`, so it is never re-run there.
-   This is the step that must not be got wrong.
-3. Backfill the remaining 31 migrations into the history the same way, since
-   production believes none of them have run.
-4. Prove it by letting a branch build, or by resetting a local database from
-   migrations alone and diffing the result against the baseline.
+1. `supabase init`
+2. **`supabase db pull --db-url <connection string>`**, which captures the
+   existing production schema as a migration
+3. Commit the `supabase` directory, with their suggested message
+   "Initial migration"
+
+Step 2 was never done here. That is the whole blocker, stated in their words
+rather than mine: branching reads the schema from the repository's migration
+history, and this repository has no migration that creates the core tables.
+"Data-less" in their docs refers to rows, not schema.
+
+So the fix is their documented command, not a hand-rolled one:
+
+1. Run `supabase db pull` against production to generate a baseline migration.
+   This is better than pasting `schema-baselines/sales_public_baseline.sql`,
+   because the CLI also writes the migration history correctly.
+2. Confirm the remaining 31 migrations are recorded as applied, since
+   production's `supabase_migrations.schema_migrations` currently has 0 rows.
+   `supabase migration repair --status applied` is the tool. This is the step
+   that must not be got wrong: repairing marks a migration as done **without
+   running it**, which is what protects production.
+3. Prove it by resetting a local database from migrations alone and diffing the
+   result against the baseline snapshot, before any branch is created.
 
 **This is host-app work, not Data Center work.** It touches `supabase/`, which
 the sync workflow classifies as high risk, and it benefits the whole repository
-rather than this module: today a new environment cannot be stood up from the
-repo at all. It is a prerequisite, and it deserves its own branch and its own
-review rather than riding along inside this one.
+rather than this module: today no environment can be stood up from this repo at
+all, and the local stack is already missing the auth triggers as a result. It
+deserves its own branch and its own review rather than riding inside this one.
+
+### Why no branch was created to test this
+
+The question was whether a Dashboard-created branch might sidestep the missing
+history by pulling schema from production. The documentation answers it: it does
+not, and `supabase db pull` is the prescribed setup precisely because the
+history is what branches are built from.
+
+Creating a branch would therefore have failed at the `Migrate` step, skipped
+seeding, and cost money to learn nothing. The org is on the **Pro** plan, so
+branching is available whenever the prerequisite is done.
 
 ---
 
@@ -218,6 +242,50 @@ one transaction rather than being two steps that can half-complete.
 - [x] Block 07: every JWT in the built client bundle decodes to `"role":"anon"`.
       No service-role key reached the browser.
 - [x] Hand-edited files outside the module: exactly two.
+
+### The tier-2 gate, proven end to end
+
+Executed against the local edge runtime on 2026-08-19 with real users and real
+JWTs, not reasoned about:
+
+| Case | Result |
+|---|---|
+| Holds the route, holds **no** grant | `200 {"features":[],"isSuperAdmin":false}` |
+| Same user after granting two keys | `200 {"features":["records.view","call_records.edit"]}` |
+| Super admin | `200 {"isSuperAdmin":true}` |
+| Unknown action | `400 unknown_action` |
+| Body is not JSON | `400 bad_body` |
+| Disallowed origin | `403 bad_origin` |
+| No Origin header (server to server) | `200`, correctly permitted |
+
+The positive case matters as much as the negative one: a gate that always
+returned an empty list would pass the first test and be broken. Granting two
+keys and getting back exactly those two is what proves the table is read.
+
+### A real defect this testing found
+
+The CORS allowlist did not work as originally written. The Supabase API gateway
+(`via: kong/2.8.1`) **overwrites** `Access-Control-Allow-Origin` with `*` on the
+way out, so omitting the header achieved nothing: a request from
+`https://evil.example` came back with `*`.
+
+Fixed by enforcing the allowlist in the **status code** rather than only the
+header. A proxy can rewrite a header; it cannot turn a `403` with no payload
+into data. Requests with no `Origin` at all are still permitted, since those are
+non-browser callers authenticated by bearer token.
+
+This is exactly the class of thing that only surfaces by running the code.
+
+### Local environment gap, worth knowing before the branch work
+
+The local database has **no `on_auth_user_created` trigger**, so creating a user
+does not create a `profiles` row. The trigger lives in
+`schema-baselines/sales_supplemental_baseline.sql`, which was never loaded
+locally; only the public-schema baseline was.
+
+That is the same missing-history problem described under Environment strategy,
+seen from another angle: the local stack is not a faithful reproduction of
+production either. The baseline migration work fixes both.
 
 ### An architectural consequence worth recording
 
