@@ -8,6 +8,7 @@ import {
   FEATURE_LABELS,
 } from "./lib/features";
 import AccessManager from "./features/access/AccessManager";
+import RecordsTable from "./features/records/RecordsTable";
 import {
   Database,
   PhoneCall,
@@ -21,16 +22,10 @@ import {
   Pencil,
 } from "lucide-react";
 
-// Each surface the module will grow, and the tier-2 key that unlocks it.
-// Phase 2 renders them as placeholders on purpose: the point of this slice is
-// that the gate works, not that the features do.
+// The surfaces this module will grow, and the tier-2 key that unlocks each.
+// Sold Stove Records is built (Phase 3) and renders below rather than as a
+// card; the rest are still placeholders.
 const SURFACES = [
-  {
-    key: DATA_CENTER_FEATURES.RECORDS_VIEW,
-    name: "Sold Stove Records",
-    icon: Database,
-    blurb: "Every sold stove with its sale detail. Phase 3.",
-  },
   {
     key: DATA_CENTER_FEATURES.CALL_RECORDS_VIEW,
     name: "Call Centre",
@@ -163,7 +158,17 @@ function DataCenterHome() {
         </div>
       </div>
 
-      <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+      {/* Table 1. The feature gate is presentation: data-center-read re-checks
+          records.view on every request and returns 403 without it. */}
+      {can(DATA_CENTER_FEATURES.RECORDS_VIEW) ? (
+        <RecordsTable />
+      ) : (
+        <div className="rounded-xl border border-gray-200 bg-gray-50 p-5 text-sm text-gray-600">
+          Sold stove records are not part of your access.
+        </div>
+      )}
+
+      <div className="mt-6 grid grid-cols-1 gap-4 md:grid-cols-2">
         {SURFACES.map((surface) => (
           <SurfaceCard key={surface.key} surface={surface} unlocked={can(surface.key)} />
         ))}

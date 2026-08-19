@@ -20,6 +20,9 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.39.3";
 import { Pool } from "https://deno.land/x/postgres@v0.17.0/mod.ts";
+import { resolveAssignedOrgIds } from "../_shared/resolveAssignedOrgIds.ts";
+import { BadRequest, buildRecordsQuery, toPage } from "./records-query.ts";
+import type { ScopeInput } from "./scope.ts";
 
 // Explicit origin allowlist rather than `*`. The rest of this repo uses `*`;
 // this module does not, because these responses are gated on a bearer token and
@@ -102,6 +105,39 @@ const ROLE_FEATURES: Record<string, string[]> = {
   ],
 };
 
+/**
+ * Which sales this caller may see, resolved the way the sales app resolves it.
+ *
+ * ACSL roles carry assignments that live in their own tables, and a manager
+ * additionally inherits their team's. Both are read through the sales app's own
+ * helper rather than reimplemented, so the two can never drift into disagreeing
+ * about who sees what.
+ */
+async function resolveScope(
+  supabase: ReturnType<typeof createClient>,
+  userId: string,
+  role: string | null,
+  organizationId: string | null,
+): Promise<ScopeInput> {
+  const scope: ScopeInput = { role, userId, organizationId };
+
+  if (role === "acsl_agent" || role === "acsl_agent_manager" || role === "super_admin_agent") {
+    const resolved = await resolveAssignedOrgIds(supabase, userId);
+    scope.assignedOrgIds = resolved.assignedOrgIds;
+  }
+
+  if (role === "acsl_agent_manager") {
+    const { data: subordinates } = await supabase
+      .from("profiles")
+      .select("id")
+      .eq("manager_id", userId)
+      .eq("role", "acsl_agent");
+    scope.teamAgentIds = [userId, ...(subordinates ?? []).map((s: { id: string }) => s.id)];
+  }
+
+  return scope;
+}
+
 async function resolveAccess(userId: string): Promise<{
   accessRole: string | null;
   features: string[];
@@ -178,7 +214,7 @@ serve(async (req) => {
       return json({ error: "No profile for this user", code: "no_profile" }, 403, cors);
     }
 
-    let body: { action?: string } = {};
+    let body: { action?: string; [key: string]: unknown } = {};
     try {
       body = await req.json();
     } catch {
@@ -207,6 +243,74 @@ serve(async (req) => {
           200,
           cors,
         );
+      }
+
+      case "records": {
+        const superAdmin = isSuperAdmin(profile.role);
+        const resolved = superAdmin
+          ? { accessRole: null, features: [] as string[] }
+          : await resolveAccess(userId);
+
+        // Two gates, both server-side. Entry to the module at all, then the
+        // feature itself. The UI checks the same things, but only so it can
+        // avoid offering an action that would be refused here.
+        if (!superAdmin && resolved.accessRole === null) {
+          return json({ error: "No Data Center access", code: "no_access" }, 403, cors);
+        }
+        if (!superAdmin && !resolved.features.includes("records.view")) {
+          return json({ error: "Not permitted", code: "no_feature" }, 403, cors);
+        }
+
+        const scope = await resolveScope(
+          supabase,
+          userId,
+          profile.role,
+          profile.organization_id ?? null,
+        );
+
+        let built;
+        try {
+          built = buildRecordsQuery(
+            {
+              cursor: (body.cursor ?? null) as never,
+              limit: body.limit as number | undefined,
+              direction: body.direction as "asc" | "desc" | undefined,
+              filters: (body.filters ?? {}) as never,
+            },
+            scope,
+          );
+        } catch (err) {
+          if (err instanceof BadRequest) {
+            return json({ error: err.message, code: "bad_request" }, 400, cors);
+          }
+          throw err;
+        }
+
+        const connection = await getPool().connect();
+        try {
+          const result = await connection.queryObject<Record<string, unknown>>({
+            text: built.text,
+            args: built.args,
+          });
+          const page = toPage(result.rows, built.pageSize);
+          return json(
+            {
+              data: {
+                rows: page.rows,
+                nextCursor: page.nextCursor,
+                hasMore: page.hasMore,
+                pageSize: built.pageSize,
+                // What the caller is looking at, so the table can say so rather
+                // than leaving a partner wondering why the count seems low.
+                scope: built.scopeDescription,
+              },
+            },
+            200,
+            cors,
+          );
+        } finally {
+          connection.release();
+        }
       }
 
       default:

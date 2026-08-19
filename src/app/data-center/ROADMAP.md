@@ -342,16 +342,29 @@ Once unblocked, in order:
    `supabase_edge_runtime` container is stopped.
 5. Then Phase 3.
 
-## Phase 3: Table 1, browsable at capacity
+## Phase 3: Table 1, browsable at capacity — DONE
 
-- [ ] `scripts/seed-data-center.sql`, generating 500,000 synthetic sales
-      locally. This is a deliverable. Production has 38 rows, so no capacity
-      claim is provable without it.
-- [ ] Keyset pagination, cursor on `(sales_date, id)`. No `OFFSET` parameter is
-      exposed at all.
-- [ ] Server-side filter, sort and search. Hard server-side page ceiling.
-- [ ] Virtualized table rendering.
-- [ ] `EXPLAIN ANALYZE` against the seeded set, captured in the PR.
+- [x] `scripts/seed-data-center.sql`, generating 500,000 synthetic sales
+      locally, plus a teardown that removes exactly what it wrote. Verified: the
+      500k load takes about six minutes and every join in the view resolves.
+- [x] Keyset pagination, cursor on `(sales_date, id)`. No `OFFSET` parameter
+      exists in the request shape, so it cannot be reintroduced by a caller.
+      Null dates carry an explicit branch in both directions.
+- [x] Server-side filter, sort and search. Page ceiling of 200 enforced in the
+      builder, not trusted from the caller.
+- [x] Virtualized rendering, written in the module rather than taken as a
+      dependency, so package.json and bun.lock stay untouched.
+- [x] `EXPLAIN ANALYZE` captured in `RECORDS-PERFORMANCE.md`.
+- [x] Scoping mirrors the sales app's own rule, so the module can never show a
+      user a row the sales app hides.
+
+Two things this phase changed from the plan, both with a measurement behind
+them and both recorded in `RECORDS-PERFORMANCE.md`:
+
+- **A second index on `public.sales`.** The design promised one. Search without
+  a trigram index costs 1,089 ms at 500k, against 10.9 ms with it.
+- **`v_sold_stoves` gained `sold_on_behalf_of`.** The scope rule needs it, and
+  its absence broke every non-super-admin read.
 
 ## Phase 4: Table 2, the call centre layer
 

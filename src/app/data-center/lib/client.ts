@@ -143,6 +143,67 @@ export type ChangeLogEntry = {
   changed_by_name: string | null;
 };
 
+/** The cursor is opaque to the client: it is handed back exactly as received. */
+export type RecordsCursor = { salesDate: string | null; saleId: string };
+
+export type RecordsFilters = {
+  search?: string;
+  organizationId?: string | null;
+  userState?: string;
+  saleStatus?: string;
+  paymentStatus?: string;
+  platform?: string;
+  dateFrom?: string;
+  dateTo?: string;
+  includeArchived?: boolean;
+};
+
+export type SoldStoveRow = {
+  sale_id: string;
+  transaction_id: string | null;
+  /** ISO YYYY-MM-DD. Cast to text server-side so no timezone can shift it. */
+  sales_date: string | null;
+  stove_serial_no: string | null;
+  end_user_name: string | null;
+  aka: string | null;
+  primary_phone: string | null;
+  alternative_phone: string | null;
+  buyer_name: string | null;
+  buyer_phone: string | null;
+  partner_name: string | null;
+  retailer_branch: string | null;
+  user_state: string | null;
+  user_lga: string | null;
+  user_residential_address: string | null;
+  amount: string | number | null;
+  total_paid: string | number | null;
+  payment_status: string | null;
+  is_installment: boolean | null;
+  sale_status: string | null;
+  is_archived: boolean | null;
+  platform: string | null;
+  created_at: string | null;
+  organization_id: string | null;
+  partner_state: string | null;
+  partner_branch: string | null;
+  partner_id: string | null;
+  sales_model: string | null;
+  sale_agent_name: string | null;
+  previous_stove_type: string | null;
+  pot_quantity: number | null;
+  heat_retention_device: boolean | null;
+  stove_stock_status: string | null;
+};
+
+export type RecordsPage = {
+  rows: SoldStoveRow[];
+  nextCursor: RecordsCursor | null;
+  hasMore: boolean;
+  pageSize: number;
+  /** Plain-language description of what this caller is allowed to see. */
+  scope: string;
+};
+
 export const dataCenterClient = {
   /**
    * Resolve the caller's access. Called once when the module mounts. The
@@ -150,6 +211,21 @@ export const dataCenterClient = {
    * call re-resolves access server-side from the same token.
    */
   getAccess: () => call<AccessResponse>("data-center-read", "access"),
+
+  /**
+   * One page of Table 1.
+   *
+   * There is no page number and no offset, by design. Paging forward means
+   * passing back the `nextCursor` from the previous page, which is what keeps
+   * the query cost flat at 500,000 rows. Filtering, sorting and searching all
+   * happen in Postgres; nothing here narrows a set it already received.
+   */
+  getRecords: (params: {
+    cursor?: RecordsCursor | null;
+    limit?: number;
+    direction?: "asc" | "desc";
+    filters?: RecordsFilters;
+  } = {}) => call<RecordsPage>("data-center-read", "records", params),
 };
 
 /** Access administration. Server-gated to super_admin or grants.manage. */
