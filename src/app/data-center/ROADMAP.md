@@ -287,6 +287,26 @@ That is the same missing-history problem described under Environment strategy,
 seen from another angle: the local stack is not a faithful reproduction of
 production either. The baseline migration work fixes both.
 
+### How edge functions actually reach a Supabase branch
+
+Found by review on 2026-08-19, because the hosted branch's `data-center-read`
+returned nothing: **it was never deployed there.**
+
+- A branch project starts with a **copy of the parent's deployed functions**,
+  all 62 of them, orphans included. Not the repo's 52.
+- The integration deploys a repo function to the branch only when a **push
+  changes that function**. A push touching only `src/` deploys nothing.
+- Consequence for every later phase: after adding `data-center-write`,
+  `data-center-import` or `data-center-compute`, either push a commit that
+  touches them or deploy by hand:
+  `supabase functions deploy <name> --project-ref <branch-ref>`.
+
+Also settled by test on the hosted branch: OPTIONS preflight without an
+Authorization header returns 200 (the gateway exempts preflight from JWT
+verification), and hosted Kong echoes the allowed origin rather than
+overwriting it with `*` the way local Kong does. The status-code enforcement
+stays regardless, since it protects against both behaviours.
+
 ### An architectural consequence worth recording
 
 Because `data_center` is deliberately absent from `[api].schemas`, PostgREST

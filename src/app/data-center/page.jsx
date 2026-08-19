@@ -2,7 +2,11 @@ import { Suspense } from "react";
 import ProtectedRoute from "../components/ProtectedRoute";
 import DashboardLayout from "../components/DashboardLayout";
 import { DataCenterAccessProvider, useFeature } from "./lib/access";
-import { DATA_CENTER_FEATURES, FEATURE_LABELS } from "./lib/features";
+import {
+  DATA_CENTER_FEATURES,
+  ALL_DATA_CENTER_FEATURES,
+  FEATURE_LABELS,
+} from "./lib/features";
 import {
   Database,
   PhoneCall,
@@ -134,7 +138,7 @@ function DataCenterHome() {
             ? "Super admin, so every Data Center feature is available."
             : grantedFeatures.size === 0
               ? "No Data Center features have been granted to you yet."
-              : `${grantedFeatures.size} of ${SURFACES.length + 5} features granted.`}
+              : `${grantedFeatures.size} of ${ALL_DATA_CENTER_FEATURES.length} features granted.`}
         </p>
         {!isSuperAdmin && grantedFeatures.size > 0 && (
           <ul className="mt-3 flex flex-wrap gap-2">
