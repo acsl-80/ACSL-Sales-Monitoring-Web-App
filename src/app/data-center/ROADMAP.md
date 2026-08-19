@@ -16,6 +16,76 @@ unaffected**, checked at every phase, not once at the end.
 
 ---
 
+# Environment strategy
+
+The intended shape, agreed 2026-08-19:
+
+1. A **Supabase branch** carrying the `data_center` schema, so the module can be
+   exercised against a real, isolated Postgres with realtime, rather than only
+   locally.
+2. The matching **Vercel preview deployment** of `feat/data-center`, pointed at
+   that branch's credentials.
+3. Merge both to production together when the module is proven.
+
+This is a better shape than what the plan originally assumed, because it removes
+the awkward choice between testing locally and applying to a live database.
+
+**It also changes nothing about mobile.** A Supabase branch is a separate
+instance with its own credentials. `sales-mobile` points at production and is
+never repointed. The module stays out of PostgREST regardless, so even on the
+branch there is nothing for the Flutter app to reach.
+
+## Blocker: the migration history cannot build a branch
+
+Verified 2026-08-19, and this stops the approach until it is fixed.
+
+Supabase builds a preview branch by running the migrations in
+`supabase/migrations` against a **fresh, data-less** database (step 5 of its
+deploy workflow, `Migrate`). If that step fails, seeding is skipped and the
+branch comes up broken.
+
+This repository's migration history cannot do that:
+
+- `supabase_migrations.schema_migrations` in production contains **0 rows**. The
+  schema was built through the dashboard, never through the CLI.
+- No migration ever creates `sales`, `organizations`, `profiles`,
+  `stove_ids_base`, `addresses` or `uploads`. Only `payment_models`,
+  `organization_payment_models`, `installment_payments`, `app_releases`,
+  `sync_logs`, the `super_admin_agent_*` tables and the `purge_archive` copies
+  are created by migrations.
+- So every migration that alters those core tables would fail on a fresh
+  database. `20260609_partner_purge_part2` would fail outright on
+  `CREATE TABLE purge_archive.s_sales (LIKE public.sales)`.
+- The `data_center` migrations would fail too, since they carry foreign keys to
+  `public.sales` and `public.profiles`.
+
+The full schema exists only in `schema-baselines/sales_public_baseline.sql`,
+which is an introspection snapshot, not part of the migration history.
+
+## Prerequisite: adopt a baseline migration
+
+Before a Supabase branch can work, the repository needs a migration history that
+can rebuild the database from nothing:
+
+1. Add `schema-baselines/sales_public_baseline.sql` as the **first** migration,
+   timestamped before every existing one, plus the supplemental file for auth
+   triggers and storage.
+2. Tell production it is already applied, with
+   `supabase migration repair --status applied`, so it is never re-run there.
+   This is the step that must not be got wrong.
+3. Backfill the remaining 31 migrations into the history the same way, since
+   production believes none of them have run.
+4. Prove it by letting a branch build, or by resetting a local database from
+   migrations alone and diffing the result against the baseline.
+
+**This is host-app work, not Data Center work.** It touches `supabase/`, which
+the sync workflow classifies as high risk, and it benefits the whole repository
+rather than this module: today a new environment cannot be stood up from the
+repo at all. It is a prerequisite, and it deserves its own branch and its own
+review rather than riding along inside this one.
+
+---
+
 ## Phase 0: branch and safety net
 
 - [x] Branch `feat/data-center` from `origin/main`.
@@ -164,6 +234,25 @@ same property that keeps `sales-mobile` out.
 `data-center-read` also declares an explicit CORS origin allowlist rather than
 the `*` used elsewhere in this repo, because its responses are gated on a bearer
 token and a permissive origin makes any page the user visits a potential caller.
+
+## Next step
+
+**Blocked pending a decision.** See "Prerequisite: adopt a baseline migration"
+above. Until the migration history can rebuild the database from nothing, a
+Supabase branch cannot be created, so the branch-plus-preview workflow cannot
+start.
+
+Once unblocked, in order:
+
+1. Adopt the baseline migration on its own branch, and repair production's
+   migration history so nothing re-runs there.
+2. Create the Supabase branch for `feat/data-center` and let it build.
+3. Point the Vercel preview for that branch at the branch's credentials.
+4. Start the local edge runtime and prove the tier-2 gate end to end: a user
+   holding the route but no grant must get nothing back from
+   `data-center-read`. This is untested today, because the local
+   `supabase_edge_runtime` container is stopped.
+5. Then Phase 3.
 
 ## Phase 3: Table 1, browsable at capacity
 
