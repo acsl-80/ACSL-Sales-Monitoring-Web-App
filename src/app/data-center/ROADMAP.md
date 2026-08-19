@@ -54,38 +54,69 @@ Three migration files, all dated `20260819`.
       written as its own file, with a prominent warning that it must not run
       inside a transaction and a copy-paste `indisvalid` check.
 
-**Validation performed** (Docker was unavailable, so `supabase start` could not
-be used; see the deviation note below):
+### Validation: applied locally first, as the rule requires
 
-- [x] Both schema migrations executed against the live database inside
-      `BEGIN ... ROLLBACK`, proving they run cleanly and leave nothing behind.
-      Confirmed afterwards that `data_center` does not exist.
-- [x] Invariant diff taken **inside** that transaction: public tables added 0,
-      public tables removed 0, public columns changed 0, grants to `anon` or
-      `authenticated` 0.
-- [x] Both views resolve and return rows against real data.
+All three migrations were applied to the local Supabase stack
+(`postgres://…@127.0.0.1:54332`), which carries the 25 baseline `public` tables
+and had no `data_center` schema. Every claim below was executed, not reasoned
+about.
+
+**Isolation**
+
+- [x] `data_center` unreachable through PostgREST. `/rest/v1/call_records`,
+      `/rest/v1/option_values` and `/rest/v1/v_call_center` all return **404**.
+      This is the check that proves `sales-mobile` can never see this data, and
+      it is the single most important guarantee in the design.
+- [x] Control: `/rest/v1/sales` still returns **200**. The existing API is
+      untouched.
+- [x] Nine of nine tables have RLS enabled, **zero** policies, **zero** grants
+      to `anon` or `authenticated`.
+
+**`public` untouched**
+
+- [x] Column-level diff before and after: 0 added, 0 removed. No `ALTER TABLE`,
+      no triggers, no new tables.
+
+**It works**
+
+- [x] Fixture exercised the full join: `v_call_center` resolved end user,
+      partner state, sale agent name and stock status across five `public`
+      tables.
+- [x] Registry labels resolve through the option-value foreign keys.
+- [x] Both derived columns correct: `serial_matches` true on a match, and
+      `phone_was_corrected` true when the call centre reached a different
+      number from the one the sale was recorded with.
+- [x] `answers` jsonb readable.
+
+**Reversible and repeatable**
+
+- [x] `drop schema data_center cascade` leaves `public` at 25 tables and the
+      sales API at 200. The module is genuinely detachable.
+- [x] Both migrations re-apply cleanly after a drop.
+- [x] The seed is idempotent: 68 option values after running it twice.
+
+**The index**
+
+- [x] Applied outside a transaction. `pg_index.indisvalid` is **true**.
+- [x] Confirmed it survives `drop schema data_center cascade`, which is correct
+      and is why its rollback is documented separately in its own file.
+
+### Found while testing
+
+`public.stove_ids_base` carries a check constraint,
+`stove_ids_sale_id_check`, requiring that a stove with `status = 'sold'` also
+has a `sale_id`. It rejected a fixture that set the status without the link.
+
+This matters for Phase 5: an import cannot mark a stove sold before the sale
+row exists, which reinforces that the stove claim and the sale write must share
+one transaction rather than being two steps that can half-complete.
 
 **Still to do:**
 
-- [ ] Apply the two schema migrations for real. Needs a decision, since the
-      roadmap's own rule is local first and local was not available.
-- [ ] Apply the index migration by hand, outside a transaction, then check
-      `pg_index.indisvalid` is true.
-
-### Deviation from this roadmap, recorded rather than hidden
-
-The rule above says apply to a local Supabase first and never the live project
-first. Docker is not running on this machine, so `supabase start` could not
-bring up the local stack, and that step was impossible rather than skipped.
-
-The substitute was to execute both migrations against the live database wrapped
-in a transaction that rolls back. That is strictly read-only in effect: it
-proves the SQL parses, that every foreign key resolves against the real schema,
-that both views build, and that `public` is untouched, all without persisting
-anything. It is weaker than a local apply in one respect only: it does not
-exercise a fresh-database path, so it would not catch a dependency on an object
-that happens to already exist here. Nothing in these migrations has such a
-dependency beyond `public` tables, which any environment would carry.
+- [ ] Apply to production. Needs an explicit decision, since production is live
+      and this has only ever run locally.
+- [ ] Apply the index to production by hand, outside a transaction, then check
+      `indisvalid`.
 
 ## Phase 2: module shell and the two permission tiers
 
