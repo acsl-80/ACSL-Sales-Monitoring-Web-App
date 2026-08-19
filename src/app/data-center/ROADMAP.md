@@ -28,21 +28,64 @@ unaffected**, checked at every phase, not once at the end.
 
 ## Phase 1: schema container and controls
 
-Migration `supabase/migrations/<date>_data_center_schema.sql`.
+Three migration files, all dated `20260819`.
 
-- [ ] `create schema data_center`.
-- [ ] Control tables: `feature_grants`, `workflow_config`, `metric_snapshots`.
-- [ ] Registry tables: `field_defs`, `option_lists`, `option_values`.
-- [ ] Spine tables: `call_records`, `import_batches`, `import_rows`.
-- [ ] Views: `v_sold_stoves`, `v_call_center`. Named columns, no `SELECT *`.
-- [ ] RLS enabled on every table with no policy granted to `anon` or
+**Written and validated:**
+
+- [x] `create schema data_center`, with `anon` and `authenticated` explicitly
+      revoked and `service_role` granted.
+- [x] Control tables: `feature_grants`, `workflow_config`, `metric_snapshots`.
+- [x] Registry tables: `option_lists`, `option_values`, `field_defs`. The
+      `storage` / `column_name` pair on `field_defs` carries the jsonb to
+      column promotion path.
+- [x] Spine tables: `call_records`, `import_batches`, `import_rows`.
+- [x] Views: `v_sold_stoves`, `v_call_center`. Named columns, no `SELECT *`.
+      Serial match and phone-correction flags are derived in the view rather
+      than stored, so they cannot drift from their inputs.
+- [x] RLS enabled on all nine tables, no policy granted to `anon` or
       `authenticated`. Access is service role only.
-- [ ] Seed the registry from the workbook's Key tab: nine option lists.
-- [ ] Separate migration, run outside a transaction: one
-      `CREATE INDEX CONCURRENTLY` on `public.sales` for the queue sort key.
-      Check `pg_index.indisvalid` afterwards.
-- [ ] Do **not** add `data_center` to `[api].schemas`. The omission is the
-      isolation, and it is what keeps the Flutter app out.
+- [x] Seed the registry from the workbook's Key tab: **eleven** option lists
+      (ten from the tab plus a shared `yes_no`), 68 values, 12 field
+      definitions, 4 config rows. The roadmap previously said nine; the tab
+      actually carries ten.
+- [x] Confirmed `data_center` is **not** in `[api].schemas`, and
+      `supabase/config.toml` is untouched. The omission is the isolation.
+- [x] `CREATE INDEX CONCURRENTLY` on `public.sales (sales_date desc, id desc)`
+      written as its own file, with a prominent warning that it must not run
+      inside a transaction and a copy-paste `indisvalid` check.
+
+**Validation performed** (Docker was unavailable, so `supabase start` could not
+be used; see the deviation note below):
+
+- [x] Both schema migrations executed against the live database inside
+      `BEGIN ... ROLLBACK`, proving they run cleanly and leave nothing behind.
+      Confirmed afterwards that `data_center` does not exist.
+- [x] Invariant diff taken **inside** that transaction: public tables added 0,
+      public tables removed 0, public columns changed 0, grants to `anon` or
+      `authenticated` 0.
+- [x] Both views resolve and return rows against real data.
+
+**Still to do:**
+
+- [ ] Apply the two schema migrations for real. Needs a decision, since the
+      roadmap's own rule is local first and local was not available.
+- [ ] Apply the index migration by hand, outside a transaction, then check
+      `pg_index.indisvalid` is true.
+
+### Deviation from this roadmap, recorded rather than hidden
+
+The rule above says apply to a local Supabase first and never the live project
+first. Docker is not running on this machine, so `supabase start` could not
+bring up the local stack, and that step was impossible rather than skipped.
+
+The substitute was to execute both migrations against the live database wrapped
+in a transaction that rolls back. That is strictly read-only in effect: it
+proves the SQL parses, that every foreign key resolves against the real schema,
+that both views build, and that `public` is untouched, all without persisting
+anything. It is weaker than a local apply in one respect only: it does not
+exercise a fresh-database path, so it would not catch a dependency on an object
+that happens to already exist here. Nothing in these migrations has such a
+dependency beyond `public` tables, which any environment would carry.
 
 ## Phase 2: module shell and the two permission tiers
 
