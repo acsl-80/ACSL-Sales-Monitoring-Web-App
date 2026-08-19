@@ -1,0 +1,130 @@
+# Data Center module: build rules
+
+These rules apply to everything under `src/app/data-center/`,
+`src/routes/data-center/`, `supabase/functions/data-center-*`, and the
+`data_center` Postgres schema. They are additional to the repo's own rules, and
+where they are stricter, the stricter one wins.
+
+Read `PLAN.md` before changing anything structural. Read `ROADMAP.md` to see
+which phase the work belongs to.
+
+## Meta
+
+- Plan first: for any non-trivial feature, agree the approach before writing
+  code, and update `PLAN.md` first.
+- Never write feature code `PLAN.md` does not cover. Update the plan instead.
+- Save key decisions to the project memory convention so later sessions recall
+  them rather than re-deriving them.
+
+## The prime directive
+
+**The sales app must not notice this module exists.** Every rule below is
+downstream of that. If a change would alter behaviour for a user who has no
+Data Center grant, it is wrong regardless of how convenient it is.
+
+## Structure
+
+- The module owns its own data layer. Nothing under `data-center/` calls
+  `getSupabase()` directly. All reads and writes go through `lib/client.ts`,
+  which wraps the `data-center-*` edge functions.
+- Layers stay separate: route file, page component, `lib/` data access, edge
+  function, database. A component never builds a query; `lib/` never renders.
+- One responsibility per file. Split at ~600 lines rather than adding to a big
+  file. Note `CreateSalesForm.jsx` in the host app is 1,992 lines. Do not copy
+  that pattern here.
+- One directory per feature under `features/`, self-contained. A feature is
+  removable by deleting its directory and its registry row.
+- Exactly two files outside this module may be touched: `src/lib/permissions.ts`
+  (one route key) and `src/app/components/Sidebar.jsx` (one nav entry). Any
+  change beyond those two is a design error, so stop and revisit `PLAN.md`.
+
+## Security
+
+- Every action checks role AND feature grant AND organization scope. Logged in
+  is not the same as allowed.
+- Tier-2 feature gating is enforced **in the edge function**, resolved from the
+  caller's JWT. The UI gate in `lib/useFeature.ts` is presentation only. A
+  hidden button is not a permission.
+- **The service role key is never named `VITE_*`.** Vite inlines every `VITE_*`
+  variable into the client bundle, so that one naming mistake ships the key to
+  every browser. It lives in edge function environment only.
+- Never add `data_center` to `[api].schemas` in `supabase/config.toml`. Keeping
+  it out of PostgREST is what stops the Flutter app reaching it, and it is the
+  isolation guarantee this module rests on.
+- Imported spreadsheet content is untrusted user input. Never render it with
+  `dangerouslySetInnerHTML`.
+- Edge functions declare an explicit origin list. Never `*`.
+
+## Data
+
+- `public.sales` is the only place a sale lives. This module stores facts
+  *about* sales, never a copy of them. Table 1 is a view and owns no data.
+- Bulk imports commit through the existing `create-sale` function. Never insert
+  into `public.sales` directly, or stock and status logic silently diverge.
+- **Claim the stove row under lock, in the same transaction as the sale write.**
+  Two concurrent imports must never both take the same stove ID. This is the
+  single most likely correctness failure in the module and it only appears under
+  simultaneous use.
+- Every schema change is a versioned migration. Never alter the database by
+  hand. Migrations are additive: no `ALTER TABLE` against anything in `public`.
+- Index creation on `public` uses `CREATE INDEX CONCURRENTLY`, in its own
+  migration file, and `pg_index.indisvalid` is checked afterwards.
+- Never `SELECT *`. Name the columns.
+- Multi-step writes are wrapped in a transaction.
+- `sales.status` is not a trustworthy completeness signal: the form dropped the
+  photo and agreement requirements but `calculate_sale_status()` still demands
+  them, so 30 of 38 production rows read `incomplete`. Use the module's own
+  definition from `workflow_config`.
+
+## Modularity
+
+- Question wording, option lists and field ordering are **data**, held in
+  `field_defs` and `option_values`. Adding, renaming or retiring a question is
+  data entry, not a release.
+- Survey answers live in `call_records.answers` jsonb, rendered from the
+  registry. Spine fields that get filtered or aggregated are real columns.
+- A field graduates from jsonb to a real column when it starts being
+  aggregated. Record the move in the registry.
+- Thresholds, callback limits and verification criteria come from
+  `workflow_config` at runtime. Never hard-code them.
+
+## Performance
+
+Capacity target is 500,000 rows. Production holds 38 today, so none of this is
+observable without seeding. Seed before claiming anything.
+
+- Dashboards read precomputed values from `metric_snapshots`. If a dashboard
+  query contains `count(*)`, `sum()` or `group by` over `sales`, it belongs in
+  compute, not read.
+- Keyset pagination only. Never expose an `OFFSET` parameter, so it cannot creep
+  in later.
+- All filtering, sorting and searching happens in SQL. The client never receives
+  a set it then narrows.
+- Page size has a hard server-side ceiling regardless of what the caller asks
+  for.
+- Long lists are virtualized. At 500k the DOM is a bottleneck too.
+- Work slower than about a second moves to a batched job. A large import never
+  runs inside a request.
+- Index the columns queries filter or join on, and check the plan for
+  sequential scans.
+
+## Reliability
+
+- Every outbound call has an explicit timeout.
+- Retries use exponential backoff and only on operations safe to repeat.
+- Import errors are per-row and visible, with the reason and the raw payload
+  retained. Never swallow a row failure into a batch-level count.
+- Roughly 8% of imported serials are expected not to match stock. That is the
+  normal case, so it routes to an exceptions queue for a human, not a rejection.
+- Log full detail, show the user a calm message, leak nothing internal.
+
+## Shipping
+
+- Commit at every working state with a clear message.
+- Merge `main` into this branch weekly. `main` moves daily on its own via the
+  sync cron and deploys straight to production.
+- The route key stays granted to `super_admin` only until the module is proven.
+- CI runs lint and typecheck as `continue-on-error`, so only `build` blocks.
+  This module's own tests must be part of what blocks.
+- Critical flow for end-to-end coverage: import, validate, resolve an exception,
+  commit, then see the record appear in the call centre table.
