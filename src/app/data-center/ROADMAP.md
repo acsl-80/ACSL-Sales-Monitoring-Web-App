@@ -379,11 +379,44 @@ that reason.
       `calculate_sale_status()` disagrees with the form and marks 30 of 38
       production rows `incomplete`.
 
-## Phase 7: flip the gate
+## Phase 7: access management, under Settings
 
-- [ ] Merge slices to `main` with the route key still `super_admin` only.
-- [ ] Define the call-centre users in the host role model.
-- [ ] Widen the grant only once the module is proven.
+Requirement, 2026-08-19. Access is administered from a **"Data Center" section
+on the Settings page**. An admin ticks a user there; next time that user signs
+in to the sales web app, the Data Center module is visible to them. Admins have
+access without being ticked.
+
+- [ ] `Settings > Data Center`: list users, tick to enable the module, and grant
+      individual tier-2 features from `features.ts`.
+- [ ] `data-center-admin` edge function for granting and revoking, itself gated
+      on `grants.manage`.
+- [ ] Widen access only once the module is proven.
+
+### This changes tier 1, and the change is not trivial
+
+Tier 1 is currently the host's **static, compile-time** route map, granted to
+`super_admin` only. That cannot express "this particular non-admin user has been
+enabled", which is exactly what the requirement asks for. `usePermissions()`
+resolves synchronously from a compiled object; there is nowhere for a per-user
+flag to enter.
+
+Three ways to close it, to be decided rather than drifted into:
+
+1. **Module-access grant, read by the shell.** Add a reserved key, for example
+   `module.access`, to `feature_grants`. Load it once after login and let the
+   sidebar show the entry when `canRoute('data-center')` **or** the grant is
+   held. Keeps the host permission system untouched, but the sidebar gains one
+   asynchronous input, so it is slightly more than the "one nav entry" the
+   current design promises.
+2. **Widen the static map and gate inside.** List `data-center` for more roles
+   and refuse at the page. Simplest, but every user in those roles sees a nav
+   entry they cannot use, which advertises the module to people who do not have
+   it.
+3. **Carry the flag on the profile.** Cleanest to read, but `profiles` is in
+   `public`, and adding a column there breaks this module's core invariant.
+
+Option 1 looks right and option 3 is ruled out by the invariant, but this needs
+a decision before Phase 7 starts. Recorded now so it is not discovered late.
 
 ---
 
