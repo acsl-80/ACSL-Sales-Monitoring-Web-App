@@ -412,6 +412,29 @@ access without being ticked.
       on `grants.manage`.
 - [ ] Widen access only once the module is proven.
 
+### Playwright proved the gap is live, not theoretical
+
+The e2e suite (`bun run e2e`, 14 tests) was written expecting the seeded
+`callcentre` account to demonstrate a partial grant. It cannot, and the failure
+is the finding:
+
+`callcentre` holds three tier-2 grants in the database, and `data-center-read`
+returns exactly those three when called directly. But its role is
+`partner_agent`, which carries no `data-center` route key, so **tier 1 stops it
+at the door and the grants are never consulted.** The account sees "Page Not
+Found".
+
+The consequence, now asserted by a test rather than assumed:
+
+> **No user can exercise a partial grant through the interface today.** The only
+> role that reaches the module is `super_admin`, and `super_admin`
+> short-circuits tier 2 entirely.
+
+So tier 2 is proven at the function boundary and **unproven at the UI
+boundary**, and will stay that way until the module-access work below lands.
+That is not a reason to distrust the mechanism, but it is a reason not to claim
+it is working end to end.
+
 ### This changes tier 1, and the change is not trivial
 
 Tier 1 is currently the host's **static, compile-time** route map, granted to

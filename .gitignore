@@ -43,3 +43,9 @@ dist-ssr
 # Claude Code local agent worktrees & session state
 .claude/
 .gstack/
+
+# Playwright
+e2e-report/
+test-results/
+/playwright-report/
+/blob-report/
