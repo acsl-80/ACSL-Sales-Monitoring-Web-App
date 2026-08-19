@@ -1,4 +1,5 @@
 import { createClientComponentClient } from "@/lib/supabaseClient";
+import { supabaseFunctionsUrl } from "@/lib/supabaseConfig";
 
 interface ProfileData {
   profile: {
@@ -53,8 +54,13 @@ interface ApiResponse<T> {
 
 class ManageProfileService {
   private client: ReturnType<typeof createClientComponentClient> | null = null;
-  private baseUrl =
-    "https://oeiwnpngbnkhcismhpgs.supabase.co/functions/v1/manage-profile";
+  // Derived, never hardcoded. This was pinned to the production project, which
+  // meant every environment called production's manage-profile: TopNavigation
+  // calls getProfile() on every page load, and ChangePasswordModal calls
+  // updateProfile(). On a preview branch that fails rather than leaks, because
+  // the branch signs its JWTs with a different secret, but it broke the profile
+  // menu and password change everywhere except production.
+  private baseUrl = `${supabaseFunctionsUrl}/manage-profile`;
 
   // Created lazily: this module is imported during SSR, where creating a
   // Supabase client at module scope would crash the request.
