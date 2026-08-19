@@ -62,7 +62,11 @@ test.describe("entry is per user, case by case", () => {
       await expect(
         page.getByRole("heading", { name: "No Data Center access" }),
       ).toBeVisible();
-      await expect(page.getByRole("heading", { name: "Data Center" })).toHaveCount(0);
+      // Assert on module content, not the heading: DashboardLayout renders
+      // "Data Center" as the page title in every state, denied included, so
+      // matching that would be testing the layout chrome rather than the gate.
+      await expect(page.getByText("Sold Stove Records")).toHaveCount(0);
+      await expect(page.getByText(/Your access/)).toHaveCount(0);
     });
   }
 });
