@@ -43,11 +43,12 @@ test.describe("entry is per user, case by case", () => {
     await expect(page.getByRole("heading", { name: "Data Center" })).toBeVisible();
     await expect(page.getByText("Viewer", { exact: true })).toBeVisible();
 
-    // Viewer sees, editor changes. Since Phase 5 the import surface is a real
-    // panel rather than a locked placeholder card, so a viewer gets no import
-    // surface at all. Absent is a stronger guarantee than present-and-disabled.
-    await expect(page.getByRole("heading", { name: "Bulk Import" })).toHaveCount(0);
-    await expect(page.getByRole("heading", { name: "Stove Records", exact: true })).toBeVisible();
+    // Viewer sees, editor changes. On the hub the import card is present and
+    // locked, naming the grant it needs, so what a viewer must not get is the
+    // way in rather than the word. Reaching /data-center/import directly is
+    // refused too, which data-center-explore.spec.ts covers.
+    await expect(page.getByRole("link", { name: "Open Bulk Import" })).toHaveCount(0);
+    await expect(page.getByRole("link", { name: "Open Stove Records" })).toBeVisible();
   });
 
   for (const [label, email] of [
