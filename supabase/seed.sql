@@ -862,7 +862,12 @@ insert into public.organizations (id, partner_name, state, branch, contact_perso
 values
   ('a0000000-0000-4000-8000-000000000001','Amina Sales Model Gombe','Gombe','Gombe','Preview Contact','08030000001','1 Preview Road, Gombe','partner'),
   ('a0000000-0000-4000-8000-000000000002','Hakimi Partner Kano','Kano','Kano Central','Preview Contact','08030000002','2 Preview Road, Kano','partner'),
-  ('a0000000-0000-4000-8000-000000000003','Direct Community Abuja','FCT','Abuja','Preview Contact','08030000003','3 Preview Road, Abuja','partner')
+  ('a0000000-0000-4000-8000-000000000003','Direct Community Abuja','FCT','Abuja','Preview Contact','08030000003','3 Preview Road, Abuja','partner'),
+  -- Assigned to nobody, on purpose. Every other partner here is held by the
+  -- call centre account, so without a fourth there is no way to ask what
+  -- happens when someone reaches for a partner that is not theirs, and the
+  -- server-side scope check would have nothing to prove itself against.
+  ('a0000000-0000-4000-8000-000000000004','Unassigned Partner Jos','Plateau','Jos','Preview Contact','08030000004','4 Preview Road, Jos','partner')
 on conflict (id) do nothing;
 
 -- ---------- sign-in accounts ----------
@@ -985,16 +990,23 @@ select 'b0000000-0000-4000-8000-000000000006'::uuid, o.id,
 from public.organizations o
 on conflict do nothing;
 
--- ---------- Data Center module access (viewer / editor) ----------
+-- ---------- Data Center module access (viewer / call agent / editor) ----------
 -- Access is granted per user, case by case, never per role. callcentre is the
--- editor example; manager is the viewer example. admin needs no row because
--- super_admin short-circuits, and the rest deliberately have nothing so the
--- denied path stays testable.
+-- editor example, manager is the viewer example, and acslagent is the call
+-- agent. admin needs no row because super_admin short-circuits, and partner
+-- and agent deliberately have nothing so the denied path stays testable.
 insert into data_center.module_access (user_id, access_role)
 values
   ('b0000000-0000-4000-8000-000000000006', 'editor'),
+  ('b0000000-0000-4000-8000-000000000003', 'call_agent'),
   ('b0000000-0000-4000-8000-000000000002', 'viewer')
 on conflict (user_id) do update set access_role = excluded.access_role;
+
+-- Taking work. Separate from the grant on purpose: holding the role is a
+-- permission question and being on shift today is a scheduling one.
+insert into data_center.call_agent_profiles (user_id, is_enabled, enabled_at)
+values ('b0000000-0000-4000-8000-000000000003', true, now())
+on conflict (user_id) do nothing;
 -- ---------- transfers ----------
 -- Three consignments of stoves from ACSL to partners, so the reconciliation
 -- funnel has something to reconcile.

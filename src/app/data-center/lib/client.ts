@@ -19,6 +19,16 @@ import { supabaseUrl as SUPABASE_URL } from "@/lib/supabaseConfig";
 /** Block 31: nothing waits forever. */
 const REQUEST_TIMEOUT_MS = 20_000;
 
+/**
+ * The three levels a user can be granted.
+ *
+ * The server holds the authoritative table in
+ * `supabase/functions/_shared/data-center-roles.ts`, which is where a fourth
+ * level would be added. This is the client's name for the same thing, so a
+ * typo in a grant call is a compile error rather than a 400.
+ */
+export type AccessRole = "viewer" | "call_agent" | "editor";
+
 export class DataCenterError extends Error {
   readonly status: number;
   readonly code: string;
@@ -107,8 +117,8 @@ async function call<T>(fn: string, action: string, payload: unknown = {}): Promi
 export type AccessResponse = {
   /** May this user enter the module at all? Case-by-case per user. */
   hasAccess: boolean;
-  /** viewer | editor for granted users; null for super_admin and the denied. */
-  accessRole: "viewer" | "editor" | null;
+  /** The granted level; null for super_admin, who outranks all three, and for the denied. */
+  accessRole: AccessRole | null;
   /** Effective feature keys: what the level implies plus individual grants. */
   features: string[];
   /** True when the host role short-circuits every check, mirroring usePermissions. */
@@ -118,7 +128,7 @@ export type AccessResponse = {
 
 export type AccessListEntry = {
   user_id: string;
-  access_role: "viewer" | "editor";
+  access_role: AccessRole;
   granted_at: string;
   full_name: string | null;
   email: string | null;
@@ -131,7 +141,7 @@ export type UserSearchResult = {
   full_name: string | null;
   email: string | null;
   role: string | null;
-  current_access: "viewer" | "editor" | null;
+  current_access: AccessRole | null;
 };
 
 export type ChangeLogEntry = {
@@ -383,7 +393,7 @@ export const dataCenterAdmin = {
   listAccess: () => call<AccessListEntry[]>("data-center-admin", "access_list"),
   searchUsers: (query: string) =>
     call<UserSearchResult[]>("data-center-admin", "user_search", { query }),
-  grantAccess: (userId: string, accessRole: "viewer" | "editor") =>
+  grantAccess: (userId: string, accessRole: AccessRole) =>
     call("data-center-admin", "access_grant", { userId, accessRole }),
   revokeAccess: (userId: string) =>
     call("data-center-admin", "access_revoke", { userId }),

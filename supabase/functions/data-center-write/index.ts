@@ -24,6 +24,7 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.39.3";
 import { openConnection, closeConnection, type PoolClient } from "../_shared/data-center-db.ts";
+import { featuresFor } from "../_shared/data-center-roles.ts";
 
 const DEFAULT_ORIGINS = [
   "https://sales.atmosfair.com.ng",
@@ -274,18 +275,33 @@ serve(async (req) => {
         text: "select feature_key from data_center.feature_grants where user_id = $1",
         args: [userId],
       });
-      const roleFeatures: Record<string, string[]> = {
-        viewer: ["records.view", "call_records.view", "dashboard.view"],
-        editor: [
-          "records.view", "call_records.view", "dashboard.view",
-          "call_records.edit", "import.upload", "import.exceptions",
-        ],
-      };
-      features = [
-        ...new Set([...(roleFeatures[accessRole] ?? []), ...grants.rows.map((g) => g.feature_key)]),
-      ];
-      if (!features.includes("call_records.edit")) {
-        return json({ error: "Not permitted to change call records", code: "no_feature" }, 403, cors);
+      features = featuresFor(accessRole, grants.rows.map((g) => g.feature_key));
+
+      /**
+       * Two of the five actions are reads, and all five were gated on
+       * `call_records.edit`. So a viewer could reach the call centre table and
+       * not open a single record on it, which reads as the module being broken
+       * rather than as a permission working.
+       *
+       * `form_schema` returns the registry, which is the questions themselves.
+       * `call_record` returns one record with its history. Neither writes.
+       */
+      const READ_ONLY_ACTIONS = new Set(["form_schema", "call_record"]);
+      const needed = READ_ONLY_ACTIONS.has(String(body.action))
+        ? "call_records.view"
+        : "call_records.edit";
+
+      if (!features.includes(needed)) {
+        return json(
+          {
+            error: needed === "call_records.view"
+              ? "Not permitted to read call records"
+              : "Not permitted to change call records",
+            code: "no_feature",
+          },
+          403,
+          cors,
+        );
       }
     }
 

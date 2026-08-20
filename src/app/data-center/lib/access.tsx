@@ -21,14 +21,14 @@ import {
   useState,
   type ReactNode,
 } from "react";
-import { dataCenterClient, DataCenterError } from "./client";
+import { dataCenterClient, DataCenterError, type AccessRole } from "./client";
 import type { DataCenterFeature } from "./features";
 
 type AccessState = {
   /** May this user enter at all? Granted case by case, per user. */
   hasAccess: boolean;
-  /** viewer | editor for granted users; null for super_admin and the denied. */
-  accessRole: "viewer" | "editor" | null;
+  /** The granted level; null for super_admin, who outranks all three, and for the denied. */
+  accessRole: AccessRole | null;
   features: Set<string>;
   isSuperAdmin: boolean;
   organizationId: string | null;
@@ -103,7 +103,7 @@ export function useFeature() {
       },
       /** May this user enter the module at all? */
       hasAccess: state.isSuperAdmin || state.hasAccess,
-      /** viewer | editor, null for super_admin who outranks both. */
+      /** The granted level, null for super_admin who outranks all three. */
       accessRole: state.accessRole,
       /** True while grants are still being resolved. Render nothing gated yet. */
       loading: state.loading,

@@ -9,21 +9,50 @@ import {
   History,
   Eye,
   Pencil,
+  PhoneCall,
 } from "lucide-react";
 
 /**
  * The access section of the Data Center page. Access only: who may enter the
- * module, at viewer or editor level, granted case by case per user.
+ * module, at one of three levels, granted case by case per user.
  *
  * Rendering this component is gated by the caller, but that gate is
  * presentation. data-center-admin re-checks authority on every call, so a user
  * who somehow renders this without holding it gets 403s, not results.
  */
 
+/**
+ * Three levels, and the third is not a rung on the ladder.
+ *
+ * A call agent works the phone. They read the records and edit the call
+ * records, and they import nothing, because a person paid to make calls has no
+ * reason to move stock and `import.upload` is one step from `import.commit`.
+ *
+ * The server holds the same table in `_shared/data-center-roles.ts` and is the
+ * authority. What is here is the wording.
+ */
 const ROLE_META = {
-  viewer: { label: "Viewer", icon: Eye, blurb: "Can see records and dashboards." },
-  editor: { label: "Editor", icon: Pencil, blurb: "Can also record and change data. Changes are tracked." },
+  viewer: {
+    label: "Viewer", icon: Eye,
+    blurb: "Can see records and dashboards.",
+    tone: "bg-[#4a5d0f]/10 text-[#4a5d0f]",
+    button: "border-[#4a5d0f]/30 text-[#4a5d0f] hover:bg-[#4a5d0f]/10",
+  },
+  call_agent: {
+    label: "Call agent", icon: PhoneCall,
+    blurb: "Can also work call records. No import, no stock.",
+    tone: "bg-blue-100 text-blue-800",
+    button: "border-blue-400/50 text-blue-700 hover:bg-blue-50",
+  },
+  editor: {
+    label: "Editor", icon: Pencil,
+    blurb: "Can also record and change data, and import. Changes are tracked.",
+    tone: "bg-amber-100 text-amber-800",
+    button: "border-amber-400/50 text-amber-700 hover:bg-amber-50",
+  },
 };
+
+const ROLES = ["viewer", "call_agent", "editor"];
 
 function RoleChip({ role }) {
   const meta = ROLE_META[role];
@@ -31,9 +60,7 @@ function RoleChip({ role }) {
   const Icon = meta.icon;
   return (
     <span
-      className={`inline-flex items-center gap-1 rounded-full px-2.5 py-0.5 text-xs font-medium ${
-        role === "editor" ? "bg-amber-100 text-amber-800" : "bg-[#4a5d0f]/10 text-[#4a5d0f]"
-      }`}
+      className={`inline-flex items-center gap-1 rounded-full px-2.5 py-0.5 text-xs font-medium ${meta.tone}`}
     >
       <Icon className="h-3 w-3" />
       {meta.label}
@@ -139,10 +166,27 @@ export default function AccessManager() {
           <ShieldCheck className="h-4 w-4 text-[#4a5d0f]" />
           <h2 className="text-sm font-semibold text-gray-900">Access</h2>
         </div>
-        <p className="mb-4 text-sm text-gray-600">
-          Grant the Data Center to individual users, case by case. Viewers see;
-          editors change, and every editor change is tracked below.
+        <p className="mb-3 text-sm text-gray-600">
+          Grant the Data Center to individual users, case by case. Every change
+          made under any level is tracked below.
         </p>
+
+        {/* What each level means. Two levels explained themselves; three do
+            not, and someone granting access should not have to guess what a
+            call agent can reach. */}
+        <ul className="mb-4 flex flex-wrap gap-x-5 gap-y-1.5">
+          {ROLES.map((role) => {
+            const meta = ROLE_META[role];
+            const Icon = meta.icon;
+            return (
+              <li key={role} className="flex items-center gap-1.5 text-xs text-gray-600">
+                <Icon className="h-3.5 w-3.5 shrink-0 text-gray-400" />
+                <span className="font-medium text-gray-800">{meta.label}</span>
+                <span>{meta.blurb}</span>
+              </li>
+            );
+          })}
+        </ul>
 
         {error && <p className="mb-3 text-sm text-red-600">{error}</p>}
 
@@ -176,22 +220,17 @@ export default function AccessManager() {
                         {u.current_access ? ` · already ${u.current_access}` : ""}
                       </p>
                     </div>
-                    <button
-                      type="button"
-                      disabled={busy}
-                      onClick={() => grant(u.id, "viewer")}
-                      className="rounded border border-[#4a5d0f]/30 px-2 py-1 text-xs font-medium text-[#4a5d0f] hover:bg-[#4a5d0f]/10 disabled:opacity-50"
-                    >
-                      Viewer
-                    </button>
-                    <button
-                      type="button"
-                      disabled={busy}
-                      onClick={() => grant(u.id, "editor")}
-                      className="rounded border border-amber-400/50 px-2 py-1 text-xs font-medium text-amber-700 hover:bg-amber-50 disabled:opacity-50"
-                    >
-                      Editor
-                    </button>
+                    {ROLES.map((role) => (
+                      <button
+                        key={role}
+                        type="button"
+                        disabled={busy}
+                        onClick={() => grant(u.id, role)}
+                        className={`rounded border px-2 py-1 text-xs font-medium disabled:opacity-50 ${ROLE_META[role].button}`}
+                      >
+                        {ROLE_META[role].label}
+                      </button>
+                    ))}
                   </div>
                 ))
               )}
@@ -218,16 +257,20 @@ export default function AccessManager() {
                   </p>
                 </div>
                 <RoleChip role={e.access_role} />
-                <button
-                  type="button"
+                {/* A select rather than a toggle. Two levels could swap; three
+                    cannot, and a "make editor" link that cycles through call
+                    agent on the way is a worse answer than a list. */}
+                <select
+                  aria-label={`Access level for ${e.full_name || e.email}`}
+                  value={e.access_role}
                   disabled={busy}
-                  onClick={() =>
-                    grant(e.user_id, e.access_role === "viewer" ? "editor" : "viewer")
-                  }
-                  className="text-xs font-medium text-gray-500 underline-offset-2 hover:text-gray-800 hover:underline disabled:opacity-50"
+                  onChange={(event) => grant(e.user_id, event.target.value)}
+                  className="rounded-md border border-gray-300 px-2 py-1 text-xs text-gray-700 focus:border-[#4a5d0f] focus:outline-none disabled:opacity-50"
                 >
-                  make {e.access_role === "viewer" ? "editor" : "viewer"}
-                </button>
+                  {ROLES.map((role) => (
+                    <option key={role} value={role}>{ROLE_META[role].label}</option>
+                  ))}
+                </select>
                 <button
                   type="button"
                   disabled={busy}

@@ -33,6 +33,7 @@ import {
   withReadConnection,
   type PoolClient,
 } from "../_shared/data-center-db.ts";
+import { featuresFor } from "../_shared/data-center-roles.ts";
 
 const DEFAULT_ORIGINS = [
   "https://sales.atmosfair.com.ng",
@@ -381,14 +382,7 @@ serve(async (req) => {
       });
       const accessRole = r.rows[0]?.access_role ?? null;
       if (!accessRole) return null;
-      const roleFeatures: Record<string, string[]> = {
-        viewer: ["records.view", "call_records.view", "dashboard.view"],
-        editor: [
-          "records.view", "call_records.view", "dashboard.view",
-          "call_records.edit", "import.upload", "import.exceptions",
-        ],
-      };
-      return [...new Set([...(roleFeatures[accessRole] ?? []), ...(r.rows[0]?.keys ?? [])])];
+      return featuresFor(accessRole, r.rows[0]?.keys ?? []);
     });
 
     if (!superAdmin && features === null) {

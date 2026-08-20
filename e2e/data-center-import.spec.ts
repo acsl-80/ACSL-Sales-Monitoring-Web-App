@@ -1,5 +1,5 @@
 import { test, expect } from "@playwright/test";
-import { signIn, USERS } from "./helpers";
+import { signIn, USERS, callEdgeFunction } from "./helpers";
 
 /**
  * Bulk import through the real UI.
@@ -313,54 +313,48 @@ test.describe("staging is scoped to the caller's partners", () => {
       timeout: 20_000,
     });
 
-    // Which partners the server is willing to offer, and one it is not.
-    const result = await page.evaluate(async () => {
-      const key = Object.keys(window.localStorage).find(
-        (k) => k.startsWith("sb-") && k.endsWith("-auth-token"),
-      );
-      const session = JSON.parse(window.localStorage.getItem(key ?? "") ?? "{}");
-      const token = session.access_token ?? session?.currentSession?.access_token;
-      const base = document.querySelector<HTMLMetaElement>("meta[name=sb-url]")?.content;
-      const url =
-        (base ?? "") ||
-        // The client builds this from the same config the app uses; reading it
-        // back off a network request would be fragile, so derive it from the
-        // storage key, which is `sb-<ref>-auth-token`.
-        `https://${(key ?? "").replace(/^sb-/, "").replace(/-auth-token$/, "")}.supabase.co`;
-
-      const post = (body: unknown) =>
-        fetch(`${url}/functions/v1/data-center-import`, {
-          method: "POST",
-          headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
-          body: JSON.stringify(body),
-        }).then(async (r) => ({ status: r.status, body: await r.json() }));
-
-      const partners = await post({ action: "partners" });
-      const mine = new Set((partners.body?.data ?? []).map((p: { id: string }) => p.id));
-
-      // Any organization the picker did not offer. Asking for one by id is the
-      // whole point: the UI would never send it.
-      const foreign = "a0000000-0000-4000-8000-000000000001";
-      const stage = mine.has(foreign)
-        ? null
-        : await post({
-            action: "stage",
-            organizationId: foreign,
-            filename: "not-mine.csv",
-            rows: [{ stove_serial_no: "PRV000003", first_name: "Test", phone: "08012345678",
-                     sales_date: "2026-01-04", amount: "25000", state: "Gombe",
-                     lga: "Gombe", address: "1 Test Road" }],
-          });
-      return { offered: [...mine], stage };
+    // Which partners the server is willing to offer this caller.
+    const partners = await callEdgeFunction(page, "data-center-import", {
+      action: "partners",
     });
+    const mine = new Set(
+      ((partners.body as { data?: { id: string }[] })?.data ?? []).map((p) => p.id),
+    );
 
-    // If the editor legitimately holds that partner the test proves nothing,
-    // so say so rather than passing quietly.
+    // Whichever seeded partner the picker did not offer. The fourth exists for
+    // exactly this: the call centre account holds the other three, so without
+    // one nobody is assigned there is nothing out of scope to reach for and
+    // the check has nothing to prove itself against.
+    const foreign = [
+      "a0000000-0000-4000-8000-000000000004",
+      "a0000000-0000-4000-8000-000000000003",
+      "a0000000-0000-4000-8000-000000000002",
+      "a0000000-0000-4000-8000-000000000001",
+    ].find((id) => !mine.has(id));
+
+    // Asking for a partner by id is the whole point: the picker would never
+    // send this one, so only the server can refuse it.
+    const stage = foreign
+      ? await callEdgeFunction(page, "data-center-import", {
+          action: "stage",
+          organizationId: foreign,
+          filename: "not-mine.csv",
+          rows: [{
+            stove_serial_no: "PRV000003", first_name: "Test", phone: "08012345678",
+            sales_date: "2026-01-04", amount: "25000", state: "Gombe",
+            lga: "Gombe", address: "1 Test Road",
+          }],
+        })
+      : null;
+
+    // If the editor legitimately holds every seeded partner the test proves
+    // nothing, so say so rather than passing quietly.
     expect(
-      result.stage,
-      "the fixture partner is in this editor's scope, so pick another",
+      stage,
+      `this editor holds every seeded partner (${[...mine].join(", ")}), ` +
+        "so there is nothing out of scope to try",
     ).not.toBeNull();
-    expect(result.stage!.status).toBe(400);
-    expect(JSON.stringify(result.stage!.body)).toMatch(/not one you can import for/);
+    expect(stage!.status).toBe(400);
+    expect(JSON.stringify(stage!.body)).toMatch(/not one you can import for/);
   });
 });

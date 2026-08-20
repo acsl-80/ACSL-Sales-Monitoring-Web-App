@@ -15,6 +15,12 @@ test.describe("the sales app is unaffected", () => {
   // leaves the previous user signed in and /login redirects straight past the
   // form.
   test("every seeded role can sign in", async ({ browser }) => {
+    // Six full sign-ins on six fresh contexts, each bypassing the session
+    // cache by design. That is six times the work of an ordinary test on the
+    // same 60 s budget, and it had been finishing with seconds to spare. The
+    // budget is sized to the work rather than left to luck.
+    test.setTimeout(60_000 * Object.keys(USERS).length);
+
     for (const email of Object.values(USERS)) {
       const context = await browser.newContext();
       const page = await context.newPage();

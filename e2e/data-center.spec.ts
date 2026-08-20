@@ -1,5 +1,5 @@
 import { test, expect } from "@playwright/test";
-import { signIn, dataCentreNavLink, USERS } from "./helpers";
+import { signIn, dataCentreNavLink, USERS, callEdgeFunction } from "./helpers";
 
 /**
  * The access model, exercised through the real UI.
@@ -132,5 +132,118 @@ test.describe("the access section is for access only", () => {
     await expect(page.getByRole("heading", { name: "Data Center" })).toBeVisible();
     await expect(page.getByRole("heading", { name: "Access", exact: true })).toHaveCount(0);
     await expect(page.getByRole("heading", { name: "Recent changes" })).toHaveCount(0);
+  });
+});
+
+/**
+ * The call agent, the third level.
+ *
+ * Not a rung between viewer and editor. A different job: work the phone, read
+ * the records behind the calls, import nothing. "Editor" used to cover both the
+ * clerk clearing a receipt backlog and the agent making calls, which meant
+ * everyone making calls also held import.upload, one step from import.commit
+ * and the sales app's own inventory.
+ */
+test.describe("the call agent is its own level", () => {
+  test("a call agent is admitted, and offered the call centre", async ({ page }) => {
+    await signIn(page, USERS.acslAgent);
+
+    await expect(dataCentreNavLink(page)).toBeVisible({ timeout: 20_000 });
+    await page.goto("/data-center");
+
+    await expect(page.getByRole("link", { name: "Open Call Centre" })).toBeVisible({
+      timeout: 20_000,
+    });
+    await expect(page.getByRole("link", { name: "Open Dashboard" })).toBeVisible();
+    await expect(page.getByRole("link", { name: "Open Stove Records" })).toBeVisible();
+  });
+
+  test("a call agent is offered no way to import", async ({ page }) => {
+    await signIn(page, USERS.acslAgent);
+    await page.goto("/data-center");
+
+    // Locked rather than hidden, and it names the grant it wants, which is the
+    // same treatment a viewer gets.
+    await expect(page.getByText("Bulk Import")).toBeVisible({ timeout: 20_000 });
+    await expect(page.getByRole("link", { name: "Open Bulk Import" })).toHaveCount(0);
+    await expect(page.getByText("import.upload")).toBeVisible();
+  });
+
+  test("the import endpoint refuses a call agent, not just the card", async ({
+    page,
+  }) => {
+    await signIn(page, USERS.acslAgent);
+    await page.goto("/data-center");
+    await expect(page.getByRole("link", { name: "Open Call Centre" })).toBeVisible({
+      timeout: 20_000,
+    });
+
+    // A locked card is presentation. The permission is only real if the
+    // endpoint refuses the token, whatever the browser sends.
+    const refused = await callEdgeFunction(page, "data-center-import", {
+      action: "partners",
+    });
+    expect(refused.status).toBeGreaterThanOrEqual(400);
+    expect(JSON.stringify(refused.body)).toMatch(/import\.upload/);
+  });
+
+  test("a call agent may edit call records, which is the job", async ({ page }) => {
+    await signIn(page, USERS.acslAgent);
+    await page.goto("/data-center/call-centre");
+    await expect(page.getByRole("heading", { name: "Call Centre" })).toBeVisible({
+      timeout: 20_000,
+    });
+
+    // The write endpoint accepting the token is what proves the level reached
+    // the server, rather than the UI having been told about it locally.
+    const schema = await callEdgeFunction(page, "data-center-write", {
+      action: "form_schema",
+    });
+    expect(schema.status).toBe(200);
+  });
+});
+
+/**
+ * F2: two of data-center-write's five actions are reads.
+ *
+ * `form_schema` returns the questions and `call_record` returns one record
+ * with its history. Both were gated on call_records.edit, so a viewer could
+ * reach the call centre table and open nothing on it. The existing read-only
+ * test never caught it: the manager account has no assigned organizations, so
+ * the queue is empty and the assertion behind its row guard never ran.
+ */
+test.describe("a viewer can read a call record", () => {
+  test("form_schema answers a viewer rather than refusing", async ({ page }) => {
+    await signIn(page, USERS.manager);
+    await page.goto("/data-center/call-centre");
+    await expect(page.getByRole("heading", { name: "Call Centre" })).toBeVisible({
+      timeout: 20_000,
+    });
+
+    const schema = await callEdgeFunction(page, "data-center-write", {
+      action: "form_schema",
+    });
+    expect(
+      schema.status,
+      "a viewer must be able to fetch the form definition, or the record editor never renders for them",
+    ).toBe(200);
+  });
+
+  test("saving is still refused for a viewer", async ({ page }) => {
+    await signIn(page, USERS.manager);
+    await page.goto("/data-center/call-centre");
+    await expect(page.getByRole("heading", { name: "Call Centre" })).toBeVisible({
+      timeout: 20_000,
+    });
+
+    // The other half of the fix: opening a record loosened, writing did not.
+    const saved = await callEdgeFunction(page, "data-center-write", {
+      action: "save_call_record",
+      saleId: "00000000-0000-4000-8000-000000000000",
+      values: {},
+      version: null,
+    });
+    expect(saved.status).toBe(403);
+    expect(JSON.stringify(saved.body)).toMatch(/Not permitted to change call records/);
   });
 });

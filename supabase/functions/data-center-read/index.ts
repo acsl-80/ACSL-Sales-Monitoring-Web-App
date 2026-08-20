@@ -21,6 +21,7 @@ import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.39.3";
 import { resolveAssignedOrgIds } from "../_shared/resolveAssignedOrgIds.ts";
 import { withReadConnection } from "../_shared/data-center-db.ts";
+import { featuresFor } from "../_shared/data-center-roles.ts";
 import { BadRequest, buildRecordsQuery, toPage } from "./records-query.ts";
 import { buildTransferScopeSql, type ScopeInput } from "./scope.ts";
 
@@ -83,17 +84,6 @@ function isSuperAdmin(role: string | null): boolean {
  * src/app/data-center/lib/features.ts exists only for labels. If they ever
  * disagree, this one wins and the UI is what is wrong.
  */
-const ROLE_FEATURES: Record<string, string[]> = {
-  viewer: ["records.view", "call_records.view", "dashboard.view"],
-  editor: [
-    "records.view",
-    "call_records.view",
-    "dashboard.view",
-    "call_records.edit",
-    "import.upload",
-    "import.exceptions",
-  ],
-};
 
 /**
  * Which sales this caller may see, resolved the way the sales app resolves it.
@@ -150,10 +140,10 @@ async function resolveAccess(userId: string): Promise<{
     const grants = { rows: (result.rows[0]?.feature_keys ?? []).map((feature_key) => ({ feature_key })) };
 
     // Union of what the level implies and what was granted individually.
-    const features = new Set<string>(accessRole ? ROLE_FEATURES[accessRole] ?? [] : []);
-    for (const row of grants.rows) features.add(row.feature_key);
-
-    return { accessRole, features: [...features] };
+    return {
+      accessRole,
+      features: featuresFor(accessRole, grants.rows.map((r) => r.feature_key)),
+    };
   });
 }
 

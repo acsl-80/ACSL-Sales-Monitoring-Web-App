@@ -607,20 +607,47 @@ breadcrumbs, back navigation, sidebar highlighting on every child, the locked
 card, the refusal page when a locked route is reached by URL, and the funnel
 being read rather than counted.
 
-## Phase 10: the call agent role, and a fifth outcome
+## Phase 10: the call agent role, and a fifth outcome: DONE
 
-- [ ] `call_agent` added to `module_access.access_role`.
-- [ ] `unreachable` added to `verification_outcome`. Existing rows untouched.
-- [ ] `call_agent_profiles` for enablement and capacity.
-- [ ] **Fix F1.** `ROLE_FEATURES` is currently copied verbatim into three edge
-      functions. It moves to `_shared/data-center-roles.ts` so a fourth role
-      cannot disagree with itself.
-- [ ] **Fix F2.** `form_schema` and `call_record` are reads gated on
-      `call_records.edit`, so a viewer cannot open a record to read it. They
-      re-gate to `call_records.view`.
+- [x] `call_agent` added to `module_access.access_role`. A widened CHECK, so no
+      existing row changes.
+- [x] `unreachable` added to `verification_outcome`, in the Phase 8 migration.
+      Existing rows untouched: nothing becomes unreachable without an agent
+      saying so.
+- [x] `call_agent_profiles` for enablement and per-agent capacity. Separate
+      from `module_access` because holding the role is a permission question
+      and being on shift today is a scheduling one, and they change on
+      different days for different reasons.
+- [x] **F1 fixed.** `ROLE_FEATURES` was copied verbatim into three edge
+      functions. It now lives in `_shared/data-center-roles.ts` and is
+      imported, so a fourth level cannot disagree with itself.
+- [x] **F2 fixed.** Two of `data-center-write`'s five actions are reads, and
+      all five were gated on `call_records.edit`. `form_schema` and
+      `call_record` re-gate to `call_records.view`, so a viewer can open a
+      record instead of meeting a 403 that reads as the module being broken.
+- [x] The access manager offers three levels with a line each on what they
+      mean, and a select rather than a two-way toggle.
+- [x] `assignment.*` settings written, so Phase 11 has them from its first run.
 
-Verify: a call agent edits call records and reaches neither import nor access.
-A viewer opens a record read-only.
+The call agent's set is deliberately not a superset of editor and not a subset
+either. Read the records, edit the call records, see the dashboard, import
+nothing: a person paid to make calls has no reason to move stock, and
+`import.upload` is one step from `import.commit`.
+
+Verified: `e2e/data-center.spec.ts`. A call agent is admitted, is offered the
+call centre, and finds import locked; `data-center-import` refuses their token
+and names the grant it wants, which is the part a locked card cannot prove.
+`data-center-write` accepts it, which is what shows the level reached the
+server rather than only the browser.
+
+Two more hold F2 from both sides: `form_schema` answers a viewer, and saving
+still refuses one. The existing read-only test never caught the bug, because
+the manager account has no assigned organizations, so its queue is empty and
+the assertion behind the row guard never ran.
+
+The seed gains a fourth partner nobody is assigned to. Without it the only
+editor account holds every partner, so there was nothing out of scope to reach
+for and the staging scope check had nothing to prove itself against.
 
 ## Phase 11: the assignment engine
 

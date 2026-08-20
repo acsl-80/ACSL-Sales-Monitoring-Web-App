@@ -23,6 +23,40 @@ export const USERS = {
 } as const;
 
 /**
+ * The signed-in user's token and project URL, read back out of the page.
+ *
+ * For the handful of assertions that have to ask the server directly: what the
+ * UI offers is presentation, and a permission is only real if the endpoint
+ * refuses without it.
+ */
+export async function callEdgeFunction(
+  page: Page,
+  fn: string,
+  body: Record<string, unknown>,
+): Promise<{ status: number; body: unknown }> {
+  return page.evaluate(
+    async ({ fn, body }) => {
+      const key = Object.keys(window.localStorage).find(
+        (k) => k.startsWith("sb-") && k.endsWith("-auth-token"),
+      );
+      const stored = JSON.parse(window.localStorage.getItem(key ?? "") ?? "{}");
+      const token = stored.access_token ?? stored?.currentSession?.access_token;
+      // The storage key is `sb-<ref>-auth-token`, which names the project the
+      // session belongs to. Deriving the URL from it rather than from a build
+      // variable keeps the call pointed at whatever the page is pointed at.
+      const ref = (key ?? "").replace(/^sb-/, "").replace(/-auth-token$/, "");
+      const response = await fetch(`https://${ref}.supabase.co/functions/v1/${fn}`, {
+        method: "POST",
+        headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
+        body: JSON.stringify(body),
+      });
+      return { status: response.status, body: await response.json() };
+    },
+    { fn, body },
+  );
+}
+
+/**
  * Records every backend origin the page talks to, so a test can assert the app
  * reached the branch and never production.
  */
