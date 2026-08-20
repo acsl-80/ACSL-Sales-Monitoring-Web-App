@@ -144,6 +144,18 @@ observable without seeding. Seed before claiming anything.
 - Retries use exponential backoff and only on operations safe to repeat.
 - Import errors are per-row and visible, with the reason and the raw payload
   retained. Never swallow a row failure into a batch-level count.
+- **An import never drops anything in silence.** A column it does not recognise
+  is named before staging, not ignored. A serial repeated inside a file is an
+  exception naming the row it repeats, not a second sale. A file already staged
+  warns before it is staged again. Each of those was a real silent failure, and
+  a silent failure is the only kind an operator cannot correct.
+- **One validator, whatever the channel.** A typed record is a batch of one
+  through the same stage, validate, dry run and commit as a file. A second
+  write path is how the two drift apart, and the cheaper-looking one ends up
+  accepting records the file path would have refused.
+- **The `inspect` required list must match what `normalizeRow` refuses.** It
+  did not once, so a nameless file was blessed and then rejected row by row,
+  which is the failure the step exists to prevent, one level up.
 - Roughly 8% of imported serials are expected not to match stock. That is the
   normal case, so it routes to an exceptions queue for a human, not a rejection.
 - Log full detail, show the user a calm message, leak nothing internal.

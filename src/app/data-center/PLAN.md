@@ -86,7 +86,7 @@ Table 1 is a view and owns nothing. Table 2 adds facts and never copies them.
 | `v_sold_stoves` | view | `public.sales` joined to addresses, organizations, stock. This is Table 1 |
 | `call_records` | table | Spine columns plus `answers` jsonb, keyed `sale_id` |
 | `v_call_center` | view | Table 1 joined to `call_records`, so an operator sees one wide table |
-| `import_batches`, `import_rows` | tables | Staging, per-row validation results, raw payload retained |
+| `import_batches`, `import_rows` | tables | Staging, per-row validation results, raw payload retained. A batch carries the hash of its rows, the operator's column mapping, and its channel; a row carries the transfer it resolved to and the row it duplicates |
 | `field_defs`, `option_lists`, `option_values` | tables | The registry that replaces the workbook's Key tab |
 | `feature_grants` | table | Tier-2 per-user feature grants |
 | `workflow_config` | table | Verification criteria, callback limit, completeness definition |
@@ -185,6 +185,10 @@ Recorded so they are not re-argued. Everything here is settled.
 | D10 | Manager rollup | `profiles.manager_id`, self-referencing FK, indexed | Exists already. Only 50 of 486 profiles carry one, so the scorecard reads sparse until that is filled in |
 | D11 | Batch assignment | Twenty per batch, one partner, auto-assign the next partner on exhaustion, stale reclaim, an open-batch cap, per-partner size | |
 | D12 | Time dimension | All-time by default, with an optional date range | Assumption, not an instruction |
+| D13 | A repeat upload | Warn and let it through on confirmation, never block | A partner can legitimately return the same serials after a correction. A hard block sends someone off to edit the file until it is accepted, which is worse than a duplicate |
+| D14 | A repeated serial inside one file | Exception naming the row it repeats | It used to import twice and fail at commit as a stove-already-sold error, which reads as a stock problem rather than the typing one it is |
+| D15 | A record with no matching transfer | Import it, leave the link null | About one serial in twelve matches nothing. Making the link a condition of import would refuse 8% of a real backlog |
+| D16 | Typing one record | A batch of one through the same four steps | A second write path with its own rules is how the two drift apart, and the cheaper-looking one accepts records the file path would refuse |
 
 ### The five verification outcomes
 
@@ -208,9 +212,14 @@ Yet to be resolved` always equals the number received.
    already being collected.
 2. **Can an ACSL agent report to more than one manager?** The schema says no,
    one `manager_id`. Worth raising only if the real org chart disagrees.
-3. **The receipt file.** Import already accepts flexible headers and now has a
-   mapping step, so this is no longer blocking. A real file would let the
-   aliases be sharpened.
+3. **The receipt file.** Import accepts flexible headers, names the ones it does
+   not recognise, and lets an operator map them, so this is no longer blocking.
+   A real file would let the built-in aliases be sharpened, which would mean
+   fewer files stopping for a mapping step.
+4. **Saved column mappings.** A mapping is recorded on the batch that used it,
+   so a batch can be explained months later. It is not offered back on the next
+   upload. Worth adding once the same partner has sent the same odd headers
+   twice, and not before.
 
 ## Decided: call centre staff hold an ACSL role
 
