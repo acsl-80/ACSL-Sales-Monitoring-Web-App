@@ -69,34 +69,40 @@ test.describe("entry is per user, case by case", () => {
       // "Data Center" as the page title in every state, denied included, so
       // matching that would be testing the layout chrome rather than the gate.
       await expect(page.getByText("Sold Stove Records")).toHaveCount(0);
-      await expect(page.getByText(/Your access/)).toHaveCount(0);
+      await expect(page.getByRole("link", { name: /^Open / })).toHaveCount(0);
     });
   }
 });
 
 test.describe("viewer and editor are different animals", () => {
-  test("editor: all four surfaces unlocked, six of nine features", async ({
-    page,
-  }) => {
+  test("editor: every card on the hub is open", async ({ page }) => {
     await signIn(page, USERS.callCentre);
     await page.goto("/data-center");
 
-    await expect(page.getByText(/Editor access, 6 of 9 features/)).toBeVisible();
-    // Nothing on this page is locked for an editor.
-    await expect(page.getByText(/^Requires /)).toHaveCount(0);
+    // An editor holds import.upload and call_records.edit, so nothing on the
+    // hub is locked. Asserting the cards rather than a feature count tests the
+    // gate itself instead of a label describing it.
+    for (const area of ["Dashboard", "Call Centre", "Partner Records", "Stove Records", "Bulk Import"]) {
+      await expect(page.getByRole("link", { name: `Open ${area}` })).toBeVisible({
+        timeout: 20_000,
+      });
+    }
+    await expect(page.getByText(/^Needs /)).toHaveCount(0);
   });
 
-  test("viewer: the reading surfaces, and nothing that writes", async ({ page }) => {
+  test("viewer: the reading areas open, the writing one does not", async ({ page }) => {
     await signIn(page, USERS.manager);
     await page.goto("/data-center");
 
-    await expect(page.getByText(/Viewer access, 3 of 9 features/)).toBeVisible();
-
-    // The three a viewer holds are records.view, call_records.view and
-    // dashboard.view, so both tables render and nothing that changes data does.
-    await expect(page.getByRole("heading", { name: "Sold Stove Records" })).toBeVisible();
-    await expect(page.getByRole("heading", { name: "Call Centre" })).toBeVisible();
-    await expect(page.getByRole("heading", { name: "Bulk Import" })).toHaveCount(0);
+    // A viewer holds records.view, call_records.view and dashboard.view.
+    for (const area of ["Dashboard", "Call Centre", "Partner Records", "Stove Records"]) {
+      await expect(page.getByRole("link", { name: `Open ${area}` })).toBeVisible({
+        timeout: 20_000,
+      });
+    }
+    // Import is shown locked rather than hidden, so the missing grant is named.
+    await expect(page.getByRole("link", { name: "Open Bulk Import" })).toHaveCount(0);
+    await expect(page.getByText("import.upload")).toBeVisible();
     await expect(page.getByRole("heading", { name: "Access", exact: true })).toHaveCount(0);
   });
 });

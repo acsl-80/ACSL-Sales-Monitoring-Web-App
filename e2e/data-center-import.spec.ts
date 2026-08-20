@@ -17,7 +17,7 @@ import { signIn, USERS } from "./helpers";
 test.describe("bulk import", () => {
   test("super admin sees the panel and the partner picker", async ({ page }) => {
     await signIn(page, USERS.admin);
-    await page.goto("/data-center");
+    await page.goto("/data-center/import");
 
     await expect(page.getByRole("heading", { name: "Bulk Import" })).toBeVisible({
       timeout: 20_000,
@@ -31,7 +31,7 @@ test.describe("bulk import", () => {
 
   test("the panel says nothing is committed until asked", async ({ page }) => {
     await signIn(page, USERS.admin);
-    await page.goto("/data-center");
+    await page.goto("/data-center/import");
     await expect(page.getByRole("heading", { name: "Bulk Import" })).toBeVisible({
       timeout: 20_000,
     });
@@ -45,7 +45,7 @@ test.describe("bulk import", () => {
 
   test("an editor can stage but is not offered commit", async ({ page }) => {
     await signIn(page, USERS.callCentre);
-    await page.goto("/data-center");
+    await page.goto("/data-center/import");
 
     // The editor level carries import.upload and import.exceptions, and
     // deliberately not import.commit: staging and correcting are clerical,
@@ -57,15 +57,16 @@ test.describe("bulk import", () => {
     await expect(page.getByRole("button", { name: /^Roll back / })).toHaveCount(0);
   });
 
-  test("a viewer is not offered import at all", async ({ page }) => {
+  test("a viewer reaching import by URL is refused", async ({ page }) => {
     await signIn(page, USERS.manager);
-    await page.goto("/data-center");
+    await page.goto("/data-center/import");
 
-    await expect(page.getByRole("heading", { name: "Data Center" })).toBeVisible({
-      timeout: 20_000,
-    });
-    // The viewer level carries no import feature, so the panel is absent
-    // rather than present and disabled.
+    // The viewer level carries no import feature. Since Phase 9 import has its
+    // own route, so this is a refusal page rather than an absent panel, which
+    // is the stronger statement: the surface never renders at all.
+    await expect(
+      page.getByRole("heading", { name: "Not part of your access" }),
+    ).toBeVisible({ timeout: 20_000 });
     await expect(page.getByRole("heading", { name: "Bulk Import" })).toHaveCount(0);
   });
 });

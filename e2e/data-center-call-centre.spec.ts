@@ -15,7 +15,7 @@ import { signIn, USERS } from "./helpers";
 test.describe("the call centre queue", () => {
   test("super admin sees the queue and its presets", async ({ page }) => {
     await signIn(page, USERS.admin);
-    await page.goto("/data-center");
+    await page.goto("/data-center/call-centre");
 
     await expect(page.getByRole("heading", { name: "Call Centre" })).toBeVisible({
       timeout: 20_000,
@@ -35,7 +35,7 @@ test.describe("the call centre queue", () => {
     });
 
     await signIn(page, USERS.admin);
-    await page.goto("/data-center");
+    await page.goto("/data-center/call-centre");
     await expect(page.getByRole("heading", { name: "Call Centre" })).toBeVisible({
       timeout: 20_000,
     });
@@ -57,7 +57,7 @@ test.describe("the call centre queue", () => {
     });
 
     await signIn(page, USERS.admin);
-    await page.goto("/data-center");
+    await page.goto("/data-center/call-centre");
     await expect(page.getByRole("heading", { name: "Call Centre" })).toBeVisible({
       timeout: 20_000,
     });
@@ -71,7 +71,7 @@ test.describe("the call centre queue", () => {
 
   test("an editor can open a record and is offered Save", async ({ page }) => {
     await signIn(page, USERS.callCentre);
-    await page.goto("/data-center");
+    await page.goto("/data-center/call-centre");
     await expect(page.getByRole("heading", { name: "Call Centre" })).toBeVisible({
       timeout: 20_000,
     });
@@ -90,7 +90,7 @@ test.describe("the call centre queue", () => {
 
   test("a viewer gets the queue read only", async ({ page }) => {
     await signIn(page, USERS.manager);
-    await page.goto("/data-center");
+    await page.goto("/data-center/call-centre");
 
     await expect(page.getByRole("heading", { name: "Call Centre" })).toBeVisible({
       timeout: 20_000,

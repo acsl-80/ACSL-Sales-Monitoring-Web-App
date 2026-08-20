@@ -204,6 +204,37 @@ export type RecordsPage = {
   scope: string;
 };
 
+export type TransferFunnelRow = {
+  transfer_id: string;
+  transaction_id: string;
+  organization_id: string | null;
+  partner_name: string | null;
+  partner_id: string | null;
+  transfer_state: string | null;
+  transfer_branch: string | null;
+  sales_rep: string | null;
+  /** ISO YYYY-MM-DD, cast to text server-side so no timezone can shift it. */
+  sales_date: string | null;
+  transfer_date: string | null;
+  issued_count: number;
+  received_count: number;
+  /** False when received is standing in for digitalised, no paper logged. */
+  received_is_logged: boolean;
+  digitalised_count: number;
+  verified_count: number;
+  unverified_count: number;
+  unreachable_count: number;
+  unresolved_count: number;
+  outstanding_count: number;
+  computed_at: string;
+};
+
+export type TransferFunnelPage = {
+  rows: TransferFunnelRow[];
+  scope: string;
+  computedAt: string | null;
+};
+
 export const dataCenterClient = {
   /**
    * Resolve the caller's access. Called once when the module mounts. The
@@ -226,6 +257,24 @@ export const dataCenterClient = {
     direction?: "asc" | "desc";
     filters?: RecordsFilters;
   } = {}) => call<RecordsPage>("data-center-read", "records", params),
+
+  /**
+   * The reconciliation funnel, one row per transfer.
+   *
+   * Precomputed server-side and read as a table, so this is an indexed read
+   * rather than a count over sales. The `computedAt` stamp is part of the
+   * answer: these figures are as of the last compute run, not as of now.
+   */
+  getTransferFunnel: (params: {
+    limit?: number;
+    filters?: {
+      organizationId?: string;
+      transferState?: string;
+      salesRep?: string;
+      outstandingOnly?: boolean;
+      search?: string;
+    };
+  } = {}) => call<TransferFunnelPage>("data-center-read", "transfer_funnel", params),
 
   /** Table 2. Same paging contract, plus the call centre's own filters. */
   getCallQueue: (params: {

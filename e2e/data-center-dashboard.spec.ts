@@ -15,7 +15,7 @@ import { signIn, USERS } from "./helpers";
 test.describe("dashboards", () => {
   test("super admin sees the dashboard and can recompute", async ({ page }) => {
     await signIn(page, USERS.admin);
-    await page.goto("/data-center");
+    await page.goto("/data-center/dashboard");
 
     await expect(page.getByRole("heading", { name: "Dashboards" })).toBeVisible({
       timeout: 20_000,
@@ -25,7 +25,7 @@ test.describe("dashboards", () => {
 
   test("the dashboard says where its numbers come from in time", async ({ page }) => {
     await signIn(page, USERS.admin);
-    await page.goto("/data-center");
+    await page.goto("/data-center/dashboard");
     await expect(page.getByRole("heading", { name: "Dashboards" })).toBeVisible({
       timeout: 20_000,
     });
@@ -38,7 +38,7 @@ test.describe("dashboards", () => {
 
   test("a viewer sees the dashboard but is not offered Recompute", async ({ page }) => {
     await signIn(page, USERS.manager);
-    await page.goto("/data-center");
+    await page.goto("/data-center/dashboard");
 
     // dashboard.view is part of every access level; running the computation is
     // super admin only, because it reads every sale.
@@ -59,7 +59,7 @@ test.describe("dashboards", () => {
     });
 
     await signIn(page, USERS.admin);
-    await page.goto("/data-center");
+    await page.goto("/data-center/dashboard");
     await expect(page.getByRole("heading", { name: "Dashboards" })).toBeVisible({
       timeout: 20_000,
     });

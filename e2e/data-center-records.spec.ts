@@ -17,7 +17,7 @@ test.describe("sold stove records", () => {
     page,
   }) => {
     await signIn(page, USERS.admin);
-    await page.goto("/data-center");
+    await page.goto("/data-center/stove-records");
 
     await expect(page.getByRole("heading", { name: "Sold Stove Records" })).toBeVisible({
       timeout: 20_000,
@@ -42,7 +42,7 @@ test.describe("sold stove records", () => {
     });
 
     await signIn(page, USERS.admin);
-    await page.goto("/data-center");
+    await page.goto("/data-center/stove-records");
     await expect(page.getByRole("heading", { name: "Sold Stove Records" })).toBeVisible({
       timeout: 20_000,
     });
@@ -67,7 +67,7 @@ test.describe("sold stove records", () => {
     });
 
     await signIn(page, USERS.admin);
-    await page.goto("/data-center");
+    await page.goto("/data-center/stove-records");
     await expect(page.getByRole("heading", { name: "Sold Stove Records" })).toBeVisible({
       timeout: 20_000,
     });
@@ -85,7 +85,7 @@ test.describe("sold stove records", () => {
     page,
   }) => {
     await signIn(page, USERS.callCentre);
-    await page.goto("/data-center");
+    await page.goto("/data-center/stove-records");
 
     // records.view is part of every access level, so the table is present.
     await expect(page.getByRole("heading", { name: "Sold Stove Records" })).toBeVisible({
