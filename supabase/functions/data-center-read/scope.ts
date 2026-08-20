@@ -141,3 +141,83 @@ export function buildScopeSql(
 
   return { sql: "false", args, description: "role not permitted" };
 }
+
+/**
+ * Who may see which transfers.
+ *
+ * A transfer is a fact about a partner, not about a sale, so the sale-level
+ * rule above does not apply: `transfer_funnel` has an organization and nothing
+ * else to scope by. This mirrors `get-transfer-history`, which is the sales
+ * app's own authority on the same question, including the part where a
+ * partner_agent gets nothing at all.
+ *
+ * That asymmetry is deliberate rather than an oversight. A partner agent may
+ * see the sales they recorded; how many stoves ACSL shipped to their employer
+ * is a different question and the sales app has already decided they do not
+ * get to ask it.
+ */
+export function buildTransferScopeSql(
+  input: ScopeInput,
+  startIndex: number,
+  alias: string,
+): ScopeSql {
+  const args: unknown[] = [];
+  let i = startIndex;
+  const p = (value: unknown) => {
+    args.push(value);
+    return `$${i++}`;
+  };
+
+  if (!/^[a-z_][a-z0-9_]*$/i.test(alias)) {
+    throw new Error(`Invalid table alias: ${alias}`);
+  }
+  const a = `${alias}.`;
+  const role = input.role;
+
+  if (role === "super_admin") {
+    if (input.requestedOrgId) {
+      return {
+        sql: `${a}organization_id = ${p(input.requestedOrgId)}`,
+        args,
+        description: "one organization",
+      };
+    }
+    return { sql: "true", args, description: "all organizations" };
+  }
+
+  if (role === "acsl_agent" || role === "acsl_agent_manager" || role === "super_admin_agent") {
+    const scope = input.assignedOrgIds ?? [];
+    if (input.requestedOrgId) {
+      if (!scope.includes(input.requestedOrgId)) {
+        return { sql: "false", args, description: "organization not assigned" };
+      }
+      return {
+        sql: `${a}organization_id = ${p(input.requestedOrgId)}`,
+        args,
+        description: "one assigned organization",
+      };
+    }
+    if (scope.length === 0) {
+      return { sql: "false", args, description: "no assigned organizations" };
+    }
+    return {
+      sql: `${a}organization_id = any(${p(scope)}::uuid[])`,
+      args,
+      description: `${scope.length} assigned organizations`,
+    };
+  }
+
+  if (role === "partner" || role === "admin") {
+    if (!input.organizationId) {
+      return { sql: "false", args, description: "no organization on profile" };
+    }
+    return {
+      sql: `${a}organization_id = ${p(input.organizationId)}`,
+      args,
+      description: "own organization",
+    };
+  }
+
+  // partner_agent and agent, matching get-transfer-history's ALLOWED_ROLES.
+  return { sql: "false", args, description: "role not permitted" };
+}

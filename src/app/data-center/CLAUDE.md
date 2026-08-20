@@ -73,10 +73,22 @@ Data Center grant, it is wrong regardless of how convenient it is.
   simultaneous use.
 - Every schema change is a versioned migration. Never alter the database by
   hand. Migrations are additive: no `ALTER TABLE` against anything in `public`.
+- **Transfer records are read, never copied.** `public.stove_transfer_history`
+  already holds what was sold to each partner, kept current by the ERP sync.
+  The module reads it through `v_transfers`. A scheduled pull into a local table
+  would be a second version of the truth for no gain.
+- A record ties to its parent transfer through
+  `stove_serial_no` to `stove_ids_base.sales_reference` to
+  `stove_transfer_history.transaction_id`. That chain already exists and two
+  triggers keep it current. Do not invent a second matching key.
 - Index creation on `public` uses `CREATE INDEX CONCURRENTLY`, in its own
   migration file, and `pg_index.indisvalid` is checked afterwards.
 - Never `SELECT *`. Name the columns.
 - Multi-step writes are wrapped in a transaction.
+- **Anything that hands out work takes an advisory lock.** Assignment and the
+  metrics run both had an obvious check-then-act version, and both were raced
+  in testing. `pg_try_advisory_lock` cannot be raced; reading a table to see
+  whether something is already running can.
 - `sales.status` is not a trustworthy completeness signal: the form dropped the
   photo and agreement requirements but `calculate_sale_status()` still demands
   them, so 30 of 38 production rows read `incomplete`. Use the module's own
@@ -92,7 +104,15 @@ Data Center grant, it is wrong regardless of how convenient it is.
 - A field graduates from jsonb to a real column when it starts being
   aggregated. Record the move in the registry.
 - Thresholds, callback limits and verification criteria come from
-  `workflow_config` at runtime. Never hard-code them.
+  `workflow_config` at runtime. Never hard-code them. That now includes batch
+  size, stale-batch age, agent capacity and per-partner overrides.
+- **One metric engine, parameterised by dimension. Never one per dimension.**
+  Five scorecards showing the same six columns are five chances for the same
+  number to disagree with itself. Add a dimension to `compute_metrics()` and to
+  the `Scorecard` component's prop, not a new implementation.
+- **Role features live in `_shared/data-center-roles.ts` and are imported.**
+  They were copied into three edge functions once, which meant a new role had to
+  be added in three places or it silently disagreed. Do not copy them back.
 
 ## Performance
 
@@ -109,6 +129,10 @@ observable without seeding. Seed before claiming anything.
 - Page size has a hard server-side ceiling regardless of what the caller asks
   for.
 - Long lists are virtualized. At 500k the DOM is a bottleneck too.
+- Every scorecard and every table it drills into exports CSV. The numbers have
+  to be able to leave the app for analysis.
+- Drill-through is a URL, never component state. Back navigation then restores
+  filters and scroll position without anything being written to do it.
 - Work slower than about a second moves to a batched job. A large import never
   runs inside a request.
 - Index the columns queries filter or join on, and check the plan for

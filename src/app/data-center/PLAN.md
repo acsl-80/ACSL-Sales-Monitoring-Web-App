@@ -91,9 +91,17 @@ Table 1 is a view and owns nothing. Table 2 adds facts and never copies them.
 | `feature_grants` | table | Tier-2 per-user feature grants |
 | `workflow_config` | table | Verification criteria, callback limit, completeness definition |
 | `metric_snapshots` | table | Precomputed dashboard values |
+| `v_transfers` | view | `public.stove_transfer_history` joined to organizations. What was sold TO a partner |
+| `v_transfer_stoves` | view | One row per serial in a transfer. The spine that ties a sale back to its transfer |
+| `record_consignments` | table | Paper records physically returned by a partner. A count, not a row per record |
+| `v_transfer_funnel` | view | Issued, received, digitalised, verified, per transfer |
+| `assignment_batches`, `assignment_items` | tables | Call centre work, twenty records of one partner at a time |
+| `v_assignment_log` | view | Who was given what, who called whom, and what came of it |
+| `call_agent_profiles` | table | Which users are call agents, and whether they are taking work |
 
 `call_records` spine columns: `verification_outcome` (`fully_verified`,
-`partially_verified`, `doubtful_verification`, `not_verified`), `call_outcome`,
+`partially_verified`, `doubtful_verification`, `unreachable`, `not_verified`),
+`call_outcome`,
 `call_agent`, `call_date_1..3`, corrected primary and alternative phone, ward,
 landmark, stated serial.
 
@@ -109,6 +117,7 @@ from the caller's JWT before doing anything else.
 | `data-center-import` | Upload, validate, dry run, commit, rollback |
 | `data-center-compute` | Aggregates into `metric_snapshots`. Scheduled, never on page load |
 | `data-center-admin` | Registry and grant management |
+| `data-center-assign` | Runs the batch engine, reclaims stale batches, serves an agent their queue |
 
 ## Evidence behind the plan
 
@@ -158,22 +167,50 @@ inherited). **24** is near-N/A because Supabase authenticates with bearer tokens
 rather than cookies, but this module must not introduce a cookie-authenticated
 write.
 
+## Decisions
+
+Recorded so they are not re-argued. Everything here is settled.
+
+| # | Question | Decision | Basis |
+|---|---|---|---|
+| D1 | Sync direction for transfers | Live view, never a copy | Same database. The module's invariant is that it never copies a fact it can read |
+| D2 | What ties a field record to its sale | `sales.stove_serial_no` to `stove_ids_base.sales_reference` to `stove_transfer_history.transaction_id` | The relationship already exists and two triggers keep it current |
+| D3 | The dashboard's four statuses | `unreachable` becomes a fifth `verification_outcome` | An agent's judgement, recorded, not derived from a call outcome |
+| D4 | What "Received" means | A count logged per consignment against a partner | Paper era. Direct digital entry has no paper stage, so received equals digitalised there |
+| D5 | Call Centre Agent | A third `access_role` beside viewer and editor | One concept, one place to enable it |
+| D6 | Who scorecard 4 measures | The same call agent | |
+| D7 | The Partner Records surface | The reconciliation funnel, one row per transfer | |
+| D8 | The Location axis | `stove_transfer_history.state` | Present on all 497 transfers. End-user state cannot fill the top line, because it does not exist until a record is digitalised |
+| D9 | Sales representative | `stove_transfer_history.sales_rep` | 488 of 497 rows carry it |
+| D10 | Manager rollup | `profiles.manager_id`, self-referencing FK, indexed | Exists already. Only 50 of 486 profiles carry one, so the scorecard reads sparse until that is filled in |
+| D11 | Batch assignment | Twenty per batch, one partner, auto-assign the next partner on exhaustion, stale reclaim, an open-batch cap, per-partner size | |
+| D12 | Time dimension | All-time by default, with an optional date range | Assumption, not an instruction |
+
+### The five verification outcomes
+
+The dashboard's four columns map onto them with no derivation, which is what
+makes the consistency rule hold by construction rather than by arithmetic:
+
+| Dashboard column | `verification_outcome` |
+|---|---|
+| Verified | `fully_verified` |
+| Unverified | `partially_verified`, `doubtful_verification` |
+| Unreachable | `unreachable` |
+| Yet to be resolved | `not_verified` |
+
+Mutually exclusive and exhaustive, so `Verified + Unverified + Unreachable +
+Yet to be resolved` always equals the number received.
+
 ## Open questions
 
-1. **How does a digitalized paper receipt satisfy `create-sale`?** It requires a
-   drawn signature and six ticked terms. A paper receipt has an ink signature.
-   Either the import supplies a scanned agreement in its place, or `create-sale`
-   gains an import mode, which touches a shared high-risk function. Blocked on
-   the receipt file.
-2. **Should "nobody has called yet" and "called, no conclusion" stay merged?**
-   Both are blank in the workbook today. Splitting them means a fifth state and
-   makes an untouched queue distinguishable from an exhausted one.
-3. **Do Vercel Preview environment variables point at the live database?**
-   Cannot be read from the repo, since `VERCEL_TOKEN` in `.vercel.local` is
-   empty. Acceptable either way under this design, but it should be a known
-   choice.
-4. **Who are the call centre users in the host's role model?** Nine agent names
-   appear in the workbook. None is a role in `permissions.ts`.
+1. **Period-over-period on the scorecards.** All-time ships first.
+   `metric_snapshots` keeps every run, so the history to compare against is
+   already being collected.
+2. **Can an ACSL agent report to more than one manager?** The schema says no,
+   one `manager_id`. Worth raising only if the real org chart disagrees.
+3. **The receipt file.** Import already accepts flexible headers and now has a
+   mapping step, so this is no longer blocking. A real file would let the
+   aliases be sharpened.
 
 ## Decided: call centre staff hold an ACSL role
 

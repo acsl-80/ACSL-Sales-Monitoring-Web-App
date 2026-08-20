@@ -170,6 +170,13 @@ serve(async (req) => {
               args: [runId],
             });
             const written = Number(r.rows[0]?.compute_metrics ?? 0);
+
+            // The reconciliation funnel is computed too, so it refreshes here:
+            // same connection, same advisory lock, same "as of" moment. A
+            // dashboard and a Partner Records page that disagree about how
+            // current they are would be worse than either being stale.
+            await conn.queryObject("select data_center.refresh_transfer_funnel()");
+
             const duration = Date.now() - started;
             await conn.queryObject({
               text: `update data_center.metric_runs

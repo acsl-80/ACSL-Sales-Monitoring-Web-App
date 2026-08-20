@@ -342,7 +342,7 @@ Once unblocked, in order:
    `supabase_edge_runtime` container is stopped.
 5. Then Phase 3.
 
-## Phase 3: Table 1, browsable at capacity — DONE
+## Phase 3: Table 1, browsable at capacity : DONE
 
 - [x] `scripts/seed-data-center.sql`, generating 500,000 synthetic sales
       locally, plus a teardown that removes exactly what it wrote. Verified: the
@@ -366,7 +366,7 @@ them and both recorded in `RECORDS-PERFORMANCE.md`:
 - **`v_sold_stoves` gained `sold_on_behalf_of`.** The scope rule needs it, and
   its absence broke every non-super-admin read.
 
-## Phase 4: Table 2, the call centre layer — DONE
+## Phase 4: Table 2, the call centre layer : DONE
 
 - [x] The four-state switch, as the workbook actually uses it.
 - [x] `call_outcome` separate from the verification outcome, registry-backed.
@@ -405,7 +405,7 @@ all, the second has one with `not_verified`. The queue can tell them apart
 (`hasCallRecord: false` against `verificationOutcome: not_verified`) without a
 fifth state, because the attempts table already carries the difference.
 
-## Phase 5: bulk import — DONE
+## Phase 5: bulk import : DONE
 
 Not optional. 359 serials in one week's workbook against 38 rows in the whole
 sales app.
@@ -439,7 +439,7 @@ against itself by claiming in `data_center.import_claims` first, but it cannot
 close it against the Sell Stove form. Written up in `IMPORT.md`; fixing it is a
 one-line change to a live shared function and therefore a decision.
 
-## Phase 6: computation and dashboards — DONE
+## Phase 6: computation and dashboards : DONE
 
 - [x] `data-center-compute`, aggregating into `metric_snapshots` through
       `data_center.compute_metrics()`. On demand, super admin only, never on
@@ -531,6 +531,95 @@ Option 1 looks right and option 3 is ruled out by the invariant, but this needs
 a decision before Phase 7 starts. Recorded now so it is not discovered late.
 
 ---
+
+## Phase 8: transfers and reconciliation
+
+What was sold has to be known before what was recovered can mean anything.
+
+- [ ] `v_transfers`, `v_transfer_stoves`, `v_transfer_funnel` over
+      `public.stove_transfer_history`. A view, not a sync: the records are
+      already in this database. 497 transfers, 14,564 stoves, 278 partners,
+      23 sales reps in production today.
+- [ ] `record_consignments` for the Received stage, a count per consignment
+      rather than a row per record.
+- [ ] `transfers` and `transfer_funnel` actions on `data-center-read`, scoped
+      through the existing `buildScopeSql`.
+- [ ] Import hardening: auto-link to the parent transfer, a header mapping
+      step, duplicate detection inside a file and against previous batches,
+      manual single-record entry, and the row cap stated before upload.
+
+Verify: for a seeded transfer, issued, received, digitalised and verified
+reconcile. A record that matches no transfer becomes an exception and is never
+dropped.
+
+## Phase 9: Explore, and one page per area
+
+The module is one long scrolling page today. It becomes a hub.
+
+- [ ] `Explore` card grid at `/data-center`, one card per area, a locked card
+      shown locked rather than hidden.
+- [ ] Child routes for dashboard, call centre, partner records, stove records.
+- [ ] `DataCentreShell` carrying breadcrumbs and back navigation, reusing
+      `src/components/ui/breadcrumb.tsx`, which already exists.
+- [ ] No change to `DashboardLayout.tsx`: `deriveCurrentRouteFromPath` already
+      falls through to `segments[0]`, so the sidebar stays highlighted.
+
+Verify: four cards, each opening its own route; breadcrumbs and back work;
+sidebar highlighting holds on every child.
+
+## Phase 10: the call agent role, and a fifth outcome
+
+- [ ] `call_agent` added to `module_access.access_role`.
+- [ ] `unreachable` added to `verification_outcome`. Existing rows untouched.
+- [ ] `call_agent_profiles` for enablement and capacity.
+- [ ] **Fix F1.** `ROLE_FEATURES` is currently copied verbatim into three edge
+      functions. It moves to `_shared/data-center-roles.ts` so a fourth role
+      cannot disagree with itself.
+- [ ] **Fix F2.** `form_schema` and `call_record` are reads gated on
+      `call_records.edit`, so a viewer cannot open a record to read it. They
+      re-gate to `call_records.view`.
+
+Verify: a call agent edits call records and reaches neither import nor access.
+A viewer opens a record read-only.
+
+## Phase 11: the assignment engine
+
+- [ ] `assignment_batches`, `assignment_items`, unique on `sale_id` so a record
+      cannot sit in two batches at once.
+- [ ] `assign_batches()`: twenty records, one partner, to the eligible agent
+      with the fewest open batches, repeating while capacity remains. Takes
+      `pg_try_advisory_lock`, the same primitive the metrics run uses, because
+      the obvious check-then-act version can be raced.
+- [ ] `reclaim_stale_batches()` for batches untouched past the configured age
+      or whose agent has been disabled.
+- [ ] Batch size, stale age, capacity and per-partner overrides in
+      `workflow_config`, not in code.
+
+Verify: batches never mix partners; two concurrent runs do not double-assign;
+a stale batch returns to the pool; the open-batch cap holds.
+
+## Phase 12: the assignment and call log
+
+- [ ] `v_assignment_log` joining batches, items, attempts and profiles.
+- [ ] An `assignment_log` action, keyset paginated through the same builder as
+      everything else, filterable by agent, partner and date server-side.
+
+Verify: every filter is a server query, and no request carries an offset.
+
+## Phase 13: the metric engine and five scorecards
+
+One engine and one component, parameterised by dimension. Five separate
+implementations would be five places for the same number to disagree.
+
+- [ ] `compute_metrics()` writes seven scorecard metrics per dimension across
+      partner, location, sales rep, call agent and manager.
+- [ ] One `Scorecard` component, given a dimension.
+- [ ] Drill-through as a URL, so back navigation restores filters for free.
+- [ ] CSV export on every scorecard and every table it drills into.
+
+Verify: the same six columns on all five; `Verified + Unverified + Unreachable
++ Yet to be resolved` equals Received on every row; a cell click lands on the
+filtered table and back restores it; capacity re-proven at 500,000.
 
 ## Verification
 

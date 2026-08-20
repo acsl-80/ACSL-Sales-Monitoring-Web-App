@@ -22,7 +22,7 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2.39.3";
 import { resolveAssignedOrgIds } from "../_shared/resolveAssignedOrgIds.ts";
 import { withReadConnection } from "../_shared/data-center-db.ts";
 import { BadRequest, buildRecordsQuery, toPage } from "./records-query.ts";
-import type { ScopeInput } from "./scope.ts";
+import { buildTransferScopeSql, type ScopeInput } from "./scope.ts";
 
 // Explicit origin allowlist rather than `*`. The rest of this repo uses `*`;
 // this module does not, because these responses are gated on a bearer token and
@@ -393,6 +393,103 @@ serve(async (req) => {
                 isStale,
                 staleAfterHours: hours,
                 lastRun: row?.last_run ?? null,
+              },
+            },
+            200,
+            cors,
+          );
+        });
+      }
+
+      /**
+       * The reconciliation funnel: what was sold to a partner against what has
+       * come back.
+       *
+       * Reads `transfer_funnel`, which a compute run maintains. It does not
+       * read the view of the same name: that one aggregates over public.sales,
+       * and this module does not do that in a request. See the note at the top
+       * of 20260821010000_data_center_transfers.sql for what it cost to learn
+       * that the hard way.
+       */
+      case "transfer_funnel": {
+        const superAdmin = isSuperAdmin(profile.role);
+        const resolved = superAdmin
+          ? { accessRole: null, features: [] as string[] }
+          : await resolveAccess(userId);
+
+        if (!superAdmin && resolved.accessRole === null) {
+          return json({ error: "No Data Center access", code: "no_access" }, 403, cors);
+        }
+        if (!superAdmin && !resolved.features.includes("records.view")) {
+          return json({ error: "Not permitted", code: "no_feature" }, 403, cors);
+        }
+
+        const scopeInput = await resolveScope(
+          supabase,
+          userId,
+          profile.role,
+          profile.organization_id ?? null,
+        );
+        const filters = (body.filters ?? {}) as {
+          organizationId?: string;
+          transferState?: string;
+          salesRep?: string;
+          outstandingOnly?: boolean;
+          search?: string;
+        };
+
+        const scope = buildTransferScopeSql(
+          { ...scopeInput, requestedOrgId: filters.organizationId ?? null },
+          1,
+          "f",
+        );
+        const args: unknown[] = [...scope.args];
+        const where: string[] = [scope.sql];
+        const p = (v: unknown) => {
+          args.push(v);
+          return `$${args.length}`;
+        };
+
+        if (filters.transferState) where.push(`f.transfer_state = ${p(filters.transferState)}`);
+        if (filters.salesRep) where.push(`f.sales_rep = ${p(filters.salesRep)}`);
+        // The queue that matters, and the reason for the partial index.
+        if (filters.outstandingOnly) where.push("f.outstanding_count > 0");
+        if (filters.search) {
+          const term = String(filters.search).trim().slice(0, 100);
+          if (term) {
+            const like = p(`%${term}%`);
+            where.push(
+              `(f.partner_name ilike ${like} or f.transaction_id ilike ${like} or f.sales_rep ilike ${like})`,
+            );
+          }
+        }
+
+        const limit = Math.min(Math.max(Number(body.limit) || 100, 1), 500);
+
+        return await withReadConnection(async (connection) => {
+          const rows = await connection.queryObject({
+            text: `select f.transfer_id::text, f.transaction_id, f.organization_id::text,
+                          f.partner_name, f.partner_id, f.transfer_state, f.transfer_branch,
+                          f.sales_rep, f.sales_date, f.transfer_date,
+                          f.issued_count, f.received_count, f.received_is_logged,
+                          f.digitalised_count, f.verified_count, f.unverified_count,
+                          f.unreachable_count, f.unresolved_count, f.outstanding_count,
+                          f.computed_at
+                   from data_center.transfer_funnel f
+                   where ${where.join(" and ")}
+                   order by f.outstanding_count desc, f.sales_date desc nulls last
+                   limit ${limit}`,
+            args,
+          });
+          const stamp = await connection.queryObject<{ computed_at: string | null }>({
+            text: "select max(computed_at) as computed_at from data_center.transfer_funnel",
+          });
+          return json(
+            {
+              data: {
+                rows: rows.rows,
+                scope: scope.description,
+                computedAt: stamp.rows[0]?.computed_at ?? null,
               },
             },
             200,
