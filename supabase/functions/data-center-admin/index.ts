@@ -15,6 +15,7 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.39.3";
 import { withConnection, withReadConnection } from "../_shared/data-center-db.ts";
+import { ROLE_FEATURES } from "../_shared/data-center-roles.ts";
 
 const DEFAULT_ORIGINS = [
   "https://sales.atmosfair.com.ng",
@@ -59,7 +60,42 @@ function isSuperAdmin(role: string | null): boolean {
 }
 
 
-const VALID_ROLES = new Set(["viewer", "editor"]);
+/**
+ * Read from the shared role table rather than restated here. The three-level UI
+ * shipped against a two-entry list, so granting "call agent" came back 400 with
+ * a message naming only viewer and editor. One definition means the next level
+ * added is accepted the day it exists.
+ */
+const VALID_ROLES = new Set(Object.keys(ROLE_FEATURES));
+
+/**
+ * Which part of the module a tracked table belongs to.
+ *
+ * Kept as SQL so the filter runs in the database, and kept in one place so the
+ * UI's chips and the query agree by construction. A table added to the audit
+ * triggers without a home here lands in "other", which is visible rather than
+ * silently dropped.
+ */
+const CHANGE_CATEGORY_SQL = `case cl.table_name
+  when 'call_records'        then 'call_records'
+  when 'call_attempts'       then 'calls'
+  when 'record_consignments' then 'documents'
+  when 'import_batches'      then 'imports'
+  when 'assignment_batches'  then 'assignment'
+  when 'module_access'       then 'access'
+  when 'feature_grants'      then 'access'
+  when 'call_agent_profiles' then 'access'
+  when 'workflow_config'     then 'configuration'
+  when 'option_lists'        then 'configuration'
+  when 'option_values'       then 'configuration'
+  when 'field_defs'          then 'configuration'
+  else 'other'
+end`;
+
+const CHANGE_CATEGORIES = new Set([
+  "call_records", "calls", "documents", "imports",
+  "assignment", "access", "configuration", "other",
+]);
 
 serve(async (req) => {
   const cors = resolveCors(req);
@@ -156,7 +192,7 @@ serve(async (req) => {
                       or p.full_name ilike '%' || $1 || '%'
                       or p.username ilike '%' || $1 || '%'
                    order by p.full_name nulls last
-                   limit 10`,
+                   limit 20`,
             args: [q],
           });
           return json({ data: rows.rows }, 200, cors);
@@ -166,7 +202,10 @@ serve(async (req) => {
         case "access_update": {
           if (!body.userId || !VALID_ROLES.has(body.accessRole ?? "")) {
             return json(
-              { error: "userId and accessRole (viewer or editor) are required", code: "bad_input" },
+              {
+                error: `userId and accessRole (${[...VALID_ROLES].join(", ")}) are required`,
+                code: "bad_input",
+              },
               400,
               cors,
             );
@@ -216,17 +255,47 @@ serve(async (req) => {
         }
 
         case "change_log": {
-          const limit = Math.min(Math.max(body.limit ?? 25, 1), 100);
+          const limit = Math.min(Math.max(body.limit ?? 25, 1), 200);
+          const category = typeof body.category === "string" && body.category !== "all"
+            ? body.category
+            : null;
+          if (category && !CHANGE_CATEGORIES.has(category)) {
+            return json({ error: `Unknown category: ${category}`, code: "bad_input" }, 400, cors);
+          }
           const rows = await conn.queryObject({
             // id cast to text: it is a bigint, which arrives as a JS BigInt
             // and JSON.stringify throws on those.
-            text: `select cl.id::text as id, cl.table_name, cl.record_pk, cl.action,
-                          cl.changed_at, p.full_name as changed_by_name
-                   from data_center.change_log cl
-                   left join public.profiles p on p.id = cl.changed_by
-                   order by cl.changed_at desc
+            //
+            // The category is derived here rather than in the UI so there is
+            // one definition of which table belongs to which part of the
+            // module, and so the filter can run in the database instead of
+            // fetching everything and hiding most of it.
+            //
+            // changed_fields is the difference between the two snapshots the
+            // trigger already stores. Without it an update reads as "something
+            // changed", which is what made this log unusable.
+            text: `with tagged as (
+                     select cl.id::text as id, cl.table_name, cl.record_pk, cl.action,
+                            cl.changed_at, p.full_name as changed_by_name,
+                            ${CHANGE_CATEGORY_SQL} as category,
+                            case
+                              when cl.action = 'UPDATE' then (
+                                select coalesce(array_agg(k order by k), '{}')
+                                from jsonb_object_keys(coalesce(cl.new_values, '{}'::jsonb)) k
+                                where coalesce(cl.new_values -> k, 'null'::jsonb)
+                                      is distinct from coalesce(cl.old_values -> k, 'null'::jsonb)
+                                  and k not in ('updated_at', 'updated_by', 'created_at', 'created_by')
+                              )
+                              else '{}'::text[]
+                            end as changed_fields
+                     from data_center.change_log cl
+                     left join public.profiles p on p.id = cl.changed_by
+                   )
+                   select * from tagged
+                   where $2::text is null or category = $2::text
+                   order by changed_at desc
                    limit $1`,
-            args: [limit],
+            args: [limit, category],
           });
           return json({ data: rows.rows }, 200, cors);
         }

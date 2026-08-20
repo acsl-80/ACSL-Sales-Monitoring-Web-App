@@ -39,6 +39,7 @@ import { Route as AdminIndexRouteImport } from './routes/admin/index'
 import { Route as SalesCreateRouteImport } from './routes/sales/create'
 import { Route as PartnersProfilesRouteImport } from './routes/partners/profiles'
 import { Route as DataCenterStoveRecordsRouteImport } from './routes/data-center/stove-records'
+import { Route as DataCenterSettingsRouteImport } from './routes/data-center/settings'
 import { Route as DataCenterPartnerRecordsRouteImport } from './routes/data-center/partner-records'
 import { Route as DataCenterImportRouteImport } from './routes/data-center/import'
 import { Route as DataCenterDashboardRouteImport } from './routes/data-center/dashboard'
@@ -228,6 +229,11 @@ const PartnersProfilesRoute = PartnersProfilesRouteImport.update({
 const DataCenterStoveRecordsRoute = DataCenterStoveRecordsRouteImport.update({
   id: '/data-center/stove-records',
   path: '/data-center/stove-records',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const DataCenterSettingsRoute = DataCenterSettingsRouteImport.update({
+  id: '/data-center/settings',
+  path: '/data-center/settings',
   getParentRoute: () => rootRouteImport,
 } as any)
 const DataCenterPartnerRecordsRoute =
@@ -446,6 +452,7 @@ export interface FileRoutesByFullPath {
   '/data-center/dashboard': typeof DataCenterDashboardRoute
   '/data-center/import': typeof DataCenterImportRoute
   '/data-center/partner-records': typeof DataCenterPartnerRecordsRoute
+  '/data-center/settings': typeof DataCenterSettingsRoute
   '/data-center/stove-records': typeof DataCenterStoveRecordsRoute
   '/partners/profiles': typeof PartnersProfilesRoute
   '/sales/create': typeof SalesCreateRoute
@@ -516,6 +523,7 @@ export interface FileRoutesByTo {
   '/data-center/dashboard': typeof DataCenterDashboardRoute
   '/data-center/import': typeof DataCenterImportRoute
   '/data-center/partner-records': typeof DataCenterPartnerRecordsRoute
+  '/data-center/settings': typeof DataCenterSettingsRoute
   '/data-center/stove-records': typeof DataCenterStoveRecordsRoute
   '/partners/profiles': typeof PartnersProfilesRoute
   '/sales/create': typeof SalesCreateRoute
@@ -587,6 +595,7 @@ export interface FileRoutesById {
   '/data-center/dashboard': typeof DataCenterDashboardRoute
   '/data-center/import': typeof DataCenterImportRoute
   '/data-center/partner-records': typeof DataCenterPartnerRecordsRoute
+  '/data-center/settings': typeof DataCenterSettingsRoute
   '/data-center/stove-records': typeof DataCenterStoveRecordsRoute
   '/partners/profiles': typeof PartnersProfilesRoute
   '/sales/create': typeof SalesCreateRoute
@@ -659,6 +668,7 @@ export interface FileRouteTypes {
     | '/data-center/dashboard'
     | '/data-center/import'
     | '/data-center/partner-records'
+    | '/data-center/settings'
     | '/data-center/stove-records'
     | '/partners/profiles'
     | '/sales/create'
@@ -729,6 +739,7 @@ export interface FileRouteTypes {
     | '/data-center/dashboard'
     | '/data-center/import'
     | '/data-center/partner-records'
+    | '/data-center/settings'
     | '/data-center/stove-records'
     | '/partners/profiles'
     | '/sales/create'
@@ -799,6 +810,7 @@ export interface FileRouteTypes {
     | '/data-center/dashboard'
     | '/data-center/import'
     | '/data-center/partner-records'
+    | '/data-center/settings'
     | '/data-center/stove-records'
     | '/partners/profiles'
     | '/sales/create'
@@ -870,6 +882,7 @@ export interface RootRouteChildren {
   DataCenterDashboardRoute: typeof DataCenterDashboardRoute
   DataCenterImportRoute: typeof DataCenterImportRoute
   DataCenterPartnerRecordsRoute: typeof DataCenterPartnerRecordsRoute
+  DataCenterSettingsRoute: typeof DataCenterSettingsRoute
   DataCenterStoveRecordsRoute: typeof DataCenterStoveRecordsRoute
   PartnersProfilesRoute: typeof PartnersProfilesRoute
   SalesCreateRoute: typeof SalesCreateRoute
@@ -1143,6 +1156,13 @@ declare module '@tanstack/react-router' {
       path: '/data-center/stove-records'
       fullPath: '/data-center/stove-records'
       preLoaderRoute: typeof DataCenterStoveRecordsRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/data-center/settings': {
+      id: '/data-center/settings'
+      path: '/data-center/settings'
+      fullPath: '/data-center/settings'
+      preLoaderRoute: typeof DataCenterSettingsRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/data-center/partner-records': {
@@ -1422,6 +1442,7 @@ const rootRouteChildren: RootRouteChildren = {
   DataCenterDashboardRoute: DataCenterDashboardRoute,
   DataCenterImportRoute: DataCenterImportRoute,
   DataCenterPartnerRecordsRoute: DataCenterPartnerRecordsRoute,
+  DataCenterSettingsRoute: DataCenterSettingsRoute,
   DataCenterStoveRecordsRoute: DataCenterStoveRecordsRoute,
   PartnersProfilesRoute: PartnersProfilesRoute,
   SalesCreateRoute: SalesCreateRoute,

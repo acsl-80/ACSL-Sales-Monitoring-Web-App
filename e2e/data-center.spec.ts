@@ -106,18 +106,43 @@ test.describe("viewer and editor are different animals", () => {
     await expect(page.getByRole("link", { name: "Open Bulk Import" })).toHaveCount(0);
     await expect(page.getByText("Bulk Import")).toBeVisible();
     await expect(page.getByText("import.upload")).toBeVisible();
-    await expect(page.getByRole("heading", { name: "Access", exact: true })).toHaveCount(0);
+    // Settings is administration, so a viewer sees it locked like any other
+    // card they do not hold.
+    await expect(page.getByRole("link", { name: "Open Settings" })).toHaveCount(0);
+    await expect(page.getByText("grants.manage")).toBeVisible();
   });
 });
 
-test.describe("the access section is for access only", () => {
-  test("super admin sees the access manager and the tracked changes", async ({
+/**
+ * Administration lives on its own page now.
+ *
+ * It used to render as two panels below the Explore grid, which put a user list
+ * and an audit log in front of everyone who opened the hub on their way to a
+ * queue. The hub is six cards; the sixth opens these two.
+ */
+test.describe("access and the log live on Settings, not on the hub", () => {
+  test("the hub carries neither panel", async ({ page }) => {
+    await signIn(page, USERS.admin);
+    await page.goto("/data-center");
+
+    await expect(page.getByRole("link", { name: "Open Settings" })).toBeVisible({
+      timeout: 20_000,
+    });
+    await expect(page.getByRole("heading", { name: "Access", exact: true })).toHaveCount(0);
+    await expect(page.getByRole("heading", { name: "Recent changes" })).toHaveCount(0);
+  });
+
+  test("super admin opens Settings and finds access first, then the log", async ({
     page,
   }) => {
     await signIn(page, USERS.admin);
     await page.goto("/data-center");
+    await page.getByRole("link", { name: "Open Settings" }).click();
 
-    await expect(page.getByRole("heading", { name: "Access", exact: true })).toBeVisible();
+    await expect(page).toHaveURL(/\/data-center\/settings/);
+    await expect(page.getByRole("heading", { name: "Access", exact: true })).toBeVisible({
+      timeout: 20_000,
+    });
     await expect(page.getByRole("heading", { name: "Recent changes" })).toBeVisible();
 
     // The seeded grants are listed with their levels.
@@ -125,13 +150,65 @@ test.describe("the access section is for access only", () => {
     await expect(page.getByText("manager@preview.acsl.test")).toBeVisible();
   });
 
-  test("an editor does not see the access section", async ({ page }) => {
+  test("an editor is refused Settings by URL, not merely offered no card", async ({
+    page,
+  }) => {
     await signIn(page, USERS.callCentre);
-    await page.goto("/data-center");
+    await page.goto("/data-center/settings");
 
-    await expect(page.getByRole("heading", { name: "Data Center" })).toBeVisible();
+    await expect(
+      page.getByRole("heading", { name: "Not part of your access" }),
+    ).toBeVisible({ timeout: 20_000 });
     await expect(page.getByRole("heading", { name: "Access", exact: true })).toHaveCount(0);
-    await expect(page.getByRole("heading", { name: "Recent changes" })).toHaveCount(0);
+  });
+});
+
+/**
+ * The log reads as a log.
+ *
+ * It rendered the audit table as stored - an action word, a table name and a
+ * primary key - which is a row of the database, not a record of the work.
+ */
+test.describe("the change log is readable and categorised", () => {
+  test("changes read as sentences, filtered by part of the module", async ({ page }) => {
+    await signIn(page, USERS.admin);
+    await page.goto("/data-center/settings");
+
+    await expect(page.getByRole("heading", { name: "Recent changes" })).toBeVisible({
+      timeout: 20_000,
+    });
+
+    // Every category the server can return is offered, plus everything.
+    for (const chip of [
+      "Everything", "Call records", "Calls logged", "Documents",
+      "Imports", "Assignment", "Access", "Configuration",
+    ]) {
+      await expect(page.getByRole("button", { name: chip, exact: true })).toBeVisible();
+    }
+
+    // Access grants are seeded, so that category has entries and they name a
+    // person and a thing rather than a table.
+    await page.getByRole("button", { name: "Access", exact: true }).click();
+    await expect(page.getByRole("button", { name: "Access", exact: true })).toHaveAttribute(
+      "aria-pressed",
+      "true",
+    );
+    await expect(page.getByText(/granted a access grant|No access changes yet/)).toBeVisible({
+      timeout: 15_000,
+    });
+
+    // The raw table name never reaches the reader.
+    await expect(page.getByText("data_center.module_access")).toHaveCount(0);
+  });
+
+  test("the log exports for analysis", async ({ page }) => {
+    await signIn(page, USERS.admin);
+    await page.goto("/data-center/settings");
+
+    await expect(page.getByRole("heading", { name: "Recent changes" })).toBeVisible({
+      timeout: 20_000,
+    });
+    await expect(page.getByRole("button", { name: /Export CSV/ })).toBeVisible();
   });
 });
 

@@ -144,6 +144,17 @@ export type UserSearchResult = {
   current_access: AccessRole | null;
 };
 
+/** The parts of the module a tracked change can belong to. Server-derived. */
+export type ChangeCategory =
+  | "call_records"
+  | "calls"
+  | "documents"
+  | "imports"
+  | "assignment"
+  | "access"
+  | "configuration"
+  | "other";
+
 export type ChangeLogEntry = {
   id: string;
   table_name: string;
@@ -151,6 +162,9 @@ export type ChangeLogEntry = {
   action: "INSERT" | "UPDATE" | "DELETE";
   changed_at: string;
   changed_by_name: string | null;
+  category: ChangeCategory;
+  /** Which columns actually moved. Empty for an insert or a delete. */
+  changed_fields: string[];
 };
 
 /** The cursor is opaque to the client: it is handed back exactly as received. */
@@ -397,8 +411,8 @@ export const dataCenterAdmin = {
     call("data-center-admin", "access_grant", { userId, accessRole }),
   revokeAccess: (userId: string) =>
     call("data-center-admin", "access_revoke", { userId }),
-  changeLog: (limit = 25) =>
-    call<ChangeLogEntry[]>("data-center-admin", "change_log", { limit }),
+  changeLog: (limit = 25, category: ChangeCategory | "all" = "all") =>
+    call<ChangeLogEntry[]>("data-center-admin", "change_log", { limit, category }),
 };
 
 export default dataCenterClient;

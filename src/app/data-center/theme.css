@@ -69,3 +69,15 @@
   --dc-accent-strong: #542c57;
   --dc-accent-soft: #f1e2f2;
 }
+
+/*
+ * Settings is administration, not an area of the data. Graphite rather than a
+ * sixth hue: it says "this is the panel behind the panel" without competing
+ * with the five areas for wayfinding, and it stays clear of every semantic
+ * state colour. 8.0:1 on white.
+ */
+.dc-root[data-area="settings"] {
+  --dc-accent: #414750;
+  --dc-accent-strong: #2f343b;
+  --dc-accent-soft: #e7e9ed;
+}

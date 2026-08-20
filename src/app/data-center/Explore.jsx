@@ -1,9 +1,8 @@
 import Link from "@/compat/Link";
 import { useFeature } from "./lib/access";
 import { DATA_CENTER_FEATURES } from "./lib/features";
-import AccessManager from "./features/access/AccessManager";
 import {
-  BarChart3, PhoneCall, Handshake, Database, Upload, Lock, ArrowRight,
+  BarChart3, PhoneCall, Handshake, Database, Upload, Settings2, Lock, ArrowRight,
 } from "lucide-react";
 
 /**
@@ -18,6 +17,11 @@ import {
  * makes the module look smaller than it is and leaves someone wondering why a
  * colleague can see something they cannot; showing it locked says what is
  * missing and who to ask.
+ *
+ * Administration is the sixth card rather than a panel below the grid. It used
+ * to render inline, which meant an administrator opening the hub to reach the
+ * call queue scrolled past a user list and an audit log to get there, and the
+ * two things that most need room to read had the least.
  */
 
 const AREAS = [
@@ -60,6 +64,14 @@ const AREAS = [
     name: "Bulk Import",
     icon: Upload,
     blurb: "Digitalized receipts, validated against stock before anything is committed.",
+  },
+  {
+    key: DATA_CENTER_FEATURES.GRANTS_MANAGE,
+    href: "/data-center/settings",
+    area: "settings",
+    name: "Settings",
+    icon: Settings2,
+    blurb: "Who may use the module, and the log of everything anyone changed in it.",
   },
 ];
 
@@ -132,20 +144,13 @@ function AreaCard({ area, unlocked }) {
 }
 
 export default function Explore() {
-  const { can, isSuperAdmin } = useFeature();
-  const canManageAccess = isSuperAdmin || can(DATA_CENTER_FEATURES.GRANTS_MANAGE);
+  const { can } = useFeature();
 
   return (
-    <div className="space-y-6">
-      <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3">
-        {AREAS.map((area) => (
-          <AreaCard key={area.href} area={area} unlocked={can(area.key)} />
-        ))}
-      </div>
-
-      {/* Access administration stays on the hub rather than getting a card of
-          its own: it is about who may use the module, not an area of it. */}
-      {canManageAccess && <AccessManager />}
+    <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3">
+      {AREAS.map((area) => (
+        <AreaCard key={area.href} area={area} unlocked={can(area.key)} />
+      ))}
     </div>
   );
 }

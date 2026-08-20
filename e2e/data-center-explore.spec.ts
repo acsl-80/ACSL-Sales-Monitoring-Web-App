@@ -20,6 +20,7 @@ const AREAS = [
   { card: "Partner Records", path: "/data-center/partner-records", heading: "Partner Records" },
   { card: "Stove Records", path: "/data-center/stove-records", heading: "Stove Records" },
   { card: "Bulk Import", path: "/data-center/import", heading: "Bulk Import" },
+  { card: "Settings", path: "/data-center/settings", heading: "Settings" },
 ];
 
 test.describe("Explore is the landing view", () => {
