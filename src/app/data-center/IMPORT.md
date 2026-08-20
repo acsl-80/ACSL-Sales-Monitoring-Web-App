@@ -44,6 +44,71 @@ The exceptions queue lets someone type the correct serial and put the row back.
 A correction that does not actually resolve the problem stays an exception with
 the new reason, rather than becoming valid and failing later at commit.
 
+Since Phase 8b a fourth cause routes here: **the same serial twice in one
+file.** The first occurrence is treated normally and the repeat becomes an
+exception naming the row it repeats. Before that it imported twice, and the
+second copy failed at commit as a stove-already-sold error, which reads as a
+stock problem rather than the typing one it is.
+
+## The two ways in
+
+| Path | When |
+|---|---|
+| **A CSV** | The normal case. A backlog of receipts cleared in one pass |
+| **One typed record** | A receipt that turns up on its own, or a rejected row being re-keyed |
+
+Manual entry submits as a batch of one and goes through the same validator,
+stock check, exceptions queue, dry run and commit. It is deliberately not a
+shortcut: a second write path with its own rules is how the two drift apart,
+and the cheaper-looking one ends up accepting records the file path refuses.
+
+It follows `import.upload`, the same grant the file path follows, because
+staging is what it does. Committing stays separately gated.
+
+## What the importer says before it writes anything
+
+An unrecognised column used to be dropped in silence. A workbook whose phone
+column was headed "Mobile No." imported cleanly with no phone numbers in it,
+and the first anyone knew was the call centre having nobody to ring.
+
+So `inspect` runs on the headers first and reports three things:
+
+| | |
+|---|---|
+| **Understood** | Each header and the field it feeds |
+| **Not recognised** | Each stray header, with somewhere to map it |
+| **Nothing feeds** | Required fields no column supplies, named before staging |
+
+It only stops when there is something to decide. A file whose columns are all
+recognised goes straight through, because a confirmation nobody can fail is a
+click that trains people to click.
+
+The row cap is stated here too, with the file's own count beside it, rather
+than being discovered after the upload.
+
+## Uploading the same file twice
+
+An ordinary mistake: two people clear the same envelope, or someone is not sure
+the first attempt worked. It used to produce a second batch and a second set of
+sales, with the stove claim as the only thing stopping it, which turns a
+mistake into a queue of exceptions rather than a warning.
+
+Each batch now carries a SHA-256 of its **parsed rows**, not of the file, so
+re-saving a spreadsheet without changing its contents still matches.
+
+A repeat warns and offers to proceed. It is never a hard block: a partner can
+legitimately return the same serials after a correction, and refusing that
+outright sends someone off to edit the file until it is accepted.
+
+## Which transfer a record belongs to
+
+Resolved at validate, through `v_transfer_stoves`, the same chain Partner
+Records counts. That is the point of using it rather than a second lookup: a
+record and the funnel cannot disagree about which consignment a sale came from.
+
+`import_rows.transaction_id` is nullable on purpose. A serial that matches no
+transfer is an exception a human works, not a row to refuse.
+
 ## Verified end to end
 
 Against the 500,000-row local database, a 24-row file:
@@ -109,6 +174,8 @@ In `data_center.workflow_config`:
 |---|---|
 | `import.slice_size` | Rows committed per invocation. Default 25 |
 | `import.require_paper_agreement` | Whether a digitalized receipt may assert the six terms |
+| `import.max_rows` | Rows accepted in one file. Default 20,000, shown in the UI before upload |
+| `import.warn_on_duplicate_upload` | Whether an identical file warns. Default on |
 
 ## The terms question, answered
 
@@ -128,5 +195,9 @@ stops being true, turning it off is an update rather than a release.
   is no good answer yet.
 - **No Excel.** CSV only. Exporting a sheet to CSV is one step and writing an
   XLSX reader is not.
+- **No saved mappings.** A mapping is recorded on the batch that used it, so a
+  batch can be explained months later when nobody remembers what "Col 7" was.
+  It is not offered back on the next upload. Worth adding once the same partner
+  has sent the same odd headers twice.
 - **No partial-batch commit by selection.** A batch commits every valid row.
   Excluding some means fixing the file or resolving them as exceptions.

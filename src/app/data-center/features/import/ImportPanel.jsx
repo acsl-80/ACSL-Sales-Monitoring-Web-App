@@ -1,9 +1,11 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { dataCenterImport, DataCenterError } from "../../lib/client";
 import { parseCsv, CsvError } from "../../lib/csv";
+import ColumnMapping from "./ColumnMapping";
+import ManualEntry from "./ManualEntry";
 import {
   Upload, Loader2, AlertTriangle, CheckCircle2, FileText, Play,
-  Eye, Undo2, Wrench, X,
+  Eye, Undo2, Wrench, X, PenLine, Copy,
 } from "lucide-react";
 
 /**
@@ -130,6 +132,12 @@ export default function ImportPanel({ canUpload, canCommit, canResolve, organiza
   const [open, setOpen] = useState(null);
   const [dryRun, setDryRun] = useState(null);
   const [orgId, setOrgId] = useState("");
+  // A file held between inspection and staging, while the operator maps its
+  // strays. Null whenever there is nothing to decide.
+  const [pendingFile, setPendingFile] = useState(null);
+  // A staged upload refused as a repeat. Holds what it takes to send it again.
+  const [duplicate, setDuplicate] = useState(null);
+  const [manual, setManual] = useState(false);
   const fileInput = useRef(null);
 
   const refresh = useCallback(async () => {
@@ -147,6 +155,55 @@ export default function ImportPanel({ canUpload, canCommit, canResolve, organiza
     refresh();
   }, [refresh]);
 
+  /**
+   * Stage a parsed file, then validate it.
+   *
+   * Split out from onFile because three paths reach it: a clean file straight
+   * through, a mapped file after the operator has placed its stray columns,
+   * and a repeat upload they have confirmed.
+   */
+  const stageAndValidate = useCallback(
+    async (file, options = {}) => {
+      setBusy(true);
+      setNotice(null);
+      try {
+        const { batchId } = await dataCenterImport.stage(
+          orgId,
+          file.name,
+          file.rows,
+          options,
+        );
+        const counts = await dataCenterImport.validate(batchId);
+        setNotice(
+          `${file.name}: ${file.rows.length} rows staged. ${counts.valid} ready, ` +
+            `${counts.exception} need a look, ${counts.rejected} could not be read. ` +
+            `${counts.linkedToTransfer} matched to a transfer.` +
+            (file.warnings?.length ? ` ${file.warnings[0]}` : ""),
+        );
+        setError(null);
+        setPendingFile(null);
+        setDuplicate(null);
+        await refresh();
+        setOpen(batchId);
+      } catch (err) {
+        // A repeat upload is a warning, not a failure. Hold what it takes to
+        // send it again, because the legitimate case is real: a partner can
+        // return the same serials after a correction.
+        if (err instanceof DataCenterError && err.code === "duplicate_upload") {
+          setDuplicate({ file, options, message: err.message });
+          setError(null);
+        } else {
+          setError(
+            err instanceof DataCenterError ? err.message : "Could not stage that file.",
+          );
+        }
+      } finally {
+        setBusy(false);
+      }
+    },
+    [orgId, refresh],
+  );
+
   const onFile = async (event) => {
     const file = event.target.files?.[0];
     event.target.value = "";
@@ -157,24 +214,61 @@ export default function ImportPanel({ canUpload, canCommit, canResolve, organiza
     }
     setBusy(true);
     setNotice(null);
+    setDuplicate(null);
     try {
-      const text = await file.text();
-      const parsed = parseCsv(text);
-      const { batchId } = await dataCenterImport.stage(orgId, file.name, parsed.rows);
-      const counts = await dataCenterImport.validate(batchId);
-      setNotice(
-        `${file.name}: ${parsed.rows.length} rows staged. ${counts.valid} ready, ` +
-          `${counts.exception} need a look, ${counts.rejected} could not be read.` +
-          (parsed.warnings.length ? ` ${parsed.warnings[0]}` : ""),
-      );
-      setError(null);
-      await refresh();
-      setOpen(batchId);
+      const parsed = parseCsv(await file.text());
+      const held = {
+        name: file.name,
+        rows: parsed.rows,
+        warnings: parsed.warnings,
+        rowCount: parsed.rows.length,
+      };
+      const inspection = await dataCenterImport.inspect(parsed.headers);
+
+      // Only stop when there is something to decide. A file whose columns are
+      // all understood goes straight through: a confirmation nobody can fail
+      // is a click that trains people to click.
+      if (
+        inspection.unrecognised.length === 0 &&
+        inspection.missingRequired.length === 0 &&
+        held.rowCount <= inspection.maxRows
+      ) {
+        await stageAndValidate(held);
+      } else {
+        setPendingFile({ file: held, inspection });
+        setError(null);
+      }
     } catch (err) {
       setError(
         err instanceof CsvError || err instanceof DataCenterError
           ? err.message
           : "Could not read that file.",
+      );
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const submitManual = async (record) => {
+    setBusy(true);
+    setNotice(null);
+    try {
+      const { batchId } = await dataCenterImport.manualEntry(orgId, record);
+      const counts = await dataCenterImport.validate(batchId);
+      setNotice(
+        counts.valid === 1
+          ? "Record staged and ready to commit."
+          : counts.exception === 1
+            ? "Record staged, and it needs a look before it can be committed."
+            : "Record staged, and it could not be read.",
+      );
+      setError(null);
+      setManual(false);
+      await refresh();
+      setOpen(batchId);
+    } catch (err) {
+      setError(
+        err instanceof DataCenterError ? err.message : "Could not stage that record.",
       );
     } finally {
       setBusy(false);
@@ -286,15 +380,78 @@ export default function ImportPanel({ canUpload, canCommit, canResolve, organiza
           <button
             type="button"
             disabled={busy || !orgId}
-            onClick={() => fileInput.current?.click()}
+            onClick={() => {
+              setManual(false);
+              fileInput.current?.click();
+            }}
             className="inline-flex items-center gap-1.5 rounded-md bg-[#4a5d0f] px-3 py-1.5 text-sm font-medium text-white hover:bg-[#3d4d0c] disabled:opacity-50"
           >
             {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : <FileText className="h-4 w-4" />}
             Choose a CSV
           </button>
+          <button
+            type="button"
+            disabled={busy || !orgId}
+            onClick={() => {
+              setPendingFile(null);
+              setDuplicate(null);
+              setManual((m) => !m);
+            }}
+            className="inline-flex items-center gap-1.5 rounded-md border border-gray-300 px-3 py-1.5 text-sm font-medium text-gray-700 hover:bg-gray-50 disabled:opacity-50"
+          >
+            <PenLine className="h-4 w-4" /> Type one record
+          </button>
           <p className="text-xs text-gray-500">
             Staged and checked on upload. Nothing is committed until you say so.
           </p>
+        </div>
+      )}
+
+      {canUpload && manual && (
+        <ManualEntry
+          busy={busy}
+          partnerName={orgOptions.find((o) => o.id === orgId)?.partner_name}
+          onCancel={() => setManual(false)}
+          onSubmit={submitManual}
+        />
+      )}
+
+      {canUpload && pendingFile && (
+        <ColumnMapping
+          busy={busy}
+          file={pendingFile.file}
+          inspection={pendingFile.inspection}
+          onCancel={() => setPendingFile(null)}
+          onConfirm={(columnMapping) =>
+            stageAndValidate(pendingFile.file, { columnMapping })
+          }
+        />
+      )}
+
+      {canUpload && duplicate && (
+        <div className="flex flex-wrap items-start gap-2 border-b border-amber-200 bg-amber-50 px-4 py-3">
+          <Copy className="mt-0.5 h-4 w-4 shrink-0 text-amber-600" />
+          <p className="min-w-[240px] flex-1 text-sm text-amber-900">{duplicate.message}</p>
+          <button
+            type="button"
+            disabled={busy}
+            onClick={() =>
+              stageAndValidate(duplicate.file, {
+                ...duplicate.options,
+                confirmDuplicate: true,
+              })
+            }
+            className="inline-flex items-center gap-1.5 rounded-md border border-amber-400 px-2.5 py-1.5 text-xs font-medium text-amber-900 hover:bg-amber-100 disabled:opacity-50"
+          >
+            Upload it again
+          </button>
+          <button
+            type="button"
+            onClick={() => setDuplicate(null)}
+            className="inline-flex items-center gap-1 rounded-md px-2 py-1.5 text-xs text-amber-800 hover:bg-amber-100"
+          >
+            <X className="h-3.5 w-3.5" /> Discard
+          </button>
         </div>
       )}
 

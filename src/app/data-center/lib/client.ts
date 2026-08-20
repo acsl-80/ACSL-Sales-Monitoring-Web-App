@@ -437,19 +437,53 @@ export type DryRunSummary = {
  * the sales app's own inventory figures. Nobody should meet that by surprise.
  */
 export const dataCenterImport = {
-  stage: (organizationId: string, filename: string, rows: Record<string, string>[]) =>
+  /**
+   * What the importer makes of a file's headers, before a byte is staged.
+   *
+   * Answers three questions the operator otherwise finds out too late: which
+   * columns are understood, which are being ignored, and which required fields
+   * nothing feeds.
+   */
+  inspect: (headers: string[]) =>
+    call<{
+      recognised: { header: string; field: string }[];
+      unrecognised: string[];
+      missingRequired: string[];
+      mappableFields: string[];
+      maxRows: number;
+    }>("data-center-import", "inspect", { headers }),
+
+  stage: (
+    organizationId: string,
+    filename: string,
+    rows: Record<string, string>[],
+    options: { columnMapping?: Record<string, string>; confirmDuplicate?: boolean } = {},
+  ) =>
     call<{ batchId: string; totalRows: number }>("data-center-import", "stage", {
       organizationId,
       filename,
       rows,
+      columnMapping: options.columnMapping ?? {},
+      confirmDuplicate: options.confirmDuplicate ?? false,
+    }),
+
+  /**
+   * One record, typed. A batch of one through the same four steps, so a
+   * hand-keyed receipt is validated, dry-run and audited exactly like a file.
+   */
+  manualEntry: (organizationId: string, record: Record<string, string>) =>
+    call<{ batchId: string; totalRows: number }>("data-center-import", "manual_entry", {
+      organizationId,
+      record,
     }),
 
   validate: (batchId: string) =>
-    call<{ valid: number; rejected: number; exception: number }>(
-      "data-center-import",
-      "validate",
-      { batchId },
-    ),
+    call<{
+      valid: number;
+      rejected: number;
+      exception: number;
+      linkedToTransfer: number;
+    }>("data-center-import", "validate", { batchId }),
 
   /** Reports what a commit would change. Writes nothing to public. */
   dryRun: (batchId: string) =>

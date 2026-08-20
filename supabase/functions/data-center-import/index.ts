@@ -124,6 +124,37 @@ export interface NormalizedRow {
   otherPhone: string | null;
 }
 
+/**
+ * Every header this importer recognises, by the field it feeds.
+ *
+ * Lifted out of normalizeRow so the mapping step can show an operator what is
+ * understood and what is not. Before this, an unrecognised column was silently
+ * ignored: the row imported, the field was empty, and nobody found out until
+ * the call centre rang someone whose phone number had never arrived.
+ */
+export const HEADER_ALIASES: Record<string, string[]> = {
+  stoveSerialNo: ["stove_serial_no", "Stove Serial Number", "serial", "stoveSerialNo"],
+  firstName:     ["first_name", "User First Name", "firstName"],
+  lastName:      ["last_name", "User Last Name", "surname", "lastName"],
+  endUserName:   ["end_user_name", "endUserName", "name"],
+  phone:         ["phone", "Primary Phone Number", "primary_phone", "primaryPhone"],
+  otherPhone:    ["other_phone", "Alternative Phone Number", "alt_phone"],
+  salesDate:     ["sales_date", "Sales Date", "date", "salesDate"],
+  amount:        ["amount", "Sale Amount", "price", "saleAmount"],
+  amountReceived:["amount_received", "Amount Received", "amountReceived"],
+  state:         ["state", "State", "user_state", "state_backup"],
+  lga:           ["lga", "LGA", "Local Govt Area", "lga_backup"],
+  fullAddress:   ["address", "User Residential Address", "full_address", "fullAddress"],
+  contactPerson: ["contact_person", "Contact Person", "buyer"],
+  contactPhone:  ["contact_phone", "Contact Phone", "buyer_phone"],
+  aka:           ["aka", "AKA", "nickname"],
+};
+
+/** Which fields must be present for a row to be usable at all. */
+export const REQUIRED_FIELDS = [
+  "stoveSerialNo", "phone", "salesDate", "amount", "state", "lga", "fullAddress",
+] as const;
+
 function text(raw: Record<string, unknown>, ...keys: string[]): string {
   for (const k of keys) {
     const v = raw[k];
@@ -228,6 +259,28 @@ export function normalizeRow(
 
 // ---------------------------------------------------------------------------
 
+/**
+ * A stable fingerprint of a file's contents.
+ *
+ * Over the parsed rows rather than the file bytes, so re-saving a spreadsheet
+ * without changing anything in it still matches. Keys are sorted because two
+ * exports of the same sheet can order columns differently and still be the
+ * same data.
+ */
+async function contentHash(rows: Record<string, unknown>[]): Promise<string> {
+  const canonical = JSON.stringify(
+    rows.map((r) =>
+      Object.keys(r)
+        .sort()
+        .map((k) => [k, r[k] === null || r[k] === undefined ? "" : String(r[k]).trim()]),
+    ),
+  );
+  const digest = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(canonical));
+  return Array.from(new Uint8Array(digest))
+    .map((b) => b.toString(16).padStart(2, "0"))
+    .join("");
+}
+
 async function readConfig(conn: PoolClient, key: string, fallback: unknown) {
   const r = await conn.queryObject<{ value: unknown }>({
     text: "select value from data_center.workflow_config where key = $1",
@@ -316,13 +369,130 @@ serve(async (req) => {
        * file is a problem the operator sees immediately rather than a batch
        * that fails server-side minutes later.
        */
+      /**
+       * What the importer makes of a file's headers, before anything is staged.
+       *
+       * The step that did not exist. An unrecognised column used to be ignored
+       * in silence, so a file whose phone column was called something unusual
+       * imported cleanly with no phone numbers in it, and the first anyone knew
+       * was the call centre having nobody to ring.
+       *
+       * Now the operator sees which headers are understood, which are not, and
+       * which required fields nothing feeds, and maps the strays before staging.
+       */
+      case "inspect": {
+        requireFeature("import.upload");
+        const headers = (body.headers ?? []) as string[];
+        if (!Array.isArray(headers) || headers.length === 0) {
+          throw new BadRequest("No headers to inspect");
+        }
+
+        const normalised = (h: string) => h.trim().toLowerCase();
+        const known = new Map<string, string>();
+        for (const [field, aliases] of Object.entries(HEADER_ALIASES)) {
+          for (const alias of aliases) known.set(normalised(alias), field);
+        }
+
+        const recognised: { header: string; field: string }[] = [];
+        const unrecognised: string[] = [];
+        for (const h of headers) {
+          const field = known.get(normalised(h));
+          if (field) recognised.push({ header: h, field });
+          else unrecognised.push(h);
+        }
+
+        const fed = new Set(recognised.map((r) => r.field));
+        // first/last name together stand in for the combined name.
+        if (fed.has("firstName") || fed.has("lastName")) fed.add("endUserName");
+        const missing = REQUIRED_FIELDS.filter((f) => !fed.has(f));
+
+        return json(
+          {
+            data: {
+              recognised,
+              unrecognised,
+              missingRequired: missing,
+              mappableFields: Object.keys(HEADER_ALIASES),
+              maxRows: Number(
+                await withReadConnection((c) => readConfig(c, "import.max_rows", 20000)),
+              ) || 20000,
+            },
+          },
+          200,
+          cors,
+        );
+      }
+
       case "stage": {
         requireFeature("import.upload");
-        const rows = body.rows as Record<string, unknown>[] | undefined;
+        const incoming = body.rows as Record<string, unknown>[] | undefined;
         const organizationId = String(body.organizationId ?? "");
-        if (!Array.isArray(rows) || rows.length === 0) throw new BadRequest("No rows to import");
-        if (rows.length > 20_000) throw new BadRequest("That file has more than 20,000 rows. Split it.");
+        const mapping = (body.columnMapping ?? {}) as Record<string, string>;
+        const source = ["receipt", "manual", "field"].includes(String(body.source))
+          ? String(body.source)
+          : "receipt";
+
+        if (!Array.isArray(incoming) || incoming.length === 0) {
+          throw new BadRequest("No rows to import");
+        }
+        const maxRows = Number(
+          await withReadConnection((c) => readConfig(c, "import.max_rows", 20000)),
+        ) || 20000;
+        if (incoming.length > maxRows) {
+          throw new BadRequest(
+            `That file has ${incoming.length} rows and the limit is ${maxRows}. Split it.`,
+          );
+        }
         if (!organizationId) throw new BadRequest("Choose which partner this batch belongs to");
+
+        // Apply the operator's header mapping before anything else, so
+        // everything downstream sees one vocabulary. A mapped column is copied
+        // rather than renamed: `raw` stays exactly as the file had it, which is
+        // what lets a rejected row be shown as it was typed.
+        const rows = Object.keys(mapping).length === 0
+          ? incoming
+          : incoming.map((row) => {
+            const copy: Record<string, unknown> = { ...row };
+            for (const [header, field] of Object.entries(mapping)) {
+              if (field && row[header] !== undefined) copy[field] = row[header];
+            }
+            return copy;
+          });
+
+        const hash = await contentHash(rows);
+        const warnOnDuplicate = Boolean(
+          await withReadConnection((c) => readConfig(c, "import.warn_on_duplicate_upload", true)),
+        );
+
+        // A repeat upload warns and stops; asking again with `confirmDuplicate`
+        // goes ahead. Never a hard block: a partner can legitimately return the
+        // same serials after a correction, and refusing that outright would
+        // send someone to edit the file until it was accepted.
+        if (warnOnDuplicate && !body.confirmDuplicate) {
+          const previous = await withReadConnection(async (conn) => {
+            const r = await conn.queryObject<{ id: string; state: string; uploaded_at: string; filename: string | null }>({
+              text: `select id::text, state, uploaded_at, filename
+                     from data_center.import_batches
+                     where content_hash = $1 order by uploaded_at desc limit 1`,
+              args: [hash],
+            });
+            return r.rows[0] ?? null;
+          });
+          if (previous) {
+            return json(
+              {
+                error:
+                  `This file was already staged on ${new Date(previous.uploaded_at).toLocaleDateString()}` +
+                  `${previous.filename ? ` as "${previous.filename}"` : ""} and that batch is ${previous.state}. ` +
+                  "Upload it again only if you mean to.",
+                code: "duplicate_upload",
+                data: { previousBatchId: previous.id, state: previous.state },
+              },
+              409,
+              cors,
+            );
+          }
+        }
 
         return await withConnection(async (conn) => {
           await conn.queryObject("begin");
@@ -333,9 +503,15 @@ serve(async (req) => {
             });
             const batch = await conn.queryObject<{ id: string }>({
               text: `insert into data_center.import_batches
-                       (source, filename, uploaded_by, organization_id, total_rows, state)
-                     values ('receipt', $1, $2, $3, $4, 'staged') returning id`,
-              args: [body.filename ?? null, userId, organizationId, rows.length],
+                       (source, filename, uploaded_by, organization_id, total_rows, state,
+                        content_hash, column_mapping, source_note)
+                     values ($5, $1, $2, $3, $4, 'staged', $6, $7::jsonb, $8) returning id`,
+              args: [
+                body.filename ?? null, userId, organizationId, rows.length,
+                source, hash,
+                JSON.stringify(mapping),
+                body.sourceNote ?? null,
+              ],
             });
             const batchId = batch.rows[0].id;
 
@@ -349,6 +525,64 @@ serve(async (req) => {
             });
             await conn.queryObject("commit");
             return json({ data: { batchId, totalRows: rows.length } }, 200, cors);
+          } catch (err) {
+            await conn.queryObject("rollback");
+            throw err;
+          }
+        });
+      }
+
+      /**
+       * One record, typed rather than uploaded.
+       *
+       * A file is the normal case, and it is not the only one. A receipt turns
+       * up on its own, or a rejected row needs re-keying, and building a
+       * one-line spreadsheet to import it is a workaround people do not
+       * perform: they write it on a sticky note instead.
+       *
+       * It is a batch of one, deliberately. Same validator, same stock check,
+       * same exceptions queue, same commit path, same audit trail. A second
+       * write path with its own rules is how the two drift apart, and the
+       * cheaper-looking version is the one that ends up accepting records the
+       * file path would have refused.
+       */
+      case "manual_entry": {
+        requireFeature("import.upload");
+        const record = body.record as Record<string, unknown> | undefined;
+        const organizationId = String(body.organizationId ?? "");
+        if (!record || typeof record !== "object") throw new BadRequest("No record given");
+        if (!organizationId) throw new BadRequest("Choose which partner this record belongs to");
+
+        // Fail on the shape before writing anything. A file gets staged first
+        // because the operator wants to see all the failures at once; a single
+        // record is better answered immediately.
+        const shape = normalizeRow(record);
+        if (!shape.ok) throw new BadRequest(shape.reason);
+
+        const hash = await contentHash([record]);
+
+        return await withConnection(async (conn) => {
+          await conn.queryObject("begin");
+          try {
+            await conn.queryObject({
+              text: "select set_config('data_center.actor', $1, true)",
+              args: [userId],
+            });
+            const batch = await conn.queryObject<{ id: string }>({
+              text: `insert into data_center.import_batches
+                       (source, filename, uploaded_by, organization_id, total_rows, state,
+                        content_hash, source_note)
+                     values ('manual', null, $1, $2, 1, 'staged', $3, $4) returning id`,
+              args: [userId, organizationId, hash, body.sourceNote ?? null],
+            });
+            const batchId = batch.rows[0].id;
+            await conn.queryObject({
+              text: `insert into data_center.import_rows (batch_id, row_number, raw)
+                     values ($1, 1, $2::jsonb)`,
+              args: [batchId, JSON.stringify(record)],
+            });
+            await conn.queryObject("commit");
+            return json({ data: { batchId, totalRows: 1 } }, 200, cors);
           } catch (err) {
             await conn.queryObject("rollback");
             throw err;
@@ -383,8 +617,10 @@ serve(async (req) => {
             if (batchRow.rows.length === 0) throw new BadRequest("No such batch");
             const orgId = batchRow.rows[0].organization_id;
 
-            const pending = await conn.queryObject<{ id: string; raw: Record<string, unknown> }>({
-              text: `select id, raw from data_center.import_rows
+            const pending = await conn.queryObject<
+              { id: string; row_number: number; raw: Record<string, unknown> }
+            >({
+              text: `select id, row_number, raw from data_center.import_rows
                      where batch_id = $1 and status in ('pending','valid','rejected','exception')
                      order by row_number`,
               args: [batchId],
@@ -394,7 +630,11 @@ serve(async (req) => {
             // serials exist. One query for the whole batch rather than one per
             // row, which at 20,000 rows is the difference between seconds and
             // an afternoon.
-            const shaped = pending.rows.map((r) => ({ id: r.id, result: normalizeRow(r.raw) }));
+            const shaped = pending.rows.map((r) => ({
+              id: r.id,
+              rowNumber: Number(r.row_number),
+              result: normalizeRow(r.raw),
+            }));
             const serials = shaped
               .filter((s) => s.result.ok)
               .map((s) => (s.result as { ok: true; row: NormalizedRow }).row.stoveSerialNo);
@@ -406,7 +646,29 @@ serve(async (req) => {
             });
             const byStoveId = new Map(stock.rows.map((s) => [s.stove_id.toUpperCase(), s]));
 
-            let valid = 0, rejected = 0, exception = 0;
+            // Which transfer each serial came from. The same chain the funnel
+            // uses, asked once for the whole batch, so a record and Partner
+            // Records can never disagree about which consignment a sale
+            // belongs to. Roughly one serial in twelve matches nothing, which
+            // is why the column is nullable rather than the join being a
+            // condition of import.
+            const transfers = await conn.queryObject<{ stove_id: string; transaction_id: string }>({
+              text: `select stove_id, transaction_id from data_center.v_transfer_stoves
+                     where stove_id = any($1::text[])`,
+              args: [[...new Set(serials)]],
+            });
+            const transferBySerial = new Map(
+              transfers.rows.map((t) => [t.stove_id, t.transaction_id]),
+            );
+
+            // The same serial twice in one file. It used to import twice: the
+            // first row took the stove and the second failed at commit with a
+            // stove-already-sold error, which reads as a stock problem rather
+            // than a typing one. Naming the row it duplicates is what makes it
+            // fixable.
+            const firstSeen = new Map<string, number>();
+
+            let valid = 0, rejected = 0, exception = 0, linked = 0;
             for (const s of shaped) {
               if (!s.result.ok) {
                 rejected++;
@@ -421,9 +683,21 @@ serve(async (req) => {
               }
               const row = s.result.row;
               const found = byStoveId.get(row.stoveSerialNo);
+              const transactionId = transferBySerial.get(row.stoveSerialNo) ?? null;
+              const duplicateOf = firstSeen.get(row.stoveSerialNo) ?? null;
+              if (duplicateOf === null) {
+                firstSeen.set(row.stoveSerialNo, s.rowNumber);
+                // Counted once per serial, not once per row. A duplicate is
+                // tied to the same transfer as the row it repeats, and saying
+                // "2 matched" for one stove would overstate the reconciliation.
+                if (transactionId) linked++;
+              }
 
               let exceptionReason: string | null = null;
-              if (!found) {
+              if (duplicateOf !== null) {
+                exceptionReason =
+                  `Stove serial "${row.stoveSerialNo}" already appears on row ${duplicateOf} of this file`;
+              } else if (!found) {
                 exceptionReason = `Stove serial "${row.stoveSerialNo}" is not in stock records`;
               } else if (found.organization_id !== orgId) {
                 exceptionReason = `Stove serial "${row.stoveSerialNo}" belongs to a different partner`;
@@ -436,9 +710,13 @@ serve(async (req) => {
                 await conn.queryObject({
                   text: `update data_center.import_rows
                          set status = 'exception', exception_reason = $2, rejection_reason = null,
-                             stove_serial_no = $3, normalized = $4::jsonb
+                             stove_serial_no = $3, normalized = $4::jsonb,
+                             transaction_id = $5, duplicate_of_row = $6
                          where id = $1`,
-                  args: [s.id, exceptionReason, row.stoveSerialNo, JSON.stringify(row)],
+                  args: [
+                    s.id, exceptionReason, row.stoveSerialNo, JSON.stringify(row),
+                    transactionId, duplicateOf,
+                  ],
                 });
               } else {
                 valid++;
@@ -451,9 +729,10 @@ serve(async (req) => {
                 await conn.queryObject({
                   text: `update data_center.import_rows
                          set status = 'valid', rejection_reason = null, exception_reason = null,
-                             stove_serial_no = $2, normalized = $3::jsonb
+                             stove_serial_no = $2, normalized = $3::jsonb,
+                             transaction_id = $4, duplicate_of_row = null
                          where id = $1`,
-                  args: [s.id, found!.stove_id, JSON.stringify(canonical)],
+                  args: [s.id, found!.stove_id, JSON.stringify(canonical), transactionId],
                 });
               }
             }
@@ -465,7 +744,11 @@ serve(async (req) => {
               args: [batchId, valid, rejected + exception],
             });
             await conn.queryObject("commit");
-            return json({ data: { valid, rejected, exception } }, 200, cors);
+            return json(
+              { data: { valid, rejected, exception, linkedToTransfer: linked } },
+              200,
+              cors,
+            );
           } catch (err) {
             await conn.queryObject("rollback");
             throw err;

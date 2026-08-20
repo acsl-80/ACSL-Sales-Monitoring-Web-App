@@ -544,17 +544,50 @@ What was sold has to be known before what was recovered can mean anything.
       rather than a row per record.
 - [x] `transfer_funnel` action on `data-center-read`, scoped
       through the existing `buildScopeSql`.
-- [ ] Import hardening: auto-link to the parent transfer, a header mapping
-      step, duplicate detection inside a file and against previous batches,
-      manual single-record entry, and the row cap stated before upload.
+- [x] Import hardening, moved to Phase 8b below and completed there.
 
 Verified on the preview, three transfers at different stages. All three
 reconcile, including one carrying a 22-record typing backlog. Written up in
 `RECONCILIATION.md`, including the four failed attempts at querying the funnel
 live and why it became a computed table.
 
-Still to do here: the import hardening listed above. Auto-link, header mapping,
-duplicate detection and manual entry are Phase 8b.
+## Phase 8b: an import that cannot fail quietly: DONE
+
+Each of these was a silent failure, which is the worst kind an import has. A
+rejected row is visible. A row that imported against nothing, or imported
+twice, is not.
+
+- [x] **Auto-link to the parent transfer.** Resolved at validate through
+      `v_transfer_stoves`, the same chain the funnel counts, so a record and
+      Partner Records can never disagree about which consignment a sale came
+      from. Nullable: about one serial in twelve matches nothing, which is an
+      exception a human works, not a reason to refuse the row.
+- [x] **Header mapping.** `inspect` reports which columns are understood, which
+      are not, and which required fields nothing feeds. The step appears only
+      when there is something to decide, because a confirmation nobody can fail
+      is a click that trains people to click.
+- [x] **Duplicate detection inside a file.** A repeated serial becomes an
+      exception naming the row it repeats. It used to import twice and fail at
+      commit as a stove-already-sold error, which reads as a stock problem
+      rather than the typing one it is.
+- [x] **Duplicate upload detection.** SHA-256 over the parsed rows, so
+      re-saving a spreadsheet still matches. A warning, never a block: a
+      partner can legitimately return the same serials after a correction.
+- [x] **Manual single-record entry.** A batch of one through the same
+      validator, stock check, exceptions queue and audit trail. A second write
+      path is how the two drift apart.
+- [x] **The row cap, stated.** Read from `import.max_rows`, shown with the
+      file's own count before staging rather than discovered after it.
+
+Migration `20260821020000_data_center_import_hardening.sql`. Applied to the
+preview branch and recorded in its migration history.
+
+Verified: `e2e/data-center-import.spec.ts`. Six tests hold the surfaces, and
+three run against the real server on the preview branch: the same serial twice
+in one file names the row it duplicates, a valid row reports as matched to its
+transfer, and the same file uploaded twice warns with a way to proceed. Every
+test file carries a unique marker, because the duplicate check hashes the
+parsed rows and a fixed file would match the previous run.
 
 ## Phase 9: Explore, and one page per area: DONE
 
