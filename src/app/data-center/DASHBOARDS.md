@@ -22,10 +22,31 @@ returns one line, and it is the comment stating the rule.
 | | Where | At 500,000 sales |
 |---|---|---|
 | **Compute** | `data-center-compute` → `data_center.compute_metrics()` | 74 metrics in **5.2 s** |
-| **Read** | `data-center-read` action `dashboard` → `v_current_metrics` | **2.3 ms** |
+| **Read** | `data-center-read` action `dashboard` → `v_current_metrics` | **2.3 ms** of SQL |
 
-The read is 2.3 ms because it never touches `sales`. It would be 2.3 ms at five
-million sales for the same reason.
+The read is 2.3 ms because it never touches `sales`, and it would be 2.3 ms at
+five million sales for the same reason.
+
+### The honest end-to-end number
+
+SQL time is not user time. Through the edge function, the same dashboard load
+is about **250 ms locally** against 500,000 sales, and about **1.8 s on the
+preview branch** against five.
+
+A branch holding five sales being slower than a local database holding half a
+million is worth sitting with, because it says exactly where the time goes: the
+connection and the round trip, not the data. Since Phase 4 stopped pooling
+connections between requests (pooling was exhausting the database and taking
+PostgREST down with it), each request pays a fresh connection.
+
+That is why this read is **one statement rather than three**. Collapsing it took
+the branch number from about 3 s to about 1.8 s without changing a single value
+it returns.
+
+Supabase's pgbouncer pooler was tried and made it worse, 2 s to 3.2 s, because
+its host is in a different region from the project. `DATA_CENTER_DB_URL` is
+left as a hook so it can be adopted on a project where it does help, but it is
+a thing to measure rather than a thing to assume.
 
 ## The completeness number, and why it is not the sales app's
 

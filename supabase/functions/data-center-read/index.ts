@@ -347,27 +347,38 @@ serve(async (req) => {
         }
 
         return await withReadConnection(async (connection) => {
-          const metrics = await connection.queryObject({
-            text: `select metric_key, dimension, value_num, value_text,
-                          run_finished_at
-                   from data_center.v_current_metrics
-                   order by metric_key, value_num desc nulls last`,
-          });
-          const staleAfter = await connection.queryObject<{ hours: number }>({
-            text: `select coalesce(value::text::int, 24) as hours
-                   from data_center.workflow_config where key = 'metrics.stale_after_hours'`,
-          });
-          const lastRun = await connection.queryObject<{
-            finished_at: string | null; status: string; duration_ms: number | null;
+          // One statement, not three.
+          //
+          // Measured against the preview branch, a round trip from an edge
+          // function to Postgres costs far more than the query does: a
+          // one-query action answers in about 650 ms and a three-query action
+          // in about 3 seconds, on data small enough that every query is
+          // sub-millisecond. Since Phase 4 stopped pooling connections between
+          // requests (which was taking the database down), the number of
+          // statements per request is the thing worth minimising.
+          const result = await connection.queryObject<{
+            metrics: unknown[] | null;
+            stale_after_hours: number;
+            last_run: unknown | null;
+            computed_at: string | null;
           }>({
-            text: `select finished_at, status, duration_ms from data_center.metric_runs
-                   order by started_at desc limit 1`,
+            text: `select
+                     (select coalesce(jsonb_agg(t order by t.metric_key, t.value_num desc nulls last), '[]'::jsonb)
+                        from (select metric_key, dimension, value_num, value_text, run_finished_at
+                                from data_center.v_current_metrics) t) as metrics,
+                     (select coalesce(value::text::int, 24) from data_center.workflow_config
+                       where key = 'metrics.stale_after_hours') as stale_after_hours,
+                     (select to_jsonb(r) from (
+                        select finished_at, status, duration_ms
+                        from data_center.metric_runs order by started_at desc limit 1) r) as last_run,
+                     (select max(run_finished_at) from data_center.v_current_metrics) as computed_at`,
           });
 
-          const finishedAt = metrics.rows[0]
-            ? (metrics.rows[0] as { run_finished_at: string }).run_finished_at
-            : null;
-          const hours = staleAfter.rows[0]?.hours ?? 24;
+          const row = result.rows[0];
+          const metrics = (row?.metrics ?? []) as Record<string, unknown>[];
+          const finishedAt = row?.computed_at ?? null;
+          const hours = Number(row?.stale_after_hours ?? 24);
+
           // Said plainly rather than left to the reader. Numbers with no date
           // on them get treated as current, and these might not be.
           const isStale = finishedAt
@@ -377,11 +388,11 @@ serve(async (req) => {
           return json(
             {
               data: {
-                metrics: metrics.rows,
+                metrics,
                 computedAt: finishedAt,
                 isStale,
                 staleAfterHours: hours,
-                lastRun: lastRun.rows[0] ?? null,
+                lastRun: row?.last_run ?? null,
               },
             },
             200,

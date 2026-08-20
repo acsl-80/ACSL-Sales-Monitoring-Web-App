@@ -37,14 +37,39 @@
  * module whose entire premise is that the sales app must not notice it exists
  * cannot be the thing that takes the database down.
  *
- * So: one connection per request, closed when the request ends. It costs a
- * handshake per call, roughly 20 to 50 ms, and in exchange the number of
+ * So: one connection per request, closed when the request ends. The number of
  * connections in flight can never exceed the number of requests in flight.
  *
- * If that latency ever matters, the answer is Supabase's connection pooler
- * (pgbouncer in transaction mode, port 6543), which exists for exactly this
- * shape of client. Point DATA_CENTER_DB_URL at it and this file will use it
- * without further change. Pooling inside the isolate is not the answer.
+ * WHAT THAT COSTS, MEASURED RATHER THAN GUESSED
+ *
+ * An earlier version of this comment estimated "roughly 20 to 50 ms". That was
+ * wrong and is corrected here. Against the preview branch, a request that runs
+ * one statement answers in about 650 ms and one that runs three took about
+ * three seconds, on data small enough that every query is sub-millisecond. The
+ * cost is the connection and the round trips, not the work.
+ *
+ * Two things follow, and both are acted on elsewhere in the module:
+ *
+ *   Statements per request is the number worth minimising. The dashboard read
+ *   was three statements and is now one, which took it from ~3 s to ~1.8 s.
+ *
+ *   These are not production numbers. The preview branch is a small instance,
+ *   and the same dashboard read against a LOCAL database holding 500,000 sales
+ *   answers in 250 ms. A branch holding five sales being slower than a local
+ *   database holding half a million is the clearest evidence that this latency
+ *   is infrastructure and not data volume.
+ *
+ * THE POOLER WAS TRIED AND MADE IT WORSE
+ *
+ * Supabase's pgbouncer (transaction mode, port 6543) is the textbook answer for
+ * a serverless client, and DATA_CENTER_DB_URL exists so it can be adopted by
+ * setting one secret. Pointed at it, the same requests went from ~2 s to ~3.2 s,
+ * because the pooler host sits in a different region from the project. Left in
+ * place as a hook rather than a recommendation: measure before adopting it, on
+ * the project it will actually run against.
+ *
+ * What is NOT the answer is pooling inside the isolate. That is what took the
+ * database down.
  */
 
 import { Client } from "https://deno.land/x/postgres@v0.17.0/mod.ts";
