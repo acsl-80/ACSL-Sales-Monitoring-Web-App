@@ -402,6 +402,46 @@ export const dataCenterWrite = {
     }),
 };
 
+/** One choice behind a dropdown, as Settings edits it. */
+export type RegistryOptionValue = {
+  id: string;
+  value: string;
+  label: string;
+  sort_order: number;
+  is_active: boolean;
+};
+
+export type RegistryOptionList = {
+  key: string;
+  label: string;
+  description: string | null;
+  values: RegistryOptionValue[];
+};
+
+/** One question on the call form, as Settings edits it. */
+export type RegistryField = {
+  key: string;
+  label: string;
+  section: string;
+  input_type: string;
+  option_list_key: string | null;
+  storage: "answers" | "column";
+  column_name: string | null;
+  sort_order: number;
+  is_required: boolean;
+  is_active: boolean;
+  help_text: string | null;
+  visible_when: { field?: string; in?: string[] } | null;
+  validation: Record<string, unknown> | null;
+  retired_at: string | null;
+};
+
+export type WorkflowSetting = {
+  key: string;
+  value: unknown;
+  description: string | null;
+};
+
 /** Access administration. Server-gated to super_admin or grants.manage. */
 export const dataCenterAdmin = {
   listAccess: () => call<AccessListEntry[]>("data-center-admin", "access_list"),
@@ -409,6 +449,48 @@ export const dataCenterAdmin = {
     call<UserSearchResult[]>("data-center-admin", "user_search", { query }),
   grantAccess: (userId: string, accessRole: AccessRole) =>
     call("data-center-admin", "access_grant", { userId, accessRole }),
+  /** The call form as data: every dropdown and every question. */
+  registryRead: () =>
+    call<{ lists: RegistryOptionList[]; fields: RegistryField[]; canEdit: boolean }>(
+      "data-center-admin",
+      "registry_read",
+    ),
+  upsertOptionList: (list: { key: string; label: string; description?: string | null }) =>
+    call<{ key: string }>("data-center-admin", "option_list_upsert", { list }),
+  upsertOptionValue: (value: {
+    listKey: string;
+    /** Present when editing. Absent creates, keyed on (listKey, value). */
+    id?: string;
+    value?: string;
+    label: string;
+    sortOrder?: number;
+    isActive?: boolean;
+  }) => call<{ id: string }>("data-center-admin", "option_value_upsert", { value }),
+  upsertField: (field: {
+    key: string;
+    label: string;
+    section: string;
+    inputType: string;
+    optionListKey?: string | null;
+    sortOrder?: number;
+    isRequired?: boolean;
+    isActive?: boolean;
+    helpText?: string | null;
+    visibleWhen?: { field: string; in: string[] } | null;
+  }) => call<{ key: string }>("data-center-admin", "field_def_upsert", { field }),
+
+  /** The runtime numbers every rule reads: batch size, callback limit, caps. */
+  configRead: () =>
+    call<{ config: WorkflowSetting[]; canEdit: boolean }>("data-center-admin", "config_read"),
+  configSet: (key: string, value: unknown) =>
+    call<{ key: string }>("data-center-admin", "config_set", { config: { key, value } }),
+
+  /** Tier-2 features, ticked on per user on top of their level. */
+  featureGrants: () =>
+    call<{ user_id: string; feature_key: string }[]>("data-center-admin", "feature_grants_list"),
+  setFeatureGrant: (userId: string, featureKey: string, granted: boolean) =>
+    call("data-center-admin", "feature_grant_set", { userId, featureKey, granted }),
+
   revokeAccess: (userId: string) =>
     call("data-center-admin", "access_revoke", { userId }),
   changeLog: (limit = 25, category: ChangeCategory | "all" = "all") =>
@@ -581,6 +663,46 @@ export type AssignmentLogCursor = {
   position: number;
 };
 
+/** One call agent, with what they are currently holding. */
+export type AssignmentAgent = {
+  agent_id: string;
+  full_name: string | null;
+  email: string | null;
+  app_role: string | null;
+  access_role: string;
+  is_enabled: boolean;
+  max_open_batches: number | null;
+  open_batches: number;
+  records_held: number;
+  last_activity_at: string | null;
+};
+
+/** One partner with work still waiting. */
+export type AssignmentPoolPartner = {
+  organization_id: string;
+  partner_name: string;
+  callable: number;
+  oldest: string | null;
+};
+
+/** One assigned record, as the console drills into it. */
+export type AssignmentDetailItem = {
+  batch_id: string;
+  organization_id: string;
+  partner_name: string;
+  assigned_at: string;
+  batch_size: number;
+  last_activity_at: string;
+  sale_id: string;
+  position: number;
+  stove_serial_no: string;
+  sales_date: string | null;
+  number_on_record: string | null;
+  verification_outcome: string | null;
+  call_outcome: string | null;
+  attempt_count: number | null;
+};
+
 /**
  * The assignment engine's doorway.
  *
@@ -597,6 +719,37 @@ export const dataCenterAssign = {
     }>("data-center-assign", "run"),
 
   reclaim: () => call<{ reclaimed: number }>("data-center-assign", "reclaim"),
+
+  /**
+   * The console's read: who can take work, and what work there is.
+   *
+   * Both in one call, because assigning is choosing one of each and two round
+   * trips would only ever be two round trips.
+   */
+  agents: () =>
+    call<{
+      agents: AssignmentAgent[];
+      pool: AssignmentPoolPartner[];
+      batchSize: number;
+    }>("data-center-assign", "agents"),
+
+  /** One agent opened up: every batch they hold and every record in it. */
+  agentDetail: (agentId: string) =>
+    call<{ items: AssignmentDetailItem[] }>("data-center-assign", "agent_detail", { agentId }),
+
+  /** Hand one partner's records to one agent. `size` defaults to the configured batch. */
+  assignManual: (agentId: string, organizationId: string, size?: number) =>
+    call<{ batchId: string | null; size: number }>("data-center-assign", "assign_manual", {
+      agentId,
+      organizationId,
+      size,
+    }),
+
+  unassignBatch: (batchId: string, reason?: string) =>
+    call<{ released: number }>("data-center-assign", "unassign_batch", { batchId, reason }),
+
+  unassignItem: (saleId: string) =>
+    call<{ batchId: string | null }>("data-center-assign", "unassign_item", { saleId }),
 
   status: () =>
     call<{

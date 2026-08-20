@@ -2,6 +2,7 @@ import { useMemo } from "react";
 import { useNavigate, useSearch } from "@tanstack/react-router";
 import DataCentreShell from "../components/DataCentreShell";
 import CallQueue from "../features/call-centre/CallQueue";
+import AssignmentConsole from "../features/call-centre/AssignmentConsole";
 import AssignmentLog from "../features/call-centre/AssignmentLog";
 import { useFeature } from "../lib/access";
 import { DATA_CENTER_FEATURES } from "../lib/features";
@@ -73,9 +74,12 @@ function Inner() {
         canEdit={can(DATA_CENTER_FEATURES.CALL_RECORDS_EDIT)}
         drill={drill}
       />
-      {/* The log needs records.view on the server. Gating on the same key here
-          keeps the page honest: nothing renders that the endpoint would 403.
-          The levers inside it are super admin only, decided again server-side. */}
+      {/* The console before the log, because who holds what right now is asked
+          far more often than what happened last week. Both need records.view on
+          the server; gating on the same key here keeps the page honest, since
+          nothing renders that the endpoint would 403. The levers inside are
+          super admin only, decided again server-side. */}
+      {isSuperAdmin && <AssignmentConsole canEdit />}
       {can(DATA_CENTER_FEATURES.RECORDS_VIEW) && (
         <AssignmentLog canRun={isSuperAdmin} />
       )}

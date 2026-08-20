@@ -111,7 +111,15 @@ serve(async (req) => {
     }
     const can = (key: string) => superAdmin || (access?.features ?? []).includes(key);
 
-    let body: { action?: string } = {};
+    let body: {
+      action?: string;
+      agentId?: string;
+      organizationId?: string;
+      size?: number;
+      batchId?: string;
+      saleId?: string;
+      reason?: string;
+    } = {};
     try {
       body = await req.json();
     } catch {
@@ -220,6 +228,159 @@ serve(async (req) => {
             args: [userId],
           });
           return json({ data: { items: r.rows } }, 200, cors);
+        });
+      }
+
+      /**
+       * The console's own read: every call agent with what they are holding,
+       * and every partner with what is still waiting. Two questions that are
+       * always asked together, because assigning is choosing one of each.
+       */
+      case "agents": {
+        if (!superAdmin) {
+          return json({ error: "Only a super admin assigns work", code: "no_feature" }, 403, cors);
+        }
+        return await withReadConnection(async (conn) => {
+          const agents = await conn.queryObject({
+            text: `select m.user_id::text as agent_id,
+                          p.full_name, p.email, p.role as app_role,
+                          m.access_role,
+                          coalesce(cap.is_enabled, true) as is_enabled,
+                          cap.max_open_batches,
+                          (select count(*)::int from data_center.assignment_batches b
+                            where b.assigned_to = m.user_id and b.state = 'open') as open_batches,
+                          (select count(*)::int from data_center.assignment_batches b
+                             join data_center.assignment_items i on i.batch_id = b.id
+                            where b.assigned_to = m.user_id and b.state = 'open' and i.is_active
+                          ) as records_held,
+                          (select max(b.last_activity_at) from data_center.assignment_batches b
+                            where b.assigned_to = m.user_id and b.state = 'open') as last_activity_at
+                     from data_center.module_access m
+                     join public.profiles p on p.id = m.user_id
+                     left join data_center.call_agent_profiles cap on cap.user_id = m.user_id
+                    where m.access_role in ('call_agent', 'editor')
+                    order by p.full_name nulls last`,
+          });
+          const pool = await conn.queryObject({
+            text: `select r.organization_id::text, r.partner_name, count(*)::int as callable,
+                          min(r.sales_date) as oldest
+                     from data_center.v_callable_records r
+                    group by 1, 2
+                    order by callable desc, r.partner_name`,
+          });
+          const defaults = await conn.queryObject<{ batch_size: number }>({
+            text: `select coalesce((select (value #>> '{}')::int
+                                      from data_center.workflow_config
+                                     where key = 'assignment.batch_size'), 20) as batch_size`,
+          });
+          return json(
+            {
+              data: {
+                agents: agents.rows,
+                pool: pool.rows,
+                batchSize: Number(defaults.rows[0]?.batch_size ?? 20),
+              },
+            },
+            200,
+            cors,
+          );
+        });
+      }
+
+      /**
+       * One agent, opened up: the batches they hold, and the records in each.
+       *
+       * One read rather than a read per batch. An agent holds tens of records,
+       * not thousands, so the whole tree fits in one response and the drill
+       * from partner to serial costs nothing once it is open.
+       */
+      case "agent_detail": {
+        if (!superAdmin) {
+          return json({ error: "Only a super admin assigns work", code: "no_feature" }, 403, cors);
+        }
+        if (!body.agentId) {
+          return json({ error: "agentId is required", code: "bad_input" }, 400, cors);
+        }
+        return await withReadConnection(async (conn) => {
+          const r = await conn.queryObject({
+            text: `select l.batch_id::text, l.organization_id::text, l.partner_name,
+                          l.assigned_at, l.batch_size, l.last_activity_at,
+                          l.sale_id::text, l.position, l.stove_serial_no, l.sales_date,
+                          l.number_on_record, l.verification_outcome, l.call_outcome,
+                          l.attempt_count
+                     from data_center.v_assignment_log l
+                    where l.agent_id = $1 and l.batch_state = 'open' and l.is_active
+                    order by l.assigned_at desc, l.position
+                    limit 1000`,
+            args: [body.agentId],
+          });
+          return json({ data: { items: r.rows } }, 200, cors);
+        });
+      }
+
+      /**
+       * Hand one partner's records to one agent, on a supervisor's say-so.
+       *
+       * The size cap and the "is this person an agent" check live in the SQL
+       * function, not here, so the rule holds for anything that ever calls it.
+       */
+      case "assign_manual": {
+        if (!superAdmin) {
+          return json({ error: "Only a super admin assigns work", code: "no_feature" }, 403, cors);
+        }
+        if (!body.agentId || !body.organizationId) {
+          return json(
+            { error: "agentId and organizationId are required", code: "bad_input" },
+            400,
+            cors,
+          );
+        }
+        return await withConnection(async (conn) => {
+          const r = await conn.queryObject<{ batch_id: string | null; size: number }>({
+            text: `select batch_id::text, size
+                     from data_center.assign_batch_manual($1, $2, $3, $4)`,
+            args: [body.agentId, body.organizationId, body.size ?? null, userId],
+          });
+          const row = r.rows[0];
+          return json(
+            { data: { batchId: row?.batch_id ?? null, size: Number(row?.size ?? 0) } },
+            200,
+            cors,
+          );
+        });
+      }
+
+      /** Take a whole batch back into the pool. */
+      case "unassign_batch": {
+        if (!superAdmin) {
+          return json({ error: "Only a super admin assigns work", code: "no_feature" }, 403, cors);
+        }
+        if (!body.batchId) {
+          return json({ error: "batchId is required", code: "bad_input" }, 400, cors);
+        }
+        return await withConnection(async (conn) => {
+          const r = await conn.queryObject<{ released: number }>({
+            text: "select data_center.unassign_batch($1, $2, $3) as released",
+            args: [body.batchId, body.reason ?? "unassigned by an administrator", userId],
+          });
+          return json({ data: { released: Number(r.rows[0]?.released ?? 0) } }, 200, cors);
+        });
+      }
+
+      /** Take one record back, because the complaint is usually about one. */
+      case "unassign_item": {
+        if (!superAdmin) {
+          return json({ error: "Only a super admin assigns work", code: "no_feature" }, 403, cors);
+        }
+        if (!body.saleId) {
+          return json({ error: "saleId is required", code: "bad_input" }, 400, cors);
+        }
+        return await withConnection(async (conn) => {
+          const r = await conn.queryObject<{ batch: string }>({
+            text: "select data_center.unassign_item($1, $2)::text as batch",
+            args: [body.saleId, userId],
+          });
+          return json({ data: { batchId: r.rows[0]?.batch ?? null } }, 200, cors);
         });
       }
 

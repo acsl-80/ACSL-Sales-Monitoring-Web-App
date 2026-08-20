@@ -1,6 +1,9 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { dataCenterAdmin, DataCenterError } from "../../lib/client";
 import { invalidateModuleAccessCache } from "../../lib/useModuleAccess";
+import { ALL_DATA_CENTER_FEATURES, FEATURE_LABELS } from "../../lib/features";
+import { usePaged } from "../../lib/usePaged";
+import Pagination from "../../components/Pagination";
 import {
   Popover,
   PopoverAnchor,
@@ -14,6 +17,8 @@ import {
   Eye,
   Pencil,
   PhoneCall,
+  ChevronDown,
+  ChevronRight,
 } from "lucide-react";
 
 /**
@@ -74,6 +79,8 @@ function RoleChip({ role }) {
 
 export default function AccessManager() {
   const [entries, setEntries] = useState([]);
+  const [grants, setGrants] = useState([]);
+  const [expanded, setExpanded] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [busy, setBusy] = useState(false);
@@ -85,7 +92,12 @@ export default function AccessManager() {
 
   const refresh = useCallback(async () => {
     try {
-      setEntries(await dataCenterAdmin.listAccess());
+      const [access, featureGrants] = await Promise.all([
+        dataCenterAdmin.listAccess(),
+        dataCenterAdmin.featureGrants(),
+      ]);
+      setEntries(access);
+      setGrants(featureGrants);
       setError(null);
     } catch (err) {
       setError(err instanceof DataCenterError ? err.message : "Could not load access data.");
@@ -136,6 +148,25 @@ export default function AccessManager() {
     }
   };
 
+  /**
+   * A feature ticked on for one person, on top of whatever their level gives
+   * them. The level is the baseline and this is the addition, which is how
+   * somebody who is not a super admin comes to see Settings at all: tick
+   * grants.manage.
+   */
+  const setFeature = async (userId, featureKey, granted) => {
+    setBusy(true);
+    try {
+      await dataCenterAdmin.setFeatureGrant(userId, featureKey, granted);
+      invalidateModuleAccessCache();
+      await refresh();
+    } catch (err) {
+      setError(err instanceof DataCenterError ? err.message : "Could not change that feature.");
+    } finally {
+      setBusy(false);
+    }
+  };
+
   const revoke = async (userId) => {
     setBusy(true);
     try {
@@ -148,6 +179,10 @@ export default function AccessManager() {
       setBusy(false);
     }
   };
+
+  // Hooks run before any early return, so this sits above the loading branch
+  // rather than beside the list it pages.
+  const paged = usePaged(entries, 10);
 
   if (loading) {
     return (
@@ -165,8 +200,8 @@ export default function AccessManager() {
       </div>
       <p className="mb-3 text-sm text-gray-600">
         Search anyone on the application by name, email or username, then give
-        them one of three levels. Every change made under any level is
-        recorded in the log below.
+        them one of three levels. A level is the baseline; open a
+        person to tick extra features on top of it.
       </p>
 
       {/* What each level means. Two levels explained themselves; three do
@@ -264,8 +299,22 @@ export default function AccessManager() {
         </p>
       ) : (
         <ul className="divide-y divide-gray-100 rounded-lg border border-gray-100 bg-white">
-          {entries.map((e) => (
-            <li key={e.user_id} className="flex items-center gap-3 px-4 py-2.5">
+          {paged.slice.map((e) => (
+            <li key={e.user_id} className="px-4 py-2.5">
+              <div className="flex items-center gap-3">
+              <button
+                type="button"
+                aria-expanded={expanded === e.user_id}
+                aria-label={`Features for ${e.full_name || e.email}`}
+                onClick={() => setExpanded(expanded === e.user_id ? null : e.user_id)}
+                className="rounded p-1 text-gray-500 transition hover:bg-(--dc-accent-soft) hover:text-(--dc-accent)"
+              >
+                {expanded === e.user_id ? (
+                  <ChevronDown className="h-4 w-4" />
+                ) : (
+                  <ChevronRight className="h-4 w-4" />
+                )}
+              </button>
               <div className="min-w-0 flex-1">
                 <p className="truncate text-sm font-medium text-gray-900">
                   {e.full_name || e.email}
@@ -299,9 +348,56 @@ export default function AccessManager() {
               >
                 <Trash2 className="h-4 w-4" />
               </button>
+              </div>
+
+              {/* The features they hold on top of their level. Nine tick
+                  boxes rather than nine more levels: the combinations a real
+                  team wants do not form a ladder. */}
+              {expanded === e.user_id && (
+                <fieldset className="mt-2.5 rounded-lg border border-(--dc-accent)/20 bg-(--dc-accent-soft)/25 p-3">
+                  <legend className="px-1 text-xs font-medium uppercase tracking-wide text-(--dc-accent-strong)">
+                    Extra features
+                  </legend>
+                  <div className="grid grid-cols-1 gap-x-6 gap-y-1.5 sm:grid-cols-2 xl:grid-cols-3">
+                    {ALL_DATA_CENTER_FEATURES.map((key) => {
+                      const held = grants.some(
+                        (g) => g.user_id === e.user_id && g.feature_key === key,
+                      );
+                      return (
+                        <label
+                          key={key}
+                          className="flex items-start gap-2 text-sm text-gray-700"
+                        >
+                          <input
+                            type="checkbox"
+                            checked={held}
+                            disabled={busy}
+                            onChange={(ev) => setFeature(e.user_id, key, ev.target.checked)}
+                            className="mt-0.5 h-4 w-4 shrink-0 accent-(--dc-accent)"
+                          />
+                          <span className="min-w-0">
+                            {FEATURE_LABELS[key]}
+                            <span className="block font-mono text-xs text-gray-500">{key}</span>
+                          </span>
+                        </label>
+                      );
+                    })}
+                  </div>
+                </fieldset>
+              )}
             </li>
           ))}
         </ul>
+      )}
+      {entries.length > 0 && (
+        <Pagination
+          page={paged.page}
+          pageSize={paged.pageSize}
+          total={paged.total}
+          onPage={paged.setPage}
+          onPageSize={paged.setPageSize}
+          noun="person"
+        />
       )}
     </div>
   );

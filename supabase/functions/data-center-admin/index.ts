@@ -92,6 +92,41 @@ const CHANGE_CATEGORY_SQL = `case cl.table_name
   else 'other'
 end`;
 
+/** A registry key is what code and SQL both have to live with, so it is narrow. */
+const KEY_RE = /^[a-z][a-z0-9_]{1,60}$/;
+
+/** The types FieldRenderer can actually draw. A new one needs a renderer. */
+const INPUT_TYPES = new Set([
+  "text", "textarea", "number", "date", "select", "multiselect", "boolean",
+]);
+
+/**
+ * Run a write with the caller stamped on it, in one transaction.
+ *
+ * The audit trigger reads `data_center.actor` from the session, so a write
+ * outside this wrapper is a write the change log attributes to nobody. The
+ * existing access handlers each rolled their own copy of this; they now share.
+ */
+async function withActor<T>(
+  conn: { queryObject: (q: unknown) => Promise<unknown> },
+  actorId: string,
+  run: () => Promise<T>,
+): Promise<T> {
+  await conn.queryObject("begin");
+  try {
+    await conn.queryObject({
+      text: "select set_config('data_center.actor', $1, true)",
+      args: [actorId],
+    });
+    const result = await run();
+    await conn.queryObject("commit");
+    return result;
+  } catch (e) {
+    await conn.queryObject("rollback");
+    throw e;
+  }
+}
+
 const CHANGE_CATEGORIES = new Set([
   "call_records", "calls", "documents", "imports",
   "assignment", "access", "configuration", "other",
@@ -152,12 +187,44 @@ serve(async (req) => {
       return json({ error: "Not permitted to manage access", code: "forbidden" }, 403, cors);
     }
 
+    /**
+     * Reaching this function means the caller may open Settings. Editing the
+     * call form is a second permission on top of that, because rewriting the
+     * questions every agent answers is a different act from deciding who may
+     * log in, and `registry.manage` existed for exactly this and was never
+     * enforced anywhere.
+     */
+    const superAdmin = isSuperAdmin(profile.role);
+    const canManageRegistry = superAdmin || await withReadConnection(async (conn) => {
+      const g = await conn.queryObject<{ n: number }>({
+        text: `select count(*)::int n from data_center.feature_grants
+               where user_id = $1 and feature_key = 'registry.manage'`,
+        args: [callerId],
+      });
+      return (g.rows[0]?.n ?? 0) > 0;
+    });
+    const requireRegistry = () =>
+      canManageRegistry
+        ? null
+        : json(
+            { error: "This needs the registry.manage permission", code: "no_feature" },
+            403,
+            cors,
+          );
+
     let body: {
       action?: string;
       userId?: string;
       accessRole?: string;
       query?: string;
       limit?: number;
+      category?: string;
+      featureKey?: string;
+      granted?: boolean;
+      list?: Record<string, unknown>;
+      value?: Record<string, unknown>;
+      field?: Record<string, unknown>;
+      config?: { key?: string; value?: unknown };
     } = {};
     try {
       body = await req.json();
@@ -298,6 +365,264 @@ serve(async (req) => {
             args: [limit, category],
           });
           return json({ data: rows.rows }, 200, cors);
+        }
+
+        /**
+         * Everything Settings needs to draw the call form editor, in one read.
+         * The lists and the fields are edited together often enough that two
+         * round trips would only ever be two round trips.
+         */
+        case "registry_read": {
+          const lists = await conn.queryObject({
+            text: `select l.key, l.label, l.description,
+                          coalesce(json_agg(json_build_object(
+                            'id', v.id::text, 'value', v.value, 'label', v.label,
+                            'sort_order', v.sort_order, 'is_active', v.is_active
+                          ) order by v.sort_order, v.label)
+                            filter (where v.id is not null), '[]') as values
+                     from data_center.option_lists l
+                     left join data_center.option_values v on v.list_key = l.key
+                    group by l.key, l.label, l.description
+                    order by l.label`,
+          });
+          const fields = await conn.queryObject({
+            text: `select key, label, section, input_type, option_list_key, storage,
+                          column_name, sort_order, is_required, is_active, help_text,
+                          visible_when, validation, retired_at
+                     from data_center.field_defs
+                    order by section, sort_order, label`,
+          });
+          return json(
+            { data: { lists: lists.rows, fields: fields.rows, canEdit: canManageRegistry } },
+            200,
+            cors,
+          );
+        }
+
+        /** Add or rename a whole dropdown. */
+        case "option_list_upsert": {
+          const denied = requireRegistry();
+          if (denied) return denied;
+          const key = String(body.list?.key ?? "").trim();
+          const label = String(body.list?.label ?? "").trim();
+          if (!KEY_RE.test(key) || !label) {
+            return json(
+              {
+                error:
+                  "A list needs a label and a key of lower-case letters, digits and underscores",
+                code: "bad_input",
+              },
+              400,
+              cors,
+            );
+          }
+          await withActor(conn, callerId, async () => {
+            await conn.queryObject({
+              text: `insert into data_center.option_lists (key, label, description)
+                     values ($1, $2, $3)
+                     on conflict (key) do update
+                       set label = excluded.label, description = excluded.description`,
+              args: [key, label, body.list?.description ?? null],
+            });
+          });
+          return json({ data: { key } }, 200, cors);
+        }
+
+        /**
+         * Add, rename or retire one choice.
+         *
+         * Retiring sets is_active false rather than deleting: records point at
+         * option_values by id, so a delete would either fail on the foreign key
+         * or erase what an agent actually chose. A choice stops being offered;
+         * it never stops having been picked.
+         */
+        case "option_value_upsert": {
+          const denied = requireRegistry();
+          if (denied) return denied;
+          const listKey = String(body.value?.listKey ?? "").trim();
+          const label = String(body.value?.label ?? "").trim();
+          const id = body.value?.id ? String(body.value.id) : null;
+          const value = String(body.value?.value ?? "").trim();
+          if (!listKey || !label || (!id && !KEY_RE.test(value))) {
+            return json(
+              {
+                error:
+                  "A choice needs a label, and a new one needs a value of lower-case letters, digits and underscores",
+                code: "bad_input",
+              },
+              400,
+              cors,
+            );
+          }
+          const sortOrder = Number(body.value?.sortOrder ?? 0) || 0;
+          const isActive = body.value?.isActive !== false;
+          const row = await withActor(conn, callerId, async () => {
+            if (id) {
+              // The value is the key records already reference, so an edit
+              // changes the wording and the ordering and never the key.
+              const r = await conn.queryObject<{ id: string }>({
+                text: `update data_center.option_values
+                          set label = $2, sort_order = $3, is_active = $4
+                        where id = $1 returning id::text`,
+                args: [id, label, sortOrder, isActive],
+              });
+              return r.rows[0];
+            }
+            const r = await conn.queryObject<{ id: string }>({
+              text: `insert into data_center.option_values
+                       (list_key, value, label, sort_order, is_active)
+                     values ($1, $2, $3, $4, $5)
+                     on conflict (list_key, value) do update
+                       set label = excluded.label, sort_order = excluded.sort_order,
+                           is_active = excluded.is_active
+                     returning id::text`,
+              args: [listKey, value, label, sortOrder, isActive],
+            });
+            return r.rows[0];
+          });
+          return json({ data: row ?? {} }, 200, cors);
+        }
+
+        /**
+         * Add, amend or retire a question on the call form.
+         *
+         * `storage` is fixed at 'answers' here. Promoting a question to a real
+         * column is a migration, because the column has to exist before
+         * anything can be written to it, and offering that as a button would
+         * be offering a failure. The registry supports the promotion; Settings
+         * does not perform it.
+         */
+        case "field_def_upsert": {
+          const denied = requireRegistry();
+          if (denied) return denied;
+          const f = body.field ?? {};
+          const key = String(f.key ?? "").trim();
+          const label = String(f.label ?? "").trim();
+          const section = String(f.section ?? "").trim();
+          const inputType = String(f.inputType ?? "").trim();
+          if (!KEY_RE.test(key) || !label || !section || !INPUT_TYPES.has(inputType)) {
+            return json(
+              {
+                error:
+                  "A question needs a key of lower-case letters, digits and underscores, a label, a section and a known input type",
+                code: "bad_input",
+              },
+              400,
+              cors,
+            );
+          }
+          const optionListKey = f.optionListKey ? String(f.optionListKey) : null;
+          if ((inputType === "select" || inputType === "multiselect") && !optionListKey) {
+            return json(
+              { error: "A dropdown must name the list it draws from", code: "bad_input" },
+              400,
+              cors,
+            );
+          }
+          await withActor(conn, callerId, async () => {
+            await conn.queryObject({
+              text: `insert into data_center.field_defs
+                       (key, label, section, input_type, option_list_key, storage,
+                        sort_order, is_required, is_active, help_text, visible_when, retired_at)
+                     values ($1, $2, $3, $4, $5, 'answers', $6, $7, $8, $9, $10::jsonb,
+                             case when $8 then null else now() end)
+                     on conflict (key) do update
+                       set label = excluded.label, section = excluded.section,
+                           input_type = excluded.input_type,
+                           option_list_key = excluded.option_list_key,
+                           sort_order = excluded.sort_order,
+                           is_required = excluded.is_required,
+                           is_active = excluded.is_active,
+                           help_text = excluded.help_text,
+                           visible_when = excluded.visible_when,
+                           retired_at = case when excluded.is_active then null
+                                             else coalesce(field_defs.retired_at, now()) end`,
+              args: [
+                key, label, section, inputType, optionListKey,
+                Number(f.sortOrder ?? 0) || 0,
+                f.isRequired === true,
+                f.isActive !== false,
+                f.helpText ?? null,
+                f.visibleWhen ? JSON.stringify(f.visibleWhen) : null,
+              ],
+            });
+          });
+          return json({ data: { key } }, 200, cors);
+        }
+
+        /** The runtime numbers: batch size, callback limit, staleness, caps. */
+        case "config_read": {
+          const rows = await conn.queryObject({
+            text: `select key, value, description
+                     from data_center.workflow_config order by key`,
+          });
+          return json({ data: { config: rows.rows, canEdit: canManageRegistry } }, 200, cors);
+        }
+
+        case "config_set": {
+          const denied = requireRegistry();
+          if (denied) return denied;
+          const key = String(body.config?.key ?? "").trim();
+          if (!key) {
+            return json({ error: "key is required", code: "bad_input" }, 400, cors);
+          }
+          // Only an existing setting can be changed. A new key would be a
+          // setting nothing reads, which looks like it took effect.
+          const updated = await withActor(conn, callerId, async () => {
+            const r = await conn.queryObject<{ key: string }>({
+              text: `update data_center.workflow_config
+                        set value = $2::jsonb
+                      where key = $1 returning key`,
+              args: [key, JSON.stringify(body.config?.value ?? null)],
+            });
+            return r.rows[0];
+          });
+          if (!updated) {
+            return json({ error: `No such setting: ${key}`, code: "bad_input" }, 400, cors);
+          }
+          return json({ data: { key } }, 200, cors);
+        }
+
+        /**
+         * Tier-2 features, per user, on top of whatever their level already
+         * grants. The level is the baseline; a tick here is an addition, which
+         * is how someone who is not a super admin comes to see Settings at all.
+         */
+        case "feature_grants_list": {
+          const rows = await conn.queryObject({
+            text: `select user_id::text, feature_key from data_center.feature_grants
+                    order by user_id, feature_key`,
+          });
+          return json({ data: rows.rows }, 200, cors);
+        }
+
+        case "feature_grant_set": {
+          const userId = body.userId ? String(body.userId) : "";
+          const featureKey = String(body.featureKey ?? "").trim();
+          if (!userId || !featureKey) {
+            return json(
+              { error: "userId and featureKey are required", code: "bad_input" },
+              400,
+              cors,
+            );
+          }
+          await withActor(conn, callerId, async () => {
+            if (body.granted) {
+              await conn.queryObject({
+                text: `insert into data_center.feature_grants (user_id, feature_key, granted_by)
+                       values ($1, $2, $3)
+                       on conflict (user_id, feature_key) do nothing`,
+                args: [userId, featureKey, callerId],
+              });
+            } else {
+              await conn.queryObject({
+                text: `delete from data_center.feature_grants
+                        where user_id = $1 and feature_key = $2`,
+                args: [userId, featureKey],
+              });
+            }
+          });
+          return json({ data: { userId, featureKey, granted: body.granted === true } }, 200, cors);
         }
 
         default:

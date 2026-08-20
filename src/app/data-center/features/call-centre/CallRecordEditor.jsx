@@ -71,6 +71,7 @@ export default function CallRecordEditor({ saleId, canEdit, onClose, onSaved }) 
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [nextOutcome, setNextOutcome] = useState("");
+  const [nextNote, setNextNote] = useState("");
   const [error, setError] = useState(null);
   const [notice, setNotice] = useState(null);
 
@@ -139,10 +140,13 @@ export default function CallRecordEditor({ saleId, canEdit, onClose, onSaved }) 
     }
   };
 
-  const logAttempt = async (outcomeId) => {
+  const logAttempt = async (outcomeId, note) => {
     setSaving(true);
     try {
-      await dataCenterWrite.logAttempt(saleId, { outcomeId: outcomeId || null });
+      await dataCenterWrite.logAttempt(saleId, {
+        outcomeId: outcomeId || null,
+        note: note?.trim() || null,
+      });
       await load();
       setNotice("Call logged.");
     } catch (err) {
@@ -166,6 +170,20 @@ export default function CallRecordEditor({ saleId, canEdit, onClose, onSaved }) 
   };
 
   const callOutcomes = schema?.options?.call_outcome ?? [];
+
+  /**
+   * "Something else" is the outcome that has to be typed out.
+   *
+   * The nine seeded outcomes came from a closed list, and the July data shows
+   * what an agent does when the call does not fit one: they invent a tenth and
+   * type it into a constrained column. RESPONDED, REPONDED and NO PHONE NUMBER
+   * all arrived that way. Giving them one place to say what happened is what
+   * stops the next three inventions, so when this outcome is picked the note
+   * stops being optional.
+   */
+  const otherIsPicked =
+    callOutcomes.find((o) => o.id === nextOutcome)?.value === "other";
+  const canLog = !otherIsPicked || nextNote.trim().length > 0;
   const correctionReasons = schema?.options?.correction_reason ?? [];
   const correctionOpen = record?.correction_state === "open";
 
@@ -279,10 +297,11 @@ export default function CallRecordEditor({ saleId, canEdit, onClose, onSaved }) 
                     </select>
                     <button
                       type="button"
-                      disabled={saving}
+                      disabled={saving || !canLog}
                       onClick={() => {
-                        logAttempt(nextOutcome);
+                        logAttempt(nextOutcome, nextNote);
                         setNextOutcome("");
+                        setNextNote("");
                       }}
                       className="inline-flex shrink-0 items-center gap-1 whitespace-nowrap rounded-md bg-(--dc-accent) px-2.5 py-1.5 text-xs font-medium text-white transition hover:bg-(--dc-accent-strong) disabled:opacity-50"
                     >
@@ -291,6 +310,26 @@ export default function CallRecordEditor({ saleId, canEdit, onClose, onSaved }) 
                   </div>
                 )}
               </div>
+
+              {canEdit && otherIsPicked && (
+                <div className="mb-3 rounded-lg border border-(--dc-accent)/25 bg-(--dc-accent-soft)/30 p-3">
+                  <label
+                    htmlFor="dc-next-note"
+                    className="mb-1 block text-xs font-medium uppercase tracking-wide text-(--dc-accent-strong)"
+                  >
+                    What happened on this call?
+                  </label>
+                  <textarea
+                    id="dc-next-note"
+                    rows={2}
+                    value={nextNote}
+                    onChange={(e) => setNextNote(e.target.value)}
+                    placeholder="Say what the outcome was, since it is not one of the listed ones"
+                    className="w-full rounded-md border border-gray-300 px-3 py-1.5 text-sm focus:border-(--dc-accent) focus:outline-none"
+                  />
+                </div>
+              )}
+
               {attempts.length === 0 ? (
                 <p className="text-sm text-gray-500">No calls logged yet.</p>
               ) : (
