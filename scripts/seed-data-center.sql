@@ -274,6 +274,25 @@ select
   r.sale_id
 from _seed_rows r;
 
+-- Unsold stock, so the import path has something to import against.
+--
+-- Every stove above is attached to a sale, which is what makes Table 1 and the
+-- call centre queue realistic. Bulk import needs the opposite: stoves a partner
+-- holds and has not sold yet. Without these the import can only ever produce
+-- exceptions, and the happy path is untestable.
+--
+-- The serial prefix differs (SA for available, SD for sold) so the two sets are
+-- distinguishable at a glance, and the teardown removes both.
+insert into public.stove_ids_base (id, stove_id, organization_id, status, factory)
+select
+  ('f5eed400-0000-4000-8000-' || lpad(g::text, 12, '0'))::uuid,
+  'SA' || lpad(to_hex(g), 8, '0'),
+  ('f5eed000-0000-4000-8000-' || lpad((1 + (g % 40))::text, 12, '0'))::uuid,
+  'available',
+  (array['Factory A','Factory B','Factory C'])[1 + (g % 3)]
+from generate_series(1, 2000) g;
+
+
 -- ---------------------------------------------------------------------------
 -- Restore.
 -- ---------------------------------------------------------------------------
@@ -291,5 +310,6 @@ select
   (select count(*) from public.sales)                                            as total_sales,
   (select count(*) from public.addresses where id::text like 'f5eed200-%')       as seeded_addresses,
   (select count(*) from public.stove_ids_base where stove_id like 'SD%')         as seeded_stoves,
+  (select count(*) from public.stove_ids_base where stove_id like 'SA%')         as available_stoves,
   (select min(sales_date) from public.sales where id::text like 'f5eed100-%')    as earliest,
   (select max(sales_date) from public.sales where id::text like 'f5eed100-%')    as latest;

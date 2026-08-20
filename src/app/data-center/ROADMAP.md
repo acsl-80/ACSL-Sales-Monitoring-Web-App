@@ -405,26 +405,39 @@ all, the second has one with `not_verified`. The queue can tell them apart
 (`hasCallRecord: false` against `verificationOutcome: not_verified`) without a
 fifth state, because the attempts table already carries the difference.
 
-## Phase 5: bulk import
+## Phase 5: bulk import — DONE
 
 Not optional. 359 serials in one week's workbook against 38 rows in the whole
 sales app.
 
-- [ ] Upload and stage into `import_batches` and `import_rows`, raw payload
+- [x] Upload and stage into `import_batches` and `import_rows`, raw payload
       retained so a rejected row can be explained.
-- [ ] Per-row schema validation with a reason.
-- [ ] Stove ID matched against `stove_ids_base`. Expect roughly 8% to miss.
-- [ ] Exceptions queue a human works through. This is the normal path, not an
-      error path.
-- [ ] **Dry run** reporting what would change without writing.
-- [ ] Commit through `create-sale`, stove claimed under lock in the same
-      transaction. Two concurrent imports must never both take one stove.
-- [ ] Batch-level rollback.
-- [ ] Runs as a batched job, never inside a request.
+- [x] Per-row validation with a reason written for a data clerk, not a
+      developer.
+- [x] Stove ID matched against `stove_ids_base`, case-insensitively, and the
+      canonical spelling carried downstream so a match cannot become a refusal.
+- [x] Exceptions queue with inline correction. This is the normal path: a
+      correction that does not resolve the problem stays an exception with the
+      new reason rather than failing later at commit.
+- [x] Dry run reporting exactly which stoves would move, writing nothing.
+- [x] Commit through `create-sale`, never around it, in bounded slices.
+- [x] Batch-level rollback through `delete-sale`, which frees the stock.
+- [x] Two concurrent imports cannot both take one stove.
 
-Committing the backlog moves hundreds of stoves from available to sold and
-visibly changes the sales app's inventory figures. Staged and reversible for
-that reason.
+Verified end to end against the 500,000-row database: 20 valid, 2 exceptions,
+2 rejected; dry run reported 20 stoves; one exception corrected; 21 committed,
+0 failed; 21 rolled back and stock returned to 2,000 available, 0 sold.
+
+The race was tested rather than reasoned about. Two batches holding the same
+serial, committed at the same instant: one sale created, the other refused with
+"Another import is already committing this stove".
+
+**A defect in the sales app that this surfaced and did not fix.** `create-sale`
+checks a stove's status, inserts a sale, then marks the stove sold with no guard
+on the update, so two callers can both pass the check. The import closes this
+against itself by claiming in `data_center.import_claims` first, but it cannot
+close it against the Sell Stove form. Written up in `IMPORT.md`; fixing it is a
+one-line change to a live shared function and therefore a decision.
 
 ## Phase 6: computation and dashboards
 

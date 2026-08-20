@@ -10,6 +10,7 @@ import {
 import AccessManager from "./features/access/AccessManager";
 import RecordsTable from "./features/records/RecordsTable";
 import CallQueue from "./features/call-centre/CallQueue";
+import ImportSection from "./features/import/ImportSection";
 import {
   Database,
   PhoneCall,
@@ -27,12 +28,6 @@ import {
 // Sold Stove Records is built (Phase 3) and renders below rather than as a
 // card; the rest are still placeholders.
 const SURFACES = [
-  {
-    key: DATA_CENTER_FEATURES.IMPORT_UPLOAD,
-    name: "Bulk Import",
-    icon: Upload,
-    blurb: "Digitalized receipts, validated against stock. Phase 5.",
-  },
   {
     key: DATA_CENTER_FEATURES.DASHBOARD_VIEW,
     name: "Dashboards",
@@ -169,6 +164,19 @@ function DataCenterHome() {
       {can(DATA_CENTER_FEATURES.CALL_RECORDS_VIEW) && (
         <div className="mt-6">
           <CallQueue canEdit={can(DATA_CENTER_FEATURES.CALL_RECORDS_EDIT)} />
+        </div>
+      )}
+
+      {/* Bulk import. import.upload stages and checks; import.commit is what
+          actually creates sales and moves stock, and is never implied by an
+          access level. */}
+      {can(DATA_CENTER_FEATURES.IMPORT_UPLOAD) && (
+        <div className="mt-6">
+          <ImportSection
+            canUpload={can(DATA_CENTER_FEATURES.IMPORT_UPLOAD)}
+            canCommit={can(DATA_CENTER_FEATURES.IMPORT_COMMIT)}
+            canResolve={can(DATA_CENTER_FEATURES.IMPORT_EXCEPTIONS)}
+          />
         </div>
       )}
 

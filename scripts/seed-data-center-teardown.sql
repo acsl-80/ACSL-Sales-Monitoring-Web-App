@@ -25,6 +25,7 @@ delete from data_center.call_records
  where sale_id in (select id from public.sales where id::text like 'f5eed100-%');
 
 delete from public.stove_ids_base where stove_id like 'SD%';
+delete from public.stove_ids_base where stove_id like 'SA%';
 delete from public.sales         where id::text like 'f5eed100-%';
 delete from public.addresses     where id::text like 'f5eed200-%';
 delete from public.uploads       where id::text like 'f5eed003-%';

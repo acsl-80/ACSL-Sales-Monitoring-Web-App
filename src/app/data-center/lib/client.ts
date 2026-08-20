@@ -343,3 +343,100 @@ export const dataCenterAdmin = {
 };
 
 export default dataCenterClient;
+
+/** A staged import batch, as the batches list shows it. */
+export type ImportBatch = {
+  id: string;
+  filename: string | null;
+  state: "staged" | "validated" | "dry_run" | "committed" | "rolled_back" | "failed";
+  total_rows: number;
+  valid_rows: number;
+  rejected_rows: number;
+  committed_rows: number;
+  exception_rows: number;
+  uploaded_at: string;
+  dry_run_at: string | null;
+  committed_at: string | null;
+  last_error: string | null;
+  partner_name: string | null;
+  uploaded_by_name: string | null;
+};
+
+export type ImportRow = {
+  id: string;
+  row_number: number;
+  status: "pending" | "valid" | "rejected" | "committed" | "exception";
+  rejection_reason: string | null;
+  exception_reason: string | null;
+  stove_serial_no: string | null;
+  corrected_serial: string | null;
+  sale_id: string | null;
+  raw: Record<string, string>;
+};
+
+export type DryRunSummary = {
+  byStatus: Record<string, number>;
+  stovesThatWouldSell: string[];
+  note: string;
+};
+
+/**
+ * Bulk import.
+ *
+ * Four deliberate steps rather than one upload button, because committing a
+ * receipt backlog moves hundreds of stoves from available to sold and changes
+ * the sales app's own inventory figures. Nobody should meet that by surprise.
+ */
+export const dataCenterImport = {
+  stage: (organizationId: string, filename: string, rows: Record<string, string>[]) =>
+    call<{ batchId: string; totalRows: number }>("data-center-import", "stage", {
+      organizationId,
+      filename,
+      rows,
+    }),
+
+  validate: (batchId: string) =>
+    call<{ valid: number; rejected: number; exception: number }>(
+      "data-center-import",
+      "validate",
+      { batchId },
+    ),
+
+  /** Reports what a commit would change. Writes nothing to public. */
+  dryRun: (batchId: string) =>
+    call<DryRunSummary>("data-center-import", "dry_run", { batchId }),
+
+  /** One slice. Call until `done`, so no single request runs long. */
+  commit: (batchId: string) =>
+    call<{
+      committed: number;
+      failed: number;
+      remaining: number;
+      done: boolean;
+      failures: { rowId: string; reason: string }[];
+    }>("data-center-import", "commit", { batchId }),
+
+  /** Also sliced. Each sale goes back through delete-sale, which frees the stove. */
+  rollback: (batchId: string) =>
+    call<{ reversed: number; remaining: number; done: boolean }>(
+      "data-center-import",
+      "rollback",
+      { batchId },
+    ),
+
+  resolveException: (rowId: string, correctedSerial: string) =>
+    call<{ rowId: string; resolved: boolean; reason: string | null }>(
+      "data-center-import",
+      "resolve_exception",
+      { rowId, correctedSerial },
+    ),
+
+  /** Partners this caller may import for. Scoped server-side. */
+  partners: () =>
+    call<{ id: string; partner_name: string }[]>("data-center-import", "partners"),
+
+  batches: () => call<ImportBatch[]>("data-center-import", "batches"),
+
+  rows: (batchId: string, status = "") =>
+    call<ImportRow[]>("data-center-import", "rows", { batchId, status }),
+};
