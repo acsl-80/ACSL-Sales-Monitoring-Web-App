@@ -20,18 +20,27 @@ clones of the same versions, so production was never contacted.
 ## Production is ahead of this repository
 
 Someone deployed these from outside the repository. **Deploying the copy here
-would remove live logic**, so do not run `supabase functions deploy` on either
+would remove live logic**, so do not run `supabase functions deploy` on it
 without deciding what to do about it first.
 
-### `create-sale` (production v41, deployed 2026-08-15)
+### `create-sale`: RESOLVED 2026-08-20
 
-The repository's copy last changed 2026-08-02. Production carries a rule the
-repository has never seen: a non-installment sale is treated as paid in full,
-coercing `total_paid` up to the sale amount and forcing `payment_status` to
-`fully_paid` rather than deriving it.
+Production had carried a rule this repository never saw: a non-installment sale
+treated as paid in full, coercing `total_paid` up to the sale amount and forcing
+`payment_status` to `fully_paid`. Deploying the repository's copy would have
+made outright sales record as `partially_paid` again.
 
-Deploying the repository's copy would make outright sales record as
-`partially_paid` again whenever the two figures disagree.
+PR #9 resolved it by building the stove-claim fix **on production's source**
+rather than on the older copy here, so this repository now carries both. It is
+safe to deploy.
+
+Note that safe is not the same as deployed. `create-sale` has no
+`[functions.*]` block in `config.toml`, so merging PR #9 did not put it live.
+Check the version before assuming:
+
+```bash
+supabase functions download create-sale --project-ref oeiwnpngbnkhcismhpgs
+```
 
 ### `update-sale` (production v20, deployed 2026-08-15)
 
@@ -44,7 +53,10 @@ something else. None of that exists here.
 
 ## This repository is ahead of production
 
-### `manage-organizations/read-operations.ts`
+### `manage-organizations/read-operations.ts`: RESOLVED 2026-08-20
+
+Deployed to production on 2026-08-20 (v58). The section below is kept because
+it explains what was wrong for the month it was wrong.
 
 A fix that was committed and never deployed. Inside a quoted PostgREST value
 the `ilike` wildcard is `*`, not `%`; a `%` there matches a literal percent
