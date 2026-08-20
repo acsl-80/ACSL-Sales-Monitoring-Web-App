@@ -286,6 +286,38 @@ async function contentHash(rows: Record<string, unknown>[]): Promise<string> {
     .join("");
 }
 
+/**
+ * May this caller stage against this partner at all?
+ *
+ * The module's rule is role AND feature AND organization scope, and staging
+ * checked only the first two: `organizationId` arrived from the client and was
+ * written down. Validate limited the damage, since a stove belonging to
+ * someone else becomes an exception, but a batch could still be filed under a
+ * partner the caller has nothing to do with.
+ *
+ * The question is the same one the `partners` action answers, asked of one
+ * organization instead of listing them all.
+ */
+async function organizationInScope(
+  conn: PoolClient,
+  userId: string,
+  ownOrganizationId: string | null,
+  organizationId: string,
+): Promise<boolean> {
+  const r = await conn.queryObject<{ ok: boolean }>({
+    text: `select exists (
+             select 1 from public.organizations o
+              where o.id = $3
+                and (o.id = $2
+                     or o.id in (select organization_id
+                                   from public.acsl_agent_organizations
+                                  where agent_id = $1))
+           ) as ok`,
+    args: [userId, ownOrganizationId, organizationId],
+  });
+  return r.rows[0]?.ok === true;
+}
+
 async function readConfig(conn: PoolClient, key: string, fallback: unknown) {
   const r = await conn.queryObject<{ value: unknown }>({
     text: "select value from data_center.workflow_config where key = $1",
@@ -366,6 +398,22 @@ serve(async (req) => {
 
     const requireFeature = (key: string) => {
       if (!can(key)) throw new BadRequest(`This needs the ${key} permission`);
+    };
+
+    /**
+     * A super admin may stage against anyone; everyone else against their own
+     * organization and the partners assigned to them as an ACSL agent. The
+     * same rule the `partners` picker follows, enforced rather than assumed,
+     * because the picker is presentation and the id arrives from the client.
+     */
+    const requireOrganization = async (organizationId: string) => {
+      if (superAdmin) return;
+      const allowed = await withReadConnection((conn) =>
+        organizationInScope(conn, userId, profile.organization_id ?? null, organizationId)
+      );
+      if (!allowed) {
+        throw new BadRequest("That partner is not one you can import for");
+      }
     };
 
     switch (body.action) {
@@ -449,6 +497,7 @@ serve(async (req) => {
           );
         }
         if (!organizationId) throw new BadRequest("Choose which partner this batch belongs to");
+        await requireOrganization(organizationId);
 
         // Apply the operator's header mapping before anything else, so
         // everything downstream sees one vocabulary. A mapped column is copied
@@ -475,11 +524,15 @@ serve(async (req) => {
         // send someone to edit the file until it was accepted.
         if (warnOnDuplicate && !body.confirmDuplicate) {
           const previous = await withReadConnection(async (conn) => {
+            // Scoped to the same partner. A repeat means "this partner sent
+            // this again", and an unscoped lookup would answer with another
+            // organization's filename and date to someone who may not see it.
             const r = await conn.queryObject<{ id: string; state: string; uploaded_at: string; filename: string | null }>({
               text: `select id::text, state, uploaded_at, filename
                      from data_center.import_batches
-                     where content_hash = $1 order by uploaded_at desc limit 1`,
-              args: [hash],
+                     where content_hash = $1 and organization_id = $2
+                     order by uploaded_at desc limit 1`,
+              args: [hash, organizationId],
             });
             return r.rows[0] ?? null;
           });
@@ -557,6 +610,7 @@ serve(async (req) => {
         const organizationId = String(body.organizationId ?? "");
         if (!record || typeof record !== "object") throw new BadRequest("No record given");
         if (!organizationId) throw new BadRequest("Choose which partner this record belongs to");
+        await requireOrganization(organizationId);
 
         // Fail on the shape before writing anything. A file gets staged first
         // because the operator wants to see all the failures at once; a single

@@ -21,7 +21,16 @@ test.describe("preview environment isolation", () => {
     const calls = trackSupabaseCalls(page);
 
     await signIn(page, USERS.admin);
-    await page.waitForLoadState("networkidle");
+    // Poll for traffic rather than for silence. `networkidle` wants a 500 ms
+    // gap with nothing in flight, which an app holding a session open may
+    // never give; it timed out here at 60 s while the calls it was waiting on
+    // had already been made.
+    await expect
+      .poll(() => calls.hosts.size > 0, {
+        timeout: 30_000,
+        message: "expected the app to contact Supabase at all",
+      })
+      .toBe(true);
 
     calls.assertBranchOnly();
   });
@@ -32,10 +41,17 @@ test.describe("preview environment isolation", () => {
     const calls = trackSupabaseCalls(page);
 
     await signIn(page, USERS.admin);
-    await page.goto("/sales");
-    await page.waitForLoadState("networkidle");
-    await page.goto("/data-center");
-    await page.waitForLoadState("networkidle");
+
+    // Wait for each page to have said something, not for the network to fall
+    // silent. Same reason as above.
+    for (const [path, marker] of [
+      ["/sales", "Sales"],
+      ["/data-center", "Data Center"],
+    ] as const) {
+      await page.goto(path);
+      await expect(page.getByText(marker).first()).toBeVisible({ timeout: 30_000 });
+    }
+    await expect.poll(() => calls.hosts.size > 0, { timeout: 30_000 }).toBe(true);
 
     const contacted = [...calls.hosts];
     expect(

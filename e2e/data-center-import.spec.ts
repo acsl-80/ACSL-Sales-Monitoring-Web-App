@@ -151,13 +151,24 @@ test.describe("import hardening", () => {
 
     await page.getByRole("button", { name: "Type one record" }).click();
 
-    // Exact labels: "Amount" also prefixes "Amount received", and a loose
-    // matcher there would pass on the wrong field.
-    for (const field of [
-      "Stove serial number", "First name", "Phone number", "Sale date",
-      "Amount", "State", "LGA", "Address",
-    ]) {
-      await expect(page.getByLabel(field, { exact: true })).toBeVisible();
+    // By accessible name, not by label text. getByLabel reads the label's
+    // textContent, which still carries the required asterisk even though the
+    // span is aria-hidden, so an exact match on it never hits. The role is
+    // spinbutton for the numeric fields and textbox for the rest.
+    for (const [field, role] of [
+      ["Stove serial number", "textbox"],
+      ["First name", "textbox"],
+      ["Phone number", "textbox"],
+      ["Sale date", "textbox"],
+      ["Amount", "spinbutton"],
+      ["State", "textbox"],
+      ["LGA", "textbox"],
+      ["Address", "textbox"],
+    ] as const) {
+      await expect(
+        page.getByRole(role, { name: field, exact: true }),
+        `${field} should be labelled exactly, not "${field} *"`,
+      ).toBeVisible();
     }
     await expect(page.getByRole("button", { name: "Stage this record" })).toBeVisible();
   });
@@ -281,5 +292,75 @@ test.describe("import hardening, against the server", () => {
       timeout: 30_000,
     });
     await expect(page.getByRole("button", { name: "Upload it again" })).toBeVisible();
+  });
+});
+
+/**
+ * Scope, asked of the server rather than the picker.
+ *
+ * The partner dropdown only offers what the caller may import for, and that is
+ * presentation. The organization id arrives from the client, so the question
+ * has to be answered again on the server or the dropdown is the only thing
+ * standing between an editor and another partner's batch list.
+ */
+test.describe("staging is scoped to the caller's partners", () => {
+  test("an editor cannot stage against a partner that is not theirs", async ({
+    page,
+  }) => {
+    await signIn(page, USERS.callCentre);
+    await page.goto("/data-center/import");
+    await expect(page.getByRole("heading", { name: "Bulk Import" })).toBeVisible({
+      timeout: 20_000,
+    });
+
+    // Which partners the server is willing to offer, and one it is not.
+    const result = await page.evaluate(async () => {
+      const key = Object.keys(window.localStorage).find(
+        (k) => k.startsWith("sb-") && k.endsWith("-auth-token"),
+      );
+      const session = JSON.parse(window.localStorage.getItem(key ?? "") ?? "{}");
+      const token = session.access_token ?? session?.currentSession?.access_token;
+      const base = document.querySelector<HTMLMetaElement>("meta[name=sb-url]")?.content;
+      const url =
+        (base ?? "") ||
+        // The client builds this from the same config the app uses; reading it
+        // back off a network request would be fragile, so derive it from the
+        // storage key, which is `sb-<ref>-auth-token`.
+        `https://${(key ?? "").replace(/^sb-/, "").replace(/-auth-token$/, "")}.supabase.co`;
+
+      const post = (body: unknown) =>
+        fetch(`${url}/functions/v1/data-center-import`, {
+          method: "POST",
+          headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
+          body: JSON.stringify(body),
+        }).then(async (r) => ({ status: r.status, body: await r.json() }));
+
+      const partners = await post({ action: "partners" });
+      const mine = new Set((partners.body?.data ?? []).map((p: { id: string }) => p.id));
+
+      // Any organization the picker did not offer. Asking for one by id is the
+      // whole point: the UI would never send it.
+      const foreign = "a0000000-0000-4000-8000-000000000001";
+      const stage = mine.has(foreign)
+        ? null
+        : await post({
+            action: "stage",
+            organizationId: foreign,
+            filename: "not-mine.csv",
+            rows: [{ stove_serial_no: "PRV000003", first_name: "Test", phone: "08012345678",
+                     sales_date: "2026-01-04", amount: "25000", state: "Gombe",
+                     lga: "Gombe", address: "1 Test Road" }],
+          });
+      return { offered: [...mine], stage };
+    });
+
+    // If the editor legitimately holds that partner the test proves nothing,
+    // so say so rather than passing quietly.
+    expect(
+      result.stage,
+      "the fixture partner is in this editor's scope, so pick another",
+    ).not.toBeNull();
+    expect(result.stage!.status).toBe(400);
+    expect(JSON.stringify(result.stage!.body)).toMatch(/not one you can import for/);
   });
 });
