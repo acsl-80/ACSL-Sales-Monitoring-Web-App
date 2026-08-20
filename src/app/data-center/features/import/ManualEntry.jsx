@@ -72,11 +72,21 @@ export default function ManualEntry({ onSubmit, onCancel, busy, partnerName }) {
               className="mb-1 block text-xs font-medium text-gray-700"
             >
               {f.label}
-              {f.required && <span className="text-red-600"> *</span>}
+              {/* Hidden from the accessibility tree: aria-required on the
+                  input already carries the meaning, and a screen reader
+                  announcing "star" after every other field name is noise. */}
+              {f.required && (
+                <span aria-hidden="true" className="text-red-600"> *</span>
+              )}
             </label>
             <input
               id={`dc-manual-${f.key}`}
               type={f.type ?? "text"}
+              // aria-required rather than required. The validator is the one
+              // authority on what a valid record is, and it enforces rules the
+              // form cannot state: the phone format, and amount received never
+              // exceeding the amount.
+              aria-required={f.required ? "true" : undefined}
               value={values[f.key] ?? ""}
               placeholder={f.placeholder}
               onChange={(e) => set(f.key, e.target.value)}
