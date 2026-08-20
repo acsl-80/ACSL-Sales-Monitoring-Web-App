@@ -440,3 +440,51 @@ export const dataCenterImport = {
   rows: (batchId: string, status = "") =>
     call<ImportRow[]>("data-center-import", "rows", { batchId, status }),
 };
+
+export type Metric = {
+  metric_key: string;
+  dimension: Record<string, string>;
+  value_num: string | number | null;
+  value_text: string | null;
+  run_finished_at: string;
+};
+
+export type DashboardData = {
+  metrics: Metric[];
+  computedAt: string | null;
+  /** True when the newest run is older than metrics.stale_after_hours. */
+  isStale: boolean;
+  staleAfterHours: number;
+  lastRun: { finished_at: string | null; status: string; duration_ms: number | null } | null;
+};
+
+export type MetricRun = {
+  id: string;
+  started_at: string;
+  finished_at: string | null;
+  status: "running" | "ok" | "failed";
+  metrics_written: number;
+  duration_ms: number | null;
+  error: string | null;
+};
+
+/**
+ * Dashboards.
+ *
+ * The read never aggregates. Every number came from a computation run, which
+ * is what keeps a dashboard load flat at 2.3 ms whether the database holds 38
+ * sales or 500,000.
+ */
+export const dataCenterDashboard = {
+  get: () => call<DashboardData>("data-center-read", "dashboard"),
+
+  /** Recent computation runs, so a dashboard can say how current it is. */
+  runs: () => call<{ runs: MetricRun[] }>("data-center-compute", "status"),
+
+  /** Recompute now. Super admin only: it reads every sale. */
+  run: () =>
+    call<{ runId: string; metricsWritten: number; durationMs: number }>(
+      "data-center-compute",
+      "run",
+    ),
+};

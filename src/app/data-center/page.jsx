@@ -11,62 +11,15 @@ import AccessManager from "./features/access/AccessManager";
 import RecordsTable from "./features/records/RecordsTable";
 import CallQueue from "./features/call-centre/CallQueue";
 import ImportSection from "./features/import/ImportSection";
+import Dashboard from "./features/dashboard/Dashboard";
 import {
   Database,
-  PhoneCall,
-  Upload,
-  BarChart3,
   AlertTriangle,
   Loader2,
-  Lock,
   ShieldOff,
   Eye,
   Pencil,
 } from "lucide-react";
-
-// The surfaces this module will grow, and the tier-2 key that unlocks each.
-// Sold Stove Records is built (Phase 3) and renders below rather than as a
-// card; the rest are still placeholders.
-const SURFACES = [
-  {
-    key: DATA_CENTER_FEATURES.DASHBOARD_VIEW,
-    name: "Dashboards",
-    icon: BarChart3,
-    blurb: "Computed metrics, read from snapshots. Phase 6.",
-  },
-];
-
-function SurfaceCard({ surface, unlocked }) {
-  const Icon = surface.icon;
-  return (
-    <div
-      className={`rounded-xl border p-5 transition ${
-        unlocked
-          ? "border-[#4a5d0f]/25 bg-white"
-          : "border-gray-200 bg-gray-50 opacity-60"
-      }`}
-    >
-      <div className="flex items-start gap-3">
-        <div
-          className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-lg ${
-            unlocked ? "bg-[#4a5d0f]/10 text-[#4a5d0f]" : "bg-gray-200 text-gray-500"
-          }`}
-        >
-          {unlocked ? <Icon className="h-5 w-5" /> : <Lock className="h-4 w-4" />}
-        </div>
-        <div className="min-w-0">
-          <h3 className="text-sm font-semibold text-gray-900">{surface.name}</h3>
-          <p className="mt-1 text-sm text-gray-600">{surface.blurb}</p>
-          {!unlocked && (
-            <p className="mt-2 text-xs text-gray-500">
-              Requires <code className="rounded bg-gray-200 px-1 py-0.5">{surface.key}</code>
-            </p>
-          )}
-        </div>
-      </div>
-    </div>
-  );
-}
 
 function AccessDenied() {
   return (
@@ -148,6 +101,15 @@ function DataCenterHome() {
         </div>
       </div>
 
+      {/* Dashboards first: they are the overview the tables below are the
+          detail for. Every number here came from a computation run, so this
+          renders in milliseconds regardless of how many sales exist. */}
+      {can(DATA_CENTER_FEATURES.DASHBOARD_VIEW) && (
+        <div className="mb-6">
+          <Dashboard canRun={isSuperAdmin} />
+        </div>
+      )}
+
       {/* Table 1. The feature gate is presentation: data-center-read re-checks
           records.view on every request and returns 403 without it. */}
       {can(DATA_CENTER_FEATURES.RECORDS_VIEW) ? (
@@ -179,12 +141,6 @@ function DataCenterHome() {
           />
         </div>
       )}
-
-      <div className="mt-6 grid grid-cols-1 gap-4 md:grid-cols-2">
-        {SURFACES.map((surface) => (
-          <SurfaceCard key={surface.key} surface={surface} unlocked={can(surface.key)} />
-        ))}
-      </div>
 
       <div className="mt-6 rounded-xl border border-gray-100 bg-[#fafafa] p-5">
         <h2 className="text-sm font-semibold text-gray-900">Your access</h2>

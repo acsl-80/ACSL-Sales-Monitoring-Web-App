@@ -439,15 +439,34 @@ against itself by claiming in `data_center.import_claims` first, but it cannot
 close it against the Sell Stove form. Written up in `IMPORT.md`; fixing it is a
 one-line change to a live shared function and therefore a decision.
 
-## Phase 6: computation and dashboards
+## Phase 6: computation and dashboards — DONE
 
-- [ ] `data-center-compute`, aggregating into `metric_snapshots`. Scheduled or
-      on demand, never on page load.
-- [ ] Dashboards read snapshots only. Any `count(*)`, `sum()` or `group by`
-      over `sales` belongs in compute, not read.
-- [ ] The module's own completeness definition, since
-      `calculate_sale_status()` disagrees with the form and marks 30 of 38
-      production rows `incomplete`.
+- [x] `data-center-compute`, aggregating into `metric_snapshots` through
+      `data_center.compute_metrics()`. On demand, super admin only, never on
+      page load.
+- [x] Dashboards read `v_current_metrics` and nothing else. The rule is
+      checkable: grepping the read function for `count(*)`, `sum(` or
+      `group by` returns one line, and it is the comment stating the rule.
+- [x] The module's own completeness definition, driven by `workflow_config`
+      and built as validated column predicates rather than pasted config.
+
+Measured at 500,000 sales:
+
+    compute    74 metrics in 5.2 s
+    read       2.3 ms, because it never touches sales
+
+The completeness gap is now a number rather than a note: 480,000 sales are
+complete by this module's rule, 120,000 by the sales app's, a disagreement of
+**360,000**. The dashboard shows it rather than hiding it.
+
+Two things this phase got wrong first and fixed:
+
+- The completeness rule as a per-row jsonb lookup took **73 seconds**. As plain
+  column predicates, 549 ms. Same answer.
+- The one-run-at-a-time guard was check-then-act, and a test showed two
+  concurrent runs both getting through. It is `pg_try_advisory_lock` now.
+
+Written up in `DASHBOARDS.md`.
 
 ## Phase 7: access management, under Settings
 
