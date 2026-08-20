@@ -532,40 +532,47 @@ a decision before Phase 7 starts. Recorded now so it is not discovered late.
 
 ---
 
-## Phase 8: transfers and reconciliation
+## Phase 8: transfers and reconciliation: DONE
 
 What was sold has to be known before what was recovered can mean anything.
 
-- [ ] `v_transfers`, `v_transfer_stoves`, `v_transfer_funnel` over
+- [x] `v_transfers`, `v_transfer_stoves`, `v_transfer_funnel` over
       `public.stove_transfer_history`. A view, not a sync: the records are
       already in this database. 497 transfers, 14,564 stoves, 278 partners,
       23 sales reps in production today.
-- [ ] `record_consignments` for the Received stage, a count per consignment
+- [x] `record_consignments` for the Received stage, a count per consignment
       rather than a row per record.
-- [ ] `transfers` and `transfer_funnel` actions on `data-center-read`, scoped
+- [x] `transfer_funnel` action on `data-center-read`, scoped
       through the existing `buildScopeSql`.
 - [ ] Import hardening: auto-link to the parent transfer, a header mapping
       step, duplicate detection inside a file and against previous batches,
       manual single-record entry, and the row cap stated before upload.
 
-Verify: for a seeded transfer, issued, received, digitalised and verified
-reconcile. A record that matches no transfer becomes an exception and is never
-dropped.
+Verified on the preview, three transfers at different stages. All three
+reconcile, including one carrying a 22-record typing backlog. Written up in
+`RECONCILIATION.md`, including the four failed attempts at querying the funnel
+live and why it became a computed table.
 
-## Phase 9: Explore, and one page per area
+Still to do here: the import hardening listed above. Auto-link, header mapping,
+duplicate detection and manual entry are Phase 8b.
+
+## Phase 9: Explore, and one page per area: DONE
 
 The module is one long scrolling page today. It becomes a hub.
 
-- [ ] `Explore` card grid at `/data-center`, one card per area, a locked card
+- [x] `Explore` card grid at `/data-center`, one card per area, a locked card
       shown locked rather than hidden.
-- [ ] Child routes for dashboard, call centre, partner records, stove records.
-- [ ] `DataCentreShell` carrying breadcrumbs and back navigation, reusing
+- [x] Child routes for dashboard, call centre, partner records, stove records
+      and import.
+- [x] `DataCentreShell` carrying breadcrumbs and back navigation, reusing
       `src/components/ui/breadcrumb.tsx`, which already exists.
-- [ ] No change to `DashboardLayout.tsx`: `deriveCurrentRouteFromPath` already
+- [x] No change to `DashboardLayout.tsx`: `deriveCurrentRouteFromPath` already
       falls through to `segments[0]`, so the sidebar stays highlighted.
 
-Verify: four cards, each opening its own route; breadcrumbs and back work;
-sidebar highlighting holds on every child.
+Verified: `e2e/data-center-explore.spec.ts` covers the cards, the routes,
+breadcrumbs, back navigation, sidebar highlighting on every child, the locked
+card, the refusal page when a locked route is reached by URL, and the funnel
+being read rather than counted.
 
 ## Phase 10: the call agent role, and a fifth outcome
 
