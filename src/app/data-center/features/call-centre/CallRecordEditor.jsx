@@ -254,7 +254,7 @@ export default function CallRecordEditor({ saleId, canEdit, onClose, onSaved }) 
 
             {/* Attempts. Rows, so a fourth call is a click and not a migration. */}
             <div>
-              <div className="mb-2 flex items-center justify-between">
+              <div className="mb-2 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
                 <h3 className="text-xs font-semibold uppercase tracking-wide text-gray-500">
                   Calls ({attempts.length})
                 </h3>
@@ -267,7 +267,7 @@ export default function CallRecordEditor({ saleId, canEdit, onClose, onSaved }) 
                       Outcome of this call
                     </label>
                     <select
-                      className="rounded-md border border-gray-300 px-2 py-1 text-xs focus:border-(--dc-accent) focus:outline-none"
+                      className="min-w-0 flex-1 rounded-md border border-gray-300 px-2 py-1 text-xs focus:border-(--dc-accent) focus:outline-none sm:flex-none"
                       value={nextOutcome}
                       onChange={(e) => setNextOutcome(e.target.value)}
                       id="dc-next-outcome"
@@ -284,7 +284,7 @@ export default function CallRecordEditor({ saleId, canEdit, onClose, onSaved }) 
                         logAttempt(nextOutcome);
                         setNextOutcome("");
                       }}
-                      className="inline-flex items-center gap-1 rounded-md bg-(--dc-accent) px-2.5 py-1 text-xs font-medium text-white transition hover:bg-(--dc-accent-strong) disabled:opacity-50"
+                      className="inline-flex shrink-0 items-center gap-1 whitespace-nowrap rounded-md bg-(--dc-accent) px-2.5 py-1.5 text-xs font-medium text-white transition hover:bg-(--dc-accent-strong) disabled:opacity-50"
                     >
                       <PhoneCall className="h-3 w-3" /> Log call
                     </button>
