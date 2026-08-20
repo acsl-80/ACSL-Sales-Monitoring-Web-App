@@ -57,6 +57,10 @@ export interface RecordsFilters {
   search?: string;
   organizationId?: string | null;
   userState?: string;
+  /** The partner's own state: the location scorecard's axis, not the buyer's. */
+  partnerState?: string;
+  /** The rep on the parent TRANSFER, resolved through transaction_id. */
+  transferSalesRep?: string;
   saleStatus?: string;
   paymentStatus?: string;
   platform?: string;
@@ -65,8 +69,14 @@ export interface RecordsFilters {
   includeArchived?: boolean;
 
   // --- Table 2 only. Rejected outright when reading Table 1. ---
-  /** fully_verified | partially_verified | doubtful_verification | not_verified */
+  /** fully_verified | partially_verified | doubtful_verification | unreachable | not_verified */
   verificationOutcome?: string;
+  /** A scorecard column: verified | unverified | unreachable | unresolved. */
+  outcomeGroup?: string;
+  /** Sales assigned to this call agent, reclaimed batches excluded. */
+  assignedAgent?: string;
+  /** Sales assigned to any agent reporting to this manager. */
+  agentManager?: string;
   /** none | open | resolved. "open" is the queue waiting on Sales. */
   correctionState?: string;
   /** false selects sales the call centre has never touched. */
@@ -183,8 +193,19 @@ const VERIFICATION_OUTCOMES = new Set([
   "fully_verified",
   "partially_verified",
   "doubtful_verification",
+  "unreachable",
   "not_verified",
 ]);
+
+/**
+ * The scorecard's four status columns, as filters.
+ *
+ * Each maps to the same outcomes the metric counted, so a cell saying 12 and
+ * the table behind it saying 12 is by construction rather than coincidence.
+ * `unresolved` includes sales with no call record at all, exactly as the
+ * scorecard's remainder does.
+ */
+const OUTCOME_GROUPS = new Set(["verified", "unverified", "unreachable", "unresolved"]);
 const CORRECTION_STATES = new Set(["none", "open", "resolved"]);
 const ISO_DATE = /^\d{4}-\d{2}-\d{2}$/;
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -266,6 +287,25 @@ export function buildRecordsQuery(
 
   if (f.userState) where.push(`s.state_backup = ${p(String(f.userState))}`);
 
+  // The location scorecard groups by the state ON THE TRANSFER, which is the
+  // partner's state. partner_state comes from the same ERP data, so it is the
+  // matching axis; user_state is where the buyer lives, a different question.
+  // The pick statement reads sales alone, so the partner's state resolves
+  // through a subquery rather than an alias the statement does not have.
+  if (f.partnerState) {
+    where.push(`s.organization_id in (
+      select org.id from public.organizations org where org.state = ${p(String(f.partnerState))})`);
+  }
+
+  // The rep on the transfer, not on the sale. The sales rep scorecard counts
+  // transfers, so its drill-through resolves the same chain backwards: which
+  // sales sit under transfers this rep made.
+  if (f.transferSalesRep) {
+    where.push(`s.transaction_id in (
+      select h.transaction_id from public.stove_transfer_history h
+       where h.sales_rep = ${p(String(f.transferSalesRep))})`);
+  }
+
   if (f.saleStatus) {
     if (!SALE_STATUSES.has(f.saleStatus)) throw new BadRequest("Unknown sale status");
     where.push(`s.status = ${p(f.saleStatus)}`);
@@ -292,6 +332,9 @@ export function buildRecordsQuery(
   // something that table cannot answer learns that rather than getting a page
   // that quietly ignored half the request.
   const callCentreOnly =
+    f.outcomeGroup !== undefined ||
+    f.assignedAgent !== undefined ||
+    f.agentManager !== undefined ||
     f.verificationOutcome !== undefined ||
     f.correctionState !== undefined ||
     f.hasCallRecord !== undefined ||
@@ -325,6 +368,41 @@ export function buildRecordsQuery(
       } else {
         where.push(`cr.verification_outcome = ${p(f.verificationOutcome)}`);
       }
+    }
+
+    if (f.outcomeGroup) {
+      if (!OUTCOME_GROUPS.has(f.outcomeGroup)) throw new BadRequest("Unknown outcome group");
+      if (f.outcomeGroup === "verified") {
+        where.push(`cr.verification_outcome = ${p("fully_verified")}`);
+      } else if (f.outcomeGroup === "unverified") {
+        where.push(`cr.verification_outcome in (${p("partially_verified")}, ${p("doubtful_verification")})`);
+      } else if (f.outcomeGroup === "unreachable") {
+        where.push(`cr.verification_outcome = ${p("unreachable")}`);
+      } else {
+        // The remainder: no record yet, or a record with nothing concluded.
+        where.push(
+          `(cr.verification_outcome is null or cr.verification_outcome = ${p("not_verified")})`,
+        );
+      }
+    }
+
+    if (f.assignedAgent) {
+      if (!UUID.test(f.assignedAgent)) throw new BadRequest("assignedAgent must be a UUID");
+      where.push(`exists (
+        select 1 from data_center.assignment_items i
+        join data_center.assignment_batches b on b.id = i.batch_id
+        where i.sale_id = s.id and b.assigned_to = ${p(f.assignedAgent)}
+          and b.state <> 'reclaimed')`);
+    }
+
+    if (f.agentManager) {
+      if (!UUID.test(f.agentManager)) throw new BadRequest("agentManager must be a UUID");
+      where.push(`exists (
+        select 1 from data_center.assignment_items i
+        join data_center.assignment_batches b on b.id = i.batch_id
+        join public.profiles ag on ag.id = b.assigned_to
+        where i.sale_id = s.id and ag.manager_id = ${p(f.agentManager)}
+          and b.state <> 'reclaimed')`);
     }
 
     if (requiresRecord) where.push("cr.sale_id is not null");

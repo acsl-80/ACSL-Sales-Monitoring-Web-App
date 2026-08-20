@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { dataCenterDashboard, DataCenterError } from "../../lib/client";
+import Scorecard from "./Scorecard";
 import {
   BarChart3, Loader2, AlertTriangle, RefreshCw, Clock, TriangleAlert,
 } from "lucide-react";
@@ -276,6 +277,23 @@ export default function Dashboard({ canRun }) {
           </div>
 
           <Bars title="Sales by month" subtitle="Last 12 months" data={byMonth} />
+
+          {/* The five scorecards: one component, five dimensions, and that is
+              the point. The first three read the transfer funnel (what was
+              shipped), the last two read assignments (what was handed out).
+              Every status cell drills into the queue behind its number. */}
+          <div className="space-y-3">
+            <Scorecard title="Partner" by="partner" metrics={m}
+              hint="What each partner was sent, against what has come back." />
+            <Scorecard title="Location" by="location" metrics={m}
+              hint="The same funnel, cut by the partner's state." />
+            <Scorecard title="Sales Representative" by="sales_rep" metrics={m}
+              hint="The rep on the transfer, not the call centre agent." />
+            <Scorecard title="Call Agent" by="call_agent" metrics={m}
+              hint="Records handed to each agent, and what each became. Reclaimed batches are not counted." />
+            <Scorecard title="Manager" by="manager" metrics={m}
+              hint="Every agent reporting to them, rolled up. Sparse until reporting lines are set on profiles." />
+          </div>
 
           <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
             <Card label="Calls logged" value={value(m, "calls.attempts_total")} />

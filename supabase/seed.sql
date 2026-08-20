@@ -1007,6 +1007,12 @@ on conflict (user_id) do update set access_role = excluded.access_role;
 insert into data_center.call_agent_profiles (user_id, is_enabled, enabled_at)
 values ('b0000000-0000-4000-8000-000000000003', true, now())
 on conflict (user_id) do nothing;
+
+-- A reporting line, so the manager scorecard has a row. Production carries
+-- manager_id on 50 of 486 profiles, so sparseness is the realistic state; one
+-- line here is what lets the rollup be seen working at all.
+update public.profiles set manager_id = 'b0000000-0000-4000-8000-000000000002'
+ where id = 'b0000000-0000-4000-8000-000000000003' and manager_id is null;
 -- ---------- transfers ----------
 -- Three consignments of stoves from ACSL to partners, so the reconciliation
 -- funnel has something to reconcile.

@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import { useRecords, PAGE_SIZE } from "../../lib/useRecords";
 import { useVirtualRows } from "../../lib/useVirtualRows";
 import CallRecordEditor from "./CallRecordEditor";
-import { Loader2, AlertTriangle, Search, X, PhoneCall } from "lucide-react";
+import { Loader2, AlertTriangle, Search, X, PhoneCall, Filter } from "lucide-react";
 
 /**
  * Table 2: the call centre queue.
@@ -95,7 +95,7 @@ function Cell({ row, column }) {
   return <span className="truncate">{value}</span>;
 }
 
-export default function CallQueue({ canEdit }) {
+export default function CallQueue({ canEdit, drill = null }) {
   const [preset, setPreset] = useState("all");
   const [search, setSearch] = useState("");
   const [appliedSearch, setAppliedSearch] = useState("");
@@ -108,8 +108,14 @@ export default function CallQueue({ canEdit }) {
 
   const filters = useMemo(() => {
     const base = PRESETS.find((p) => p.key === preset)?.filters ?? {};
-    return appliedSearch ? { ...base, search: appliedSearch } : base;
-  }, [preset, appliedSearch]);
+    // A drill-through narrows whatever the preset says, and it comes from the
+    // URL rather than from state, so it survives reloads and back navigation.
+    return {
+      ...base,
+      ...(drill?.filters ?? {}),
+      ...(appliedSearch ? { search: appliedSearch } : {}),
+    };
+  }, [preset, appliedSearch, drill]);
 
   const { rows, loading, loadingMore, error, hasMore, scope, loadMore, reload } =
     useRecords(filters, "call_center");
@@ -136,6 +142,24 @@ export default function CallQueue({ canEdit }) {
           </span>
         )}
       </div>
+
+      {/* A drill-through from a scorecard, named so the reader knows what
+          narrowed the queue, with the one way out: back to the whole queue. */}
+      {drill && (
+        <div className="flex flex-wrap items-center gap-2 border-b border-[#4a5d0f]/20 bg-[#eef3c4]/50 px-4 py-2.5">
+          <Filter className="h-3.5 w-3.5 shrink-0 text-[#4a5d0f]" />
+          <p className="text-sm text-[#4a5d0f]">
+            Narrowed from the dashboard to <span className="font-medium">{drill.description}</span>
+          </p>
+          <button
+            type="button"
+            onClick={drill.clear}
+            className="ml-auto inline-flex items-center gap-1 rounded-md px-2 py-1 text-xs font-medium text-[#4a5d0f] hover:bg-[#4a5d0f]/10"
+          >
+            <X className="h-3.5 w-3.5" /> Show everything
+          </button>
+        </div>
+      )}
 
       <div className="flex flex-wrap items-center gap-2 border-b border-gray-100 bg-white px-4 py-3">
         <div className="flex flex-wrap gap-1.5">

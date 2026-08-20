@@ -177,15 +177,24 @@ serve(async (req) => {
             // current they are would be worse than either being stale.
             await conn.queryObject("select data_center.refresh_transfer_funnel()");
 
+            // The scorecards read the funnel just refreshed, which is why the
+            // order matters: funnel first, then the sums over it. Same run id,
+            // so the dashboard swaps to the new set atomically with the rest.
+            const sc = await conn.queryObject<{ n: number }>({
+              text: "select data_center.compute_scorecards($1) as n",
+              args: [runId],
+            });
+            const scorecardRows = Number(sc.rows[0]?.n ?? 0);
+
             const duration = Date.now() - started;
             await conn.queryObject({
               text: `update data_center.metric_runs
                      set status = 'ok', finished_at = now(),
                          metrics_written = $2, duration_ms = $3
                      where id = $1`,
-              args: [runId, written, duration],
+              args: [runId, written + scorecardRows, duration],
             });
-            return { busy: false as const, runId, written, duration };
+            return { busy: false as const, runId, written: written + scorecardRows, duration };
           } catch (err) {
             // A failed run is recorded as failed rather than left `running`.
             // v_current_metrics only ever reads a run whose status is ok, so a
