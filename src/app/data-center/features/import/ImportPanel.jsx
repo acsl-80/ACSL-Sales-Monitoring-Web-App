@@ -491,7 +491,7 @@ export default function ImportPanel({ canUpload, canCommit, canResolve, organiza
       )}
 
       {canUpload && duplicate && (
-        <div className="flex flex-wrap items-start gap-2 border-b border-l-4 border-amber-200 border-l-amber-500 bg-amber-50 px-4 py-3">
+        <div className="flex flex-wrap items-start gap-2 border-y border-amber-300 bg-amber-50 px-4 py-3">
           <Copy className="mt-0.5 h-4 w-4 shrink-0 text-amber-600" />
           <p className="min-w-0 flex-1 text-sm text-amber-900">{duplicate.message}</p>
           <button
@@ -518,7 +518,7 @@ export default function ImportPanel({ canUpload, canCommit, canResolve, organiza
       )}
 
       {error && (
-        <div className="flex items-start gap-2 border-b border-l-4 border-amber-200 border-l-amber-500 bg-amber-50 px-4 py-3">
+        <div className="flex items-start gap-2 border-y border-amber-300 bg-amber-50 px-4 py-3">
           <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-amber-600" />
           <p className="text-sm text-amber-900">{error}</p>
         </div>
@@ -616,7 +616,7 @@ export default function ImportPanel({ canUpload, canCommit, canResolve, organiza
                   </div>
 
                   {dryRun && (
-                    <div className="rounded-lg border border-l-4 border-amber-200 border-l-amber-500 bg-amber-50 p-3">
+                    <div className="rounded-lg border border-amber-300 bg-amber-50 p-3 ring-1 ring-inset ring-amber-200">
                       <div className="mb-1 flex items-center gap-2">
                         <Eye className="h-4 w-4 text-amber-700" />
                         <h3 className="text-sm font-semibold text-amber-900">What a commit would do</h3>

@@ -294,7 +294,7 @@ export default function AccessManager() {
                   disabled={busy}
                   onClick={() => revoke(e.user_id)}
                   aria-label={`Revoke access for ${e.full_name || e.email}`}
-                  className="rounded p-1 text-gray-400 hover:bg-red-50 hover:text-red-600 disabled:opacity-50"
+                  className="rounded p-1 text-gray-500 transition hover:bg-red-50 hover:text-red-700 disabled:opacity-50"
                 >
                   <Trash2 className="h-4 w-4" />
                 </button>

@@ -239,7 +239,7 @@ export default function RecordsTable({ drill = null }) {
       {/* Where this table came from, when it came from a number on the
           dashboard, with the one way back to everything. */}
       {drill && (
-        <div className="flex flex-wrap items-center gap-2 border-b border-l-4 border-(--dc-accent)/20 border-l-(--dc-accent) bg-(--dc-accent-soft)/50 px-4 py-2.5">
+        <div className="flex flex-wrap items-center gap-2 border-y border-(--dc-accent)/25 bg-(--dc-accent-soft)/60 px-4 py-2.5">
           <Filter className="h-3.5 w-3.5 shrink-0 text-(--dc-accent)" />
           <p className="text-sm text-(--dc-accent-strong)">
             Narrowed from the dashboard to <span className="font-medium">{drill.description}</span>

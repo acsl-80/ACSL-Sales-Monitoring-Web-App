@@ -369,7 +369,7 @@ export default function Dashboard({ canRun }) {
               a number: the sales app calls these sales incomplete and this
               module's rule calls them complete. */}
           {disagreement > 0 && (
-            <div className="flex items-start gap-3 rounded-xl border border-amber-200 border-l-4 border-l-amber-500 bg-amber-50 p-4">
+            <div className="flex items-start gap-3 rounded-xl border border-amber-300 bg-amber-50 p-4 ring-1 ring-inset ring-amber-200">
               <TriangleAlert className="mt-0.5 h-5 w-5 shrink-0 text-amber-600" />
               <div>
                 <p className="text-sm font-medium text-amber-900">

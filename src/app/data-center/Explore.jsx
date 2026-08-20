@@ -124,7 +124,7 @@ function AreaCard({ area, unlocked }) {
       href={area.href}
       aria-label={`Open ${area.name}`}
       data-area={area.area}
-      className="dc-root group block overflow-hidden rounded-xl border border-(--dc-accent)/20 border-t-4 border-t-(--dc-accent) bg-white p-5 transition duration-200 hover:-translate-y-0.5 hover:border-(--dc-accent)/40 hover:shadow-md focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-(--dc-accent)"
+      className="dc-root group block overflow-hidden rounded-xl border-2 border-(--dc-accent)/25 bg-white p-5 transition duration-200 hover:-translate-y-0.5 hover:border-(--dc-accent)/40 hover:shadow-md focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-(--dc-accent)"
     >
       {body}
     </Link>
