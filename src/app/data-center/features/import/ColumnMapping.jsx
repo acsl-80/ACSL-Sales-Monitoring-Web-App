@@ -117,7 +117,7 @@ export default function ColumnMapping({ file, inspection, onCancel, onConfirm, b
                     onChange={(e) =>
                       setMapping((m) => ({ ...m, [header]: e.target.value }))
                     }
-                    className="w-44 shrink-0 rounded-md border border-gray-300 px-2 py-1 text-sm focus:border-(--dc-accent) focus:outline-none"
+                    className="w-full shrink-0 rounded-md border sm:w-44 border-gray-300 px-2 py-1 text-sm focus:border-(--dc-accent) focus:outline-none"
                   >
                     <option value="">Ignore this column</option>
                     {inspection.mappableFields.map((f) => (

@@ -117,7 +117,7 @@ function ExceptionsQueue({ batchId, canResolve, onChanged }) {
                 value={drafts[r.id] ?? r.stove_serial_no ?? ""}
                 onChange={(e) => setDrafts((d) => ({ ...d, [r.id]: e.target.value }))}
                 placeholder="Correct serial"
-                className="w-36 rounded-md border border-gray-300 px-2 py-1 text-sm focus:border-(--dc-accent) focus:outline-none"
+                className="w-full min-w-0 rounded-md border sm:w-36 border-gray-300 px-2 py-1 text-sm focus:border-(--dc-accent) focus:outline-none"
               />
               <button
                 type="button"
@@ -424,7 +424,7 @@ export default function ImportPanel({ canUpload, canCommit, canResolve, organiza
               id="dc-import-org"
               value={orgId}
               onChange={(e) => setOrgId(e.target.value)}
-              className="min-w-[200px] rounded-md border border-gray-300 px-2 py-1.5 text-sm focus:border-(--dc-accent) focus:outline-none"
+              className="w-full min-w-0 rounded-md border sm:w-auto sm:min-w-[200px] border-gray-300 px-2 py-1.5 text-sm focus:border-(--dc-accent) focus:outline-none"
             >
               <option value="">Choose a partner...</option>
               {orgOptions.map((o) => (
@@ -493,7 +493,7 @@ export default function ImportPanel({ canUpload, canCommit, canResolve, organiza
       {canUpload && duplicate && (
         <div className="flex flex-wrap items-start gap-2 border-b border-l-4 border-amber-200 border-l-amber-500 bg-amber-50 px-4 py-3">
           <Copy className="mt-0.5 h-4 w-4 shrink-0 text-amber-600" />
-          <p className="min-w-[240px] flex-1 text-sm text-amber-900">{duplicate.message}</p>
+          <p className="min-w-0 flex-1 text-sm text-amber-900">{duplicate.message}</p>
           <button
             type="button"
             disabled={busy}

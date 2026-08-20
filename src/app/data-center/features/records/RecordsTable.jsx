@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { useRecords, PAGE_SIZE } from "../../lib/useRecords";
 import { useVirtualRows } from "../../lib/useVirtualRows";
+import { useIsPhone } from "../../lib/useMediaQuery";
 import { Loader2, AlertTriangle, Search, X, Database, Filter } from "lucide-react";
 
 /**
@@ -18,6 +19,8 @@ import { Loader2, AlertTriangle, Search, X, Database, Filter } from "lucide-reac
  */
 
 const ROW_HEIGHT = 44;
+/** A phone renders one record as a stack. See PhoneRow below. */
+const ROW_HEIGHT_PHONE = 104;
 
 const COLUMNS = [
   { key: "sales_date", label: "Sale Date", width: "104px" },
@@ -75,10 +78,41 @@ function Cell({ row, column }) {
 const SALE_STATUSES = ["incomplete", "completed", "pending", "assigned"];
 const PAYMENT_STATUSES = ["not_applicable", "partially_paid", "fully_paid"];
 
+/**
+ * One record as a card, for a screen too narrow to hold eleven columns.
+ *
+ * The sale, the stove, who bought it, and where it stands on payment. Enough
+ * to recognise a record; the full row is what a desktop is for.
+ */
+function PhoneRow({ row }) {
+  return (
+    <div className="flex w-full min-w-0 flex-col justify-center gap-1 px-4 py-2">
+      <div className="flex items-baseline gap-2">
+        <span className="min-w-0 flex-1 truncate font-medium text-gray-900">
+          {row.end_user_name ?? "Unnamed"}
+        </span>
+        <span className="shrink-0 tabular-nums text-gray-700">
+          {cellValue(row, "amount")}
+        </span>
+      </div>
+      <div className="flex items-center gap-2 text-xs text-gray-500">
+        <span className="truncate font-mono">{cellValue(row, "stove_serial_no")}</span>
+        <span aria-hidden="true">·</span>
+        <span className="truncate">{cellValue(row, "partner_name")}</span>
+      </div>
+      <div className="flex flex-wrap items-center gap-1.5">
+        <Cell row={row} column={{ key: "sale_status" }} />
+        <Cell row={row} column={{ key: "payment_status" }} />
+        <span className="text-xs text-gray-400">{cellValue(row, "sales_date")}</span>
+      </div>
+    </div>
+  );
+}
+
 function FilterBar({ draft, setDraft, onClear, active }) {
   return (
     <div className="flex flex-wrap items-center gap-2 border-b border-gray-100 bg-white px-4 py-3">
-      <div className="relative min-w-[240px] flex-1">
+      <div className="relative w-full min-w-0 sm:w-auto sm:min-w-[240px] sm:flex-1">
         <Search className="pointer-events-none absolute left-2.5 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-400" />
         <input
           type="text"
@@ -162,9 +196,12 @@ export default function RecordsTable({ drill = null }) {
   const { rows, loading, loadingMore, error, hasMore, scope, loadMore } =
     useRecords(filters);
 
+  const phone = useIsPhone();
+  const rowHeight = phone ? ROW_HEIGHT_PHONE : ROW_HEIGHT;
+
   const { containerRef, window: win, onScroll } = useVirtualRows(
     rows.length,
-    ROW_HEIGHT,
+    rowHeight,
   );
 
   // Fetch the next page while the user is still ~two pages from the end, so
@@ -232,9 +269,9 @@ export default function RecordsTable({ drill = null }) {
       )}
 
       <div className="overflow-x-auto">
-        <div className="min-w-[1200px]">
+        <div className="sm:min-w-[1200px]">
           <div
-            className="flex border-b border-gray-200 bg-(--dc-surface-muted) text-xs font-semibold uppercase tracking-wide text-gray-500"
+            className="hidden border-b-2 border-(--dc-accent)/20 bg-(--dc-accent-soft) text-xs font-semibold uppercase tracking-wide text-(--dc-accent-strong) sm:flex"
             style={{ height: ROW_HEIGHT }}
           >
             {COLUMNS.map((c) => (
@@ -252,7 +289,7 @@ export default function RecordsTable({ drill = null }) {
             ref={containerRef}
             onScroll={onScroll}
             className="relative overflow-y-auto"
-            style={{ height: 560 }}
+            style={{ height: "clamp(320px, 62dvh, 560px)" }}
           >
             {loading ? (
               <div className="flex items-center gap-2 p-6 text-sm text-gray-500">
@@ -277,10 +314,13 @@ export default function RecordsTable({ drill = null }) {
                   {visible.map((row) => (
                     <div
                       key={row.sale_id}
-                      className="flex border-b border-gray-100 text-sm text-gray-700 hover:bg-(--dc-accent-soft)/50"
-                      style={{ height: ROW_HEIGHT }}
+                      className="flex border-b border-gray-100 text-sm text-gray-700 transition hover:bg-(--dc-accent-soft)/50"
+                      style={{ height: rowHeight }}
                     >
-                      {COLUMNS.map((c) => (
+                      {phone ? (
+                        <PhoneRow row={row} />
+                      ) : (
+                        COLUMNS.map((c) => (
                         <div
                           key={c.key}
                           className={`flex shrink-0 items-center px-3 ${c.align === "right" ? "justify-end" : ""}`}
@@ -289,7 +329,8 @@ export default function RecordsTable({ drill = null }) {
                         >
                           <Cell row={row} column={c} />
                         </div>
-                      ))}
+                        ))
+                      )}
                     </div>
                   ))}
                 </div>

@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { useRecords, PAGE_SIZE } from "../../lib/useRecords";
+import { useIsPhone } from "../../lib/useMediaQuery";
 import { useVirtualRows } from "../../lib/useVirtualRows";
 import CallRecordEditor from "./CallRecordEditor";
 import { Loader2, AlertTriangle, Search, X, PhoneCall, Filter } from "lucide-react";
@@ -15,6 +16,14 @@ import { Loader2, AlertTriangle, Search, X, PhoneCall, Filter } from "lucide-rea
  */
 
 const ROW_HEIGHT = 44;
+/**
+ * A phone shows one record as a stack, not as a ninth of a wide row.
+ *
+ * Same virtual window, same data, a different row renderer and a taller row.
+ * A second render path would be two tables to keep in step; this is one table
+ * that knows how wide it is.
+ */
+const ROW_HEIGHT_PHONE = 104;
 
 const COLUMNS = [
   { key: "sales_date", label: "Sale Date", width: "100px" },
@@ -40,6 +49,42 @@ const CORRECTION_TONE = {
   resolved: "bg-blue-100 text-blue-700",
   none: "bg-gray-100 text-gray-500",
 };
+
+/**
+ * One record as a card, for a screen too narrow to hold nine columns.
+ *
+ * Carries what an agent needs before dialling: who, which stove, the number,
+ * where it stands and how many times it has been tried. The rest is one tap
+ * away in the record itself.
+ */
+function PhoneRow({ row }) {
+  return (
+    <div className="flex w-full min-w-0 flex-col justify-center gap-1 px-4 py-2">
+      <div className="flex items-baseline gap-2">
+        <span className="min-w-0 flex-1 truncate font-medium text-gray-900">
+          {row.end_user_name ?? "Unnamed"}
+        </span>
+        <span className="shrink-0 text-xs text-gray-400">
+          {cellValue(row, "sales_date")}
+        </span>
+      </div>
+      <div className="flex items-center gap-2 text-xs text-gray-500">
+        <span className="truncate font-mono">{cellValue(row, "stove_serial_no")}</span>
+        <span aria-hidden="true">·</span>
+        <span className="truncate">{cellValue(row, "primary_phone")}</span>
+      </div>
+      <div className="flex flex-wrap items-center gap-1.5">
+        <Cell row={row} column={{ key: "verification_outcome" }} />
+        {row.correction_state && row.correction_state !== "none" && (
+          <Cell row={row} column={{ key: "correction_state" }} />
+        )}
+        <span className="text-xs text-gray-400">
+          {cellValue(row, "attempt_count")} call(s)
+        </span>
+      </div>
+    </div>
+  );
+}
 
 /**
  * The queues a call centre actually works.
@@ -123,7 +168,10 @@ export default function CallQueue({ canEdit, drill = null }) {
   const { rows, loading, loadingMore, error, hasMore, scope, loadMore, reload } =
     useRecords(filters, "call_center");
 
-  const { containerRef, window: win, onScroll } = useVirtualRows(rows.length, ROW_HEIGHT);
+  const phone = useIsPhone();
+  const rowHeight = phone ? ROW_HEIGHT_PHONE : ROW_HEIGHT;
+
+  const { containerRef, window: win, onScroll } = useVirtualRows(rows.length, rowHeight);
 
   useEffect(() => {
     if (hasMore && !loadingMore && win.end > rows.length - PAGE_SIZE / 2) loadMore();
@@ -183,7 +231,7 @@ export default function CallQueue({ canEdit, drill = null }) {
           ))}
         </div>
 
-        <div className="relative ml-auto min-w-[220px]">
+        <div className="relative w-full min-w-0 sm:ml-auto sm:w-auto sm:min-w-[220px]">
           <Search className="pointer-events-none absolute left-2.5 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-400" />
           <input
             type="text"
@@ -212,9 +260,9 @@ export default function CallQueue({ canEdit, drill = null }) {
       )}
 
       <div className="overflow-x-auto">
-        <div className="min-w-[1120px]">
+        <div className="sm:min-w-[1120px]">
           <div
-            className="flex border-b border-gray-200 bg-(--dc-surface-muted) text-xs font-semibold uppercase tracking-wide text-gray-500"
+            className="hidden border-b-2 border-(--dc-accent)/20 bg-(--dc-accent-soft) text-xs font-semibold uppercase tracking-wide text-(--dc-accent-strong) sm:flex"
             style={{ height: ROW_HEIGHT }}
           >
             {COLUMNS.map((c) => (
@@ -232,7 +280,9 @@ export default function CallQueue({ canEdit, drill = null }) {
             ref={containerRef}
             onScroll={onScroll}
             className="relative overflow-y-auto"
-            style={{ height: 520 }}
+            // Tall enough to be a working surface, short enough that the page
+            // around it is still reachable on a phone without scrolling twice.
+            style={{ height: "clamp(320px, 62dvh, 560px)" }}
           >
             {loading ? (
               <div className="flex items-center gap-2 p-6 text-sm text-gray-500">
@@ -249,19 +299,23 @@ export default function CallQueue({ canEdit, drill = null }) {
                       type="button"
                       onClick={() => setOpenSale(row.sale_id)}
                       aria-label={`Open call record for ${row.end_user_name ?? row.stove_serial_no ?? row.sale_id}`}
-                      className="flex w-full border-b border-gray-100 text-left text-sm text-gray-700 hover:bg-(--dc-accent-soft)/50"
-                      style={{ height: ROW_HEIGHT }}
+                      className="flex w-full border-b border-gray-100 text-left text-sm text-gray-700 transition hover:bg-(--dc-accent-soft)/50"
+                      style={{ height: rowHeight }}
                     >
-                      {COLUMNS.map((c) => (
-                        <div
-                          key={c.key}
-                          className={`flex shrink-0 items-center px-3 ${c.align === "right" ? "justify-end" : ""}`}
-                          style={{ width: c.width }}
-                          title={cellValue(row, c.key)}
-                        >
-                          <Cell row={row} column={c} />
-                        </div>
-                      ))}
+                      {phone ? (
+                        <PhoneRow row={row} />
+                      ) : (
+                        COLUMNS.map((c) => (
+                          <div
+                            key={c.key}
+                            className={`flex shrink-0 items-center px-3 ${c.align === "right" ? "justify-end" : ""}`}
+                            style={{ width: c.width }}
+                            title={cellValue(row, c.key)}
+                          >
+                            <Cell row={row} column={c} />
+                          </div>
+                        ))
+                      )}
                     </button>
                   ))}
                 </div>

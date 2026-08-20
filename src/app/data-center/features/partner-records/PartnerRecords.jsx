@@ -187,7 +187,7 @@ export default function PartnerRecords() {
       </div>
 
       <div className="flex flex-wrap items-center gap-2 border-b border-gray-100 bg-(--dc-accent-soft)/30 px-4 py-3">
-        <div className="relative min-w-[240px] flex-1">
+        <div className="relative w-full min-w-0 sm:w-auto sm:min-w-[240px] sm:flex-1">
           <Search className="pointer-events-none absolute left-2.5 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-400" />
           <input
             type="text"
