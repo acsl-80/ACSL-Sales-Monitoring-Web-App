@@ -180,16 +180,23 @@ export default function CallRecordEditor({ saleId, canEdit, onClose, onSaved }) 
             {record?.end_user_name ?? "Call record"}
           </DialogTitle>
           <DialogDescription className="mt-0.5 truncate text-sm text-gray-600">
-            {record?.stove_serial_no} · {record?.partner_name} · {record?.user_state}
+            {record
+              ? [record.stove_serial_no, record.partner_name, record.user_state]
+                .filter(Boolean).join(" · ")
+              : "Loading this record"}
           </DialogDescription>
         </DialogHeader>
 
         {loading ? (
-          <div className="flex items-center gap-2 p-6 text-sm text-gray-500">
+          <div className="flex flex-1 items-center justify-center gap-2 p-6 text-sm text-gray-500">
             <Loader2 className="h-4 w-4 animate-spin" /> Loading the record...
           </div>
         ) : (
-          <div className="flex-1 space-y-5 overflow-y-auto px-5 py-4">
+          <div className="flex-1 overflow-y-auto px-4 py-4 sm:px-5">
+            {/* Capped, because 90% of a wide screen is far wider than a phone
+                number needs, and a field stretched to 550px reads as a mistake
+                rather than as generosity. */}
+            <div className="mx-auto max-w-5xl space-y-5">
             {error && (
               <div className="flex items-start gap-2 rounded-lg border border-amber-200 bg-amber-50 p-3">
                 <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-amber-600" />
@@ -311,7 +318,7 @@ export default function CallRecordEditor({ saleId, canEdit, onClose, onSaved }) 
               <h3 className="mb-2 flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wide text-gray-500">
                 <Phone className="h-3.5 w-3.5" /> What the call corrected
               </h3>
-              <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+              <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-3">
                 {CORRECTION_FIELDS.map((f) => (
                   <Field key={f.key} label={f.label}>
                     <input
@@ -332,7 +339,7 @@ export default function CallRecordEditor({ saleId, canEdit, onClose, onSaved }) 
                 <h3 className="mb-2 text-xs font-semibold uppercase tracking-wide text-gray-500">
                   {SECTION_LABELS[section] ?? section}
                 </h3>
-                <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-3">
                   {fields.map((field) => (
                     <div key={field.key} className={field.input_type === "textarea" ? "col-span-2" : ""}>
                       <FieldRenderer
@@ -410,6 +417,7 @@ export default function CallRecordEditor({ saleId, canEdit, onClose, onSaved }) 
                   )}
                 </div>
               )}
+              </div>
             </div>
           </div>
         )}

@@ -416,7 +416,7 @@ export default function ImportPanel({ canUpload, canCommit, canResolve, organiza
 
       {canUpload && (
         <div className="flex flex-wrap items-end gap-2 border-b border-gray-100 bg-(--dc-accent-soft)/30 px-4 py-3">
-          <div>
+          <div className="w-full sm:w-auto">
             <label htmlFor="dc-import-org" className="mb-1 block text-xs font-medium text-gray-700">
               Partner
             </label>

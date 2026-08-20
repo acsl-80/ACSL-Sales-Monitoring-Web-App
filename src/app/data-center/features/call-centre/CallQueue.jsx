@@ -282,7 +282,7 @@ export default function CallQueue({ canEdit, drill = null }) {
             className="relative overflow-y-auto"
             // Tall enough to be a working surface, short enough that the page
             // around it is still reachable on a phone without scrolling twice.
-            style={{ height: "clamp(320px, 62dvh, 560px)" }}
+            style={{ maxHeight: "clamp(320px, 62dvh, 560px)" }}
           >
             {loading ? (
               <div className="flex items-center gap-2 p-6 text-sm text-gray-500">

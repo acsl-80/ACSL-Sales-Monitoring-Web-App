@@ -289,7 +289,7 @@ export default function RecordsTable({ drill = null }) {
             ref={containerRef}
             onScroll={onScroll}
             className="relative overflow-y-auto"
-            style={{ height: "clamp(320px, 62dvh, 560px)" }}
+            style={{ maxHeight: "clamp(320px, 62dvh, 560px)" }}
           >
             {loading ? (
               <div className="flex items-center gap-2 p-6 text-sm text-gray-500">
