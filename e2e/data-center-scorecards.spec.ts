@@ -34,10 +34,16 @@ test.describe("the five scorecards", () => {
     }
 
     // The shared column set, once per scorecard: five tables, one shape.
-    await expect(page.getByRole("columnheader", { name: "Issued" })).toHaveCount(5);
-    await expect(page.getByRole("columnheader", { name: "Verified" })).toHaveCount(5);
+    // exact, because "Unverified" contains "Verified" under the default
+    // substring matching and doubles the count.
     await expect(
-      page.getByRole("columnheader", { name: "Yet to be resolved" }),
+      page.getByRole("columnheader", { name: "Issued", exact: true }),
+    ).toHaveCount(5);
+    await expect(
+      page.getByRole("columnheader", { name: "Verified", exact: true }),
+    ).toHaveCount(5);
+    await expect(
+      page.getByRole("columnheader", { name: "Yet to be resolved", exact: true }),
     ).toHaveCount(5);
   });
 
