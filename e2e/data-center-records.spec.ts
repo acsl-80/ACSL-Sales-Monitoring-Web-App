@@ -22,7 +22,9 @@ test.describe("sold stove records", () => {
     await expect(page.getByRole("heading", { name: "Sold Stove Records" })).toBeVisible({
       timeout: 20_000,
     });
-    await expect(page.getByText(/showing all organizations/)).toBeVisible();
+    // Table 1 and Table 2 both render a scope chip now, so this has to name
+    // which one it means rather than matching the text anywhere on the page.
+    await expect(page.getByText(/showing all organizations/).first()).toBeVisible();
 
     // The seeded preview sales render as rows, not as an empty state.
     await expect(page.getByText("No records match")).toHaveCount(0);
@@ -94,7 +96,7 @@ test.describe("sold stove records", () => {
     // decision taken on 2026-08-19: the module keeps mirroring the sales app's
     // scope rule, and call centre staff are given the role that already means
     // ACSL staff. A partner_agent here would read "own sales" and show nothing.
-    await expect(page.getByText(/showing \d+ assigned organizations/)).toBeVisible();
+    await expect(page.getByText(/showing \d+ assigned organizations/).first()).toBeVisible();
     await expect(page.getByText("No records match")).toHaveCount(0);
   });
 });

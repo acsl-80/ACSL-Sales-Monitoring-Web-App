@@ -76,9 +76,10 @@ test.describe("the call centre queue", () => {
       timeout: 20_000,
     });
 
-    // Rows are buttons: the whole row opens the record.
-    const firstRow = page.locator("button").filter({ hasText: /Seed|Preview/ }).first();
-    await firstRow.click();
+    // Every row is a button named for the person it belongs to, so this picks
+    // a queue row rather than anything else on the page that happens to
+    // contain the same text.
+    await page.getByRole("button", { name: /^Open call record for/ }).first().click();
 
     await expect(page.getByRole("heading", { name: "Verification outcome" })).toBeVisible({
       timeout: 15_000,
@@ -98,7 +99,7 @@ test.describe("the call centre queue", () => {
     // call_records.view without call_records.edit. The editor renders, but with
     // nothing that writes. data-center-write refuses this token regardless, so
     // this asserts the UI does not offer what the server would reject.
-    const row = page.locator("button").filter({ hasText: /Seed|Preview/ }).first();
+    const row = page.getByRole("button", { name: /^Open call record for/ }).first();
     if (await row.count()) {
       await row.click();
       await expect(page.getByText(/You have view access, so this record is read only/)).toBeVisible({

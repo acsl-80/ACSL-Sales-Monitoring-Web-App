@@ -220,6 +220,7 @@ export default function CallQueue({ canEdit }) {
                       key={row.sale_id}
                       type="button"
                       onClick={() => setOpenSale(row.sale_id)}
+                      aria-label={`Open call record for ${row.end_user_name ?? row.stove_serial_no ?? row.sale_id}`}
                       className="flex w-full border-b border-gray-100 text-left text-sm text-gray-700 hover:bg-[#eef3c4]/40"
                       style={{ height: ROW_HEIGHT }}
                     >
