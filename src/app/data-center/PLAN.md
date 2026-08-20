@@ -174,3 +174,35 @@ write.
    choice.
 4. **Who are the call centre users in the host's role model?** Nine agent names
    appear in the workbook. None is a role in `permissions.ts`.
+
+## Decided: call centre staff hold an ACSL role
+
+**2026-08-19.** The module scopes what a user may see by mirroring
+`computeOrgPlan` in `get-sales-advanced`, so it can never show someone a row the
+sales app hides. Phase 3's tests made the consequence visible: a call centre
+operator carrying a `partner_agent` role is scoped to their own sales, so a Data
+Center grant admits them to a table with nothing in it.
+
+Three ways out were weighed. The one taken is that **call centre accounts are
+given an ACSL role (`acsl_agent` or `acsl_agent_manager`) with partner
+assignments**, which is how the sales app already distinguishes ACSL staff from
+partner staff.
+
+Why this rather than the alternatives:
+
+- Letting a Data Center grant carry its own wider scope would mean a
+  `partner_agent` could read other partners' end-user names, phones and
+  addresses. The sales app hides those deliberately, and a module that quietly
+  reveals them is a privacy hole with a feature flag on it.
+- A third access level beside viewer and editor would work, but it duplicates a
+  distinction the host app already makes, and it has to be kept in step with the
+  sales app's rule forever.
+
+The cost is operational rather than structural: an administrator sets the role
+and the partner assignments per person. Nothing in the module changes, which is
+the point. If the sales app ever changes how it scopes ACSL staff, the Data
+Center follows without an edit.
+
+The preview seed models this: `callcentre@preview.acsl.test` is an `acsl_agent`
+assigned to every seeded partner, and `e2e/data-center-records.spec.ts` asserts
+it reads "assigned organizations" rather than "own sales".

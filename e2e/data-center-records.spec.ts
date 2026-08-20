@@ -79,7 +79,7 @@ test.describe("sold stove records", () => {
     expect(bodies.length).toBeGreaterThan(0);
   });
 
-  test("an editor gets the table; scope still limits what is in it", async ({
+  test("the call centre sees its assigned partners, not just its own sales", async ({
     page,
   }) => {
     await signIn(page, USERS.callCentre);
@@ -90,8 +90,11 @@ test.describe("sold stove records", () => {
       timeout: 20_000,
     });
 
-    // But a partner_agent is scoped to their own sales by the sales app's own
-    // rule, which this module mirrors rather than reinvents.
-    await expect(page.getByText(/showing own sales/)).toBeVisible();
+    // The account holds an ACSL role with partner assignments, which is the
+    // decision taken on 2026-08-19: the module keeps mirroring the sales app's
+    // scope rule, and call centre staff are given the role that already means
+    // ACSL staff. A partner_agent here would read "own sales" and show nothing.
+    await expect(page.getByText(/showing \d+ assigned organizations/)).toBeVisible();
+    await expect(page.getByText("No records match")).toHaveCount(0);
   });
 });

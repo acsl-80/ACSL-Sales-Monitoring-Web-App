@@ -886,7 +886,13 @@ from (values
   ('b0000000-0000-4000-8000-000000000003'::uuid,'acslagent@preview.acsl.test',  'Preview ACSL Agent',    'acsl_agent',         null),
   ('b0000000-0000-4000-8000-000000000004'::uuid,'partner@preview.acsl.test',    'Preview Partner',       'partner',            'a0000000-0000-4000-8000-000000000001'),
   ('b0000000-0000-4000-8000-000000000005'::uuid,'agent@preview.acsl.test',      'Preview Partner Agent', 'partner_agent',      'a0000000-0000-4000-8000-000000000001'),
-  ('b0000000-0000-4000-8000-000000000006'::uuid,'callcentre@preview.acsl.test', 'Preview Call Centre',   'partner_agent',      'a0000000-0000-4000-8000-000000000001')
+  -- Call centre staff hold an ACSL role, not a partner one. A call centre
+  -- operator verifies sales across every partner, and the sales app scopes a
+  -- partner_agent to their own sales, so a Data Center grant alone would sit
+  -- them in front of an empty table. Decided 2026-08-19: the Data Center keeps
+  -- mirroring the sales app's scope rule, and call centre accounts are given
+  -- the role that already means "ACSL staff". See src/app/data-center/PLAN.md.
+  ('b0000000-0000-4000-8000-000000000006'::uuid,'callcentre@preview.acsl.test', 'Preview Call Centre',   'acsl_agent',         null)
 ) as u(id, email, full_name, role, org)
 on conflict (id) do nothing;
 
@@ -967,6 +973,17 @@ insert into data_center.feature_grants (user_id, feature_key)
 select 'b0000000-0000-4000-8000-000000000006'::uuid, k
 from unnest(array['records.view','call_records.view','call_records.edit']) k
 on conflict (user_id, feature_key) do nothing;
+
+-- ---------- Call centre partner assignments ----------
+-- An ACSL agent sees the partners assigned to them, so an account with no
+-- assignments sees nothing. The call centre is assigned every seeded partner,
+-- which is what a real verification desk needs and what makes the scope
+-- testable through the UI.
+insert into public.acsl_agent_organizations (agent_id, organization_id, assigned_by)
+select 'b0000000-0000-4000-8000-000000000006'::uuid, o.id,
+       'b0000000-0000-4000-8000-000000000001'::uuid
+from public.organizations o
+on conflict do nothing;
 
 -- ---------- Data Center module access (viewer / editor) ----------
 -- Access is granted per user, case by case, never per role. callcentre is the
