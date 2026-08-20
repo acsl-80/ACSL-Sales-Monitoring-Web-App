@@ -366,20 +366,44 @@ them and both recorded in `RECORDS-PERFORMANCE.md`:
 - **`v_sold_stoves` gained `sold_on_behalf_of`.** The scope rule needs it, and
   its absence broke every non-super-admin read.
 
-## Phase 4: Table 2, the call centre layer
+## Phase 4: Table 2, the call centre layer — DONE
 
-- [ ] `call_records` write path through `data-center-write`.
-- [ ] Four-state verification switch: `fully_verified`, `partially_verified`,
-      `doubtful_verification`, `not_verified` as the default.
-- [ ] `call_outcome` as a separate constrained field, nine options. It records
-      what happened on the phone; verification records the conclusion.
-- [ ] Three call dates, corrected phones alongside the originals, ward,
-      landmark, stated serial.
-- [ ] Survey questions rendered from `field_defs`, answers into `jsonb`.
-- [ ] Computed serial match, replacing the workbook's formula column.
+- [x] The four-state switch, as the workbook actually uses it.
+- [x] `call_outcome` separate from the verification outcome, registry-backed.
+- [x] **Call attempts as rows, not three columns.** The workbook had three dates
+      and one outcome, so it could not say which attempt produced which result.
+      A fourth attempt is now a click rather than a migration. Verified.
+- [x] Corrected phones alongside the originals, plus corrected name, address,
+      state and LGA. Ward and landmark, which the sales schema cannot hold.
+- [x] The correction loop as state: requested, reason, note, resolved. "Waiting
+      on Sales" is a queue rather than an inference from a changed phone number.
+- [x] The questionnaire rendered from `field_defs`, answers in jsonb.
+- [x] Conditions (`visible_when`) and validation in the registry, enforced on
+      the server as well as in the form.
+- [x] Optimistic concurrency. A save carrying a stale version is refused, not
+      merged.
+- [x] Direct entry through `data-center-write`, with tier-2 and org scope
+      enforced server-side.
+- [x] Queue presets that match how the desk works: never called, still to
+      verify, chased three times, waiting on Sales.
 
-Decision to take deliberately: whether "nobody called yet" and "called, no
-conclusion" stay merged as one blank state, or split into a fifth.
+Proven rather than asserted: a question was added to the running system with two
+INSERT statements and no deploy. The form went from 13 questions to 14, arrived
+with its choices and its condition, and the server began enforcing that
+condition immediately. Written up in `CHANGING-THE-CALL-TABLE.md`.
+
+One capacity fix this phase forced, kept because the number is the argument:
+"called three times and still not verified" took **25.8 seconds** at 500,000
+rows. It now takes about 40 ms. Two changes got it there, both measured:
+`attempt_count` became a real column maintained by a trigger, and every read
+became two statements (pick the page's ids, then hydrate them) because no single
+query could be persuaded into a good plan.
+
+**The decision left open in the plan is now taken.** "Never called" and "called,
+no conclusion" are no longer the same thing: the first has no call record at
+all, the second has one with `not_verified`. The queue can tell them apart
+(`hasCallRecord: false` against `verificationOutcome: not_verified`) without a
+fifth state, because the attempts table already carries the difference.
 
 ## Phase 5: bulk import
 

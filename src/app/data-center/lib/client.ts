@@ -226,6 +226,107 @@ export const dataCenterClient = {
     direction?: "asc" | "desc";
     filters?: RecordsFilters;
   } = {}) => call<RecordsPage>("data-center-read", "records", params),
+
+  /** Table 2. Same paging contract, plus the call centre's own filters. */
+  getCallQueue: (params: {
+    cursor?: RecordsCursor | null;
+    limit?: number;
+    direction?: "asc" | "desc";
+    filters?: RecordsFilters;
+  } = {}) => call<RecordsPage>("data-center-read", "call_queue", params),
+};
+
+/**
+ * A question, as the registry defines it.
+ *
+ * Nothing in the client hard-codes the questionnaire. This shape is all the
+ * form renderer knows, which is what makes adding a question an insert rather
+ * than a release.
+ */
+export type FieldDef = {
+  key: string;
+  label: string;
+  section: string;
+  input_type: "text" | "textarea" | "number" | "date" | "select" | "multiselect" | "boolean" | "computed";
+  option_list_key: string | null;
+  storage: "answers" | "column";
+  sort_order: number;
+  is_required: boolean;
+  help_text: string | null;
+  /** e.g. {"field":"verification_outcome","in":["partially_verified"]} */
+  visible_when: { field: string; in: string[] } | null;
+  validation: Record<string, unknown> | null;
+};
+
+export type OptionValue = {
+  id: string;
+  list_key: string;
+  value: string;
+  label: string;
+  sort_order: number;
+};
+
+export type FormSchema = {
+  fields: FieldDef[];
+  /** Keyed by option_list_key. */
+  options: Record<string, OptionValue[]>;
+};
+
+export type CallAttempt = {
+  id: string;
+  attempt_no: number;
+  attempted_at: string;
+  outcome: string | null;
+  agent: string | null;
+  answered_by: string | null;
+  note: string | null;
+};
+
+/**
+ * Call centre writes. Separate from the read client so a token that can see the
+ * queue is not automatically one that can change it, and so the two can be
+ * granted apart.
+ */
+export const dataCenterWrite = {
+  /** The questionnaire's definition. Fetched, never bundled. */
+  formSchema: () => call<FormSchema>("data-center-write", "form_schema"),
+
+  callRecord: (saleId: string) =>
+    call<{ record: Record<string, unknown>; attempts: CallAttempt[] }>(
+      "data-center-write",
+      "call_record",
+      { saleId },
+    ),
+
+  /**
+   * Save. `version` is the one read with the record: the server refuses a
+   * stale one rather than merging, because merging two people's answers to the
+   * same question is a guess.
+   */
+  saveCallRecord: (saleId: string, values: Record<string, unknown>, version: number | null) =>
+    call<{ saleId: string; version: number }>("data-center-write", "save_call_record", {
+      saleId,
+      values,
+      version,
+    }),
+
+  /** The attempt number is assigned server-side, never sent. */
+  logAttempt: (saleId: string, attempt: {
+    attemptedAt?: string;
+    outcomeId?: string | null;
+    agentId?: string | null;
+    answeredById?: string | null;
+    note?: string | null;
+  }) => call<{ attemptNo: number }>("data-center-write", "log_attempt", { saleId, ...attempt }),
+
+  /** Send back to Sales, or mark the correction done. */
+  correction: (saleId: string, open: boolean, reasonId?: string | null, note?: string | null) =>
+    call<{ saleId: string; correctionOpen: boolean }>("data-center-write", "correction", {
+      saleId,
+      open,
+      reasonId,
+      note,
+    }),
 };
 
 /** Access administration. Server-gated to super_admin or grants.manage. */

@@ -9,6 +9,7 @@ import {
 } from "./lib/features";
 import AccessManager from "./features/access/AccessManager";
 import RecordsTable from "./features/records/RecordsTable";
+import CallQueue from "./features/call-centre/CallQueue";
 import {
   Database,
   PhoneCall,
@@ -26,12 +27,6 @@ import {
 // Sold Stove Records is built (Phase 3) and renders below rather than as a
 // card; the rest are still placeholders.
 const SURFACES = [
-  {
-    key: DATA_CENTER_FEATURES.CALL_RECORDS_VIEW,
-    name: "Call Centre",
-    icon: PhoneCall,
-    blurb: "Verification outcomes, call attempts and corrections. Phase 4.",
-  },
   {
     key: DATA_CENTER_FEATURES.IMPORT_UPLOAD,
     name: "Bulk Import",
@@ -165,6 +160,15 @@ function DataCenterHome() {
       ) : (
         <div className="rounded-xl border border-gray-200 bg-gray-50 p-5 text-sm text-gray-600">
           Sold stove records are not part of your access.
+        </div>
+      )}
+
+      {/* Table 2. call_records.view admits a viewer; call_records.edit is what
+          the editor checks before it offers to change anything. Both are
+          re-checked server-side on every call. */}
+      {can(DATA_CENTER_FEATURES.CALL_RECORDS_VIEW) && (
+        <div className="mt-6">
+          <CallQueue canEdit={can(DATA_CENTER_FEATURES.CALL_RECORDS_EDIT)} />
         </div>
       )}
 

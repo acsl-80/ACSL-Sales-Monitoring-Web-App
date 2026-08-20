@@ -32,7 +32,10 @@ export interface RecordsState {
   reload: () => void;
 }
 
-export function useRecords(filters: RecordsFilters): RecordsState {
+export function useRecords(
+  filters: RecordsFilters,
+  table: "records" | "call_center" = "records",
+): RecordsState {
   const [rows, setRows] = useState<SoldStoveRow[]>([]);
   const [cursor, setCursor] = useState<RecordsCursor | null>(null);
   const [hasMore, setHasMore] = useState(false);
@@ -63,7 +66,11 @@ export function useRecords(filters: RecordsFilters): RecordsState {
       if (from) setLoadingMore(true);
       else setLoading(true);
       try {
-        const page = await dataCenterClient.getRecords({
+        const fetcher =
+          table === "call_center"
+            ? dataCenterClient.getCallQueue
+            : dataCenterClient.getRecords;
+        const page = await fetcher({
           cursor: from,
           limit: PAGE_SIZE,
           filters: JSON.parse(serialized) as RecordsFilters,
@@ -79,7 +86,9 @@ export function useRecords(filters: RecordsFilters): RecordsState {
         setError(
           err instanceof DataCenterError
             ? err.message
-            : "Could not load sold stove records.",
+            : table === "call_center"
+              ? "Could not load the call centre queue."
+              : "Could not load sold stove records.",
         );
         setHasMore(false);
       } finally {
@@ -92,7 +101,7 @@ export function useRecords(filters: RecordsFilters): RecordsState {
         }
       }
     },
-    [serialized],
+    [serialized, table],
   );
 
   useEffect(() => {

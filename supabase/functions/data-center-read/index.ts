@@ -245,7 +245,14 @@ serve(async (req) => {
         );
       }
 
-      case "records": {
+      case "records":
+      case "call_queue": {
+        const table = body.action === "call_queue" ? "call_center" : "records";
+        // Table 1 and Table 2 are separate grants: seeing sold stove records
+        // does not imply seeing what the call centre wrote about the people who
+        // bought them.
+        const needed = table === "call_center" ? "call_records.view" : "records.view";
+
         const superAdmin = isSuperAdmin(profile.role);
         const resolved = superAdmin
           ? { accessRole: null, features: [] as string[] }
@@ -257,7 +264,7 @@ serve(async (req) => {
         if (!superAdmin && resolved.accessRole === null) {
           return json({ error: "No Data Center access", code: "no_access" }, 403, cors);
         }
-        if (!superAdmin && !resolved.features.includes("records.view")) {
+        if (!superAdmin && !resolved.features.includes(needed)) {
           return json({ error: "Not permitted", code: "no_feature" }, 403, cors);
         }
 
@@ -272,6 +279,7 @@ serve(async (req) => {
         try {
           built = buildRecordsQuery(
             {
+              table,
               cursor: (body.cursor ?? null) as never,
               limit: body.limit as number | undefined,
               direction: body.direction as "asc" | "desc" | undefined,
@@ -288,15 +296,29 @@ serve(async (req) => {
 
         const connection = await getPool().connect();
         try {
-          const result = await connection.queryObject<Record<string, unknown>>({
-            text: built.text,
-            args: built.args,
+          // Two statements, deliberately. See the note at the top of
+          // records-query.ts: as one query the call queue took 25.8 seconds at
+          // 500,000 rows, and split it takes about 40 milliseconds.
+          const picked = await connection.queryObject<{ id: string; sales_date: string | null }>({
+            text: built.pick.text,
+            args: built.pick.args,
           });
-          const page = toPage(result.rows, built.pageSize);
+          const page = toPage(picked.rows, built.pageSize);
+
+          let rows: Record<string, unknown>[] = [];
+          if (page.ids.length > 0) {
+            const hydrate = built.hydrate(page.ids);
+            const result = await connection.queryObject<Record<string, unknown>>({
+              text: hydrate.text,
+              args: hydrate.args,
+            });
+            rows = result.rows;
+          }
+
           return json(
             {
               data: {
-                rows: page.rows,
+                rows,
                 nextCursor: page.nextCursor,
                 hasMore: page.hasMore,
                 pageSize: built.pageSize,
