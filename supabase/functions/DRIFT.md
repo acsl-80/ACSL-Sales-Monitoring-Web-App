@@ -55,16 +55,30 @@ something else. None of that exists here.
 
 ### `manage-organizations/read-operations.ts`: RESOLVED 2026-08-20
 
-Deployed to production on 2026-08-20 (v58). The section below is kept because
-it explains what was wrong for the month it was wrong.
+Deployed to production on 2026-08-20 (v58), so the repository and production
+now agree.
 
-A fix that was committed and never deployed. Inside a quoted PostgREST value
-the `ilike` wildcard is `*`, not `%`; a `%` there matches a literal percent
-sign. Production still runs the `%` version, so **partner search by name or
-partner ID is silently returning the wrong set today**.
+**The impact claimed for this one was wrong, and the correction matters more
+than the drift did.** This file previously said that inside a quoted PostgREST
+value a `%` matches a literal percent sign, so production's `%` form was
+"silently returning the wrong set". That came from a code comment written on
+2026-07-21 and was repeated here without being tested.
 
-Deploying `manage-organizations` fixes it. That is a change to a live function,
-so it belongs in its own deliberate step, not bundled with anything else.
+Tested against production on 2026-08-20, searching "Abdu":
+
+| | Rows |
+|---|---|
+| SQL `ilike '%Abdu%'` | 7 |
+| PostgREST `partner_name.ilike."%Abdu%"` | 7 |
+| PostgREST `partner_name.ilike."*Abdu*"` | 7 |
+| SQL, `%` genuinely literal | 5 |
+
+If `%` were literal, the second row would be 0. It is not. **Partner search was
+never broken.** The two forms are equivalent on PostgREST 14.15, the deploy
+aligned the repository with production and changed no behaviour, and the
+misleading comment in `read-operations.ts` has been corrected.
+
+Worth keeping as the lesson: a code comment is not evidence.
 
 ### `login-with-credentials`
 
