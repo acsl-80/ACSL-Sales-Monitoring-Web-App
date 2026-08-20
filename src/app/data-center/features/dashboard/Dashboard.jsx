@@ -80,7 +80,7 @@ function Card({ label, value: v, hint, tone, to, search, arrow }) {
       {body}
       <ArrowUpRight
         aria-hidden="true"
-        className="absolute right-3 top-3 h-4 w-4 text-gray-300 transition group-hover:text-(--dc-accent)"
+        className="absolute right-3 top-3 h-4 w-4 text-(--dc-accent)/60 transition group-hover:text-(--dc-accent)"
       />
     </Link>
   );

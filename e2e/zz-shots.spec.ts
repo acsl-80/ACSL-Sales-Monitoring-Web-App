@@ -26,6 +26,22 @@ for (const [device, width, height] of [
       await page.screenshot({ path: `.impeccable/shots/${name}-${device}.png` });
     }
 
+    // The commit confirmation, which the brief names and a static page cannot
+    // show: it only exists while a destructive action is pending.
+    await page.goto("/data-center/import");
+    await page.waitForTimeout(4000);
+    const details = page.getByRole("button", { name: "details" }).first();
+    if (await details.count()) {
+      await details.click();
+      await page.waitForTimeout(1200);
+      const commit = page.getByRole("button", { name: /^Commit \d/ }).first();
+      if (await commit.count()) {
+        await commit.click();
+        await page.waitForTimeout(1500);
+        await page.screenshot({ path: `.impeccable/shots/confirm-${device}.png` });
+      }
+    }
+
     await page.goto("/data-center/call-centre");
     const row = page.getByRole("button", { name: /^Open call record for/ }).first();
     await row.waitFor({ state: "visible", timeout: 30_000 });
