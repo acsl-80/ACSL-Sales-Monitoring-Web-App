@@ -48,14 +48,32 @@ project on 2026-08-19 while the repository held 53 functions and the project
 held 64. Nothing was removed. There is no prune step, so a function that exists
 only in production stays there.
 
-**It does not deploy functions from this directory.** Across pushes that added
-`data-center-read` and `data-center-admin`, the integration deployed neither.
-Both had to be deployed by hand. The only functions it has ever touched are the
-two declared as `[functions.*]` blocks in `supabase/config.toml`, and only at
-branch creation.
+**It deploys exactly the functions declared in `supabase/config.toml`, and
+nothing else.** A `[functions.<slug>]` block is what makes the integration
+deploy that function. Everything else in this directory it ignores: across
+pushes that added `data-center-read` and `data-center-admin`, it deployed
+neither, and both had to go out by hand.
 
-So adding source here changes nothing that is running. It makes the repository
-honest about what exists. **A new function still has to be deployed by hand:**
+Two blocks are declared today, `end-user-records-api` and `get-end-user-api-key`,
+and those two are the only functions the integration has ever touched.
+
+**This happens on a merge to `main`, not only at branch creation.** An earlier
+version of this file said branch creation only. That was wrong, and merging
+PR #8 and PR #9 on 2026-08-20 proved it: the integration redeployed both
+declared functions to production a minute later. No harm on that occasion,
+because the deployed copies already matched this repository, but the rule is
+sharper than it was written.
+
+So it cuts both ways, and both are worth knowing:
+
+- Adding source to this directory changes nothing that is running, which is why
+  recovering the twelve was inert.
+- **Adding a `[functions.*]` block turns every future merge to `main` into a
+  production deploy of that function.** That is a useful lever when you want it
+  and a trap when nobody has mentioned it. `create-sale` deliberately has no
+  block, which is why the race fix in PR #9 sat on `main` without going live.
+
+**A function with no block has to be deployed by hand:**
 
 ```bash
 supabase functions deploy <slug> --project-ref <ref>
