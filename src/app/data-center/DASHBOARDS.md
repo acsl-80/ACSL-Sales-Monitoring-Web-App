@@ -137,6 +137,7 @@ mid-run.
 | Corrections | `corrections.open`, `corrections.resolved`, `corrections.avg_days_to_resolve` |
 | Stock | `stock.by_status` |
 | Import | `import.batches_committed`, `import.rows_committed`, `import.exceptions_open` |
+| Scorecards | `scorecard.issued/received/digitalised/verified/unverified/unreachable/unresolved`, once per dimension |
 
 `never_called` is deliberately its own bucket rather than folded into
 `not_verified`. "Nobody has tried" and "we tried and could not confirm" are
@@ -145,6 +146,36 @@ apart.
 
 Breakdowns keep the top `metrics.top_n` (15) entries. A dashboard with 500 bars
 is not a dashboard.
+
+## The scorecards
+
+Five tables showing the same seven columns, each cut by a different dimension:
+partner, location, sales rep, call agent, manager. One engine
+(`compute_scorecards`) and one component (`Scorecard.jsx`); a dimension is a
+row in a VALUES list and a prop, never an implementation.
+
+The dimension travels inside the snapshot as data: `{by, key, label}`. `by`
+names the cut, `key` is what a drill-through filters on, `label` is what a
+human reads. The reader never joins to find out what a row means.
+
+Two sources, one meaning per column. Partner, location and sales rep sum
+`transfer_funnel`: what was shipped, and what came back. Call agent and
+manager count assigned records: what was handed out, and what each became.
+For people, `issued` means handed to them, `received` means touched at least
+once, and `digitalised` means concluded. Reclaimed batches are not counted,
+so nobody is charged for work taken back.
+
+On every row, verified + unverified + unreachable + unresolved equals the
+reconciling column (digitalised for shipments, issued for people), because
+unresolved is defined as the remainder. The scorecard spec asserts this per
+row on every run.
+
+**Every status cell is a door.** It links to the call centre queue with the
+dimension and status as URL search params, which the queue translates into
+server filters. Back restores the dashboard because nothing was component
+state. The filters behind the doors: `outcomeGroup`, `partnerState`,
+`transferSalesRep`, `assignedAgent`, `agentManager`, beside the existing
+`organizationId`.
 
 ## Adding a metric
 
@@ -159,9 +190,8 @@ is a decision about what to count, and it should be reviewable as a diff.
   to answer "whose numbers are these and who asked" and Phase 6 has no good
   answer yet. `metric_runs` already records who triggered each one, so adding a
   schedule later is small.
-- **No drill-down from a chart.** A bar is a number, not a filter. The tables
-  above it already filter server-side, so the path exists; joining them is
-  polish rather than capability.
+- **No drill-down from a chart.** A bar is a number, not a filter. The
+  scorecards drill; the bar charts still do not.
 - **No date-range selector.** Everything is "as of the last run". Historic
   comparison is possible from `metric_snapshots`, which keeps every run, but
   nothing reads it that way yet.
