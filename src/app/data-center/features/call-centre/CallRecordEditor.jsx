@@ -2,7 +2,14 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { dataCenterWrite, DataCenterError } from "../../lib/client";
 import FieldRenderer, { isFieldVisible } from "./FieldRenderer";
 import {
-  X, Loader2, Phone, AlertTriangle, Check, RotateCcw, PhoneCall, Save,
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
+import {
+  Loader2, Phone, AlertTriangle, Check, RotateCcw, PhoneCall, Save,
 } from "lucide-react";
 
 /**
@@ -63,6 +70,7 @@ export default function CallRecordEditor({ saleId, canEdit, onClose, onSaved }) 
   const [values, setValues] = useState({});
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+  const [nextOutcome, setNextOutcome] = useState("");
   const [error, setError] = useState(null);
   const [notice, setNotice] = useState(null);
 
@@ -162,29 +170,19 @@ export default function CallRecordEditor({ saleId, canEdit, onClose, onSaved }) 
   const correctionOpen = record?.correction_state === "open";
 
   return (
-    <div className="fixed inset-0 z-50 flex justify-end bg-black/30" onClick={onClose}>
-      <div
-        className="flex h-full w-full max-w-2xl flex-col bg-white shadow-xl"
-        onClick={(e) => e.stopPropagation()}
+    <Dialog open onOpenChange={(next) => { if (!next) onClose(); }}>
+      <DialogContent
+        className="dc-root flex h-[90dvh] w-[90vw] max-w-[90vw] flex-col gap-0 overflow-hidden border-0 p-0 sm:max-w-[90vw]"
+        data-area="call-centre"
       >
-        <div className="flex items-start gap-3 border-b border-gray-200 px-5 py-4">
-          <div className="min-w-0 flex-1">
-            <h2 className="truncate text-base font-semibold text-gray-900">
-              {record?.end_user_name ?? "Call record"}
-            </h2>
-            <p className="mt-0.5 truncate text-sm text-gray-500">
-              {record?.stove_serial_no} · {record?.partner_name} · {record?.user_state}
-            </p>
-          </div>
-          <button
-            type="button"
-            onClick={onClose}
-            aria-label="Close"
-            className="rounded p-1 text-gray-400 hover:bg-gray-100 hover:text-gray-700"
-          >
-            <X className="h-5 w-5" />
-          </button>
-        </div>
+        <DialogHeader className="shrink-0 space-y-0 border-b-2 border-(--dc-accent)/25 bg-(--dc-accent-soft)/40 py-4 pl-5 pr-12 text-left">
+          <DialogTitle className="truncate text-base font-semibold text-gray-900">
+            {record?.end_user_name ?? "Call record"}
+          </DialogTitle>
+          <DialogDescription className="mt-0.5 truncate text-sm text-gray-600">
+            {record?.stove_serial_no} · {record?.partner_name} · {record?.user_state}
+          </DialogDescription>
+        </DialogHeader>
 
         {loading ? (
           <div className="flex items-center gap-2 p-6 text-sm text-gray-500">
@@ -255,9 +253,16 @@ export default function CallRecordEditor({ saleId, canEdit, onClose, onSaved }) 
                 </h3>
                 {canEdit && (
                   <div className="flex items-center gap-2">
+                    {/* State, not the DOM. This read the select back through
+                        getElementById, which worked only while exactly one
+                        editor existed on the page. */}
+                    <label htmlFor="dc-next-outcome" className="sr-only">
+                      Outcome of this call
+                    </label>
                     <select
-                      className="rounded-md border border-gray-300 px-2 py-1 text-xs"
-                      defaultValue=""
+                      className="rounded-md border border-gray-300 px-2 py-1 text-xs focus:border-(--dc-accent) focus:outline-none"
+                      value={nextOutcome}
+                      onChange={(e) => setNextOutcome(e.target.value)}
                       id="dc-next-outcome"
                     >
                       <option value="">Outcome...</option>
@@ -268,10 +273,11 @@ export default function CallRecordEditor({ saleId, canEdit, onClose, onSaved }) 
                     <button
                       type="button"
                       disabled={saving}
-                      onClick={() =>
-                        logAttempt(document.getElementById("dc-next-outcome")?.value)
-                      }
-                      className="inline-flex items-center gap-1 rounded-md bg-(--dc-primary) px-2.5 py-1 text-xs font-medium text-white hover:bg-(--dc-primary-strong) disabled:opacity-50"
+                      onClick={() => {
+                        logAttempt(nextOutcome);
+                        setNextOutcome("");
+                      }}
+                      className="inline-flex items-center gap-1 rounded-md bg-(--dc-accent) px-2.5 py-1 text-xs font-medium text-white transition hover:bg-(--dc-accent-strong) disabled:opacity-50"
                     >
                       <PhoneCall className="h-3 w-3" /> Log call
                     </button>
@@ -305,7 +311,7 @@ export default function CallRecordEditor({ saleId, canEdit, onClose, onSaved }) 
               <h3 className="mb-2 flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wide text-gray-500">
                 <Phone className="h-3.5 w-3.5" /> What the call corrected
               </h3>
-              <div className="grid grid-cols-2 gap-3">
+              <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
                 {CORRECTION_FIELDS.map((f) => (
                   <Field key={f.key} label={f.label}>
                     <input
@@ -326,7 +332,7 @@ export default function CallRecordEditor({ saleId, canEdit, onClose, onSaved }) 
                 <h3 className="mb-2 text-xs font-semibold uppercase tracking-wide text-gray-500">
                   {SECTION_LABELS[section] ?? section}
                 </h3>
-                <div className="grid grid-cols-2 gap-3">
+                <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
                   {fields.map((field) => (
                     <div key={field.key} className={field.input_type === "textarea" ? "col-span-2" : ""}>
                       <FieldRenderer
@@ -408,7 +414,7 @@ export default function CallRecordEditor({ saleId, canEdit, onClose, onSaved }) 
           </div>
         )}
 
-        <div className="flex items-center justify-between gap-3 border-t border-gray-200 px-5 py-3">
+        <div className="flex shrink-0 flex-wrap items-center justify-between gap-3 border-t border-gray-200 bg-(--dc-surface-muted) px-5 py-3">
           <p className="text-xs text-gray-500">
             {canEdit
               ? "Every change is recorded against your name."
@@ -419,14 +425,14 @@ export default function CallRecordEditor({ saleId, canEdit, onClose, onSaved }) 
               type="button"
               disabled={saving || loading}
               onClick={save}
-              className="inline-flex items-center gap-1.5 rounded-md bg-(--dc-primary) px-4 py-1.5 text-sm font-medium text-white hover:bg-(--dc-primary-strong) disabled:opacity-50"
+              className="inline-flex items-center gap-1.5 rounded-md bg-(--dc-accent) px-4 py-1.5 text-sm font-medium text-white transition hover:bg-(--dc-accent-strong) disabled:opacity-50"
             >
               {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
               Save
             </button>
           )}
         </div>
-      </div>
-    </div>
+      </DialogContent>
+    </Dialog>
   );
 }

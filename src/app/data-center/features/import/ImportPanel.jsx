@@ -4,6 +4,16 @@ import { parseCsv, CsvError } from "../../lib/csv";
 import ColumnMapping from "./ColumnMapping";
 import ManualEntry from "./ManualEntry";
 import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
+import {
   Upload, Loader2, AlertTriangle, CheckCircle2, FileText, Play,
   Eye, Undo2, Wrench, X, PenLine, Copy,
 } from "lucide-react";
@@ -19,6 +29,8 @@ import {
  * does not match stock in a real workbook, and a person with the receipt in
  * front of them can usually fix it. That is the normal path.
  */
+
+const NUMBER = new Intl.NumberFormat("en-NG");
 
 const STATE_TONE = {
   staged: "bg-gray-100 text-gray-700",
@@ -138,6 +150,10 @@ export default function ImportPanel({ canUpload, canCommit, canResolve, organiza
   // A staged upload refused as a repeat. Holds what it takes to send it again.
   const [duplicate, setDuplicate] = useState(null);
   const [manual, setManual] = useState(false);
+  // The two irreversible actions, held until confirmed. window.confirm did this
+  // job and did it in the browser's own voice, with no room to say what
+  // changes and no way to look like the rest of the module.
+  const [pending, setPending] = useState(null);
   const fileInput = useRef(null);
 
   const refresh = useCallback(async () => {
@@ -295,11 +311,6 @@ export default function ImportPanel({ canUpload, canCommit, canResolve, organiza
    * batch part-committed, which is recoverable: asking again resumes.
    */
   const runCommit = async (batchId, total) => {
-    if (!window.confirm(
-      `This creates ${total} sales and marks ${total} stoves sold. ` +
-      `The sales app's inventory figures will change. Continue?`,
-    )) return;
-
     setBusy(true);
     setProgress({ done: 0, failed: 0 });
     try {
@@ -322,9 +333,6 @@ export default function ImportPanel({ canUpload, canCommit, canResolve, organiza
   };
 
   const runRollback = async (batchId, committed) => {
-    if (!window.confirm(
-      `This deletes ${committed} sales and puts ${committed} stoves back to available. Continue?`,
-    )) return;
     setBusy(true);
     setProgress({ done: 0, failed: 0 });
     try {
@@ -344,8 +352,60 @@ export default function ImportPanel({ canUpload, canCommit, canResolve, organiza
 
   const orgOptions = useMemo(() => organizations ?? [], [organizations]);
 
+  /**
+   * What the two irreversible actions are about to do, in the module's own
+   * voice rather than the browser's.
+   *
+   * Both change the sales app's inventory, which is the reason they are
+   * confirmed at all. Compact and centred: a two-button question stretched to
+   * fill the screen reads as an error, not a question.
+   */
+  const confirmCopy = pending?.kind === "commit"
+    ? {
+      title: `Commit ${NUMBER.format(pending.count)} record(s)?`,
+      body: `This creates ${NUMBER.format(pending.count)} sales and marks ${NUMBER.format(pending.count)} stoves sold. The sales app's inventory figures will change.`,
+      action: `Commit ${NUMBER.format(pending.count)}`,
+    }
+    : pending
+      ? {
+        title: `Roll back ${NUMBER.format(pending.count)} record(s)?`,
+        body: `This deletes ${NUMBER.format(pending.count)} sales and puts ${NUMBER.format(pending.count)} stoves back to available.`,
+        action: `Roll back ${NUMBER.format(pending.count)}`,
+      }
+      : null;
+
+  const runPending = () => {
+    if (!pending) return;
+    const { kind, batchId, count } = pending;
+    setPending(null);
+    if (kind === "commit") runCommit(batchId, count);
+    else runRollback(batchId, count);
+  };
+
   return (
     <div className="overflow-hidden rounded-xl border border-gray-200 bg-white">
+      <AlertDialog open={!!pending} onOpenChange={(next) => { if (!next) setPending(null); }}>
+        <AlertDialogContent className="dc-root" data-area="import">
+          <AlertDialogHeader>
+            <AlertDialogTitle>{confirmCopy?.title}</AlertDialogTitle>
+            <AlertDialogDescription>{confirmCopy?.body}</AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={runPending}
+              className={
+                pending?.kind === "rollback"
+                  ? "bg-red-600 text-white hover:bg-red-700"
+                  : "bg-(--dc-accent) text-white hover:bg-(--dc-accent-strong)"
+              }
+            >
+              {confirmCopy?.action}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
       <div className="flex items-center gap-2 border-b border-gray-100 px-4 py-3">
         <Upload className="h-4 w-4 text-(--dc-primary)" />
         <span className="text-sm font-semibold text-gray-900">Bulk Import</span>
@@ -531,7 +591,7 @@ export default function ImportPanel({ canUpload, canCommit, canResolve, organiza
                       <button
                         type="button"
                         disabled={busy}
-                        onClick={() => runCommit(b.id, b.valid_rows)}
+                        onClick={() => setPending({ kind: "commit", batchId: b.id, count: b.valid_rows })}
                         className="inline-flex items-center gap-1 rounded-md bg-(--dc-primary) px-2.5 py-1.5 text-xs font-medium text-white hover:bg-(--dc-primary-strong) disabled:opacity-50"
                       >
                         <Play className="h-3.5 w-3.5" /> Commit {b.valid_rows}
@@ -541,7 +601,7 @@ export default function ImportPanel({ canUpload, canCommit, canResolve, organiza
                       <button
                         type="button"
                         disabled={busy}
-                        onClick={() => runRollback(b.id, b.committed_rows)}
+                        onClick={() => setPending({ kind: "rollback", batchId: b.id, count: b.committed_rows })}
                         className="inline-flex items-center gap-1 rounded-md border border-red-300 px-2.5 py-1.5 text-xs font-medium text-red-700 hover:bg-red-50 disabled:opacity-50"
                       >
                         <Undo2 className="h-3.5 w-3.5" /> Roll back {b.committed_rows}

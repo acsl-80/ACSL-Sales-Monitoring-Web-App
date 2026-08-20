@@ -2,6 +2,11 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { dataCenterAdmin, DataCenterError } from "../../lib/client";
 import { invalidateModuleAccessCache } from "../../lib/useModuleAccess";
 import {
+  Popover,
+  PopoverAnchor,
+  PopoverContent,
+} from "@/components/ui/popover";
+import {
   Loader2,
   UserPlus,
   ShieldCheck,
@@ -190,20 +195,33 @@ export default function AccessManager() {
 
         {error && <p className="mb-3 text-sm text-red-600">{error}</p>}
 
-        {/* Grant: search a user, pick a level */}
-        <div className="relative mb-4 max-w-md">
-          <div className="flex items-center gap-2">
-            <UserPlus className="h-4 w-4 shrink-0 text-gray-400" />
-            <input
-              type="text"
-              value={query}
-              onChange={(e) => setQuery(e.target.value)}
-              placeholder="Search name, email or username to grant access..."
-              className="w-full rounded-md border border-gray-300 bg-white px-3 py-2 text-sm focus:border-(--dc-primary) focus:outline-none"
-            />
-          </div>
-          {query.trim().length >= 2 && (
-            <div className="absolute z-10 mt-1 w-full rounded-md border border-gray-200 bg-white shadow-lg">
+        {/* Grant: search a user, pick a level.
+
+            The results used to be an absolutely-positioned div, which meant any
+            ancestor that ever gained overflow would clip them. A popover
+            portals to the body and cannot be clipped by anything. */}
+        <Popover open={query.trim().length >= 2} onOpenChange={() => {}}>
+          <PopoverAnchor asChild>
+            <div className="mb-4 flex max-w-md items-center gap-2">
+              <UserPlus className="h-4 w-4 shrink-0 text-gray-400" />
+              <input
+                type="text"
+                value={query}
+                onChange={(e) => setQuery(e.target.value)}
+                placeholder="Search name, email or username to grant access..."
+                className="w-full rounded-md border border-gray-300 bg-white px-3 py-2 text-sm focus:border-(--dc-accent) focus:outline-none"
+              />
+            </div>
+          </PopoverAnchor>
+          <PopoverContent
+            align="start"
+            sideOffset={4}
+            // The input keeps focus while results arrive: closing the keyboard
+            // or stealing the caret mid-search is how a search box loses a word.
+            onOpenAutoFocus={(e) => e.preventDefault()}
+            className="dc-root w-[min(28rem,90vw)] p-0"
+          >
+            <div className="rounded-md">
               {searching ? (
                 <div className="flex items-center gap-2 px-3 py-2 text-sm text-gray-500">
                   <Loader2 className="h-3.5 w-3.5 animate-spin" /> Searching...
@@ -235,8 +253,8 @@ export default function AccessManager() {
                 ))
               )}
             </div>
-          )}
-        </div>
+          </PopoverContent>
+        </Popover>
 
         {/* Who has access today */}
         {entries.length === 0 ? (
