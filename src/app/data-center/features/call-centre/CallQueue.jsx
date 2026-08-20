@@ -96,7 +96,10 @@ function Cell({ row, column }) {
 }
 
 export default function CallQueue({ canEdit, drill = null }) {
-  const [preset, setPreset] = useState("all");
+  // The URL seeds which preset is showing; the chips are the user's after that.
+  // Seeding rather than controlling, so clicking a chip is not fighting the
+  // address bar on every render.
+  const [preset, setPreset] = useState(drill?.preset ?? "all");
   const [search, setSearch] = useState("");
   const [appliedSearch, setAppliedSearch] = useState("");
   const [openSale, setOpenSale] = useState(null);

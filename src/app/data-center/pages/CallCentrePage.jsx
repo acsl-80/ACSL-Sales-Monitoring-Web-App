@@ -6,6 +6,14 @@ import AssignmentLog from "../features/call-centre/AssignmentLog";
 import { useFeature } from "../lib/access";
 import { DATA_CENTER_FEATURES } from "../lib/features";
 
+/** The queue's own presets, named so a drill banner can say which one it took. */
+const PRESET_LABELS = {
+  todo: "never called",
+  unresolved: "still to verify",
+  exhausted: "chased three times and still not verified",
+  correction: "waiting on Sales",
+};
+
 /** The scorecard columns, said the way the dashboard says them. */
 const STATUS_LABELS = {
   verified: "verified",
@@ -33,9 +41,23 @@ function Inner() {
     if (search.status && STATUS_LABELS[search.status]) {
       filters.outcomeGroup = search.status;
     }
-    if (Object.keys(filters).length === 0) return null;
-    const subject = search.label ?? "a scorecard row";
+    // One exact outcome, where a scorecard column's group of four is wider than
+    // the number the reader clicked.
+    if (search.verificationOutcome) {
+      filters.verificationOutcome = search.verificationOutcome;
+    }
+
+    const preset = PRESET_LABELS[search.preset] ? search.preset : null;
+    if (Object.keys(filters).length === 0 && !preset) return null;
+
+    const subject = search.label
+      ?? (preset ? PRESET_LABELS[preset] : null)
+      ?? (search.verificationOutcome
+        ? search.verificationOutcome.replace(/_/g, " ")
+        : "a scorecard row");
+
     return {
+      preset,
       filters,
       description: filters.outcomeGroup
         ? `${subject}: ${STATUS_LABELS[search.status]}`
@@ -46,7 +68,11 @@ function Inner() {
 
   return (
     <div className="space-y-4">
-      <CallQueue canEdit={can(DATA_CENTER_FEATURES.CALL_RECORDS_EDIT)} drill={drill} />
+      <CallQueue
+        key={drill?.preset ?? "all"}
+        canEdit={can(DATA_CENTER_FEATURES.CALL_RECORDS_EDIT)}
+        drill={drill}
+      />
       {/* The log needs records.view on the server. Gating on the same key here
           keeps the page honest: nothing renders that the endpoint would 403.
           The levers inside it are super admin only, decided again server-side. */}

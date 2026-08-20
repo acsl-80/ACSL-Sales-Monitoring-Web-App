@@ -19,6 +19,10 @@ type CallCentreSearch = {
   agentManager?: string;
   status?: string;
   label?: string;
+  /** Selects one of the queue's own presets, so a dashboard number can land on it. */
+  preset?: string;
+  /** One exact outcome, where a scorecard column's four-outcome group is too wide. */
+  verificationOutcome?: string;
 };
 
 const str = (v: unknown) => (typeof v === "string" && v !== "" ? v : undefined);
@@ -32,6 +36,8 @@ export const Route = createFileRoute("/data-center/call-centre")({
     agentManager: str(search.agentManager),
     status: str(search.status),
     label: str(search.label),
+    preset: str(search.preset),
+    verificationOutcome: str(search.verificationOutcome),
   }),
   component: Page,
 });

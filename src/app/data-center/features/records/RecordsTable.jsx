@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { useRecords, PAGE_SIZE } from "../../lib/useRecords";
 import { useVirtualRows } from "../../lib/useVirtualRows";
-import { Loader2, AlertTriangle, Search, X, Database } from "lucide-react";
+import { Loader2, AlertTriangle, Search, X, Database, Filter } from "lucide-react";
 
 /**
  * Table 1: sold stove records.
@@ -139,7 +139,7 @@ function FilterBar({ draft, setDraft, onClear, active }) {
   );
 }
 
-export default function RecordsTable() {
+export default function RecordsTable({ drill = null }) {
   // Two states, deliberately. `draft` is what the user is typing; `applied` is
   // what has been asked of the server. Debouncing between them is what stops a
   // request per keystroke.
@@ -151,8 +151,16 @@ export default function RecordsTable() {
     return () => clearTimeout(timer);
   }, [draft]);
 
+  // A drill-through from the dashboard narrows the table, and what the user
+  // types narrows it further: their filters come last so they always win. The
+  // drill lives in the URL, not in state, so back leaves it behind.
+  const filters = useMemo(
+    () => ({ ...(drill?.filters ?? {}), ...applied }),
+    [drill, applied],
+  );
+
   const { rows, loading, loadingMore, error, hasMore, scope, loadMore } =
-    useRecords(applied);
+    useRecords(filters);
 
   const { containerRef, window: win, onScroll } = useVirtualRows(
     rows.length,
@@ -190,6 +198,24 @@ export default function RecordsTable() {
           </span>
         )}
       </div>
+
+      {/* Where this table came from, when it came from a number on the
+          dashboard, with the one way back to everything. */}
+      {drill && (
+        <div className="flex flex-wrap items-center gap-2 border-b border-(--dc-accent)/20 bg-(--dc-accent-soft)/60 px-4 py-2.5">
+          <Filter className="h-3.5 w-3.5 shrink-0 text-(--dc-accent)" />
+          <p className="text-sm text-(--dc-accent)">
+            Narrowed from the dashboard to <span className="font-medium">{drill.description}</span>
+          </p>
+          <button
+            type="button"
+            onClick={drill.clear}
+            className="ml-auto inline-flex items-center gap-1 rounded-md px-2 py-1 text-xs font-medium text-(--dc-accent) hover:bg-(--dc-accent)/10"
+          >
+            <X className="h-3.5 w-3.5" /> Show everything
+          </button>
+        </div>
+      )}
 
       <FilterBar
         draft={draft}
