@@ -75,6 +75,9 @@ const ACTION_TONE = {
   DELETE: "text-red-600",
 };
 
+/** "an access grant", not "a access grant". */
+const article = (word) => ("aeiou".includes(word[0]?.toLowerCase()) ? "an" : "a");
+
 /** `verification_outcome` reads as "verification outcome", not as a column. */
 const fieldLabel = (f) => f.replace(/_/g, " ");
 
@@ -125,7 +128,7 @@ function Entry({ entry }) {
           <span className={`font-medium ${ACTION_TONE[entry.action] ?? "text-gray-700"}`}>
             {verb}
           </span>{" "}
-          a {category.subject}{" "}
+          {article(category.subject)} {category.subject}{" "}
           <span className="font-mono text-xs text-gray-500">{shortRef(entry.record_pk)}</span>
         </p>
         {fields.length > 0 && (

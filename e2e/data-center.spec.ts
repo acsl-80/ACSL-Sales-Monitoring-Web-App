@@ -193,7 +193,7 @@ test.describe("the change log is readable and categorised", () => {
       "aria-pressed",
       "true",
     );
-    await expect(page.getByText(/granted a access grant|No access changes yet/)).toBeVisible({
+    await expect(page.getByText(/granted an access grant|No access changes yet/)).toBeVisible({
       timeout: 15_000,
     });
 
