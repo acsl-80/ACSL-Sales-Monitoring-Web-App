@@ -23,7 +23,7 @@ import { resolveAssignedOrgIds } from "../_shared/resolveAssignedOrgIds.ts";
 import { withReadConnection } from "../_shared/data-center-db.ts";
 import { featuresFor } from "../_shared/data-center-roles.ts";
 import { BadRequest, buildRecordsQuery, toPage } from "./records-query.ts";
-import { buildTransferScopeSql, type ScopeInput } from "./scope.ts";
+import { buildScopeSql, buildTransferScopeSql, type ScopeInput } from "./scope.ts";
 
 // Explicit origin allowlist rather than `*`. The rest of this repo uses `*`;
 // this module does not, because these responses are gated on a bearer token and
@@ -480,6 +480,120 @@ serve(async (req) => {
                 rows: rows.rows,
                 scope: scope.description,
                 computedAt: stamp.rows[0]?.computed_at ?? null,
+              },
+            },
+            200,
+            cors,
+          );
+        });
+      }
+
+      /**
+       * Who was given what, and what came of it.
+       *
+       * Reads v_assignment_log, which joins batches to items to the latest
+       * attempt. Keyset paginated on (assigned_at, batch_id, position): the
+       * log grows forever, and OFFSET over forever is the exact pathology
+       * Table 1 was built to avoid.
+       *
+       * Scoped like the call queue: this is about sales records and the people
+       * calling them, so records.view is the gate and organization scope
+       * applies. An agent may additionally always see their own batches
+       * through data-center-assign's my_batches, which needs no extra grant.
+       */
+      case "assignment_log": {
+        const superAdmin = isSuperAdmin(profile.role);
+        const resolved = superAdmin
+          ? { accessRole: null, features: [] as string[] }
+          : await resolveAccess(userId);
+
+        if (!superAdmin && resolved.accessRole === null) {
+          return json({ error: "No Data Center access", code: "no_access" }, 403, cors);
+        }
+        if (!superAdmin && !resolved.features.includes("records.view")) {
+          return json({ error: "Not permitted", code: "no_feature" }, 403, cors);
+        }
+
+        const scopeInput = await resolveScope(
+          supabase,
+          userId,
+          profile.role,
+          profile.organization_id ?? null,
+        );
+        const filters = (body.filters ?? {}) as {
+          organizationId?: string;
+          agentId?: string;
+          batchState?: string;
+          outcome?: string;
+          dateFrom?: string;
+          dateTo?: string;
+        };
+
+        const scope = buildScopeSql(
+          { ...scopeInput, requestedOrgId: filters.organizationId ?? null },
+          1,
+          "l",
+        );
+        const args: unknown[] = [...scope.args];
+        const where: string[] = [scope.sql];
+        const p = (v: unknown) => {
+          args.push(v);
+          return `$${args.length}`;
+        };
+
+        if (filters.agentId) where.push(`l.agent_id = ${p(filters.agentId)}`);
+        if (filters.batchState) where.push(`l.batch_state = ${p(filters.batchState)}`);
+        if (filters.outcome) where.push(`l.verification_outcome = ${p(filters.outcome)}`);
+        // Filtered on when the batch was assigned, because that is the axis
+        // the log is ordered on and the question people ask of it: what went
+        // out this week, and what came of it.
+        if (filters.dateFrom) where.push(`l.assigned_at >= ${p(filters.dateFrom)}::date`);
+        if (filters.dateTo) where.push(`l.assigned_at < (${p(filters.dateTo)}::date + 1)`);
+
+        // Keyset cursor: strictly after the last row of the previous page.
+        const cursor = body.cursor as
+          | { assignedAt: string; batchId: string; position: number }
+          | undefined;
+        if (cursor?.assignedAt && cursor?.batchId) {
+          where.push(
+            `(l.assigned_at, l.batch_id, l.position) < (${p(cursor.assignedAt)}::timestamptz, ${
+              p(cursor.batchId)
+            }::uuid, ${p(Number(cursor.position) || 0)})`,
+          );
+        }
+
+        const limit = Math.min(Math.max(Number(body.limit) || 50, 1), 200);
+
+        return await withReadConnection(async (connection) => {
+          const rows = await connection.queryObject({
+            text: `select l.batch_id::text, l.organization_id::text, l.partner_name,
+                          l.agent_id::text, l.agent_name, l.assigned_at, l.batch_state,
+                          l.batch_size, l.last_activity_at, l.reclaimed_at, l.reclaim_reason,
+                          l.sale_id::text, l.position, l.is_active,
+                          l.stove_serial_no, l.sales_date,
+                          l.verification_outcome, l.call_outcome, l.attempt_count,
+                          l.number_on_record, l.last_attempt_at, l.last_attempt_outcome,
+                          l.last_attempt_by
+                   from data_center.v_assignment_log l
+                   where ${where.join(" and ")}
+                   order by l.assigned_at desc, l.batch_id desc, l.position desc
+                   limit ${limit + 1}`,
+            args,
+          });
+          const page = rows.rows.slice(0, limit) as Record<string, unknown>[];
+          const last = page[page.length - 1];
+          return json(
+            {
+              data: {
+                rows: page,
+                scope: scope.description,
+                nextCursor: rows.rows.length > limit && last
+                  ? {
+                    assignedAt: last.assigned_at,
+                    batchId: last.batch_id,
+                    position: last.position,
+                  }
+                  : null,
               },
             },
             200,

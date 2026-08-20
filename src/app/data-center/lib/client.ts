@@ -534,6 +534,100 @@ export const dataCenterImport = {
     call<ImportRow[]>("data-center-import", "rows", { batchId, status }),
 };
 
+/** One row of the assignment log: a record, who was given it, what came of it. */
+export type AssignmentLogRow = {
+  batch_id: string;
+  organization_id: string;
+  partner_name: string;
+  agent_id: string;
+  agent_name: string | null;
+  assigned_at: string;
+  batch_state: "open" | "completed" | "reclaimed";
+  batch_size: number;
+  last_activity_at: string;
+  reclaimed_at: string | null;
+  reclaim_reason: string | null;
+  sale_id: string;
+  position: number;
+  is_active: boolean;
+  stove_serial_no: string;
+  sales_date: string | null;
+  verification_outcome: string | null;
+  call_outcome: string | null;
+  attempt_count: number | null;
+  number_on_record: string | null;
+  last_attempt_at: string | null;
+  last_attempt_outcome: string | null;
+  last_attempt_by: string | null;
+};
+
+export type AssignmentLogCursor = {
+  assignedAt: string;
+  batchId: string;
+  position: number;
+};
+
+/**
+ * The assignment engine's doorway.
+ *
+ * The engine itself is data_center.assign_batches(), in SQL under an advisory
+ * lock. run and reclaim are administrative; status feeds a management view;
+ * my_batches is the one action an agent calls, scoped to their token with no
+ * way to ask about anyone else.
+ */
+export const dataCenterAssign = {
+  run: () =>
+    call<{
+      reclaimed: number;
+      batches: { batch_id: string; agent_id: string; organization_id: string; size: number }[];
+    }>("data-center-assign", "run"),
+
+  reclaim: () => call<{ reclaimed: number }>("data-center-assign", "reclaim"),
+
+  status: () =>
+    call<{
+      pool: { organization_id: string; partner_name: string; callable: number }[];
+      open: {
+        batch_id: string; organization_id: string; partner_name: string;
+        agent_id: string; agent_name: string | null; assigned_at: string;
+        size: number; last_activity_at: string; remaining: number;
+      }[];
+    }>("data-center-assign", "status"),
+
+  myBatches: () =>
+    call<{
+      items: {
+        batch_id: string; partner_name: string; assigned_at: string; batch_size: number;
+        sale_id: string; position: number; stove_serial_no: string; sales_date: string | null;
+        verification_outcome: string | null; attempt_count: number | null;
+        last_attempt_at: string | null;
+      }[];
+    }>("data-center-assign", "my_batches"),
+
+  /** The log. Keyset paginated; pass back `nextCursor` for the next page. */
+  log: (options: {
+    limit?: number;
+    cursor?: AssignmentLogCursor | null;
+    filters?: {
+      organizationId?: string;
+      agentId?: string;
+      batchState?: string;
+      outcome?: string;
+      dateFrom?: string;
+      dateTo?: string;
+    };
+  } = {}) =>
+    call<{
+      rows: AssignmentLogRow[];
+      scope: string;
+      nextCursor: AssignmentLogCursor | null;
+    }>("data-center-read", "assignment_log", {
+      limit: options.limit ?? 50,
+      cursor: options.cursor ?? undefined,
+      filters: options.filters ?? {},
+    }),
+};
+
 export type Metric = {
   metric_key: string;
   dimension: Record<string, string>;

@@ -649,29 +649,49 @@ The seed gains a fourth partner nobody is assigned to. Without it the only
 editor account holds every partner, so there was nothing out of scope to reach
 for and the staging scope check had nothing to prove itself against.
 
-## Phase 11: the assignment engine
+## Phase 11: the assignment engine: DONE
 
-- [ ] `assignment_batches`, `assignment_items`, unique on `sale_id` so a record
-      cannot sit in two batches at once.
-- [ ] `assign_batches()`: twenty records, one partner, to the eligible agent
-      with the fewest open batches, repeating while capacity remains. Takes
-      `pg_try_advisory_lock`, the same primitive the metrics run uses, because
-      the obvious check-then-act version can be raced.
-- [ ] `reclaim_stale_batches()` for batches untouched past the configured age
-      or whose agent has been disabled.
-- [ ] Batch size, stale age, capacity and per-partner overrides in
-      `workflow_config`, not in code.
+- [x] `assignment_batches` and `assignment_items`, with a partial unique index
+      on `(sale_id) where is_active`. That index is what makes two agents
+      ringing the same buyer impossible rather than unlikely.
+- [x] One partner per batch, enforced by a trigger rather than by the engine,
+      because the engine will not be the only thing that ever writes here.
+- [x] `assign_batches()`: agent-first, since capacity is the binding
+      constraint. The agent's last partner wins while it still has callable
+      records, then the biggest backlog. Advisory lock 8150621, beside the
+      metrics run's 8150620.
+- [x] `reclaim_stale_batches()`: quiet past the configured age, or the agent
+      stopped taking work. Staleness measures from `last_activity_at`, touched
+      by attempts and record saves, so steady work never looks quiet.
+- [x] `v_callable_records`: the one definition of outstanding work. Nothing
+      concluded, attempts left under `callback_limit`, not already assigned.
+- [x] Batch size, capacity, stale age and per-partner overrides read from
+      `workflow_config` at run time.
 
-Verify: batches never mix partners; two concurrent runs do not double-assign;
-a stale batch returns to the pool; the open-batch cap holds.
+Verified against the preview database directly: one run hands the 5 callable
+records to the enabled agent, a second run assigns nothing, disabling the agent
+reclaims the batch and returns all 5 to the pool, and the same-partner trigger
+refuses a stray item with a check violation.
 
-## Phase 12: the assignment and call log
+## Phase 12: the assignment and call log: DONE
 
-- [ ] `v_assignment_log` joining batches, items, attempts and profiles.
-- [ ] An `assignment_log` action, keyset paginated through the same builder as
-      everything else, filterable by agent, partner and date server-side.
+- [x] `v_assignment_log`: one row per assigned record, joined to the latest
+      attempt through a lateral, with outcome ids resolved to labels through
+      the registry like the call centre view does.
+- [x] An `assignment_log` action on `data-center-read`, keyset paginated on
+      `(assigned_at, batch_id, position)`, filterable by partner, agent, batch
+      state, outcome and date, all server-side. Gated on `records.view` and
+      scoped through `buildScopeSql` like the queue.
+- [x] `data-center-assign`: `run` and `reclaim` for super admins, `status` for
+      dashboard holders, `my_batches` scoped to the caller's token with no
+      parameter for asking about anyone else.
+- [x] `AssignmentLog.jsx` on the Call Centre page: the log, CSV export, and
+      the two levers for admins, answering in the same table they act on.
 
-Verify: every filter is a server query, and no request carries an offset.
+Verified: `e2e/data-center-assignment.spec.ts`. The log renders the engine's
+work, the levers appear only for admins and the endpoint refuses a non-admin
+regardless, a call agent reads their own single-partner batch, and no log
+request carries an offset.
 
 ## Phase 13: the metric engine and five scorecards
 
