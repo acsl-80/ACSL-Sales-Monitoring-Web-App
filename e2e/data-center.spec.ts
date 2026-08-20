@@ -43,8 +43,11 @@ test.describe("entry is per user, case by case", () => {
     await expect(page.getByRole("heading", { name: "Data Center" })).toBeVisible();
     await expect(page.getByText("Viewer", { exact: true })).toBeVisible();
 
-    // Viewer sees, editor changes: the import surface stays locked.
-    await expect(page.getByText("import.upload")).toBeVisible();
+    // Viewer sees, editor changes. Since Phase 5 the import surface is a real
+    // panel rather than a locked placeholder card, so a viewer gets no import
+    // surface at all. Absent is a stronger guarantee than present-and-disabled.
+    await expect(page.getByRole("heading", { name: "Bulk Import" })).toHaveCount(0);
+    await expect(page.getByRole("heading", { name: "Sold Stove Records" })).toBeVisible();
   });
 
   for (const [label, email] of [
@@ -83,13 +86,18 @@ test.describe("viewer and editor are different animals", () => {
     await expect(page.getByText(/^Requires /)).toHaveCount(0);
   });
 
-  test("viewer: view surfaces only, import stays locked", async ({ page }) => {
+  test("viewer: the reading surfaces, and nothing that writes", async ({ page }) => {
     await signIn(page, USERS.manager);
     await page.goto("/data-center");
 
     await expect(page.getByText(/Viewer access, 3 of 9 features/)).toBeVisible();
-    await expect(page.getByText(/^Requires /)).toHaveCount(1);
-    await expect(page.getByText("import.upload")).toBeVisible();
+
+    // The three a viewer holds are records.view, call_records.view and
+    // dashboard.view, so both tables render and nothing that changes data does.
+    await expect(page.getByRole("heading", { name: "Sold Stove Records" })).toBeVisible();
+    await expect(page.getByRole("heading", { name: "Call Centre" })).toBeVisible();
+    await expect(page.getByRole("heading", { name: "Bulk Import" })).toHaveCount(0);
+    await expect(page.getByRole("heading", { name: "Access", exact: true })).toHaveCount(0);
   });
 });
 
