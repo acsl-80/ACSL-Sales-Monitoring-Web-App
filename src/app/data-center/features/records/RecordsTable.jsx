@@ -178,7 +178,7 @@ export default function RecordsTable() {
     <div className="overflow-hidden rounded-xl border border-gray-200 bg-white">
       <div className="flex items-center gap-2 border-b border-gray-100 px-4 py-3">
         <Database className="h-4 w-4 text-[#4a5d0f]" />
-        <h2 className="text-sm font-semibold text-gray-900">Sold Stove Records</h2>
+        <span className="text-sm font-semibold text-gray-900">Sold Stove Records</span>
         <span className="text-sm text-gray-500">
           {loading
             ? "loading..."

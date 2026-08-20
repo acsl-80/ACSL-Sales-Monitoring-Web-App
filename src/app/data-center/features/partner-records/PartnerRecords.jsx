@@ -138,7 +138,7 @@ export default function PartnerRecords() {
     <div className="overflow-hidden rounded-xl border border-gray-200 bg-white">
       <div className="flex flex-wrap items-center gap-2 border-b border-gray-100 px-4 py-3">
         <Handshake className="h-4 w-4 text-[#4a5d0f]" />
-        <h2 className="text-sm font-semibold text-gray-900">Partner Records</h2>
+        <span className="text-sm font-semibold text-gray-900">Partner Records</span>
         <span className="text-sm text-gray-500">
           {loading ? "loading..." : `${NUMBER.format(rows.length)} transfer(s)`}
         </span>

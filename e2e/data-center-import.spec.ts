@@ -67,6 +67,7 @@ test.describe("bulk import", () => {
     await expect(
       page.getByRole("heading", { name: "Not part of your access" }),
     ).toBeVisible({ timeout: 20_000 });
-    await expect(page.getByRole("heading", { name: "Bulk Import" })).toHaveCount(0);
+    // The panel itself never renders, so its export button is absent too.
+    await expect(page.getByRole("button", { name: /Choose a CSV/ })).toHaveCount(0);
   });
 });

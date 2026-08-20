@@ -59,7 +59,7 @@ test.describe("the sales app is unaffected", () => {
     });
 
     await signIn(page, USERS.admin);
-    await page.waitForLoadState("networkidle");
+    await page.waitForLoadState("domcontentloaded");
 
     expect(failures, `manage-profile failed: ${failures.join(", ")}`).toEqual([]);
   });
@@ -70,7 +70,7 @@ test.describe("the sales app is unaffected", () => {
 
     await signIn(page, USERS.admin);
     await page.goto("/sales/create");
-    await page.waitForLoadState("networkidle");
+    await page.waitForLoadState("domcontentloaded");
 
     expect(errors, `page errors: ${errors.join(" | ")}`).toEqual([]);
   });

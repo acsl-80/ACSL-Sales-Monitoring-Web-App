@@ -174,7 +174,7 @@ export default function Dashboard({ canRun }) {
     <div className="space-y-4">
       <div className="flex flex-wrap items-center gap-2 rounded-xl border border-gray-200 bg-white px-4 py-3">
         <BarChart3 className="h-4 w-4 text-[#4a5d0f]" />
-        <h2 className="text-sm font-semibold text-gray-900">Dashboards</h2>
+        <span className="text-sm font-semibold text-gray-900">Dashboards</span>
         {data?.computedAt ? (
           <span className="inline-flex items-center gap-1 text-xs text-gray-500">
             <Clock className="h-3 w-3" />

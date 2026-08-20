@@ -101,7 +101,9 @@ test.describe("viewer and editor are different animals", () => {
       });
     }
     // Import is shown locked rather than hidden, so the missing grant is named.
+    // The card still says "Bulk Import"; what a viewer must not get is the link.
     await expect(page.getByRole("link", { name: "Open Bulk Import" })).toHaveCount(0);
+    await expect(page.getByText("Bulk Import")).toBeVisible();
     await expect(page.getByText("import.upload")).toBeVisible();
     await expect(page.getByRole("heading", { name: "Access", exact: true })).toHaveCount(0);
   });

@@ -995,3 +995,59 @@ values
   ('b0000000-0000-4000-8000-000000000006', 'editor'),
   ('b0000000-0000-4000-8000-000000000002', 'viewer')
 on conflict (user_id) do update set access_role = excluded.access_role;
+-- ---------- transfers ----------
+-- Three consignments of stoves from ACSL to partners, so the reconciliation
+-- funnel has something to reconcile.
+--
+-- Every serial listed here already exists in stove_ids_base above, because the
+-- funnel ties a sale back to its transfer through the serial. A transfer full
+-- of serials nobody holds would look right and count nothing.
+--
+-- The three are deliberately at different stages, so Partner Records shows the
+-- range rather than one shape repeated:
+--
+--   TR-PRV001   200 issued, some sold, some verified. The normal case.
+--   TR-PRV002   150 issued, nothing back yet. The case people need to chase.
+--   TR-PRV003    80 issued, paper returned but not all typed. The backlog case.
+insert into public.stove_transfer_history
+  (transaction_id, organization_id, partner_name, partner_id, state, branch,
+   stove_count, stove_ids, source, sales_rep, sales_factory, sales_date, transfer_date)
+select
+  t.txn,
+  t.org::uuid,
+  o.partner_name,
+  coalesce(o.partner_id, 'PRV-' || substr(t.txn, 8)),
+  o.state,
+  o.branch,
+  t.qty,
+  (select coalesce(jsonb_agg(jsonb_build_object(
+            'stove_id', b.stove_id, 'factory', b.factory, 'sales_reference', t.txn)), '[]'::jsonb)
+     from (select stove_id, factory from public.stove_ids_base
+           where organization_id = t.org::uuid
+           order by stove_id
+           offset t.skip limit t.qty) b),
+  'external-sync',
+  t.rep,
+  o.branch,
+  current_date - t.age,
+  now() - make_interval(days => t.age)
+from (values
+  ('TR-PRV001', 'a0000000-0000-4000-8000-000000000001', 200,   0, 'Adaeze Princess Okuoniye', 45),
+  ('TR-PRV002', 'a0000000-0000-4000-8000-000000000002', 150,   0, 'Abdulrasheed Imam',        20),
+  ('TR-PRV003', 'a0000000-0000-4000-8000-000000000003',  80,   0, 'Olatunji Bello',           70)
+) as t(txn, org, qty, skip, rep, age)
+join public.organizations o on o.id = t.org::uuid
+on conflict do nothing;
+
+-- Paper came back for the third one, more than has been typed. That gap is the
+-- transcription backlog the funnel is there to make visible.
+insert into data_center.record_consignments
+  (organization_id, transaction_id, received_count, received_at, note, source)
+values
+  ('a0000000-0000-4000-8000-000000000003'::uuid, 'TR-PRV003', 24,
+   current_date - 5, 'Envelope returned by the partner, not yet transcribed', 'paper')
+on conflict do nothing;
+
+-- The funnel is a computed table, so it needs a first refresh. After this the
+-- compute run keeps it current.
+select data_center.refresh_transfer_funnel();
