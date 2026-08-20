@@ -102,8 +102,8 @@ test.describe("import hardening", () => {
 
     await page.locator('input[type="file"]').setInputFiles(
       csv(
-        "stove_serial_no,Mobile No.,sales_date,amount,state,lga,address",
-        "SA000000A1,08012345678,2026-01-04,25000,Lagos,Ikeja,1 Test Road",
+        "stove_serial_no,first_name,Mobile No.,sales_date,amount,state,lga,address",
+        "SA000000A1,Test,08012345678,2026-01-04,25000,Lagos,Ikeja,1 Test Road",
       ),
     );
 
@@ -135,7 +135,10 @@ test.describe("import hardening", () => {
     // No phone column, under any spelling. Every row would be rejected for it,
     // and the operator should hear that now rather than from the results.
     await page.locator('input[type="file"]').setInputFiles(
-      csv("stove_serial_no,sales_date,amount,state,lga,address", "SA000000A1,2026-01-04,25000,Lagos,Ikeja,1 Test Road"),
+      csv(
+        "stove_serial_no,first_name,sales_date,amount,state,lga,address",
+        "SA000000A1,Test,2026-01-04,25000,Lagos,Ikeja,1 Test Road",
+      ),
     );
 
     await expect(page.getByText(/Nothing feeds .*Phone number/)).toBeVisible({
@@ -148,10 +151,13 @@ test.describe("import hardening", () => {
 
     await page.getByRole("button", { name: "Type one record" }).click();
 
-    await expect(page.getByRole("heading", { name: "Type one record" })).toHaveCount(0);
-    await expect(page.getByText("Type one record").first()).toBeVisible();
-    for (const field of ["Stove serial number", "Phone number", "Sale date", "Amount", "State", "LGA", "Address"]) {
-      await expect(page.getByLabel(new RegExp(`^${field}`))).toBeVisible();
+    // Exact labels: "Amount" also prefixes "Amount received", and a loose
+    // matcher there would pass on the wrong field.
+    for (const field of [
+      "Stove serial number", "First name", "Phone number", "Sale date",
+      "Amount", "State", "LGA", "Address",
+    ]) {
+      await expect(page.getByLabel(field, { exact: true })).toBeVisible();
     }
     await expect(page.getByRole("button", { name: "Stage this record" })).toBeVisible();
   });
@@ -203,9 +209,10 @@ test.describe("import hardening, against the server", () => {
     mimeType: "text/csv",
     buffer: Buffer.from(
       [
-        "stove_serial_no,phone,sales_date,amount,state,lga,address",
+        "stove_serial_no,first_name,last_name,phone,sales_date,amount,state,lga,address",
         ...serials.map(
-          (s) => `${s},08012345678,2026-01-04,25000,Gombe,Gombe,${marker} Test Road`,
+          (s) =>
+            `${s},Test,Buyer,08012345678,2026-01-04,25000,Gombe,Gombe,${marker} Test Road`,
         ),
       ].join("\n"),
     ),
@@ -233,7 +240,7 @@ test.describe("import hardening, against the server", () => {
     // One row takes the stove and the other cannot. It used to import twice
     // and fail at commit with a stove-already-sold error, which reads as a
     // stock problem rather than the typing one it is.
-    await expect(page.getByText(/1 ready, 1 need a look|1 ready, 1 need/)).toBeVisible({
+    await expect(page.getByText(/1 ready, 1 need a look/)).toBeVisible({
       timeout: 30_000,
     });
     await expect(

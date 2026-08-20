@@ -17,7 +17,9 @@ import { Loader2, PenLine, X } from "lucide-react";
 
 const FIELDS = [
   { key: "stove_serial_no", label: "Stove serial number", required: true, width: "sm:col-span-2" },
-  { key: "first_name", label: "First name" },
+  // A row with no name at all is refused. First or last will do, so the
+  // required mark sits on the first of them.
+  { key: "first_name", label: "First name", required: true },
   { key: "last_name", label: "Last name" },
   { key: "phone", label: "Phone number", required: true, placeholder: "08012345678" },
   { key: "other_phone", label: "Other phone" },

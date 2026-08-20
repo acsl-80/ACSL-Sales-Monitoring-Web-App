@@ -152,7 +152,12 @@ export const HEADER_ALIASES: Record<string, string[]> = {
 
 /** Which fields must be present for a row to be usable at all. */
 export const REQUIRED_FIELDS = [
-  "stoveSerialNo", "phone", "salesDate", "amount", "state", "lga", "fullAddress",
+  "stoveSerialNo",
+  // normalizeRow refuses a nameless row, and takes first plus last as
+  // satisfying it. Leaving this off the list let `inspect` bless a file whose
+  // every row would then be rejected, which is the exact silent failure this
+  // step exists to close.
+  "endUserName", "phone", "salesDate", "amount", "state", "lga", "fullAddress",
 ] as const;
 
 function text(raw: Record<string, unknown>, ...keys: string[]): string {
