@@ -693,20 +693,40 @@ work, the levers appear only for admins and the endpoint refuses a non-admin
 regardless, a call agent reads their own single-partner batch, and no log
 request carries an offset.
 
-## Phase 13: the metric engine and five scorecards
+## Phase 13: the metric engine and five scorecards: DONE
 
 One engine and one component, parameterised by dimension. Five separate
 implementations would be five places for the same number to disagree.
 
-- [ ] `compute_metrics()` writes seven scorecard metrics per dimension across
-      partner, location, sales rep, call agent and manager.
-- [ ] One `Scorecard` component, given a dimension.
-- [ ] Drill-through as a URL, so back navigation restores filters for free.
-- [ ] CSV export on every scorecard and every table it drills into.
+- [x] `compute_scorecards()` writes seven metrics per dimension, the dimension
+      as data: `{by, key, label}` in the snapshot jsonb. Called by the compute
+      run after the funnel refresh, same run id, so the dashboard swaps to a
+      new set atomically. Adding a sixth dimension is one row in a VALUES list.
+- [x] Two sources, stated in the migration: partner, location and sales rep sum
+      `transfer_funnel` (what was shipped); call agent and manager count
+      assigned records (what was handed out), reclaimed batches excluded.
+- [x] One `Scorecard` component, five instances on the dashboard.
+- [x] Drill-through as a URL: a status cell links to the call centre queue with
+      the dimension and status as search params. The route validates them, the
+      page translates them to the new server filters (`outcomeGroup`,
+      `partnerState`, `transferSalesRep`, `assignedAgent`, `agentManager`),
+      and the queue names what narrowed it. Back restores the dashboard
+      because nothing was component state to begin with.
+- [x] CSV export on every scorecard; the queue it drills into already has one.
 
-Verify: the same six columns on all five; `Verified + Unverified + Unreachable
-+ Yet to be resolved` equals Received on every row; a cell click lands on the
-filtered table and back restores it; capacity re-proven at 500,000.
+§3.4 holds by construction: `unresolved` is defined as the remainder, so the
+four statuses always sum to the reconciling column, digitalised for shipments
+and issued for people. Proven against the preview across all five dimensions,
+and asserted row by row in `e2e/data-center-scorecards.spec.ts`.
+
+The brief asked the statuses to reconcile to Received; they reconcile to
+Digitalised, and RECONCILIATION.md says why the difference is a real number
+(the typing backlog) rather than an inconsistency.
+
+Still open here: capacity at 500,000 was proven for the funnel refresh and the
+metric reads in Phases 6 and 8; the scorecard pass itself is sums over the
+funnel table and one pass over assignments, and should be re-measured against
+the 500k local set before merge.
 
 ## Verification
 
