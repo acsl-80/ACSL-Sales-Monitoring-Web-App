@@ -1,4 +1,5 @@
 import { useMemo, useState } from "react";
+import { plural } from "../../lib/plural";
 import { AlertTriangle, ArrowRight, CheckCircle2, X } from "lucide-react";
 
 /**
@@ -57,7 +58,7 @@ export default function ColumnMapping({ file, inspection, onCancel, onConfirm, b
           What this file looks like
         </span>
         <span className="text-sm text-gray-500">
-          {file.name} &middot; {file.rowCount.toLocaleString()} row(s) of at most{" "}
+          {file.name} &middot; {plural(file.rowCount, "row")} of at most{" "}
           {inspection.maxRows.toLocaleString()}
         </span>
         <button

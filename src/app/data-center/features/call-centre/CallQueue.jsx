@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { useRecords, PAGE_SIZE } from "../../lib/useRecords";
 import { useIsPhone } from "../../lib/useMediaQuery";
+import { plural } from "../../lib/plural";
 import { useVirtualRows } from "../../lib/useVirtualRows";
 import CallRecordEditor from "./CallRecordEditor";
 import { Loader2, AlertTriangle, Search, X, PhoneCall, Filter } from "lucide-react";
@@ -79,7 +80,7 @@ function PhoneRow({ row }) {
           <Cell row={row} column={{ key: "correction_state" }} />
         )}
         <span className="text-xs text-gray-400">
-          {cellValue(row, "attempt_count")} call(s)
+          {plural(Number(row.attempt_count ?? 0), "call")}
         </span>
       </div>
     </div>

@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { dataCenterAssign, DataCenterError } from "../../lib/client";
 import { toCsv, downloadCsv } from "../../lib/export";
+import { plural } from "../../lib/plural";
 import {
   ClipboardList, Loader2, AlertTriangle, Download, Play, RotateCcw, X,
 } from "lucide-react";
@@ -82,7 +83,7 @@ export default function AssignmentLog({ canRun }) {
     try {
       const out = await dataCenterAssign.run();
       setNotice(
-        `${out.batches.length} batch(es) assigned` +
+        `${plural(out.batches.length, "batch", "batches")} assigned` +
           (out.reclaimed ? `, ${out.reclaimed} reclaimed first` : "") +
           (out.batches.length === 0 && !out.reclaimed
             ? ". Nothing to hand out: agents are at capacity or the pool is empty."
@@ -103,7 +104,7 @@ export default function AssignmentLog({ canRun }) {
       const out = await dataCenterAssign.reclaim();
       setNotice(
         out.reclaimed
-          ? `${out.reclaimed} quiet batch(es) reclaimed. Their records are back in the pool.`
+          ? `${plural(out.reclaimed, "quiet batch", "quiet batches")} reclaimed. Their records are back in the pool.`
           : "Nothing to reclaim: every open batch has recent activity.",
       );
       await load();
@@ -133,7 +134,7 @@ export default function AssignmentLog({ canRun }) {
         <ClipboardList className="h-4 w-4 text-(--dc-accent)" />
         <span className="text-sm font-semibold text-gray-900">Assignment Log</span>
         <span className="text-sm text-gray-500">
-          {loading ? "loading..." : `${NUMBER.format(rows.length)} record(s) shown`}
+          {loading ? "loading..." : `${plural(rows.length, "record")} shown`}
         </span>
         {scope && (
           <span className="rounded-full bg-gray-100 px-2.5 py-0.5 text-xs text-gray-600">

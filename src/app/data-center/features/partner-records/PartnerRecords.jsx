@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { dataCenterClient, DataCenterError } from "../../lib/client";
 import { toCsv, downloadCsv } from "../../lib/export";
+import { plural } from "../../lib/plural";
 import {
   Handshake, Loader2, AlertTriangle, Search, X, Clock, Download, TriangleAlert,
 } from "lucide-react";
@@ -143,7 +144,7 @@ export default function PartnerRecords() {
         <Handshake className="h-4 w-4 text-(--dc-accent)" />
         <span className="text-sm font-semibold text-gray-900">Partner Records</span>
         <span className="text-sm text-gray-500">
-          {loading ? "loading..." : `${NUMBER.format(rows.length)} transfer(s)`}
+          {loading ? "loading..." : `${plural(rows.length, "transfer")}`}
         </span>
         {computedAt && (
           <span className="inline-flex items-center gap-1 text-xs text-gray-500">

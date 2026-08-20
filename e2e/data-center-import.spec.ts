@@ -126,7 +126,7 @@ test.describe("import hardening", () => {
     await expect(page.getByText("What this file looks like")).toBeVisible({
       timeout: 20_000,
     });
-    await expect(page.getByText(/row\(s\) of at most [\d,]+/)).toBeVisible();
+    await expect(page.getByText(/rows? of at most [\d,]+/)).toBeVisible();
   });
 
   test("a required field nothing feeds is named before staging", async ({ page }) => {

@@ -3,6 +3,7 @@ import { dataCenterImport, DataCenterError } from "../../lib/client";
 import { parseCsv, CsvError } from "../../lib/csv";
 import ColumnMapping from "./ColumnMapping";
 import ManualEntry from "./ManualEntry";
+import { plural } from "../../lib/plural";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -364,14 +365,16 @@ export default function ImportPanel({ canUpload, canCommit, canResolve, organiza
    */
   const confirmCopy = pending?.kind === "commit"
     ? {
-      title: `Commit ${NUMBER.format(pending.count)} record(s)?`,
-      body: `This creates ${NUMBER.format(pending.count)} sales and marks ${NUMBER.format(pending.count)} stoves sold. The sales app's inventory figures will change.`,
+      title: `Commit ${plural(pending.count, "record")}?`,
+      body: `This creates ${plural(pending.count, "sale")} and marks ${
+        plural(pending.count, "stove")} sold. The sales app's inventory figures will change.`,
       action: `Commit ${NUMBER.format(pending.count)}`,
     }
     : pending
       ? {
-        title: `Roll back ${NUMBER.format(pending.count)} record(s)?`,
-        body: `This deletes ${NUMBER.format(pending.count)} sales and puts ${NUMBER.format(pending.count)} stoves back to available.`,
+        title: `Roll back ${plural(pending.count, "record")}?`,
+        body: `This deletes ${plural(pending.count, "sale")} and puts ${
+          plural(pending.count, "stove")} back to available.`,
         action: `Roll back ${NUMBER.format(pending.count)}`,
       }
       : null;
@@ -631,7 +634,7 @@ export default function ImportPanel({ canUpload, canCommit, canResolve, organiza
                       </div>
                       <p className="text-sm text-amber-900">{dryRun.note}</p>
                       <p className="mt-2 text-sm text-amber-900">
-                        {dryRun.stovesThatWouldSell.length} stove(s) would move from available to sold.
+                        {plural(dryRun.stovesThatWouldSell.length, "stove")} would move from available to sold.
                       </p>
                       {dryRun.stovesThatWouldSell.length > 0 && (
                         <p className="mt-1 break-words font-mono text-xs text-amber-800">
