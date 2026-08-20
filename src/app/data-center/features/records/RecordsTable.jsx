@@ -50,11 +50,11 @@ function cellValue(row, key) {
 }
 
 const STATUS_TONE = {
-  completed: "bg-(--dc-primary)/10 text-(--dc-primary)",
+  completed: "bg-(--dc-primary)/10 text-(--dc-accent)",
   incomplete: "bg-amber-100 text-amber-800",
   pending: "bg-blue-100 text-blue-800",
   assigned: "bg-purple-100 text-purple-800",
-  fully_paid: "bg-(--dc-primary)/10 text-(--dc-primary)",
+  fully_paid: "bg-(--dc-primary)/10 text-(--dc-accent)",
   partially_paid: "bg-amber-100 text-amber-800",
   not_applicable: "bg-gray-100 text-gray-600",
 };
@@ -85,14 +85,14 @@ function FilterBar({ draft, setDraft, onClear, active }) {
           value={draft.search ?? ""}
           onChange={(e) => setDraft({ ...draft, search: e.target.value })}
           placeholder="Name, phone, stove serial or transaction ID"
-          className="w-full rounded-md border border-gray-300 py-1.5 pl-8 pr-3 text-sm focus:border-(--dc-primary) focus:outline-none"
+          className="w-full rounded-md border border-gray-300 py-1.5 pl-8 pr-3 text-sm focus:border-(--dc-accent) focus:outline-none"
         />
       </div>
 
       <select
         value={draft.saleStatus ?? ""}
         onChange={(e) => setDraft({ ...draft, saleStatus: e.target.value || undefined })}
-        className="rounded-md border border-gray-300 px-2 py-1.5 text-sm focus:border-(--dc-primary) focus:outline-none"
+        className="rounded-md border border-gray-300 px-2 py-1.5 text-sm focus:border-(--dc-accent) focus:outline-none"
       >
         <option value="">Any status</option>
         {SALE_STATUSES.map((s) => (
@@ -103,7 +103,7 @@ function FilterBar({ draft, setDraft, onClear, active }) {
       <select
         value={draft.paymentStatus ?? ""}
         onChange={(e) => setDraft({ ...draft, paymentStatus: e.target.value || undefined })}
-        className="rounded-md border border-gray-300 px-2 py-1.5 text-sm focus:border-(--dc-primary) focus:outline-none"
+        className="rounded-md border border-gray-300 px-2 py-1.5 text-sm focus:border-(--dc-accent) focus:outline-none"
       >
         <option value="">Any payment</option>
         {PAYMENT_STATUSES.map((s) => (
@@ -115,14 +115,14 @@ function FilterBar({ draft, setDraft, onClear, active }) {
         type="date"
         value={draft.dateFrom ?? ""}
         onChange={(e) => setDraft({ ...draft, dateFrom: e.target.value || undefined })}
-        className="rounded-md border border-gray-300 px-2 py-1.5 text-sm focus:border-(--dc-primary) focus:outline-none"
+        className="rounded-md border border-gray-300 px-2 py-1.5 text-sm focus:border-(--dc-accent) focus:outline-none"
         aria-label="Sold from"
       />
       <input
         type="date"
         value={draft.dateTo ?? ""}
         onChange={(e) => setDraft({ ...draft, dateTo: e.target.value || undefined })}
-        className="rounded-md border border-gray-300 px-2 py-1.5 text-sm focus:border-(--dc-primary) focus:outline-none"
+        className="rounded-md border border-gray-300 px-2 py-1.5 text-sm focus:border-(--dc-accent) focus:outline-none"
         aria-label="Sold to"
       />
 
@@ -183,9 +183,9 @@ export default function RecordsTable({ drill = null }) {
   const active = Object.values(draft).some((v) => v !== undefined && v !== "");
 
   return (
-    <div className="overflow-hidden rounded-xl border border-gray-200 bg-white">
-      <div className="flex items-center gap-2 border-b border-gray-100 px-4 py-3">
-        <Database className="h-4 w-4 text-(--dc-primary)" />
+    <div className="overflow-hidden rounded-xl border border-gray-200 border-t-[3px] border-t-(--dc-accent) bg-white shadow-sm">
+      <div className="flex items-center gap-2 border-b border-gray-100 bg-(--dc-accent-soft)/30 px-4 py-3">
+        <Database className="h-4 w-4 text-(--dc-accent)" />
         <span className="text-sm font-semibold text-gray-900">Sold Stove Records</span>
         <span className="text-sm text-gray-500">
           {loading
@@ -202,9 +202,9 @@ export default function RecordsTable({ drill = null }) {
       {/* Where this table came from, when it came from a number on the
           dashboard, with the one way back to everything. */}
       {drill && (
-        <div className="flex flex-wrap items-center gap-2 border-b border-(--dc-accent)/20 bg-(--dc-accent-soft)/60 px-4 py-2.5">
+        <div className="flex flex-wrap items-center gap-2 border-b border-l-4 border-(--dc-accent)/20 border-l-(--dc-accent) bg-(--dc-accent-soft)/50 px-4 py-2.5">
           <Filter className="h-3.5 w-3.5 shrink-0 text-(--dc-accent)" />
-          <p className="text-sm text-(--dc-accent)">
+          <p className="text-sm text-(--dc-accent-strong)">
             Narrowed from the dashboard to <span className="font-medium">{drill.description}</span>
           </p>
           <button
@@ -277,7 +277,7 @@ export default function RecordsTable({ drill = null }) {
                   {visible.map((row) => (
                     <div
                       key={row.sale_id}
-                      className="flex border-b border-gray-100 text-sm text-gray-700 hover:bg-(--dc-primary-soft)/40"
+                      className="flex border-b border-gray-100 text-sm text-gray-700 hover:bg-(--dc-accent-soft)/50"
                       style={{ height: ROW_HEIGHT }}
                     >
                       {COLUMNS.map((c) => (

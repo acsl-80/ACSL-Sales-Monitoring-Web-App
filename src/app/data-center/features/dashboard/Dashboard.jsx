@@ -65,7 +65,9 @@ function Card({ label, value: v, hint, tone, to, search, arrow }) {
   );
 
   if (!to) {
-    return <div className="rounded-xl border border-gray-200 bg-white p-4">{body}</div>;
+    return (
+      <div className="rounded-xl border border-gray-200 bg-white p-4 shadow-sm">{body}</div>
+    );
   }
 
   return (
@@ -73,7 +75,7 @@ function Card({ label, value: v, hint, tone, to, search, arrow }) {
       to={to}
       search={search ?? {}}
       aria-label={`${label}: ${typeof v === "number" ? NUMBER.format(v) : v}. ${arrow ?? "See the records"}`}
-      className="group relative block rounded-xl border border-gray-200 bg-white p-4 transition hover:border-(--dc-accent)/40 hover:shadow-sm focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-(--dc-accent)"
+      className="group relative block rounded-xl border border-gray-200 bg-white p-4 shadow-sm transition duration-200 hover:-translate-y-0.5 hover:border-(--dc-accent)/40 hover:shadow-md focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-(--dc-accent)"
     >
       {body}
       <ArrowUpRight
@@ -128,7 +130,7 @@ function Bars({ title, data, subtitle, emptyText, linkFor }) {
   );
 
   return (
-    <div className="rounded-xl border border-gray-200 bg-white p-4">
+    <div className="rounded-xl border border-gray-200 border-t-[3px] border-t-(--dc-accent) bg-white p-4 shadow-sm">
       <h3 className="text-sm font-semibold text-gray-900">{title}</h3>
       {subtitle && <p className="mt-0.5 text-xs text-gray-500">{subtitle}</p>}
       {data.length === 0 ? (
@@ -280,8 +282,8 @@ export default function Dashboard({ canRun }) {
 
   return (
     <div className="space-y-4">
-      <div className="flex flex-wrap items-center gap-2 rounded-xl border border-gray-200 bg-white px-4 py-3">
-        <BarChart3 className="h-4 w-4 text-(--dc-primary)" />
+      <div className="flex flex-wrap items-center gap-2 rounded-xl border border-gray-200 border-t-[3px] border-t-(--dc-accent) bg-(--dc-accent-soft)/30 px-4 py-3 shadow-sm">
+        <BarChart3 className="h-4 w-4 text-(--dc-accent)" />
         <span className="text-sm font-semibold text-gray-900">Dashboards</span>
         {data?.computedAt ? (
           <span className="inline-flex items-center gap-1 text-xs text-gray-500">
@@ -304,7 +306,7 @@ export default function Dashboard({ canRun }) {
             type="button"
             disabled={running}
             onClick={recompute}
-            className="ml-auto inline-flex items-center gap-1.5 rounded-md border border-gray-300 px-2.5 py-1.5 text-xs font-medium text-gray-700 hover:bg-gray-50 disabled:opacity-50"
+            className="ml-auto inline-flex items-center gap-1.5 rounded-md bg-(--dc-accent) px-3 py-1.5 text-xs font-medium text-white transition hover:bg-(--dc-accent-strong) disabled:opacity-50"
           >
             {running ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <RefreshCw className="h-3.5 w-3.5" />}
             {running ? "Computing..." : "Recompute"}
@@ -320,7 +322,7 @@ export default function Dashboard({ canRun }) {
       )}
 
       {!data?.computedAt ? (
-        <div className="rounded-xl border border-gray-200 bg-(--dc-surface-muted) p-6 text-sm text-gray-600">
+        <div className="rounded-xl border-2 border-dashed border-(--dc-accent)/30 bg-(--dc-accent-soft)/20 p-8 text-center text-sm text-gray-600">
           Nothing has been computed yet.
           {canRun ? " Use Recompute above to build the first set of figures." : ""}
         </div>
@@ -336,7 +338,7 @@ export default function Dashboard({ canRun }) {
             <Card
               label="Complete"
               value={complete}
-              tone="text-(--dc-primary)"
+              tone="text-(--dc-accent)"
               hint={total ? `${Math.round((complete / total) * 100)}% by this module's rule` : undefined}
               // The table can only filter on the sales app's own status, which
               // is the very thing this module disagrees with, so the link lands
@@ -348,7 +350,7 @@ export default function Dashboard({ canRun }) {
             <Card
               label="Fully verified"
               value={verified}
-              tone="text-(--dc-primary)"
+              tone="text-(--dc-accent)"
               hint={total ? `${Math.round((verified / total) * 100)}% of sales` : undefined}
               to="/data-center/call-centre"
               search={{ status: "verified", label: "Fully verified" }}
@@ -367,7 +369,7 @@ export default function Dashboard({ canRun }) {
               a number: the sales app calls these sales incomplete and this
               module's rule calls them complete. */}
           {disagreement > 0 && (
-            <div className="flex items-start gap-3 rounded-xl border border-amber-200 bg-amber-50 p-4">
+            <div className="flex items-start gap-3 rounded-xl border border-amber-200 border-l-4 border-l-amber-500 bg-amber-50 p-4">
               <TriangleAlert className="mt-0.5 h-5 w-5 shrink-0 text-amber-600" />
               <div>
                 <p className="text-sm font-medium text-amber-900">

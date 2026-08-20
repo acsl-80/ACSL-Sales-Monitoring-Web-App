@@ -13,7 +13,7 @@
  */
 
 const INPUT_CLASS =
-  "w-full rounded-md border border-gray-300 px-3 py-1.5 text-sm focus:border-(--dc-primary) focus:outline-none disabled:bg-gray-50 disabled:text-gray-500";
+  "w-full rounded-md border border-gray-300 px-3 py-1.5 text-sm focus:border-(--dc-accent) focus:outline-none disabled:bg-gray-50 disabled:text-gray-500";
 
 /**
  * Should this question be shown, given the rest of the record?
@@ -127,7 +127,7 @@ export default function FieldRenderer({ field, value, options, disabled, onChang
                 }}
                 className={`rounded-full border px-2.5 py-1 text-xs font-medium transition ${
                   chosen
-                    ? "border-(--dc-primary) bg-(--dc-primary)/10 text-(--dc-primary)"
+                    ? "border-(--dc-primary) bg-(--dc-primary)/10 text-(--dc-accent)"
                     : "border-gray-300 text-gray-600 hover:bg-gray-50"
                 } disabled:opacity-50`}
               >

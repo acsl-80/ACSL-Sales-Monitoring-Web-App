@@ -52,7 +52,7 @@ export default function ManualEntry({ onSubmit, onCancel, busy, partnerName }) {
   return (
     <form onSubmit={submit} className="border-b border-gray-100 bg-(--dc-surface-muted) px-4 py-3">
       <div className="mb-3 flex flex-wrap items-center gap-2">
-        <PenLine className="h-4 w-4 text-(--dc-primary)" />
+        <PenLine className="h-4 w-4 text-(--dc-accent)" />
         <span className="text-sm font-semibold text-gray-900">Type one record</span>
         {partnerName && <span className="text-sm text-gray-500">for {partnerName}</span>}
         <button
@@ -90,7 +90,7 @@ export default function ManualEntry({ onSubmit, onCancel, busy, partnerName }) {
               value={values[f.key] ?? ""}
               placeholder={f.placeholder}
               onChange={(e) => set(f.key, e.target.value)}
-              className="w-full rounded-md border border-gray-300 px-2 py-1.5 text-sm focus:border-(--dc-primary) focus:outline-none"
+              className="w-full rounded-md border border-gray-300 px-2 py-1.5 text-sm focus:border-(--dc-accent) focus:outline-none"
             />
           </div>
         ))}
@@ -100,7 +100,7 @@ export default function ManualEntry({ onSubmit, onCancel, busy, partnerName }) {
         <button
           type="submit"
           disabled={busy}
-          className="inline-flex items-center gap-1.5 rounded-md bg-(--dc-primary) px-3 py-1.5 text-sm font-medium text-white hover:bg-(--dc-primary-strong) disabled:opacity-50"
+          className="inline-flex items-center gap-1.5 rounded-md bg-(--dc-accent) px-3 py-1.5 text-sm font-medium text-white hover:bg-(--dc-accent-strong) disabled:opacity-50"
         >
           {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : <PenLine className="h-4 w-4" />}
           Stage this record

@@ -79,7 +79,7 @@ function Shell({ title, description, breadcrumb, feature, children }) {
   // surface whose every request would come back 403.
   if (feature && !can(feature)) {
     return (
-      <div className="mx-auto mt-16 max-w-md rounded-xl border border-gray-200 bg-white p-8 text-center">
+      <div className="mx-auto mt-16 max-w-md rounded-xl border border-gray-200 border-t-[3px] border-t-(--dc-accent) bg-white p-8 text-center shadow-sm">
         <ShieldOff className="mx-auto h-10 w-10 text-gray-400" />
         <h1 className="mt-4 text-lg font-semibold text-gray-900">
           Not part of your access
@@ -89,7 +89,7 @@ function Shell({ title, description, breadcrumb, feature, children }) {
         </p>
         <Link
           href="/data-center"
-          className="mt-4 inline-flex items-center gap-1.5 text-sm font-medium text-(--dc-accent) hover:underline"
+          className="mt-5 inline-flex items-center gap-1.5 rounded-md bg-(--dc-accent) px-3 py-1.5 text-sm font-medium text-white transition hover:bg-(--dc-accent-strong)"
         >
           <ArrowLeft className="h-4 w-4" /> Back to Explore
         </Link>
@@ -98,12 +98,12 @@ function Shell({ title, description, breadcrumb, feature, children }) {
   }
 
   return (
-    <div className="px-6 pb-8 pt-2">
+    <div className="px-4 pb-10 pt-2 sm:px-6">
       {breadcrumb && (
         <div className="mb-4 flex items-center gap-3">
           <Link
             href="/data-center"
-            className="inline-flex items-center gap-1.5 rounded-md border border-gray-200 px-2.5 py-1.5 text-sm text-gray-600 hover:bg-gray-50 hover:text-gray-900"
+            className="inline-flex items-center gap-1.5 rounded-md border border-(--dc-accent)/25 px-2.5 py-1.5 text-sm font-medium text-(--dc-accent) transition hover:bg-(--dc-accent-soft)/60"
           >
             <ArrowLeft className="h-4 w-4" /> Explore
           </Link>
@@ -123,13 +123,15 @@ function Shell({ title, description, breadcrumb, feature, children }) {
         </div>
       )}
 
-      <div className="mb-6 flex flex-wrap items-center gap-3">
+      <div className="mb-6 flex flex-wrap items-center gap-3 border-b-2 border-(--dc-accent)/20 pb-4">
         <div className="min-w-0 flex-1">
-          <h1 className="text-xl font-semibold leading-tight text-gray-900">{title}</h1>
-          {description && <p className="mt-0.5 text-sm text-gray-600">{description}</p>}
+          <h1 className="text-xl font-semibold leading-tight text-gray-900 sm:text-2xl">
+            {title}
+          </h1>
+          {description && <p className="mt-1 text-sm text-gray-600">{description}</p>}
         </div>
         {accessRole && (
-          <span className="inline-flex items-center gap-1.5 rounded-full bg-gray-100 px-3 py-1 text-xs font-medium text-gray-700">
+          <span className="inline-flex items-center gap-1.5 rounded-full bg-(--dc-accent-soft) px-3 py-1 text-xs font-medium text-(--dc-accent-strong)">
             {accessRole === "editor" ? <Pencil className="h-3 w-3" /> : <Eye className="h-3 w-3" />}
             {accessRole === "editor" ? "Editor" : "Viewer"}
           </span>

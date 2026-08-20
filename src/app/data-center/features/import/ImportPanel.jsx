@@ -36,16 +36,18 @@ const STATE_TONE = {
   staged: "bg-gray-100 text-gray-700",
   validated: "bg-blue-100 text-blue-800",
   dry_run: "bg-amber-100 text-amber-800",
-  committed: "bg-(--dc-primary)/10 text-(--dc-primary)",
+  committed: "bg-(--dc-primary)/10 text-(--dc-accent)",
   rolled_back: "bg-purple-100 text-purple-800",
   failed: "bg-red-100 text-red-700",
 };
 
 function Stat({ label, value, tone }) {
   return (
-    <div className="rounded-lg border border-gray-200 px-3 py-2">
-      <p className="text-xs text-gray-500">{label}</p>
-      <p className={`text-lg font-semibold ${tone ?? "text-gray-900"}`}>{value}</p>
+    <div className="rounded-lg border border-(--dc-accent)/20 bg-(--dc-accent-soft)/30 px-3 py-2.5">
+      <p className="text-xs font-medium uppercase tracking-wide text-gray-500">{label}</p>
+      <p className={`mt-0.5 text-lg font-semibold tabular-nums ${tone ?? "text-gray-900"}`}>
+        {value}
+      </p>
     </div>
   );
 }
@@ -115,7 +117,7 @@ function ExceptionsQueue({ batchId, canResolve, onChanged }) {
                 value={drafts[r.id] ?? r.stove_serial_no ?? ""}
                 onChange={(e) => setDrafts((d) => ({ ...d, [r.id]: e.target.value }))}
                 placeholder="Correct serial"
-                className="w-36 rounded-md border border-gray-300 px-2 py-1 text-sm focus:border-(--dc-primary) focus:outline-none"
+                className="w-36 rounded-md border border-gray-300 px-2 py-1 text-sm focus:border-(--dc-accent) focus:outline-none"
               />
               <button
                 type="button"
@@ -383,7 +385,7 @@ export default function ImportPanel({ canUpload, canCommit, canResolve, organiza
   };
 
   return (
-    <div className="overflow-hidden rounded-xl border border-gray-200 bg-white">
+    <div className="overflow-hidden rounded-xl border border-gray-200 border-t-[3px] border-t-(--dc-accent) bg-white shadow-sm">
       <AlertDialog open={!!pending} onOpenChange={(next) => { if (!next) setPending(null); }}>
         <AlertDialogContent className="dc-root" data-area="import">
           <AlertDialogHeader>
@@ -406,14 +408,14 @@ export default function ImportPanel({ canUpload, canCommit, canResolve, organiza
         </AlertDialogContent>
       </AlertDialog>
 
-      <div className="flex items-center gap-2 border-b border-gray-100 px-4 py-3">
-        <Upload className="h-4 w-4 text-(--dc-primary)" />
+      <div className="flex items-center gap-2 border-b border-gray-100 bg-(--dc-accent-soft)/30 px-4 py-3">
+        <Upload className="h-4 w-4 text-(--dc-accent)" />
         <span className="text-sm font-semibold text-gray-900">Bulk Import</span>
         <span className="text-sm text-gray-500">Digitalized paper receipts</span>
       </div>
 
       {canUpload && (
-        <div className="flex flex-wrap items-end gap-2 border-b border-gray-100 px-4 py-3">
+        <div className="flex flex-wrap items-end gap-2 border-b border-gray-100 bg-(--dc-accent-soft)/30 px-4 py-3">
           <div>
             <label htmlFor="dc-import-org" className="mb-1 block text-xs font-medium text-gray-700">
               Partner
@@ -422,7 +424,7 @@ export default function ImportPanel({ canUpload, canCommit, canResolve, organiza
               id="dc-import-org"
               value={orgId}
               onChange={(e) => setOrgId(e.target.value)}
-              className="min-w-[200px] rounded-md border border-gray-300 px-2 py-1.5 text-sm focus:border-(--dc-primary) focus:outline-none"
+              className="min-w-[200px] rounded-md border border-gray-300 px-2 py-1.5 text-sm focus:border-(--dc-accent) focus:outline-none"
             >
               <option value="">Choose a partner...</option>
               {orgOptions.map((o) => (
@@ -444,7 +446,7 @@ export default function ImportPanel({ canUpload, canCommit, canResolve, organiza
               setManual(false);
               fileInput.current?.click();
             }}
-            className="inline-flex items-center gap-1.5 rounded-md bg-(--dc-primary) px-3 py-1.5 text-sm font-medium text-white hover:bg-(--dc-primary-strong) disabled:opacity-50"
+            className="inline-flex items-center gap-1.5 rounded-md bg-(--dc-accent) px-3 py-1.5 text-sm font-medium text-white hover:bg-(--dc-accent-strong) disabled:opacity-50"
           >
             {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : <FileText className="h-4 w-4" />}
             Choose a CSV
@@ -489,7 +491,7 @@ export default function ImportPanel({ canUpload, canCommit, canResolve, organiza
       )}
 
       {canUpload && duplicate && (
-        <div className="flex flex-wrap items-start gap-2 border-b border-amber-200 bg-amber-50 px-4 py-3">
+        <div className="flex flex-wrap items-start gap-2 border-b border-l-4 border-amber-200 border-l-amber-500 bg-amber-50 px-4 py-3">
           <Copy className="mt-0.5 h-4 w-4 shrink-0 text-amber-600" />
           <p className="min-w-[240px] flex-1 text-sm text-amber-900">{duplicate.message}</p>
           <button
@@ -516,15 +518,15 @@ export default function ImportPanel({ canUpload, canCommit, canResolve, organiza
       )}
 
       {error && (
-        <div className="flex items-start gap-2 border-b border-amber-200 bg-amber-50 px-4 py-3">
+        <div className="flex items-start gap-2 border-b border-l-4 border-amber-200 border-l-amber-500 bg-amber-50 px-4 py-3">
           <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-amber-600" />
           <p className="text-sm text-amber-900">{error}</p>
         </div>
       )}
       {notice && (
         <div className="flex items-start gap-2 border-b border-(--dc-primary)/20 bg-(--dc-primary-soft)/50 px-4 py-3">
-          <CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0 text-(--dc-primary)" />
-          <p className="text-sm text-(--dc-primary)">{notice}</p>
+          <CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0 text-(--dc-accent)" />
+          <p className="text-sm text-(--dc-accent)">{notice}</p>
         </div>
       )}
       {progress && busy && (
@@ -539,13 +541,17 @@ export default function ImportPanel({ canUpload, canCommit, canResolve, organiza
           <Loader2 className="h-4 w-4 animate-spin" /> Loading batches...
         </p>
       ) : batches.length === 0 ? (
-        <p className="p-6 text-sm text-gray-500">No imports yet.</p>
+        <p className="m-4 rounded-lg border border-dashed border-(--dc-accent)/30 p-6 text-center text-sm text-gray-500">
+          No imports yet. Choose a CSV or type one record to begin.
+        </p>
       ) : (
         <ul className="divide-y divide-gray-100">
           {batches.map((b) => (
             <li key={b.id} className="px-4 py-3">
               <div className="flex flex-wrap items-center gap-2">
-                <span className={`rounded-full px-2 py-0.5 text-xs font-medium ${STATE_TONE[b.state]}`}>
+                <span
+                  className={`rounded-full border px-2.5 py-0.5 text-xs font-medium ${STATE_TONE[b.state]}`}
+                >
                   {b.state.replace(/_/g, " ")}
                 </span>
                 <span className="text-sm font-medium text-gray-900">{b.filename ?? "(no filename)"}</span>
@@ -566,7 +572,7 @@ export default function ImportPanel({ canUpload, canCommit, canResolve, organiza
                 <div className="mt-3 space-y-3">
                   <div className="grid grid-cols-2 gap-2 sm:grid-cols-5">
                     <Stat label="Rows" value={b.total_rows} />
-                    <Stat label="Ready" value={b.valid_rows} tone="text-(--dc-primary)" />
+                    <Stat label="Ready" value={b.valid_rows} tone="text-(--dc-accent)" />
                     <Stat label="Exceptions" value={b.exception_rows} tone="text-amber-700" />
                     <Stat label="Unreadable" value={Math.max(0, b.rejected_rows - b.exception_rows)} tone="text-red-600" />
                     <Stat label="Committed" value={b.committed_rows} />
@@ -592,7 +598,7 @@ export default function ImportPanel({ canUpload, canCommit, canResolve, organiza
                         type="button"
                         disabled={busy}
                         onClick={() => setPending({ kind: "commit", batchId: b.id, count: b.valid_rows })}
-                        className="inline-flex items-center gap-1 rounded-md bg-(--dc-primary) px-2.5 py-1.5 text-xs font-medium text-white hover:bg-(--dc-primary-strong) disabled:opacity-50"
+                        className="inline-flex items-center gap-1 rounded-md bg-(--dc-accent) px-2.5 py-1.5 text-xs font-medium text-white hover:bg-(--dc-accent-strong) disabled:opacity-50"
                       >
                         <Play className="h-3.5 w-3.5" /> Commit {b.valid_rows}
                       </button>
@@ -610,7 +616,7 @@ export default function ImportPanel({ canUpload, canCommit, canResolve, organiza
                   </div>
 
                   {dryRun && (
-                    <div className="rounded-lg border border-amber-200 bg-amber-50 p-3">
+                    <div className="rounded-lg border border-l-4 border-amber-200 border-l-amber-500 bg-amber-50 p-3">
                       <div className="mb-1 flex items-center gap-2">
                         <Eye className="h-4 w-4 text-amber-700" />
                         <h3 className="text-sm font-semibold text-amber-900">What a commit would do</h3>

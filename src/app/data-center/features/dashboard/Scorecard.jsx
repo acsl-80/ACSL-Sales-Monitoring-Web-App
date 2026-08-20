@@ -24,7 +24,7 @@ const NUMBER = new Intl.NumberFormat("en-NG");
  * showing 12 rows is by construction, not coincidence.
  */
 const STATUS_COLUMNS = [
-  { metric: "verified", label: "Verified", tone: "text-(--dc-primary)" },
+  { metric: "verified", label: "Verified", tone: "text-(--dc-accent)" },
   { metric: "unverified", label: "Unverified", tone: "text-amber-700" },
   { metric: "unreachable", label: "Unreachable", tone: "text-orange-700" },
   { metric: "unresolved", label: "Yet to be resolved", tone: "text-gray-600" },
@@ -78,30 +78,35 @@ export default function Scorecard({ title, by, metrics, hint }) {
   });
 
   return (
-    <div className="overflow-hidden rounded-xl border border-gray-200 bg-white">
-      <div className="flex flex-wrap items-center gap-2 border-b border-gray-100 px-4 py-3">
+    <div className="overflow-hidden rounded-xl border border-gray-200 border-t-[3px] border-t-(--dc-accent) bg-white shadow-sm">
+      <div className="flex flex-wrap items-center gap-2 border-b border-gray-100 bg-(--dc-accent-soft)/30 px-4 py-3">
         <h3 className="text-sm font-semibold text-gray-900">{title}</h3>
         {hint && <span className="text-xs text-gray-500">{hint}</span>}
         <button
           type="button"
           onClick={exportCsv}
           disabled={rows.length === 0}
-          className="ml-auto inline-flex items-center gap-1.5 rounded-md border border-gray-300 px-2.5 py-1.5 text-xs font-medium text-gray-700 hover:bg-gray-50 disabled:opacity-50"
+          className="ml-auto inline-flex items-center gap-1.5 rounded-md border border-(--dc-accent)/30 px-2.5 py-1.5 text-xs font-medium text-(--dc-accent) transition hover:bg-(--dc-accent-soft)/60 disabled:opacity-50"
         >
           <Download className="h-3.5 w-3.5" /> Export CSV
         </button>
       </div>
 
       {rows.length === 0 ? (
-        <p className="p-4 text-sm text-gray-500">
+        <p className="m-4 rounded-lg border border-dashed border-(--dc-accent)/30 p-4 text-sm text-gray-500">
           Nothing to score yet. Numbers appear after the next computation run.
         </p>
       ) : (
         <div className="overflow-x-auto">
           <table className="w-full min-w-[860px] text-sm">
             <thead>
-              <tr className="border-b border-gray-200 bg-(--dc-surface-muted) text-xs font-semibold uppercase tracking-wide text-gray-500">
-                <th scope="col" className="px-3 py-2 text-left">{title}</th>
+              <tr className="border-b-2 border-(--dc-accent)/20 bg-(--dc-accent-soft) text-xs font-semibold uppercase tracking-wide text-(--dc-accent-strong)">
+                <th
+                  scope="col"
+                  className="sticky left-0 z-10 bg-(--dc-accent-soft) px-3 py-2 text-left"
+                >
+                  {title}
+                </th>
                 {[...VOLUME_COLUMNS, ...STATUS_COLUMNS].map((c) => (
                   <th key={c.metric} scope="col" className="px-3 py-2 text-right">
                     {c.label}
@@ -111,8 +116,8 @@ export default function Scorecard({ title, by, metrics, hint }) {
             </thead>
             <tbody>
               {rows.map((row) => (
-                <tr key={row.key} className="border-b border-gray-100 hover:bg-(--dc-primary-soft)/40">
-                  <td className="max-w-[220px] truncate px-3 py-2 font-medium text-gray-900">
+                <tr key={row.key} className="group border-b border-gray-100">
+                  <td className="sticky left-0 z-10 max-w-[220px] truncate bg-white px-3 py-2 font-medium text-gray-900 group-hover:bg-(--dc-accent-soft)">
                     <Link
                       to="/data-center/call-centre"
                       search={drillSearch(row, null)}
@@ -122,16 +127,22 @@ export default function Scorecard({ title, by, metrics, hint }) {
                     </Link>
                   </td>
                   {VOLUME_COLUMNS.map((c) => (
-                    <td key={c.metric} className="px-3 py-2 text-right tabular-nums text-gray-700">
+                    <td
+                      key={c.metric}
+                      className="px-3 py-2 text-right tabular-nums text-gray-700 transition group-hover:bg-(--dc-accent-soft)/40"
+                    >
                       {NUMBER.format(row[c.metric] ?? 0)}
                     </td>
                   ))}
                   {STATUS_COLUMNS.map((c) => (
-                    <td key={c.metric} className="px-3 py-2 text-right tabular-nums">
+                    <td
+                      key={c.metric}
+                      className="px-3 py-2 text-right tabular-nums transition group-hover:bg-(--dc-accent-soft)/40"
+                    >
                       <Link
                         to="/data-center/call-centre"
                         search={drillSearch(row, c.metric)}
-                        className={`font-medium underline-offset-2 hover:underline ${c.tone}`}
+                        className={`rounded px-1.5 py-0.5 font-medium underline-offset-2 transition hover:bg-white hover:underline focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-(--dc-accent) ${c.tone}`}
                         aria-label={`${row.label}: ${NUMBER.format(row[c.metric] ?? 0)} ${c.label.toLowerCase()}`}
                       >
                         {NUMBER.format(row[c.metric] ?? 0)}

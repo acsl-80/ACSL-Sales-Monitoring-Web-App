@@ -40,19 +40,19 @@ const ROLE_META = {
   viewer: {
     label: "Viewer", icon: Eye,
     blurb: "Can see records and dashboards.",
-    tone: "bg-(--dc-primary)/10 text-(--dc-primary)",
+    tone: "bg-(--dc-primary)/10 text-(--dc-accent)",
     button: "border-(--dc-primary)/30 text-(--dc-primary) hover:bg-(--dc-primary)/10",
   },
   call_agent: {
     label: "Call agent", icon: PhoneCall,
     blurb: "Can also work call records. No import, no stock.",
-    tone: "bg-blue-100 text-blue-800",
+    tone: "border-blue-300 bg-blue-50 text-blue-800",
     button: "border-blue-400/50 text-blue-700 hover:bg-blue-50",
   },
   editor: {
     label: "Editor", icon: Pencil,
     blurb: "Can also record and change data, and import. Changes are tracked.",
-    tone: "bg-amber-100 text-amber-800",
+    tone: "border-amber-300 bg-amber-50 text-amber-800",
     button: "border-amber-400/50 text-amber-700 hover:bg-amber-50",
   },
 };
@@ -65,7 +65,7 @@ function RoleChip({ role }) {
   const Icon = meta.icon;
   return (
     <span
-      className={`inline-flex items-center gap-1 rounded-full px-2.5 py-0.5 text-xs font-medium ${meta.tone}`}
+      className={`inline-flex items-center gap-1 rounded-full border px-2.5 py-0.5 text-xs font-medium ${meta.tone}`}
     >
       <Icon className="h-3 w-3" />
       {meta.label}
@@ -158,7 +158,7 @@ export default function AccessManager() {
 
   if (loading) {
     return (
-      <div className="flex items-center gap-2 rounded-xl border border-gray-100 bg-(--dc-surface-muted) p-5 text-sm text-gray-500">
+      <div className="flex items-center gap-2 rounded-xl border border-gray-200 border-t-[3px] border-t-(--dc-accent) bg-white p-5 shadow-sm text-sm text-gray-500">
         <Loader2 className="h-4 w-4 animate-spin" /> Loading access...
       </div>
     );
@@ -166,9 +166,9 @@ export default function AccessManager() {
 
   return (
     <div className="space-y-4">
-      <div className="rounded-xl border border-gray-100 bg-(--dc-surface-muted) p-5">
+      <div className="rounded-xl border border-gray-200 border-t-[3px] border-t-(--dc-accent) bg-white p-5 shadow-sm">
         <div className="mb-1 flex items-center gap-2">
-          <ShieldCheck className="h-4 w-4 text-(--dc-primary)" />
+          <ShieldCheck className="h-4 w-4 text-(--dc-accent)" />
           <h2 className="text-sm font-semibold text-gray-900">Access</h2>
         </div>
         <p className="mb-3 text-sm text-gray-600">
@@ -179,7 +179,7 @@ export default function AccessManager() {
         {/* What each level means. Two levels explained themselves; three do
             not, and someone granting access should not have to guess what a
             call agent can reach. */}
-        <ul className="mb-4 flex flex-wrap gap-x-5 gap-y-1.5">
+        <ul className="mb-4 flex flex-wrap gap-x-5 gap-y-1.5 rounded-lg border border-(--dc-accent)/15 bg-(--dc-accent-soft)/30 px-3 py-2.5">
           {ROLES.map((role) => {
             const meta = ROLE_META[role];
             const Icon = meta.icon;
@@ -283,7 +283,7 @@ export default function AccessManager() {
                   value={e.access_role}
                   disabled={busy}
                   onChange={(event) => grant(e.user_id, event.target.value)}
-                  className="rounded-md border border-gray-300 px-2 py-1 text-xs text-gray-700 focus:border-(--dc-primary) focus:outline-none disabled:opacity-50"
+                  className="rounded-md border border-gray-300 px-2 py-1 text-xs text-gray-700 focus:border-(--dc-accent) focus:outline-none disabled:opacity-50"
                 >
                   {ROLES.map((role) => (
                     <option key={role} value={role}>{ROLE_META[role].label}</option>
@@ -306,9 +306,9 @@ export default function AccessManager() {
 
       {/* Tracked changes. Written by a database trigger, so nothing an editor
           does can skip it. */}
-      <div className="rounded-xl border border-gray-100 bg-(--dc-surface-muted) p-5">
+      <div className="rounded-xl border border-gray-200 border-t-[3px] border-t-(--dc-accent) bg-white p-5 shadow-sm">
         <div className="mb-1 flex items-center gap-2">
-          <History className="h-4 w-4 text-(--dc-primary)" />
+          <History className="h-4 w-4 text-(--dc-accent)" />
           <h2 className="text-sm font-semibold text-gray-900">Recent changes</h2>
         </div>
         <p className="mb-3 text-sm text-gray-600">
@@ -325,7 +325,7 @@ export default function AccessManager() {
                     c.action === "DELETE"
                       ? "text-red-600"
                       : c.action === "INSERT"
-                        ? "text-(--dc-primary)"
+                        ? "text-(--dc-accent)"
                         : "text-amber-700"
                   }`}
                 >

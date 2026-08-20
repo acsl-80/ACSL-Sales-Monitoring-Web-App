@@ -29,7 +29,7 @@ const COLUMNS = [
 ];
 
 const OUTCOME_TONE = {
-  fully_verified: "bg-(--dc-primary)/10 text-(--dc-primary)",
+  fully_verified: "bg-(--dc-primary)/10 text-(--dc-accent)",
   partially_verified: "bg-amber-100 text-amber-800",
   doubtful_verification: "bg-orange-100 text-orange-800",
   not_verified: "bg-gray-100 text-gray-600",
@@ -132,9 +132,9 @@ export default function CallQueue({ canEdit, drill = null }) {
   const visible = useMemo(() => rows.slice(win.start, win.end), [rows, win.start, win.end]);
 
   return (
-    <div className="overflow-hidden rounded-xl border border-gray-200 bg-white">
-      <div className="flex items-center gap-2 border-b border-gray-100 px-4 py-3">
-        <PhoneCall className="h-4 w-4 text-(--dc-primary)" />
+    <div className="overflow-hidden rounded-xl border border-gray-200 border-t-[3px] border-t-(--dc-accent) bg-white shadow-sm">
+      <div className="flex items-center gap-2 border-b border-gray-100 bg-(--dc-accent-soft)/30 px-4 py-3">
+        <PhoneCall className="h-4 w-4 text-(--dc-accent)" />
         <span className="text-sm font-semibold text-gray-900">Call Centre</span>
         <span className="text-sm text-gray-500">
           {loading ? "loading..." : `${rows.length.toLocaleString()} loaded${hasMore ? ", more available" : ""}`}
@@ -150,14 +150,14 @@ export default function CallQueue({ canEdit, drill = null }) {
           narrowed the queue, with the one way out: back to the whole queue. */}
       {drill && (
         <div className="flex flex-wrap items-center gap-2 border-b border-(--dc-primary)/20 bg-(--dc-primary-soft)/50 px-4 py-2.5">
-          <Filter className="h-3.5 w-3.5 shrink-0 text-(--dc-primary)" />
-          <p className="text-sm text-(--dc-primary)">
+          <Filter className="h-3.5 w-3.5 shrink-0 text-(--dc-accent)" />
+          <p className="text-sm text-(--dc-accent)">
             Narrowed from the dashboard to <span className="font-medium">{drill.description}</span>
           </p>
           <button
             type="button"
             onClick={drill.clear}
-            className="ml-auto inline-flex items-center gap-1 rounded-md px-2 py-1 text-xs font-medium text-(--dc-primary) hover:bg-(--dc-primary)/10"
+            className="ml-auto inline-flex items-center gap-1 rounded-md px-2 py-1 text-xs font-medium text-(--dc-accent-strong) transition hover:bg-(--dc-accent)/10"
           >
             <X className="h-3.5 w-3.5" /> Show everything
           </button>
@@ -171,10 +171,11 @@ export default function CallQueue({ canEdit, drill = null }) {
               key={p.key}
               type="button"
               onClick={() => setPreset(p.key)}
-              className={`rounded-full px-3 py-1 text-xs font-medium transition ${
+              aria-pressed={preset === p.key}
+              className={`rounded-full border px-3 py-1.5 text-xs font-medium transition ${
                 preset === p.key
-                  ? "bg-(--dc-primary) text-white"
-                  : "bg-gray-100 text-gray-600 hover:bg-gray-200"
+                  ? "border-(--dc-accent) bg-(--dc-accent) text-white shadow-sm"
+                  : "border-gray-200 bg-white text-gray-600 hover:border-(--dc-accent)/40 hover:bg-(--dc-accent-soft)/50 hover:text-(--dc-accent-strong)"
               }`}
             >
               {p.label}
@@ -189,7 +190,7 @@ export default function CallQueue({ canEdit, drill = null }) {
             value={search}
             onChange={(e) => setSearch(e.target.value)}
             placeholder="Name, phone or serial"
-            className="w-full rounded-md border border-gray-300 py-1.5 pl-8 pr-3 text-sm focus:border-(--dc-primary) focus:outline-none"
+            className="w-full rounded-md border border-gray-300 py-1.5 pl-8 pr-3 text-sm focus:border-(--dc-accent) focus:outline-none"
           />
         </div>
         {search && (
@@ -248,7 +249,7 @@ export default function CallQueue({ canEdit, drill = null }) {
                       type="button"
                       onClick={() => setOpenSale(row.sale_id)}
                       aria-label={`Open call record for ${row.end_user_name ?? row.stove_serial_no ?? row.sale_id}`}
-                      className="flex w-full border-b border-gray-100 text-left text-sm text-gray-700 hover:bg-(--dc-primary-soft)/40"
+                      className="flex w-full border-b border-gray-100 text-left text-sm text-gray-700 hover:bg-(--dc-accent-soft)/50"
                       style={{ height: ROW_HEIGHT }}
                     >
                       {COLUMNS.map((c) => (

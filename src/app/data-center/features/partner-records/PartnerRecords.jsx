@@ -49,7 +49,10 @@ function FunnelBar({ row }) {
     ) : null;
 
   return (
-    <span className="flex h-3 w-full overflow-hidden rounded bg-gray-100" aria-hidden="true">
+    <span
+      className="flex h-4 w-full overflow-hidden rounded-full border border-gray-200 bg-gray-100"
+      aria-hidden="true"
+    >
       {seg(row.verified_count, "bg-(--dc-primary)", "Verified")}
       {seg(row.unverified_count, "bg-amber-500", "Unverified")}
       {seg(row.unreachable_count, "bg-orange-500", "Unreachable")}
@@ -135,9 +138,9 @@ export default function PartnerRecords() {
   };
 
   return (
-    <div className="overflow-hidden rounded-xl border border-gray-200 bg-white">
-      <div className="flex flex-wrap items-center gap-2 border-b border-gray-100 px-4 py-3">
-        <Handshake className="h-4 w-4 text-(--dc-primary)" />
+    <div className="overflow-hidden rounded-xl border border-gray-200 border-t-[3px] border-t-(--dc-accent) bg-white shadow-sm">
+      <div className="flex flex-wrap items-center gap-2 border-b border-gray-100 bg-(--dc-accent-soft)/30 px-4 py-3">
+        <Handshake className="h-4 w-4 text-(--dc-accent)" />
         <span className="text-sm font-semibold text-gray-900">Partner Records</span>
         <span className="text-sm text-gray-500">
           {loading ? "loading..." : `${NUMBER.format(rows.length)} transfer(s)`}
@@ -157,7 +160,7 @@ export default function PartnerRecords() {
           type="button"
           onClick={exportCsv}
           disabled={rows.length === 0}
-          className="ml-auto inline-flex items-center gap-1.5 rounded-md border border-gray-300 px-2.5 py-1.5 text-xs font-medium text-gray-700 hover:bg-gray-50 disabled:opacity-50"
+          className="ml-auto inline-flex items-center gap-1.5 rounded-md border border-(--dc-accent)/30 px-2.5 py-1.5 text-xs font-medium text-(--dc-accent) transition hover:bg-(--dc-accent-soft)/60 disabled:opacity-50"
         >
           <Download className="h-3.5 w-3.5" /> Export CSV
         </button>
@@ -168,17 +171,22 @@ export default function PartnerRecords() {
           ["Issued", totals.issued, "text-gray-900"],
           ["Received", totals.received, "text-gray-900"],
           ["Digitalised", totals.digitalised, "text-gray-900"],
-          ["Verified", totals.verified, "text-(--dc-primary)"],
+          ["Verified", totals.verified, "text-(--dc-accent)"],
           ["Outstanding", totals.outstanding, totals.outstanding > 0 ? "text-amber-700" : "text-gray-900"],
         ].map(([label, v, tone]) => (
-          <div key={label} className="rounded-lg border border-gray-200 px-3 py-2">
-            <p className="text-xs text-gray-500">{label}</p>
-            <p className={`text-lg font-semibold ${tone}`}>{NUMBER.format(v)}</p>
+          <div
+            key={label}
+            className="rounded-lg border border-(--dc-accent)/20 bg-(--dc-accent-soft)/30 px-3 py-2.5"
+          >
+            <p className="text-xs font-medium uppercase tracking-wide text-gray-500">{label}</p>
+            <p className={`mt-0.5 text-lg font-semibold tabular-nums ${tone}`}>
+              {NUMBER.format(v)}
+            </p>
           </div>
         ))}
       </div>
 
-      <div className="flex flex-wrap items-center gap-2 border-b border-gray-100 px-4 py-3">
+      <div className="flex flex-wrap items-center gap-2 border-b border-gray-100 bg-(--dc-accent-soft)/30 px-4 py-3">
         <div className="relative min-w-[240px] flex-1">
           <Search className="pointer-events-none absolute left-2.5 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-400" />
           <input
@@ -186,7 +194,7 @@ export default function PartnerRecords() {
             value={search}
             onChange={(e) => setSearch(e.target.value)}
             placeholder="Partner, reference or sales rep"
-            className="w-full rounded-md border border-gray-300 py-1.5 pl-8 pr-3 text-sm focus:border-(--dc-primary) focus:outline-none"
+            className="w-full rounded-md border border-gray-300 py-1.5 pl-8 pr-3 text-sm focus:border-(--dc-accent) focus:outline-none"
           />
         </div>
         <label className="inline-flex items-center gap-2 text-sm text-gray-700">
@@ -229,12 +237,14 @@ export default function PartnerRecords() {
         <div className="overflow-x-auto">
           <table className="min-w-[1180px] w-full text-sm">
             <thead>
-              <tr className="border-b border-gray-200 bg-(--dc-surface-muted) text-xs font-semibold uppercase tracking-wide text-gray-500">
-                {COLUMNS.map((c) => (
+              <tr className="border-b-2 border-(--dc-accent)/20 bg-(--dc-accent-soft) text-xs font-semibold uppercase tracking-wide text-(--dc-accent-strong)">
+                {COLUMNS.map((c, i) => (
                   <th
                     key={c.key}
                     scope="col"
-                    className={`px-3 py-2 ${c.align === "right" ? "text-right" : "text-left"}`}
+                    className={`px-3 py-2 ${c.align === "right" ? "text-right" : "text-left"} ${
+                      i === 0 ? "sticky left-0 z-10 bg-(--dc-accent-soft)" : ""
+                    }`}
                     style={{ width: c.width }}
                   >
                     {c.label}
@@ -245,11 +255,17 @@ export default function PartnerRecords() {
             </thead>
             <tbody>
               {rows.map((row) => (
-                <tr key={row.transfer_id} className="border-b border-gray-100 hover:bg-(--dc-primary-soft)/40">
-                  {COLUMNS.map((c) => (
+                <tr key={row.transfer_id} className="group border-b border-gray-100">
+                  {COLUMNS.map((c, i) => (
                     <td
                       key={c.key}
-                      className={`px-3 py-2 ${c.align === "right" ? "text-right tabular-nums" : ""} ${
+                      className={`px-3 py-2 transition ${
+                        c.align === "right" ? "text-right tabular-nums" : ""
+                      } ${
+                        i === 0
+                          ? "sticky left-0 z-10 bg-white font-medium group-hover:bg-(--dc-accent-soft)"
+                          : "group-hover:bg-(--dc-accent-soft)/40"
+                      } ${
                         c.key === "outstanding_count" && row.outstanding_count > 0
                           ? "font-medium text-amber-700"
                           : "text-gray-700"
@@ -258,7 +274,7 @@ export default function PartnerRecords() {
                       {cell(row, c.key)}
                     </td>
                   ))}
-                  <td className="px-3 py-2">
+                  <td className="px-3 py-2 transition group-hover:bg-(--dc-accent-soft)/40">
                     <FunnelBar row={row} />
                     {row.received_count > row.digitalised_count && (
                       <span className="mt-1 inline-flex items-center gap-1 text-xs text-amber-700">

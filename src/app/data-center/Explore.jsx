@@ -24,6 +24,7 @@ const AREAS = [
   {
     key: DATA_CENTER_FEATURES.DASHBOARD_VIEW,
     href: "/data-center/dashboard",
+    area: "dashboard",
     name: "Dashboard",
     icon: BarChart3,
     blurb: "Scorecards over sold against recovered, by partner, place, rep, agent and manager.",
@@ -31,6 +32,7 @@ const AREAS = [
   {
     key: DATA_CENTER_FEATURES.CALL_RECORDS_VIEW,
     href: "/data-center/call-centre",
+    area: "call-centre",
     name: "Call Centre",
     icon: PhoneCall,
     blurb: "The verification queue, call outcomes, corrections and the assignment log.",
@@ -38,6 +40,7 @@ const AREAS = [
   {
     key: DATA_CENTER_FEATURES.RECORDS_VIEW,
     href: "/data-center/partner-records",
+    area: "partner-records",
     name: "Partner Records",
     icon: Handshake,
     blurb: "What was issued to each partner and how much of it has come back.",
@@ -45,6 +48,7 @@ const AREAS = [
   {
     key: DATA_CENTER_FEATURES.RECORDS_VIEW,
     href: "/data-center/stove-records",
+    area: "stove-records",
     name: "Stove Records",
     icon: Database,
     blurb: "Every sold stove with the detail captured at the point of sale.",
@@ -52,46 +56,63 @@ const AREAS = [
   {
     key: DATA_CENTER_FEATURES.IMPORT_UPLOAD,
     href: "/data-center/import",
+    area: "import",
     name: "Bulk Import",
     icon: Upload,
     blurb: "Digitalized receipts, validated against stock before anything is committed.",
   },
 ];
 
+/**
+ * One card per area, wearing the colour that area's pages wear.
+ *
+ * The accent is set on the card itself rather than inherited from the hub, so
+ * the grid previews five destinations at a glance and arriving somewhere is
+ * confirmed by colour before any label is read.
+ */
 function AreaCard({ area, unlocked }) {
   const Icon = area.icon;
 
   const body = (
-    <>
-      <div className="flex items-start gap-3">
-        <div
-          className={`flex h-11 w-11 shrink-0 items-center justify-center rounded-lg ${
-            unlocked ? "bg-(--dc-primary)/10 text-(--dc-primary)" : "bg-gray-200 text-gray-500"
+    <div className="flex items-start gap-3.5">
+      <div
+        className={`flex h-11 w-11 shrink-0 items-center justify-center rounded-xl transition ${
+          unlocked
+            ? "bg-(--dc-accent) text-white shadow-sm"
+            : "bg-gray-200 text-gray-500"
+        }`}
+      >
+        {unlocked ? <Icon className="h-5 w-5" /> : <Lock className="h-4 w-4" />}
+      </div>
+      <div className="min-w-0 flex-1">
+        <h2
+          className={`flex items-center gap-1.5 text-base font-semibold ${
+            unlocked ? "text-(--dc-accent-strong)" : "text-gray-700"
           }`}
         >
-          {unlocked ? <Icon className="h-5 w-5" /> : <Lock className="h-4 w-4" />}
-        </div>
-        <div className="min-w-0 flex-1">
-          <h2 className="flex items-center gap-1.5 text-base font-semibold text-gray-900">
-            {area.name}
-            {unlocked && <ArrowRight className="h-4 w-4 text-gray-400" />}
-          </h2>
-          <p className="mt-1 text-sm text-gray-600">{area.blurb}</p>
-          {!unlocked && (
-            <p className="mt-2 text-xs text-gray-500">
-              Needs <code className="rounded bg-gray-200 px-1 py-0.5">{area.key}</code>
-            </p>
+          {area.name}
+          {unlocked && (
+            <ArrowRight
+              aria-hidden="true"
+              className="h-4 w-4 text-(--dc-accent)/50 transition group-hover:translate-x-0.5 group-hover:text-(--dc-accent)"
+            />
           )}
-        </div>
+        </h2>
+        <p className="mt-1 text-sm text-gray-600">{area.blurb}</p>
+        {!unlocked && (
+          <p className="mt-2 text-xs text-gray-500">
+            Needs <code className="rounded bg-gray-200 px-1 py-0.5">{area.key}</code>
+          </p>
+        )}
       </div>
-    </>
+    </div>
   );
 
   if (!unlocked) {
     return (
       <div
         aria-disabled="true"
-        className="rounded-xl border border-gray-200 bg-gray-50 p-5 opacity-70"
+        className="rounded-xl border border-dashed border-gray-300 bg-gray-50 p-5"
       >
         {body}
       </div>
@@ -102,7 +123,8 @@ function AreaCard({ area, unlocked }) {
     <Link
       href={area.href}
       aria-label={`Open ${area.name}`}
-      className="block rounded-xl border border-(--dc-primary)/25 bg-white p-5 transition hover:border-(--dc-primary)/50 hover:shadow-sm"
+      data-area={area.area}
+      className="dc-root group block overflow-hidden rounded-xl border border-(--dc-accent)/20 border-t-4 border-t-(--dc-accent) bg-white p-5 transition duration-200 hover:-translate-y-0.5 hover:border-(--dc-accent)/40 hover:shadow-md focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-(--dc-accent)"
     >
       {body}
     </Link>

@@ -21,12 +21,12 @@ const NUMBER = new Intl.NumberFormat("en-NG");
 
 const STATE_TONE = {
   open: "bg-blue-100 text-blue-800",
-  completed: "bg-(--dc-primary)/10 text-(--dc-primary)",
+  completed: "bg-(--dc-primary)/10 text-(--dc-accent)",
   reclaimed: "bg-purple-100 text-purple-800",
 };
 
 const OUTCOME_TONE = {
-  fully_verified: "text-(--dc-primary)",
+  fully_verified: "text-(--dc-accent)",
   partially_verified: "text-amber-700",
   doubtful_verification: "text-amber-700",
   unreachable: "text-orange-700",
@@ -128,9 +128,9 @@ export default function AssignmentLog({ canRun }) {
   };
 
   return (
-    <div className="overflow-hidden rounded-xl border border-gray-200 bg-white">
-      <div className="flex flex-wrap items-center gap-2 border-b border-gray-100 px-4 py-3">
-        <ClipboardList className="h-4 w-4 text-(--dc-primary)" />
+    <div className="overflow-hidden rounded-xl border border-gray-200 border-t-[3px] border-t-(--dc-accent) bg-white shadow-sm">
+      <div className="flex flex-wrap items-center gap-2 border-b border-gray-100 bg-(--dc-accent-soft)/30 px-4 py-3">
+        <ClipboardList className="h-4 w-4 text-(--dc-accent)" />
         <span className="text-sm font-semibold text-gray-900">Assignment Log</span>
         <span className="text-sm text-gray-500">
           {loading ? "loading..." : `${NUMBER.format(rows.length)} record(s) shown`}
@@ -147,7 +147,7 @@ export default function AssignmentLog({ canRun }) {
                 type="button"
                 disabled={busy}
                 onClick={runAssignment}
-                className="inline-flex items-center gap-1.5 rounded-md bg-(--dc-primary) px-2.5 py-1.5 text-xs font-medium text-white hover:bg-(--dc-primary-strong) disabled:opacity-50"
+                className="inline-flex items-center gap-1.5 rounded-md bg-(--dc-accent) px-2.5 py-1.5 text-xs font-medium text-white hover:bg-(--dc-accent-strong) disabled:opacity-50"
               >
                 {busy ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Play className="h-3.5 w-3.5" />}
                 Assign now
@@ -156,7 +156,7 @@ export default function AssignmentLog({ canRun }) {
                 type="button"
                 disabled={busy}
                 onClick={runReclaim}
-                className="inline-flex items-center gap-1.5 rounded-md border border-gray-300 px-2.5 py-1.5 text-xs font-medium text-gray-700 hover:bg-gray-50 disabled:opacity-50"
+                className="inline-flex items-center gap-1.5 rounded-md border border-(--dc-accent)/30 px-2.5 py-1.5 text-xs font-medium text-(--dc-accent) transition hover:bg-(--dc-accent-soft)/60 disabled:opacity-50"
               >
                 <RotateCcw className="h-3.5 w-3.5" /> Reclaim quiet batches
               </button>
@@ -166,7 +166,7 @@ export default function AssignmentLog({ canRun }) {
             type="button"
             onClick={exportCsv}
             disabled={rows.length === 0}
-            className="inline-flex items-center gap-1.5 rounded-md border border-gray-300 px-2.5 py-1.5 text-xs font-medium text-gray-700 hover:bg-gray-50 disabled:opacity-50"
+            className="inline-flex items-center gap-1.5 rounded-md border border-(--dc-accent)/30 px-2.5 py-1.5 text-xs font-medium text-(--dc-accent) transition hover:bg-(--dc-accent-soft)/60 disabled:opacity-50"
           >
             <Download className="h-3.5 w-3.5" /> Export CSV
           </button>
@@ -181,7 +181,7 @@ export default function AssignmentLog({ canRun }) {
           id="dc-log-state"
           value={batchState}
           onChange={(e) => setBatchState(e.target.value)}
-          className="rounded-md border border-gray-300 px-2 py-1 text-xs focus:border-(--dc-primary) focus:outline-none"
+          className="rounded-md border border-gray-300 px-2 py-1 text-xs focus:border-(--dc-accent) focus:outline-none"
         >
           <option value="">All</option>
           <option value="open">Open</option>
@@ -206,7 +206,7 @@ export default function AssignmentLog({ canRun }) {
         </div>
       )}
       {notice && (
-        <p className="border-b border-(--dc-primary)/20 bg-(--dc-primary-soft)/50 px-4 py-2.5 text-sm text-(--dc-primary)">
+        <p className="border-b border-(--dc-primary)/20 bg-(--dc-primary-soft)/50 px-4 py-2.5 text-sm text-(--dc-accent)">
           {notice}
         </p>
       )}
@@ -216,25 +216,33 @@ export default function AssignmentLog({ canRun }) {
           <Loader2 className="h-4 w-4 animate-spin" /> Loading the log...
         </p>
       ) : rows.length === 0 ? (
-        <p className="p-6 text-sm text-gray-500">
+        <p className="m-4 rounded-lg border border-dashed border-(--dc-accent)/30 p-6 text-center text-sm text-gray-500">
           Nothing has been assigned yet{batchState ? " in that state" : ""}.
         </p>
       ) : (
         <div className="overflow-x-auto">
           <table className="min-w-[1100px] w-full text-sm">
             <thead>
-              <tr className="border-b border-gray-200 bg-(--dc-surface-muted) text-xs font-semibold uppercase tracking-wide text-gray-500">
+              <tr className="border-b-2 border-(--dc-accent)/20 bg-(--dc-accent-soft) text-xs font-semibold uppercase tracking-wide text-(--dc-accent-strong)">
                 {["Batch", "Agent", "Partner", "Assigned", "#", "Serial", "Outcome", "Attempts", "Last call", "By"].map(
-                  (h) => (
-                    <th key={h} scope="col" className="px-3 py-2 text-left">{h}</th>
+                  (h, i) => (
+                    <th
+                      key={h}
+                      scope="col"
+                      className={`px-3 py-2 text-left ${
+                        i === 0 ? "sticky left-0 z-10 bg-(--dc-accent-soft)" : ""
+                      }`}
+                    >
+                      {h}
+                    </th>
                   ),
                 )}
               </tr>
             </thead>
             <tbody>
               {rows.map((r) => (
-                <tr key={`${r.batch_id}-${r.sale_id}`} className="border-b border-gray-100 hover:bg-(--dc-primary-soft)/40">
-                  <td className="px-3 py-2">
+                <tr key={`${r.batch_id}-${r.sale_id}`} className="group border-b border-gray-100">
+                  <td className="sticky left-0 z-10 bg-white px-3 py-2 transition group-hover:bg-(--dc-accent-soft)">
                     <span className={`rounded-full px-2 py-0.5 text-xs font-medium ${STATE_TONE[r.batch_state]}`}>
                       {r.batch_state}
                     </span>

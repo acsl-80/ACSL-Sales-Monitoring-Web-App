@@ -30,7 +30,7 @@ const OUTCOMES = [
   { value: "not_verified", label: "Not verified", tone: "bg-gray-100 text-gray-700" },
   { value: "partially_verified", label: "Partially verified", tone: "bg-amber-100 text-amber-800" },
   { value: "doubtful_verification", label: "Doubtful", tone: "bg-orange-100 text-orange-800" },
-  { value: "fully_verified", label: "Fully verified", tone: "bg-(--dc-primary)/10 text-(--dc-primary)" },
+  { value: "fully_verified", label: "Fully verified", tone: "bg-(--dc-primary)/10 text-(--dc-accent)" },
 ];
 
 // The record's own fields, as opposed to registry questions. Grouped so the
@@ -198,8 +198,8 @@ export default function CallRecordEditor({ saleId, canEdit, onClose, onSaved }) 
             )}
             {notice && (
               <div className="flex items-center gap-2 rounded-lg border border-(--dc-primary)/20 bg-(--dc-primary-soft)/50 p-3">
-                <Check className="h-4 w-4 text-(--dc-primary)" />
-                <p className="text-sm text-(--dc-primary)">{notice}</p>
+                <Check className="h-4 w-4 text-(--dc-accent)" />
+                <p className="text-sm text-(--dc-accent)">{notice}</p>
               </div>
             )}
 
@@ -319,7 +319,7 @@ export default function CallRecordEditor({ saleId, canEdit, onClose, onSaved }) 
                       disabled={!canEdit}
                       value={values[f.key] ?? record?.[f.key] ?? ""}
                       onChange={(e) => setValue(f.key, e.target.value)}
-                      className="w-full rounded-md border border-gray-300 px-3 py-1.5 text-sm focus:border-(--dc-primary) focus:outline-none disabled:bg-gray-50"
+                      className="w-full rounded-md border border-gray-300 px-3 py-1.5 text-sm focus:border-(--dc-accent) focus:outline-none disabled:bg-gray-50"
                     />
                   </Field>
                 ))}
@@ -354,7 +354,7 @@ export default function CallRecordEditor({ saleId, canEdit, onClose, onSaved }) 
                 disabled={!canEdit}
                 value={values.other_comments ?? record?.other_comments ?? ""}
                 onChange={(e) => setValue("other_comments", e.target.value)}
-                className="w-full rounded-md border border-gray-300 px-3 py-1.5 text-sm focus:border-(--dc-primary) focus:outline-none disabled:bg-gray-50"
+                className="w-full rounded-md border border-gray-300 px-3 py-1.5 text-sm focus:border-(--dc-accent) focus:outline-none disabled:bg-gray-50"
               />
             </Field>
 
@@ -390,7 +390,7 @@ export default function CallRecordEditor({ saleId, canEdit, onClose, onSaved }) 
                       disabled={!canEdit}
                       value={values.correction_reason_id ?? ""}
                       onChange={(e) => setValue("correction_reason_id", e.target.value)}
-                      className="w-full rounded-md border border-gray-300 px-3 py-1.5 text-sm focus:border-(--dc-primary) focus:outline-none disabled:bg-gray-50"
+                      className="w-full rounded-md border border-gray-300 px-3 py-1.5 text-sm focus:border-(--dc-accent) focus:outline-none disabled:bg-gray-50"
                     >
                       <option value="">Reason...</option>
                       {correctionReasons.map((o) => (
