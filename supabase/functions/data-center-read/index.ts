@@ -19,8 +19,8 @@
 
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.39.3";
-import { Pool } from "https://deno.land/x/postgres@v0.17.0/mod.ts";
 import { resolveAssignedOrgIds } from "../_shared/resolveAssignedOrgIds.ts";
+import { withReadConnection } from "../_shared/data-center-db.ts";
 import { BadRequest, buildRecordsQuery, toPage } from "./records-query.ts";
 import type { ScopeInput } from "./scope.ts";
 
@@ -75,16 +75,6 @@ function json(body: unknown, status: number, cors: Record<string, string>) {
 // `acsl_agent` there and must not be treated as a super admin here.
 function isSuperAdmin(role: string | null): boolean {
   return role === "super_admin";
-}
-
-let pool: Pool | null = null;
-function getPool(): Pool {
-  if (!pool) {
-    const dbUrl = Deno.env.get("SUPABASE_DB_URL");
-    if (!dbUrl) throw new Error("SUPABASE_DB_URL is not configured");
-    pool = new Pool(dbUrl, 3, true);
-  }
-  return pool;
 }
 
 /**
@@ -142,27 +132,29 @@ async function resolveAccess(userId: string): Promise<{
   accessRole: string | null;
   features: string[];
 }> {
-  const connection = await getPool().connect();
-  try {
-    const access = await connection.queryObject<{ access_role: string }>({
-      text: "select access_role from data_center.module_access where user_id = $1",
+  return withReadConnection(async (connection) => {
+    // One round trip rather than two. Every connection this function holds is
+    // one the rest of the project cannot have, so the cheapest query is the one
+    // that is not sent.
+    const result = await connection.queryObject<{
+      access_role: string | null;
+      feature_keys: string[] | null;
+    }>({
+      text: `select
+               (select access_role from data_center.module_access where user_id = $1) as access_role,
+               (select coalesce(array_agg(feature_key), '{}')
+                  from data_center.feature_grants where user_id = $1) as feature_keys`,
       args: [userId],
     });
-    const accessRole = access.rows[0]?.access_role ?? null;
-
-    const grants = await connection.queryObject<{ feature_key: string }>({
-      text: "select feature_key from data_center.feature_grants where user_id = $1",
-      args: [userId],
-    });
+    const accessRole = result.rows[0]?.access_role ?? null;
+    const grants = { rows: (result.rows[0]?.feature_keys ?? []).map((feature_key) => ({ feature_key })) };
 
     // Union of what the level implies and what was granted individually.
     const features = new Set<string>(accessRole ? ROLE_FEATURES[accessRole] ?? [] : []);
     for (const row of grants.rows) features.add(row.feature_key);
 
     return { accessRole, features: [...features] };
-  } finally {
-    connection.release();
-  }
+  });
 }
 
 serve(async (req) => {
@@ -294,8 +286,7 @@ serve(async (req) => {
           throw err;
         }
 
-        const connection = await getPool().connect();
-        try {
+        return await withReadConnection(async (connection) => {
           // Two statements, deliberately. See the note at the top of
           // records-query.ts: as one query the call queue took 25.8 seconds at
           // 500,000 rows, and split it takes about 40 milliseconds.
@@ -330,9 +321,7 @@ serve(async (req) => {
             200,
             cors,
           );
-        } finally {
-          connection.release();
-        }
+        });
       }
 
       default:

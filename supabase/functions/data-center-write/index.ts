@@ -23,7 +23,7 @@
 
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.39.3";
-import { Pool, type PoolClient } from "https://deno.land/x/postgres@v0.17.0/mod.ts";
+import { openConnection, closeConnection, type PoolClient } from "../_shared/data-center-db.ts";
 
 const DEFAULT_ORIGINS = [
   "https://sales.atmosfair.com.ng",
@@ -61,15 +61,10 @@ function json(body: unknown, status: number, cors: Record<string, string>) {
   });
 }
 
-let pool: Pool | null = null;
-function getPool(): Pool {
-  if (!pool) {
-    const dbUrl = Deno.env.get("SUPABASE_DB_URL");
-    if (!dbUrl) throw new Error("SUPABASE_DB_URL is not configured");
-    pool = new Pool(dbUrl, 3, true);
-  }
-  return pool;
-}
+// The write path holds one connection for a whole request because its actions
+// run multi-statement transactions. Opened per request and closed in the
+// handler's finally, never pooled: see _shared/data-center-db.ts for what
+// pooling inside an edge isolate did to the database.
 
 class BadRequest extends Error {}
 class Conflict extends Error {}
@@ -262,7 +257,7 @@ serve(async (req) => {
       return json({ error: "Body must be JSON", code: "bad_body" }, 400, cors);
     }
 
-    conn = await getPool().connect();
+    conn = await openConnection();
 
     // Entry, then the feature. Both here, both from the token, every time.
     let features: string[] = [];
@@ -586,6 +581,6 @@ serve(async (req) => {
     console.error("[data-center-write]", err);
     return json({ error: "Data Center write failed", code: "internal" }, 500, resolveCors(req));
   } finally {
-    conn?.release();
+    await closeConnection(conn);
   }
 });

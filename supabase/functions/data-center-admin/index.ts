@@ -14,7 +14,7 @@
 
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.39.3";
-import { Pool } from "https://deno.land/x/postgres@v0.17.0/mod.ts";
+import { withConnection, withReadConnection } from "../_shared/data-center-db.ts";
 
 const DEFAULT_ORIGINS = [
   "https://sales.atmosfair.com.ng",
@@ -58,15 +58,6 @@ function isSuperAdmin(role: string | null): boolean {
   return role === "super_admin";
 }
 
-let pool: Pool | null = null;
-function getPool(): Pool {
-  if (!pool) {
-    const dbUrl = Deno.env.get("SUPABASE_DB_URL");
-    if (!dbUrl) throw new Error("SUPABASE_DB_URL is not configured");
-    pool = new Pool(dbUrl, 3, true);
-  }
-  return pool;
-}
 
 const VALID_ROLES = new Set(["viewer", "editor"]);
 
@@ -112,17 +103,14 @@ serve(async (req) => {
     // access section is presentation; this is the permission.
     let allowed = isSuperAdmin(profile.role);
     if (!allowed) {
-      const conn = await getPool().connect();
-      try {
+      allowed = await withReadConnection(async (conn) => {
         const g = await conn.queryObject<{ n: number }>({
           text: `select count(*)::int n from data_center.feature_grants
                  where user_id = $1 and feature_key = 'grants.manage'`,
           args: [callerId],
         });
-        allowed = (g.rows[0]?.n ?? 0) > 0;
-      } finally {
-        conn.release();
-      }
+        return (g.rows[0]?.n ?? 0) > 0;
+      });
     }
     if (!allowed) {
       return json({ error: "Not permitted to manage access", code: "forbidden" }, 403, cors);
@@ -141,8 +129,7 @@ serve(async (req) => {
       return json({ error: "Body must be JSON", code: "bad_body" }, 400, cors);
     }
 
-    const conn = await getPool().connect();
-    try {
+    return await withConnection(async (conn) => {
       switch (body.action) {
         case "access_list": {
           const rows = await conn.queryObject({
@@ -251,9 +238,7 @@ serve(async (req) => {
             cors,
           );
       }
-    } finally {
-      conn.release();
-    }
+    });
   } catch (err) {
     console.error("[data-center-admin]", err);
     return json({ error: "Data Center request failed", code: "internal" }, 500, cors);

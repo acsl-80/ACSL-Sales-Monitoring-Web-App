@@ -84,8 +84,26 @@ export async function primeBypass(page: Page) {
  * after hydration, so matching the button by name is flaky by construction.
  * The two inputs are unambiguous by type: one text, one password.
  */
-export async function signIn(page: Page, email: string) {
-  await primeBypass(page);
+/**
+ * Sessions, cached per role for the lifetime of the run.
+ *
+ * WHY THIS IS NOT JUST A SPEED OPTIMISATION
+ *
+ * Signing in once per test meant 25 sign-ins inside a five minute run, from one
+ * IP, against one GoTrue instance. That crosses Supabase's default auth rate
+ * limit part way through, and the tests that happen to run after it fail in a
+ * way that looks nothing like a rate limit: the user appears signed in, but the
+ * module reports that its access could not be confirmed.
+ *
+ * It cost a long diagnosis, and it was not a defect in the app. Every one of
+ * those tests passed when its file was run on its own.
+ *
+ * So the suite now signs in once per role and replays the stored session.
+ * Twenty-five sign-ins become five, and a failure means what it says.
+ */
+const sessionCache = new Map<string, { name: string; value: string }[]>();
+
+async function signInWithForm(page: Page, email: string) {
   await page.goto("/login");
 
   const identifier = page.locator('input[type="text"]').first();
@@ -101,6 +119,37 @@ export async function signIn(page: Page, email: string) {
 
   // /dashboard is the app's single post-login redirect, for every role.
   await page.waitForURL(/\/dashboard/, { timeout: 40_000 });
+}
+
+export async function signIn(page: Page, email: string) {
+  await primeBypass(page);
+
+  const cached = sessionCache.get(email);
+  if (cached) {
+    // supabase-js keeps the session in localStorage, so replaying those keys
+    // before any page script runs is the same as having logged in.
+    await page.addInitScript((entries: { name: string; value: string }[]) => {
+      for (const { name, value } of entries) window.localStorage.setItem(name, value);
+    }, cached);
+    await page.goto("/dashboard");
+    try {
+      await page.waitForURL(/\/dashboard/, { timeout: 15_000 });
+      return;
+    } catch {
+      // The stored session was rejected, most likely expired. Drop it and do
+      // it properly rather than failing the test for a stale cache.
+      sessionCache.delete(email);
+    }
+  }
+
+  await signInWithForm(page, email);
+
+  const entries = await page.evaluate(() =>
+    Object.keys(window.localStorage)
+      .filter((k) => k.startsWith("sb-"))
+      .map((name) => ({ name, value: window.localStorage.getItem(name) ?? "" })),
+  );
+  if (entries.length > 0) sessionCache.set(email, entries);
 }
 
 /** The left-hand nav entry for the module, by its visible label. */

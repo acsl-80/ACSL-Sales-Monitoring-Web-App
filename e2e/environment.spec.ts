@@ -49,11 +49,17 @@ test.describe("preview environment isolation", () => {
 
     const calls = trackSupabaseCalls(page);
     await signIn(page, USERS.admin);
-    await page.waitForLoadState("networkidle");
 
-    expect(
-      [...calls.hosts].some((h) => h.includes(BRANCH_REF)),
-      `expected traffic to the branch project ${BRANCH_REF}`,
-    ).toBe(true);
+    // Poll for the thing being asserted rather than waiting for the network to
+    // fall silent. `networkidle` needs a 500 ms gap with nothing in flight,
+    // which an app that keeps a session alive may never give, and Playwright
+    // discourages it for exactly that reason. It timed out here at 60 s while
+    // the traffic it was waiting on had already happened.
+    await expect
+      .poll(() => [...calls.hosts].some((h) => h.includes(BRANCH_REF)), {
+        timeout: 30_000,
+        message: `expected traffic to the branch project ${BRANCH_REF}`,
+      })
+      .toBe(true);
   });
 });
