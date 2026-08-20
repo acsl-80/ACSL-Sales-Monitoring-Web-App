@@ -17,7 +17,7 @@ test.describe("dashboards", () => {
     await signIn(page, USERS.admin);
     await page.goto("/data-center/dashboard");
 
-    await expect(page.getByRole("heading", { name: "Dashboards" })).toBeVisible({
+    await expect(page.getByRole("heading", { name: "Dashboard", exact: true })).toBeVisible({
       timeout: 20_000,
     });
     await expect(page.getByRole("button", { name: /Recompute/ })).toBeVisible();
@@ -26,7 +26,7 @@ test.describe("dashboards", () => {
   test("the dashboard says where its numbers come from in time", async ({ page }) => {
     await signIn(page, USERS.admin);
     await page.goto("/data-center/dashboard");
-    await expect(page.getByRole("heading", { name: "Dashboards" })).toBeVisible({
+    await expect(page.getByRole("heading", { name: "Dashboard", exact: true })).toBeVisible({
       timeout: 20_000,
     });
 
@@ -42,7 +42,7 @@ test.describe("dashboards", () => {
 
     // dashboard.view is part of every access level; running the computation is
     // super admin only, because it reads every sale.
-    await expect(page.getByRole("heading", { name: "Dashboards" })).toBeVisible({
+    await expect(page.getByRole("heading", { name: "Dashboard", exact: true })).toBeVisible({
       timeout: 20_000,
     });
     await expect(page.getByRole("button", { name: /Recompute/ })).toHaveCount(0);
@@ -60,7 +60,7 @@ test.describe("dashboards", () => {
 
     await signIn(page, USERS.admin);
     await page.goto("/data-center/dashboard");
-    await expect(page.getByRole("heading", { name: "Dashboards" })).toBeVisible({
+    await expect(page.getByRole("heading", { name: "Dashboard", exact: true })).toBeVisible({
       timeout: 20_000,
     });
 

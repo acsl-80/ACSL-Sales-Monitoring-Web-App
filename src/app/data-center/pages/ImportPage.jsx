@@ -18,7 +18,7 @@ export default function ImportPage() {
   return (
     <DataCentreShell
       title="Bulk Import"
-      description="Digitalized receipts. Nothing is committed until you say so."
+      description="Digitalized receipts from the field, staged against stock."
       breadcrumb="Bulk Import"
       feature={DATA_CENTER_FEATURES.IMPORT_UPLOAD}
     >

@@ -47,7 +47,7 @@ test.describe("entry is per user, case by case", () => {
     // panel rather than a locked placeholder card, so a viewer gets no import
     // surface at all. Absent is a stronger guarantee than present-and-disabled.
     await expect(page.getByRole("heading", { name: "Bulk Import" })).toHaveCount(0);
-    await expect(page.getByRole("heading", { name: "Sold Stove Records" })).toBeVisible();
+    await expect(page.getByRole("heading", { name: "Stove Records", exact: true })).toBeVisible();
   });
 
   for (const [label, email] of [

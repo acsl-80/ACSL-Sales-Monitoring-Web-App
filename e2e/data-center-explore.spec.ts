@@ -80,7 +80,12 @@ test.describe("Explore is the landing view", () => {
 
     for (const area of AREAS) {
       await page.goto(area.path);
-      const nav = page.getByRole("navigation").getByRole("link", { name: "Data Center" });
+      // Two navigations on the page: the sidebar and the breadcrumb, which is
+      // correctly a <nav> too. The sidebar is the first in the DOM.
+      const nav = page
+        .getByRole("navigation")
+        .first()
+        .getByRole("link", { name: "Data Center" });
       await expect(nav).toBeVisible({ timeout: 20_000 });
       // The active nav item carries the app's selected background.
       await expect(nav).toHaveClass(/bg-\[#4a5d0f\]/);
