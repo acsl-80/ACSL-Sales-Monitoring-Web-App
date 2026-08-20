@@ -20,6 +20,7 @@ export default function ImportPage() {
       title="Bulk Import"
       description="Digitalized receipts from the field, staged against stock."
       breadcrumb="Bulk Import"
+      area="import"
       feature={DATA_CENTER_FEATURES.IMPORT_UPLOAD}
     >
       <Inner />

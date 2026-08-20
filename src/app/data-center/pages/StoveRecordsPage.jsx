@@ -8,6 +8,7 @@ export default function StoveRecordsPage() {
       title="Stove Records"
       description="Every sold stove with the detail captured at the point of sale."
       breadcrumb="Stove Records"
+      area="stove-records"
       feature={DATA_CENTER_FEATURES.RECORDS_VIEW}
     >
       <RecordsTable />

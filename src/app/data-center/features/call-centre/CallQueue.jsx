@@ -29,7 +29,7 @@ const COLUMNS = [
 ];
 
 const OUTCOME_TONE = {
-  fully_verified: "bg-[#4a5d0f]/10 text-[#4a5d0f]",
+  fully_verified: "bg-(--dc-primary)/10 text-(--dc-primary)",
   partially_verified: "bg-amber-100 text-amber-800",
   doubtful_verification: "bg-orange-100 text-orange-800",
   not_verified: "bg-gray-100 text-gray-600",
@@ -131,7 +131,7 @@ export default function CallQueue({ canEdit, drill = null }) {
   return (
     <div className="overflow-hidden rounded-xl border border-gray-200 bg-white">
       <div className="flex items-center gap-2 border-b border-gray-100 px-4 py-3">
-        <PhoneCall className="h-4 w-4 text-[#4a5d0f]" />
+        <PhoneCall className="h-4 w-4 text-(--dc-primary)" />
         <span className="text-sm font-semibold text-gray-900">Call Centre</span>
         <span className="text-sm text-gray-500">
           {loading ? "loading..." : `${rows.length.toLocaleString()} loaded${hasMore ? ", more available" : ""}`}
@@ -146,15 +146,15 @@ export default function CallQueue({ canEdit, drill = null }) {
       {/* A drill-through from a scorecard, named so the reader knows what
           narrowed the queue, with the one way out: back to the whole queue. */}
       {drill && (
-        <div className="flex flex-wrap items-center gap-2 border-b border-[#4a5d0f]/20 bg-[#eef3c4]/50 px-4 py-2.5">
-          <Filter className="h-3.5 w-3.5 shrink-0 text-[#4a5d0f]" />
-          <p className="text-sm text-[#4a5d0f]">
+        <div className="flex flex-wrap items-center gap-2 border-b border-(--dc-primary)/20 bg-(--dc-primary-soft)/50 px-4 py-2.5">
+          <Filter className="h-3.5 w-3.5 shrink-0 text-(--dc-primary)" />
+          <p className="text-sm text-(--dc-primary)">
             Narrowed from the dashboard to <span className="font-medium">{drill.description}</span>
           </p>
           <button
             type="button"
             onClick={drill.clear}
-            className="ml-auto inline-flex items-center gap-1 rounded-md px-2 py-1 text-xs font-medium text-[#4a5d0f] hover:bg-[#4a5d0f]/10"
+            className="ml-auto inline-flex items-center gap-1 rounded-md px-2 py-1 text-xs font-medium text-(--dc-primary) hover:bg-(--dc-primary)/10"
           >
             <X className="h-3.5 w-3.5" /> Show everything
           </button>
@@ -170,7 +170,7 @@ export default function CallQueue({ canEdit, drill = null }) {
               onClick={() => setPreset(p.key)}
               className={`rounded-full px-3 py-1 text-xs font-medium transition ${
                 preset === p.key
-                  ? "bg-[#4a5d0f] text-white"
+                  ? "bg-(--dc-primary) text-white"
                   : "bg-gray-100 text-gray-600 hover:bg-gray-200"
               }`}
             >
@@ -186,7 +186,7 @@ export default function CallQueue({ canEdit, drill = null }) {
             value={search}
             onChange={(e) => setSearch(e.target.value)}
             placeholder="Name, phone or serial"
-            className="w-full rounded-md border border-gray-300 py-1.5 pl-8 pr-3 text-sm focus:border-[#4a5d0f] focus:outline-none"
+            className="w-full rounded-md border border-gray-300 py-1.5 pl-8 pr-3 text-sm focus:border-(--dc-primary) focus:outline-none"
           />
         </div>
         {search && (
@@ -210,7 +210,7 @@ export default function CallQueue({ canEdit, drill = null }) {
       <div className="overflow-x-auto">
         <div className="min-w-[1120px]">
           <div
-            className="flex border-b border-gray-200 bg-[#fafafa] text-xs font-semibold uppercase tracking-wide text-gray-500"
+            className="flex border-b border-gray-200 bg-(--dc-surface-muted) text-xs font-semibold uppercase tracking-wide text-gray-500"
             style={{ height: ROW_HEIGHT }}
           >
             {COLUMNS.map((c) => (
@@ -245,7 +245,7 @@ export default function CallQueue({ canEdit, drill = null }) {
                       type="button"
                       onClick={() => setOpenSale(row.sale_id)}
                       aria-label={`Open call record for ${row.end_user_name ?? row.stove_serial_no ?? row.sale_id}`}
-                      className="flex w-full border-b border-gray-100 text-left text-sm text-gray-700 hover:bg-[#eef3c4]/40"
+                      className="flex w-full border-b border-gray-100 text-left text-sm text-gray-700 hover:bg-(--dc-primary-soft)/40"
                       style={{ height: ROW_HEIGHT }}
                     >
                       {COLUMNS.map((c) => (

@@ -23,7 +23,7 @@ const OUTCOMES = [
   { value: "not_verified", label: "Not verified", tone: "bg-gray-100 text-gray-700" },
   { value: "partially_verified", label: "Partially verified", tone: "bg-amber-100 text-amber-800" },
   { value: "doubtful_verification", label: "Doubtful", tone: "bg-orange-100 text-orange-800" },
-  { value: "fully_verified", label: "Fully verified", tone: "bg-[#4a5d0f]/10 text-[#4a5d0f]" },
+  { value: "fully_verified", label: "Fully verified", tone: "bg-(--dc-primary)/10 text-(--dc-primary)" },
 ];
 
 // The record's own fields, as opposed to registry questions. Grouped so the
@@ -199,14 +199,14 @@ export default function CallRecordEditor({ saleId, canEdit, onClose, onSaved }) 
               </div>
             )}
             {notice && (
-              <div className="flex items-center gap-2 rounded-lg border border-[#4a5d0f]/20 bg-[#eef3c4]/50 p-3">
-                <Check className="h-4 w-4 text-[#4a5d0f]" />
-                <p className="text-sm text-[#4a5d0f]">{notice}</p>
+              <div className="flex items-center gap-2 rounded-lg border border-(--dc-primary)/20 bg-(--dc-primary-soft)/50 p-3">
+                <Check className="h-4 w-4 text-(--dc-primary)" />
+                <p className="text-sm text-(--dc-primary)">{notice}</p>
               </div>
             )}
 
             {/* What the sale says, so the agent has something to check against. */}
-            <div className="rounded-lg border border-gray-200 bg-[#fafafa] p-3 text-sm">
+            <div className="rounded-lg border border-gray-200 bg-(--dc-surface-muted) p-3 text-sm">
               <div className="grid grid-cols-2 gap-x-4 gap-y-1.5 text-gray-700">
                 <span className="text-gray-500">Recorded phone</span>
                 <span>{record?.primary_phone ?? "—"}</span>
@@ -237,7 +237,7 @@ export default function CallRecordEditor({ saleId, canEdit, onClose, onSaved }) 
                       disabled={!canEdit || saving}
                       onClick={() => setValue("verification_outcome", o.value)}
                       className={`rounded-full px-3 py-1 text-xs font-medium transition ${
-                        active ? o.tone + " ring-2 ring-offset-1 ring-[#4a5d0f]/40" : "bg-gray-100 text-gray-600 hover:bg-gray-200"
+                        active ? o.tone + " ring-2 ring-offset-1 ring-(--dc-primary)/40" : "bg-gray-100 text-gray-600 hover:bg-gray-200"
                       } disabled:opacity-50`}
                     >
                       {o.label}
@@ -271,7 +271,7 @@ export default function CallRecordEditor({ saleId, canEdit, onClose, onSaved }) 
                       onClick={() =>
                         logAttempt(document.getElementById("dc-next-outcome")?.value)
                       }
-                      className="inline-flex items-center gap-1 rounded-md bg-[#4a5d0f] px-2.5 py-1 text-xs font-medium text-white hover:bg-[#3d4d0c] disabled:opacity-50"
+                      className="inline-flex items-center gap-1 rounded-md bg-(--dc-primary) px-2.5 py-1 text-xs font-medium text-white hover:bg-(--dc-primary-strong) disabled:opacity-50"
                     >
                       <PhoneCall className="h-3 w-3" /> Log call
                     </button>
@@ -313,7 +313,7 @@ export default function CallRecordEditor({ saleId, canEdit, onClose, onSaved }) 
                       disabled={!canEdit}
                       value={values[f.key] ?? record?.[f.key] ?? ""}
                       onChange={(e) => setValue(f.key, e.target.value)}
-                      className="w-full rounded-md border border-gray-300 px-3 py-1.5 text-sm focus:border-[#4a5d0f] focus:outline-none disabled:bg-gray-50"
+                      className="w-full rounded-md border border-gray-300 px-3 py-1.5 text-sm focus:border-(--dc-primary) focus:outline-none disabled:bg-gray-50"
                     />
                   </Field>
                 ))}
@@ -348,7 +348,7 @@ export default function CallRecordEditor({ saleId, canEdit, onClose, onSaved }) 
                 disabled={!canEdit}
                 value={values.other_comments ?? record?.other_comments ?? ""}
                 onChange={(e) => setValue("other_comments", e.target.value)}
-                className="w-full rounded-md border border-gray-300 px-3 py-1.5 text-sm focus:border-[#4a5d0f] focus:outline-none disabled:bg-gray-50"
+                className="w-full rounded-md border border-gray-300 px-3 py-1.5 text-sm focus:border-(--dc-primary) focus:outline-none disabled:bg-gray-50"
               />
             </Field>
 
@@ -371,7 +371,7 @@ export default function CallRecordEditor({ saleId, canEdit, onClose, onSaved }) 
                       type="button"
                       disabled={saving}
                       onClick={() => toggleCorrection(false)}
-                      className="inline-flex shrink-0 items-center gap-1 rounded-md border border-[#4a5d0f]/30 px-2.5 py-1 text-xs font-medium text-[#4a5d0f] hover:bg-[#4a5d0f]/10 disabled:opacity-50"
+                      className="inline-flex shrink-0 items-center gap-1 rounded-md border border-(--dc-primary)/30 px-2.5 py-1 text-xs font-medium text-(--dc-primary) hover:bg-(--dc-primary)/10 disabled:opacity-50"
                     >
                       <RotateCcw className="h-3 w-3" /> Mark fixed
                     </button>
@@ -384,7 +384,7 @@ export default function CallRecordEditor({ saleId, canEdit, onClose, onSaved }) 
                       disabled={!canEdit}
                       value={values.correction_reason_id ?? ""}
                       onChange={(e) => setValue("correction_reason_id", e.target.value)}
-                      className="w-full rounded-md border border-gray-300 px-3 py-1.5 text-sm focus:border-[#4a5d0f] focus:outline-none disabled:bg-gray-50"
+                      className="w-full rounded-md border border-gray-300 px-3 py-1.5 text-sm focus:border-(--dc-primary) focus:outline-none disabled:bg-gray-50"
                     >
                       <option value="">Reason...</option>
                       {correctionReasons.map((o) => (
@@ -419,7 +419,7 @@ export default function CallRecordEditor({ saleId, canEdit, onClose, onSaved }) 
               type="button"
               disabled={saving || loading}
               onClick={save}
-              className="inline-flex items-center gap-1.5 rounded-md bg-[#4a5d0f] px-4 py-1.5 text-sm font-medium text-white hover:bg-[#3d4d0c] disabled:opacity-50"
+              className="inline-flex items-center gap-1.5 rounded-md bg-(--dc-primary) px-4 py-1.5 text-sm font-medium text-white hover:bg-(--dc-primary-strong) disabled:opacity-50"
             >
               {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
               Save

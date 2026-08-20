@@ -1,4 +1,5 @@
 import { Suspense } from "react";
+import "../theme.css";
 import ProtectedRoute from "../../components/ProtectedRoute";
 import DashboardLayout from "../../components/DashboardLayout";
 import { DataCenterAccessProvider, useFeature } from "../lib/access";
@@ -25,6 +26,10 @@ import { ArrowLeft, Loader2, AlertTriangle, ShieldOff, Eye, Pencil } from "lucid
  * deriveCurrentRouteFromPath falls through to segments[0], so every child of
  * /data-center already highlights the right nav entry. That is why this module
  * still edits exactly two shared files.
+ *
+ * `area` sets the accent every surface below inherits. One hue per area, from
+ * the Explore card through to the page it opens, so colour answers "where am
+ * I" before any label does. theme.css holds the values.
  */
 
 function Shell({ title, description, breadcrumb, feature, children }) {
@@ -84,7 +89,7 @@ function Shell({ title, description, breadcrumb, feature, children }) {
         </p>
         <Link
           href="/data-center"
-          className="mt-4 inline-flex items-center gap-1.5 text-sm font-medium text-[#4a5d0f] hover:underline"
+          className="mt-4 inline-flex items-center gap-1.5 text-sm font-medium text-(--dc-accent) hover:underline"
         >
           <ArrowLeft className="h-4 w-4" /> Back to Explore
         </Link>
@@ -141,6 +146,7 @@ export default function DataCentreShell({
   description,
   breadcrumb,
   feature,
+  area = "explore",
   children,
 }) {
   return (
@@ -153,18 +159,20 @@ export default function DataCentreShell({
         title="Data Center"
         description="Computation and dashboards over sold stove records"
       >
-        <Suspense fallback={<div className="p-6 text-gray-500">Loading...</div>}>
-          <DataCenterAccessProvider>
-            <Shell
-              title={title}
-              description={description}
-              breadcrumb={breadcrumb}
-              feature={feature}
-            >
-              {children}
-            </Shell>
-          </DataCenterAccessProvider>
-        </Suspense>
+        <div className="dc-root" data-area={area}>
+          <Suspense fallback={<div className="p-6 text-gray-500">Loading...</div>}>
+            <DataCenterAccessProvider>
+              <Shell
+                title={title}
+                description={description}
+                breadcrumb={breadcrumb}
+                feature={feature}
+              >
+                {children}
+              </Shell>
+            </DataCenterAccessProvider>
+          </Suspense>
+        </div>
       </DashboardLayout>
     </ProtectedRoute>
   );

@@ -24,7 +24,7 @@ const STATE_TONE = {
   staged: "bg-gray-100 text-gray-700",
   validated: "bg-blue-100 text-blue-800",
   dry_run: "bg-amber-100 text-amber-800",
-  committed: "bg-[#4a5d0f]/10 text-[#4a5d0f]",
+  committed: "bg-(--dc-primary)/10 text-(--dc-primary)",
   rolled_back: "bg-purple-100 text-purple-800",
   failed: "bg-red-100 text-red-700",
 };
@@ -103,13 +103,13 @@ function ExceptionsQueue({ batchId, canResolve, onChanged }) {
                 value={drafts[r.id] ?? r.stove_serial_no ?? ""}
                 onChange={(e) => setDrafts((d) => ({ ...d, [r.id]: e.target.value }))}
                 placeholder="Correct serial"
-                className="w-36 rounded-md border border-gray-300 px-2 py-1 text-sm focus:border-[#4a5d0f] focus:outline-none"
+                className="w-36 rounded-md border border-gray-300 px-2 py-1 text-sm focus:border-(--dc-primary) focus:outline-none"
               />
               <button
                 type="button"
                 disabled={busy === r.id}
                 onClick={() => resolve(r.id)}
-                className="inline-flex shrink-0 items-center gap-1 rounded-md border border-[#4a5d0f]/30 px-2 py-1 text-xs font-medium text-[#4a5d0f] hover:bg-[#4a5d0f]/10 disabled:opacity-50"
+                className="inline-flex shrink-0 items-center gap-1 rounded-md border border-(--dc-primary)/30 px-2 py-1 text-xs font-medium text-(--dc-primary) hover:bg-(--dc-primary)/10 disabled:opacity-50"
               >
                 {busy === r.id ? <Loader2 className="h-3 w-3 animate-spin" /> : <Wrench className="h-3 w-3" />}
                 Fix
@@ -347,7 +347,7 @@ export default function ImportPanel({ canUpload, canCommit, canResolve, organiza
   return (
     <div className="overflow-hidden rounded-xl border border-gray-200 bg-white">
       <div className="flex items-center gap-2 border-b border-gray-100 px-4 py-3">
-        <Upload className="h-4 w-4 text-[#4a5d0f]" />
+        <Upload className="h-4 w-4 text-(--dc-primary)" />
         <span className="text-sm font-semibold text-gray-900">Bulk Import</span>
         <span className="text-sm text-gray-500">Digitalized paper receipts</span>
       </div>
@@ -362,7 +362,7 @@ export default function ImportPanel({ canUpload, canCommit, canResolve, organiza
               id="dc-import-org"
               value={orgId}
               onChange={(e) => setOrgId(e.target.value)}
-              className="min-w-[200px] rounded-md border border-gray-300 px-2 py-1.5 text-sm focus:border-[#4a5d0f] focus:outline-none"
+              className="min-w-[200px] rounded-md border border-gray-300 px-2 py-1.5 text-sm focus:border-(--dc-primary) focus:outline-none"
             >
               <option value="">Choose a partner...</option>
               {orgOptions.map((o) => (
@@ -384,7 +384,7 @@ export default function ImportPanel({ canUpload, canCommit, canResolve, organiza
               setManual(false);
               fileInput.current?.click();
             }}
-            className="inline-flex items-center gap-1.5 rounded-md bg-[#4a5d0f] px-3 py-1.5 text-sm font-medium text-white hover:bg-[#3d4d0c] disabled:opacity-50"
+            className="inline-flex items-center gap-1.5 rounded-md bg-(--dc-primary) px-3 py-1.5 text-sm font-medium text-white hover:bg-(--dc-primary-strong) disabled:opacity-50"
           >
             {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : <FileText className="h-4 w-4" />}
             Choose a CSV
@@ -462,9 +462,9 @@ export default function ImportPanel({ canUpload, canCommit, canResolve, organiza
         </div>
       )}
       {notice && (
-        <div className="flex items-start gap-2 border-b border-[#4a5d0f]/20 bg-[#eef3c4]/50 px-4 py-3">
-          <CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0 text-[#4a5d0f]" />
-          <p className="text-sm text-[#4a5d0f]">{notice}</p>
+        <div className="flex items-start gap-2 border-b border-(--dc-primary)/20 bg-(--dc-primary-soft)/50 px-4 py-3">
+          <CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0 text-(--dc-primary)" />
+          <p className="text-sm text-(--dc-primary)">{notice}</p>
         </div>
       )}
       {progress && busy && (
@@ -506,7 +506,7 @@ export default function ImportPanel({ canUpload, canCommit, canResolve, organiza
                 <div className="mt-3 space-y-3">
                   <div className="grid grid-cols-2 gap-2 sm:grid-cols-5">
                     <Stat label="Rows" value={b.total_rows} />
-                    <Stat label="Ready" value={b.valid_rows} tone="text-[#4a5d0f]" />
+                    <Stat label="Ready" value={b.valid_rows} tone="text-(--dc-primary)" />
                     <Stat label="Exceptions" value={b.exception_rows} tone="text-amber-700" />
                     <Stat label="Unreadable" value={Math.max(0, b.rejected_rows - b.exception_rows)} tone="text-red-600" />
                     <Stat label="Committed" value={b.committed_rows} />
@@ -532,7 +532,7 @@ export default function ImportPanel({ canUpload, canCommit, canResolve, organiza
                         type="button"
                         disabled={busy}
                         onClick={() => runCommit(b.id, b.valid_rows)}
-                        className="inline-flex items-center gap-1 rounded-md bg-[#4a5d0f] px-2.5 py-1.5 text-xs font-medium text-white hover:bg-[#3d4d0c] disabled:opacity-50"
+                        className="inline-flex items-center gap-1 rounded-md bg-(--dc-primary) px-2.5 py-1.5 text-xs font-medium text-white hover:bg-(--dc-primary-strong) disabled:opacity-50"
                       >
                         <Play className="h-3.5 w-3.5" /> Commit {b.valid_rows}
                       </button>

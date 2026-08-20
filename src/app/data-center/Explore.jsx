@@ -66,7 +66,7 @@ function AreaCard({ area, unlocked }) {
       <div className="flex items-start gap-3">
         <div
           className={`flex h-11 w-11 shrink-0 items-center justify-center rounded-lg ${
-            unlocked ? "bg-[#4a5d0f]/10 text-[#4a5d0f]" : "bg-gray-200 text-gray-500"
+            unlocked ? "bg-(--dc-primary)/10 text-(--dc-primary)" : "bg-gray-200 text-gray-500"
           }`}
         >
           {unlocked ? <Icon className="h-5 w-5" /> : <Lock className="h-4 w-4" />}
@@ -102,7 +102,7 @@ function AreaCard({ area, unlocked }) {
     <Link
       href={area.href}
       aria-label={`Open ${area.name}`}
-      className="block rounded-xl border border-[#4a5d0f]/25 bg-white p-5 transition hover:border-[#4a5d0f]/50 hover:shadow-sm"
+      className="block rounded-xl border border-(--dc-primary)/25 bg-white p-5 transition hover:border-(--dc-primary)/50 hover:shadow-sm"
     >
       {body}
     </Link>

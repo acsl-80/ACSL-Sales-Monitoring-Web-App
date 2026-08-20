@@ -21,12 +21,12 @@ const NUMBER = new Intl.NumberFormat("en-NG");
 
 const STATE_TONE = {
   open: "bg-blue-100 text-blue-800",
-  completed: "bg-[#4a5d0f]/10 text-[#4a5d0f]",
+  completed: "bg-(--dc-primary)/10 text-(--dc-primary)",
   reclaimed: "bg-purple-100 text-purple-800",
 };
 
 const OUTCOME_TONE = {
-  fully_verified: "text-[#4a5d0f]",
+  fully_verified: "text-(--dc-primary)",
   partially_verified: "text-amber-700",
   doubtful_verification: "text-amber-700",
   unreachable: "text-orange-700",
@@ -130,7 +130,7 @@ export default function AssignmentLog({ canRun }) {
   return (
     <div className="overflow-hidden rounded-xl border border-gray-200 bg-white">
       <div className="flex flex-wrap items-center gap-2 border-b border-gray-100 px-4 py-3">
-        <ClipboardList className="h-4 w-4 text-[#4a5d0f]" />
+        <ClipboardList className="h-4 w-4 text-(--dc-primary)" />
         <span className="text-sm font-semibold text-gray-900">Assignment Log</span>
         <span className="text-sm text-gray-500">
           {loading ? "loading..." : `${NUMBER.format(rows.length)} record(s) shown`}
@@ -147,7 +147,7 @@ export default function AssignmentLog({ canRun }) {
                 type="button"
                 disabled={busy}
                 onClick={runAssignment}
-                className="inline-flex items-center gap-1.5 rounded-md bg-[#4a5d0f] px-2.5 py-1.5 text-xs font-medium text-white hover:bg-[#3d4d0c] disabled:opacity-50"
+                className="inline-flex items-center gap-1.5 rounded-md bg-(--dc-primary) px-2.5 py-1.5 text-xs font-medium text-white hover:bg-(--dc-primary-strong) disabled:opacity-50"
               >
                 {busy ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Play className="h-3.5 w-3.5" />}
                 Assign now
@@ -181,7 +181,7 @@ export default function AssignmentLog({ canRun }) {
           id="dc-log-state"
           value={batchState}
           onChange={(e) => setBatchState(e.target.value)}
-          className="rounded-md border border-gray-300 px-2 py-1 text-xs focus:border-[#4a5d0f] focus:outline-none"
+          className="rounded-md border border-gray-300 px-2 py-1 text-xs focus:border-(--dc-primary) focus:outline-none"
         >
           <option value="">All</option>
           <option value="open">Open</option>
@@ -206,7 +206,7 @@ export default function AssignmentLog({ canRun }) {
         </div>
       )}
       {notice && (
-        <p className="border-b border-[#4a5d0f]/20 bg-[#eef3c4]/50 px-4 py-2.5 text-sm text-[#4a5d0f]">
+        <p className="border-b border-(--dc-primary)/20 bg-(--dc-primary-soft)/50 px-4 py-2.5 text-sm text-(--dc-primary)">
           {notice}
         </p>
       )}
@@ -223,7 +223,7 @@ export default function AssignmentLog({ canRun }) {
         <div className="overflow-x-auto">
           <table className="min-w-[1100px] w-full text-sm">
             <thead>
-              <tr className="border-b border-gray-200 bg-[#fafafa] text-xs font-semibold uppercase tracking-wide text-gray-500">
+              <tr className="border-b border-gray-200 bg-(--dc-surface-muted) text-xs font-semibold uppercase tracking-wide text-gray-500">
                 {["Batch", "Agent", "Partner", "Assigned", "#", "Serial", "Outcome", "Attempts", "Last call", "By"].map(
                   (h) => (
                     <th key={h} scope="col" className="px-3 py-2 text-left">{h}</th>
@@ -233,7 +233,7 @@ export default function AssignmentLog({ canRun }) {
             </thead>
             <tbody>
               {rows.map((r) => (
-                <tr key={`${r.batch_id}-${r.sale_id}`} className="border-b border-gray-100 hover:bg-[#eef3c4]/40">
+                <tr key={`${r.batch_id}-${r.sale_id}`} className="border-b border-gray-100 hover:bg-(--dc-primary-soft)/40">
                   <td className="px-3 py-2">
                     <span className={`rounded-full px-2 py-0.5 text-xs font-medium ${STATE_TONE[r.batch_state]}`}>
                       {r.batch_state}

@@ -54,12 +54,12 @@ function Card({ label, value: v, hint, tone }) {
 }
 
 const BAR_TONES = {
-  fully_verified: "bg-[#4a5d0f]",
+  fully_verified: "bg-(--dc-primary)",
   partially_verified: "bg-amber-500",
   doubtful_verification: "bg-orange-500",
   not_verified: "bg-gray-400",
   never_called: "bg-gray-300",
-  sold: "bg-[#4a5d0f]",
+  sold: "bg-(--dc-primary)",
   available: "bg-blue-400",
 };
 
@@ -81,7 +81,7 @@ function Bars({ title, data, subtitle, emptyText }) {
               </span>
               <span className="h-4 min-w-0 flex-1 overflow-hidden rounded bg-gray-100">
                 <span
-                  className={`block h-full rounded ${BAR_TONES[d.label] ?? "bg-[#6b8016]"}`}
+                  className={`block h-full rounded ${BAR_TONES[d.label] ?? "bg-(--dc-primary-mid)"}`}
                   style={{ width: `${Math.max(2, (d.value / max) * 100)}%` }}
                 />
               </span>
@@ -174,7 +174,7 @@ export default function Dashboard({ canRun }) {
   return (
     <div className="space-y-4">
       <div className="flex flex-wrap items-center gap-2 rounded-xl border border-gray-200 bg-white px-4 py-3">
-        <BarChart3 className="h-4 w-4 text-[#4a5d0f]" />
+        <BarChart3 className="h-4 w-4 text-(--dc-primary)" />
         <span className="text-sm font-semibold text-gray-900">Dashboards</span>
         {data?.computedAt ? (
           <span className="inline-flex items-center gap-1 text-xs text-gray-500">
@@ -213,7 +213,7 @@ export default function Dashboard({ canRun }) {
       )}
 
       {!data?.computedAt ? (
-        <div className="rounded-xl border border-gray-200 bg-[#fafafa] p-6 text-sm text-gray-600">
+        <div className="rounded-xl border border-gray-200 bg-(--dc-surface-muted) p-6 text-sm text-gray-600">
           Nothing has been computed yet.
           {canRun ? " Use Recompute above to build the first set of figures." : ""}
         </div>
@@ -224,13 +224,13 @@ export default function Dashboard({ canRun }) {
             <Card
               label="Complete"
               value={complete}
-              tone="text-[#4a5d0f]"
+              tone="text-(--dc-primary)"
               hint={total ? `${Math.round((complete / total) * 100)}% by this module's rule` : undefined}
             />
             <Card
               label="Fully verified"
               value={verified}
-              tone="text-[#4a5d0f]"
+              tone="text-(--dc-primary)"
               hint={total ? `${Math.round((verified / total) * 100)}% of sales` : undefined}
             />
             <Card

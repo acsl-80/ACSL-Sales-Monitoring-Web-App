@@ -50,11 +50,11 @@ function cellValue(row, key) {
 }
 
 const STATUS_TONE = {
-  completed: "bg-[#4a5d0f]/10 text-[#4a5d0f]",
+  completed: "bg-(--dc-primary)/10 text-(--dc-primary)",
   incomplete: "bg-amber-100 text-amber-800",
   pending: "bg-blue-100 text-blue-800",
   assigned: "bg-purple-100 text-purple-800",
-  fully_paid: "bg-[#4a5d0f]/10 text-[#4a5d0f]",
+  fully_paid: "bg-(--dc-primary)/10 text-(--dc-primary)",
   partially_paid: "bg-amber-100 text-amber-800",
   not_applicable: "bg-gray-100 text-gray-600",
 };
@@ -85,14 +85,14 @@ function FilterBar({ draft, setDraft, onClear, active }) {
           value={draft.search ?? ""}
           onChange={(e) => setDraft({ ...draft, search: e.target.value })}
           placeholder="Name, phone, stove serial or transaction ID"
-          className="w-full rounded-md border border-gray-300 py-1.5 pl-8 pr-3 text-sm focus:border-[#4a5d0f] focus:outline-none"
+          className="w-full rounded-md border border-gray-300 py-1.5 pl-8 pr-3 text-sm focus:border-(--dc-primary) focus:outline-none"
         />
       </div>
 
       <select
         value={draft.saleStatus ?? ""}
         onChange={(e) => setDraft({ ...draft, saleStatus: e.target.value || undefined })}
-        className="rounded-md border border-gray-300 px-2 py-1.5 text-sm focus:border-[#4a5d0f] focus:outline-none"
+        className="rounded-md border border-gray-300 px-2 py-1.5 text-sm focus:border-(--dc-primary) focus:outline-none"
       >
         <option value="">Any status</option>
         {SALE_STATUSES.map((s) => (
@@ -103,7 +103,7 @@ function FilterBar({ draft, setDraft, onClear, active }) {
       <select
         value={draft.paymentStatus ?? ""}
         onChange={(e) => setDraft({ ...draft, paymentStatus: e.target.value || undefined })}
-        className="rounded-md border border-gray-300 px-2 py-1.5 text-sm focus:border-[#4a5d0f] focus:outline-none"
+        className="rounded-md border border-gray-300 px-2 py-1.5 text-sm focus:border-(--dc-primary) focus:outline-none"
       >
         <option value="">Any payment</option>
         {PAYMENT_STATUSES.map((s) => (
@@ -115,14 +115,14 @@ function FilterBar({ draft, setDraft, onClear, active }) {
         type="date"
         value={draft.dateFrom ?? ""}
         onChange={(e) => setDraft({ ...draft, dateFrom: e.target.value || undefined })}
-        className="rounded-md border border-gray-300 px-2 py-1.5 text-sm focus:border-[#4a5d0f] focus:outline-none"
+        className="rounded-md border border-gray-300 px-2 py-1.5 text-sm focus:border-(--dc-primary) focus:outline-none"
         aria-label="Sold from"
       />
       <input
         type="date"
         value={draft.dateTo ?? ""}
         onChange={(e) => setDraft({ ...draft, dateTo: e.target.value || undefined })}
-        className="rounded-md border border-gray-300 px-2 py-1.5 text-sm focus:border-[#4a5d0f] focus:outline-none"
+        className="rounded-md border border-gray-300 px-2 py-1.5 text-sm focus:border-(--dc-primary) focus:outline-none"
         aria-label="Sold to"
       />
 
@@ -177,7 +177,7 @@ export default function RecordsTable() {
   return (
     <div className="overflow-hidden rounded-xl border border-gray-200 bg-white">
       <div className="flex items-center gap-2 border-b border-gray-100 px-4 py-3">
-        <Database className="h-4 w-4 text-[#4a5d0f]" />
+        <Database className="h-4 w-4 text-(--dc-primary)" />
         <span className="text-sm font-semibold text-gray-900">Sold Stove Records</span>
         <span className="text-sm text-gray-500">
           {loading
@@ -208,7 +208,7 @@ export default function RecordsTable() {
       <div className="overflow-x-auto">
         <div className="min-w-[1200px]">
           <div
-            className="flex border-b border-gray-200 bg-[#fafafa] text-xs font-semibold uppercase tracking-wide text-gray-500"
+            className="flex border-b border-gray-200 bg-(--dc-surface-muted) text-xs font-semibold uppercase tracking-wide text-gray-500"
             style={{ height: ROW_HEIGHT }}
           >
             {COLUMNS.map((c) => (
@@ -251,7 +251,7 @@ export default function RecordsTable() {
                   {visible.map((row) => (
                     <div
                       key={row.sale_id}
-                      className="flex border-b border-gray-100 text-sm text-gray-700 hover:bg-[#eef3c4]/40"
+                      className="flex border-b border-gray-100 text-sm text-gray-700 hover:bg-(--dc-primary-soft)/40"
                       style={{ height: ROW_HEIGHT }}
                     >
                       {COLUMNS.map((c) => (

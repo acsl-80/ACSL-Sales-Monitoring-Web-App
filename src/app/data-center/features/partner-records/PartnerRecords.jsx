@@ -50,7 +50,7 @@ function FunnelBar({ row }) {
 
   return (
     <span className="flex h-3 w-full overflow-hidden rounded bg-gray-100" aria-hidden="true">
-      {seg(row.verified_count, "bg-[#4a5d0f]", "Verified")}
+      {seg(row.verified_count, "bg-(--dc-primary)", "Verified")}
       {seg(row.unverified_count, "bg-amber-500", "Unverified")}
       {seg(row.unreachable_count, "bg-orange-500", "Unreachable")}
       {seg(row.unresolved_count, "bg-gray-400", "Yet to be resolved")}
@@ -137,7 +137,7 @@ export default function PartnerRecords() {
   return (
     <div className="overflow-hidden rounded-xl border border-gray-200 bg-white">
       <div className="flex flex-wrap items-center gap-2 border-b border-gray-100 px-4 py-3">
-        <Handshake className="h-4 w-4 text-[#4a5d0f]" />
+        <Handshake className="h-4 w-4 text-(--dc-primary)" />
         <span className="text-sm font-semibold text-gray-900">Partner Records</span>
         <span className="text-sm text-gray-500">
           {loading ? "loading..." : `${NUMBER.format(rows.length)} transfer(s)`}
@@ -168,7 +168,7 @@ export default function PartnerRecords() {
           ["Issued", totals.issued, "text-gray-900"],
           ["Received", totals.received, "text-gray-900"],
           ["Digitalised", totals.digitalised, "text-gray-900"],
-          ["Verified", totals.verified, "text-[#4a5d0f]"],
+          ["Verified", totals.verified, "text-(--dc-primary)"],
           ["Outstanding", totals.outstanding, totals.outstanding > 0 ? "text-amber-700" : "text-gray-900"],
         ].map(([label, v, tone]) => (
           <div key={label} className="rounded-lg border border-gray-200 px-3 py-2">
@@ -186,7 +186,7 @@ export default function PartnerRecords() {
             value={search}
             onChange={(e) => setSearch(e.target.value)}
             placeholder="Partner, reference or sales rep"
-            className="w-full rounded-md border border-gray-300 py-1.5 pl-8 pr-3 text-sm focus:border-[#4a5d0f] focus:outline-none"
+            className="w-full rounded-md border border-gray-300 py-1.5 pl-8 pr-3 text-sm focus:border-(--dc-primary) focus:outline-none"
           />
         </div>
         <label className="inline-flex items-center gap-2 text-sm text-gray-700">
@@ -194,7 +194,7 @@ export default function PartnerRecords() {
             type="checkbox"
             checked={outstandingOnly}
             onChange={(e) => setOutstandingOnly(e.target.checked)}
-            className="h-4 w-4 rounded border-gray-300 text-[#4a5d0f] focus:ring-[#4a5d0f]"
+            className="h-4 w-4 rounded border-gray-300 text-(--dc-primary) focus:ring-(--dc-primary)"
           />
           Still outstanding
         </label>
@@ -229,7 +229,7 @@ export default function PartnerRecords() {
         <div className="overflow-x-auto">
           <table className="min-w-[1180px] w-full text-sm">
             <thead>
-              <tr className="border-b border-gray-200 bg-[#fafafa] text-xs font-semibold uppercase tracking-wide text-gray-500">
+              <tr className="border-b border-gray-200 bg-(--dc-surface-muted) text-xs font-semibold uppercase tracking-wide text-gray-500">
                 {COLUMNS.map((c) => (
                   <th
                     key={c.key}
@@ -245,7 +245,7 @@ export default function PartnerRecords() {
             </thead>
             <tbody>
               {rows.map((row) => (
-                <tr key={row.transfer_id} className="border-b border-gray-100 hover:bg-[#eef3c4]/40">
+                <tr key={row.transfer_id} className="border-b border-gray-100 hover:bg-(--dc-primary-soft)/40">
                   {COLUMNS.map((c) => (
                     <td
                       key={c.key}

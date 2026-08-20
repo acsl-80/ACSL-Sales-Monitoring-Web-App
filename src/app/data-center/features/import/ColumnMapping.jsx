@@ -51,7 +51,7 @@ export default function ColumnMapping({ file, inspection, onCancel, onConfirm, b
   const overCap = file.rowCount > inspection.maxRows;
 
   return (
-    <div className="border-b border-gray-100 bg-[#fafafa] px-4 py-3">
+    <div className="border-b border-gray-100 bg-(--dc-surface-muted) px-4 py-3">
       <div className="mb-3 flex flex-wrap items-center gap-2">
         <span className="text-sm font-semibold text-gray-900">
           What this file looks like
@@ -80,7 +80,7 @@ export default function ColumnMapping({ file, inspection, onCancel, onConfirm, b
       <div className="grid gap-3 sm:grid-cols-2">
         <div className="rounded-lg border border-gray-200 bg-white p-3">
           <p className="mb-2 flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wide text-gray-500">
-            <CheckCircle2 className="h-3.5 w-3.5 text-[#4a5d0f]" />
+            <CheckCircle2 className="h-3.5 w-3.5 text-(--dc-primary)" />
             Understood ({inspection.recognised.length})
           </p>
           {inspection.recognised.length === 0 ? (
@@ -117,7 +117,7 @@ export default function ColumnMapping({ file, inspection, onCancel, onConfirm, b
                     onChange={(e) =>
                       setMapping((m) => ({ ...m, [header]: e.target.value }))
                     }
-                    className="w-44 shrink-0 rounded-md border border-gray-300 px-2 py-1 text-sm focus:border-[#4a5d0f] focus:outline-none"
+                    className="w-44 shrink-0 rounded-md border border-gray-300 px-2 py-1 text-sm focus:border-(--dc-primary) focus:outline-none"
                   >
                     <option value="">Ignore this column</option>
                     {inspection.mappableFields.map((f) => (
@@ -144,7 +144,7 @@ export default function ColumnMapping({ file, inspection, onCancel, onConfirm, b
           type="button"
           disabled={busy || overCap}
           onClick={() => onConfirm(mapping)}
-          className="inline-flex items-center gap-1.5 rounded-md bg-[#4a5d0f] px-3 py-1.5 text-sm font-medium text-white hover:bg-[#3d4d0c] disabled:opacity-50"
+          className="inline-flex items-center gap-1.5 rounded-md bg-(--dc-primary) px-3 py-1.5 text-sm font-medium text-white hover:bg-(--dc-primary-strong) disabled:opacity-50"
         >
           Stage and check
         </button>

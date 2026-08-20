@@ -8,6 +8,7 @@ export default function PartnerRecordsPage() {
       title="Partner Records"
       description="What was issued to each partner, and how much of it has come back."
       breadcrumb="Partner Records"
+      area="partner-records"
       feature={DATA_CENTER_FEATURES.RECORDS_VIEW}
     >
       <PartnerRecords />

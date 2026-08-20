@@ -63,6 +63,7 @@ export default function CallCentrePage() {
       title="Call Centre"
       description="The verification queue, and what each call concluded."
       breadcrumb="Call Centre"
+      area="call-centre"
       feature={DATA_CENTER_FEATURES.CALL_RECORDS_VIEW}
     >
       <Inner />

@@ -24,7 +24,7 @@ const NUMBER = new Intl.NumberFormat("en-NG");
  * showing 12 rows is by construction, not coincidence.
  */
 const STATUS_COLUMNS = [
-  { metric: "verified", label: "Verified", tone: "text-[#4a5d0f]" },
+  { metric: "verified", label: "Verified", tone: "text-(--dc-primary)" },
   { metric: "unverified", label: "Unverified", tone: "text-amber-700" },
   { metric: "unreachable", label: "Unreachable", tone: "text-orange-700" },
   { metric: "unresolved", label: "Yet to be resolved", tone: "text-gray-600" },
@@ -100,7 +100,7 @@ export default function Scorecard({ title, by, metrics, hint }) {
         <div className="overflow-x-auto">
           <table className="w-full min-w-[860px] text-sm">
             <thead>
-              <tr className="border-b border-gray-200 bg-[#fafafa] text-xs font-semibold uppercase tracking-wide text-gray-500">
+              <tr className="border-b border-gray-200 bg-(--dc-surface-muted) text-xs font-semibold uppercase tracking-wide text-gray-500">
                 <th scope="col" className="px-3 py-2 text-left">{title}</th>
                 {[...VOLUME_COLUMNS, ...STATUS_COLUMNS].map((c) => (
                   <th key={c.metric} scope="col" className="px-3 py-2 text-right">
@@ -111,7 +111,7 @@ export default function Scorecard({ title, by, metrics, hint }) {
             </thead>
             <tbody>
               {rows.map((row) => (
-                <tr key={row.key} className="border-b border-gray-100 hover:bg-[#eef3c4]/40">
+                <tr key={row.key} className="border-b border-gray-100 hover:bg-(--dc-primary-soft)/40">
                   <td className="max-w-[220px] truncate px-3 py-2 font-medium text-gray-900">
                     <Link
                       to="/data-center/call-centre"

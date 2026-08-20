@@ -1,0 +1,71 @@
+/*
+ * The Data Center's palette, in one place.
+ *
+ * The olive identity used to be hardcoded ~80 times across 14 files as
+ * arbitrary values. Everything now reads these variables, so the identity is
+ * one edit rather than a find-and-replace with misses.
+ *
+ * On :root, deliberately. Radix dialogs and popovers portal to <body>, outside
+ * any wrapper this module renders, and variables scoped under a wrapper would
+ * never reach them. The --dc- prefix keeps the host's names clear, and this
+ * file only loads with the lazily-imported module, so a user who never opens
+ * the Data Center never downloads it: the sales app does not notice.
+ *
+ * Every value is a raw color, never a var of a var, because Tailwind v4's
+ * opacity modifier (bg-(--dc-primary)/10) needs a plain color to mix.
+ */
+
+:root {
+  /* The olive family: the module's brand anchor, shared with the host. */
+  --dc-primary: #4a5d0f;
+  --dc-primary-strong: #3d4d0c;
+  --dc-primary-mid: #6b8016;
+  --dc-primary-soft: #eef3c4;
+
+  /* Surfaces. */
+  --dc-surface: #ffffff;
+  --dc-surface-muted: #fafafa;
+
+  /* The default accent, for anything rendered outside an area (portaled
+     dialogs that carry no data-area, shared chrome). */
+  --dc-accent: #4a5d0f;
+  --dc-accent-strong: #3d4d0c;
+  --dc-accent-soft: #eef3c4;
+}
+
+/*
+ * One accent per area: wayfinding, carried from the Explore card through to
+ * the page it opens. Each triple is (text/fill on white, hover/pressed, tint).
+ * All accent values hold >= 4.5:1 against white and --dc-surface-muted, so an
+ * accent-colored label is always readable text, not just a decoration color.
+ */
+.dc-root[data-area="explore"],
+.dc-root[data-area="dashboard"] {
+  --dc-accent: #4a5d0f;
+  --dc-accent-strong: #3d4d0c;
+  --dc-accent-soft: #eef3c4;
+}
+
+.dc-root[data-area="call-centre"] {
+  --dc-accent: #0e5a56;
+  --dc-accent-strong: #0a4744;
+  --dc-accent-soft: #d9efec;
+}
+
+.dc-root[data-area="partner-records"] {
+  --dc-accent: #8a5a08;
+  --dc-accent-strong: #6f4806;
+  --dc-accent-soft: #f7ecd2;
+}
+
+.dc-root[data-area="stove-records"] {
+  --dc-accent: #33527b;
+  --dc-accent-strong: #28405f;
+  --dc-accent-soft: #e0e9f4;
+}
+
+.dc-root[data-area="import"] {
+  --dc-accent: #6b3a6e;
+  --dc-accent-strong: #542c57;
+  --dc-accent-soft: #f1e2f2;
+}

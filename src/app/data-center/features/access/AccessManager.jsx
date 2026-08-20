@@ -35,8 +35,8 @@ const ROLE_META = {
   viewer: {
     label: "Viewer", icon: Eye,
     blurb: "Can see records and dashboards.",
-    tone: "bg-[#4a5d0f]/10 text-[#4a5d0f]",
-    button: "border-[#4a5d0f]/30 text-[#4a5d0f] hover:bg-[#4a5d0f]/10",
+    tone: "bg-(--dc-primary)/10 text-(--dc-primary)",
+    button: "border-(--dc-primary)/30 text-(--dc-primary) hover:bg-(--dc-primary)/10",
   },
   call_agent: {
     label: "Call agent", icon: PhoneCall,
@@ -153,7 +153,7 @@ export default function AccessManager() {
 
   if (loading) {
     return (
-      <div className="flex items-center gap-2 rounded-xl border border-gray-100 bg-[#fafafa] p-5 text-sm text-gray-500">
+      <div className="flex items-center gap-2 rounded-xl border border-gray-100 bg-(--dc-surface-muted) p-5 text-sm text-gray-500">
         <Loader2 className="h-4 w-4 animate-spin" /> Loading access...
       </div>
     );
@@ -161,9 +161,9 @@ export default function AccessManager() {
 
   return (
     <div className="space-y-4">
-      <div className="rounded-xl border border-gray-100 bg-[#fafafa] p-5">
+      <div className="rounded-xl border border-gray-100 bg-(--dc-surface-muted) p-5">
         <div className="mb-1 flex items-center gap-2">
-          <ShieldCheck className="h-4 w-4 text-[#4a5d0f]" />
+          <ShieldCheck className="h-4 w-4 text-(--dc-primary)" />
           <h2 className="text-sm font-semibold text-gray-900">Access</h2>
         </div>
         <p className="mb-3 text-sm text-gray-600">
@@ -199,7 +199,7 @@ export default function AccessManager() {
               value={query}
               onChange={(e) => setQuery(e.target.value)}
               placeholder="Search name, email or username to grant access..."
-              className="w-full rounded-md border border-gray-300 bg-white px-3 py-2 text-sm focus:border-[#4a5d0f] focus:outline-none"
+              className="w-full rounded-md border border-gray-300 bg-white px-3 py-2 text-sm focus:border-(--dc-primary) focus:outline-none"
             />
           </div>
           {query.trim().length >= 2 && (
@@ -265,7 +265,7 @@ export default function AccessManager() {
                   value={e.access_role}
                   disabled={busy}
                   onChange={(event) => grant(e.user_id, event.target.value)}
-                  className="rounded-md border border-gray-300 px-2 py-1 text-xs text-gray-700 focus:border-[#4a5d0f] focus:outline-none disabled:opacity-50"
+                  className="rounded-md border border-gray-300 px-2 py-1 text-xs text-gray-700 focus:border-(--dc-primary) focus:outline-none disabled:opacity-50"
                 >
                   {ROLES.map((role) => (
                     <option key={role} value={role}>{ROLE_META[role].label}</option>
@@ -288,9 +288,9 @@ export default function AccessManager() {
 
       {/* Tracked changes. Written by a database trigger, so nothing an editor
           does can skip it. */}
-      <div className="rounded-xl border border-gray-100 bg-[#fafafa] p-5">
+      <div className="rounded-xl border border-gray-100 bg-(--dc-surface-muted) p-5">
         <div className="mb-1 flex items-center gap-2">
-          <History className="h-4 w-4 text-[#4a5d0f]" />
+          <History className="h-4 w-4 text-(--dc-primary)" />
           <h2 className="text-sm font-semibold text-gray-900">Recent changes</h2>
         </div>
         <p className="mb-3 text-sm text-gray-600">
@@ -307,7 +307,7 @@ export default function AccessManager() {
                     c.action === "DELETE"
                       ? "text-red-600"
                       : c.action === "INSERT"
-                        ? "text-[#4a5d0f]"
+                        ? "text-(--dc-primary)"
                         : "text-amber-700"
                   }`}
                 >

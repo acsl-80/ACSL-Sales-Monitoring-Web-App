@@ -14,6 +14,7 @@ export default function DashboardPage() {
       title="Dashboard"
       description="Computed figures. Nothing here is counted at page load."
       breadcrumb="Dashboard"
+      area="dashboard"
       feature={DATA_CENTER_FEATURES.DASHBOARD_VIEW}
     >
       <Inner />

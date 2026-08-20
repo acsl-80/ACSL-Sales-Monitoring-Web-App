@@ -13,7 +13,7 @@
  */
 
 const INPUT_CLASS =
-  "w-full rounded-md border border-gray-300 px-3 py-1.5 text-sm focus:border-[#4a5d0f] focus:outline-none disabled:bg-gray-50 disabled:text-gray-500";
+  "w-full rounded-md border border-gray-300 px-3 py-1.5 text-sm focus:border-(--dc-primary) focus:outline-none disabled:bg-gray-50 disabled:text-gray-500";
 
 /**
  * Should this question be shown, given the rest of the record?
@@ -84,7 +84,7 @@ export default function FieldRenderer({ field, value, options, disabled, onChang
             disabled={disabled}
             checked={Boolean(value)}
             onChange={(e) => onChange(field.key, e.target.checked)}
-            className="h-4 w-4 rounded border-gray-300 text-[#4a5d0f] focus:ring-[#4a5d0f]"
+            className="h-4 w-4 rounded border-gray-300 text-(--dc-primary) focus:ring-(--dc-primary)"
           />
           Yes
         </label>
@@ -127,7 +127,7 @@ export default function FieldRenderer({ field, value, options, disabled, onChang
                 }}
                 className={`rounded-full border px-2.5 py-1 text-xs font-medium transition ${
                   chosen
-                    ? "border-[#4a5d0f] bg-[#4a5d0f]/10 text-[#4a5d0f]"
+                    ? "border-(--dc-primary) bg-(--dc-primary)/10 text-(--dc-primary)"
                     : "border-gray-300 text-gray-600 hover:bg-gray-50"
                 } disabled:opacity-50`}
               >
