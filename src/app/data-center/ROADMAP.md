@@ -763,3 +763,43 @@ Two claims are made, capacity and non-interference. Both get proven.
 15. Run two imports claiming the same stove ID concurrently. Exactly one wins.
 16. `drop schema data_center cascade` locally, then confirm the sales app still
     builds and runs. This proves the module is detachable.
+
+## Phase 14: the UI overhaul: DONE
+
+The module worked and looked like scaffolding. Eleven different jobs were
+eleven identical white cards with gray borders, the olive identity was
+hardcoded 123 times, eight dashboard figures and five breakdowns led nowhere,
+the record editor was a hand-rolled panel clipped by the card it rendered
+inside, two irreversible actions asked window.confirm, and twelve responsive
+utilities covered 3,936 lines.
+
+- [x] **One palette, five accents.** `theme.css` holds every colour as a
+      `--dc-*` token on `:root`, and a `data-area` attribute on the shell gives
+      each area its own hue from its Explore card through to its pages. On
+      `:root` rather than the wrapper because portaled dialogs render outside
+      it. Written up in `DESIGN.md`.
+- [x] **Every dashboard figure is a door.** Eight cards, four breakdowns and the
+      disagreement callout link to the rows they counted, as URLs, through
+      filters the server already accepted. Stove Records gained the drill
+      machinery the call centre had; the call centre route gained `preset` and
+      `verificationOutcome`. Stock by status stays plain: no surface lists
+      stoves that way, and a link that lands close enough is worse than none.
+- [x] **Real overlays.** The record editor is a centred dialog at 90% of the
+      viewport, portaled, with Escape, focus trap and scroll lock from the
+      primitive. The two import confirmations are centred and content-sized:
+      a two-button question stretched to 90% reads as an error. The access
+      search results are a popover, which no ancestor can clip.
+- [x] **A phone can use it.** The two virtualized tables render each record as
+      a card below `sm`, driven by the same breakpoint the classes use, because
+      a virtual window is arithmetic over a row height. The three real tables
+      pin their first column. Scrollers are `maxHeight: clamp(320px, 62dvh,
+      560px)`, so five rows do not sit above 340px of white.
+
+Verified: the full Playwright suite, 71 tests, green before and after. The
+mechanical detector went 7 findings to 1, and that one pairs a resting text
+colour with a hover background the same hover recolours. Two screenshot rounds
+at 1280x900 and 390x844 across all six surfaces plus both dialogs; the finish
+review ran inline from the skill's degraded reference, because the shipped
+reviewer agent is not registered here.
+
+`PRODUCT.md` and `src/app/data-center/DESIGN.md` are written.
