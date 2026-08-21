@@ -24,9 +24,14 @@ test.describe("the partner drill goes partner to stove", () => {
     await signIn(page, USERS.admin);
     await openFirstPartner(page);
 
-    // The funnel for this partner, then who sold it and what came in.
+    // The funnel for this partner, then who sold it and what came in. Each of
+    // these is deliberately both a stat at the top and a column in the table
+    // below, so the assertion takes the first rather than pretending one of
+    // them is wrong.
     for (const stat of ["Issued", "Received", "Verified", "Outstanding"]) {
-      await expect(page.getByRole("dialog").getByText(stat, { exact: true })).toBeVisible();
+      await expect(
+        page.getByRole("dialog").getByText(stat, { exact: true }).first(),
+      ).toBeVisible();
     }
     await expect(page.getByText("Consignments")).toBeVisible();
     await expect(page.getByRole("columnheader", { name: "Reference" })).toBeVisible();
@@ -151,11 +156,11 @@ test.describe("the CSV picker is a dialog, not a corner popover", () => {
     const viewport = page.viewportSize();
     expect(box!.width).toBeGreaterThan(viewport!.width * 0.8);
 
-    await expect(dialog.getByRole("checkbox", { name: "Partner" })).toBeChecked();
+    await expect(dialog.getByRole("checkbox", { name: "Partner", exact: true })).toBeChecked();
     await dialog.getByRole("button", { name: "Clear all" }).click();
-    await expect(dialog.getByRole("checkbox", { name: "Partner" })).not.toBeChecked();
+    await expect(dialog.getByRole("checkbox", { name: "Partner", exact: true })).not.toBeChecked();
     await dialog.getByRole("button", { name: "Select all" }).click();
-    await expect(dialog.getByRole("checkbox", { name: "Partner" })).toBeChecked();
+    await expect(dialog.getByRole("checkbox", { name: "Partner", exact: true })).toBeChecked();
 
     // The count travels onto the button, so nobody exports an empty file by
     // accident.
