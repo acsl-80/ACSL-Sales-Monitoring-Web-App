@@ -372,13 +372,68 @@ serve(async (req) => {
                    answers, other_comments,
                    correction_state, correction_reason, correction_note,
                    correction_requested_at, correction_resolved_at,
-                   has_call_record, call_record_version, call_record_updated_at
-                 from data_center.v_call_center where sale_id = $1`,
+                   has_call_record, call_record_version, call_record_updated_at,
+
+                   /*
+                    * Everything else an agent needs to follow up.
+                    *
+                    * The card used to carry four fields - phone, buyer,
+                    * address, sold - which is enough to dial and not enough to
+                    * hold a conversation. An agent who cannot say which stove,
+                    * from which partner, bought on what terms, with how many
+                    * pots, is reading from a stub while the buyer is talking.
+                    */
+                   resolved_end_user_name, resolved_phone, resolved_alt_phone,
+                   resolved_address, resolved_state, resolved_lga, was_corrected,
+                   sale_agent_name, partner_state, partner_branch, partner_id,
+                   previous_stove_type, previous_stove_other,
+                   pot_quantity, heat_retention_device,
+                   total_paid, payment_status, is_installment, platform,
+                   factory, stove_stock_status, latitude, longitude,
+                   created_at::text as recorded_at
+                 from data_center.v_call_center_resolved where sale_id = $1`,
           args: [saleId],
         });
         if (record.rows.length === 0) {
           return json({ error: "No such sale", code: "not_found" }, 404, cors);
         }
+
+        /**
+         * Two things the view does not carry, both of which change what the
+         * agent should do before anything else on the screen.
+         *
+         * A record whose stove ID was taken by another caller's rematch cannot
+         * be verified until somebody rings this buyer, and a number carrying
+         * other stoves means the person answering may be talking about one of
+         * them. Neither belongs at the bottom of a form.
+         */
+        const flags = await conn.queryObject({
+          text: `select cr.serial_unconfirmed_at, cr.serial_unconfirmed_reason
+                   from data_center.call_records cr
+                  where cr.sale_id = $1`,
+          args: [saleId],
+        });
+        const extra = (flags.rows[0] ?? {}) as Record<string, unknown>;
+        // The shared-phone list stands alone: a sale with no call record yet
+        // still has a number, and the register still knows what is on it.
+        const shares = await conn.queryObject({
+          text: `select json_agg(json_build_object(
+                          'stove_id', o.stove_id,
+                          'buyer', s2.end_user_name,
+                          'sale_id', o.sale_id::text) order by o.created_at) as list
+                   from data_center.shared_phones o
+                   left join public.sales s2 on s2.id = o.sale_id
+                  where o.sale_id <> $1
+                    and o.phone_tail = (
+                          select right(regexp_replace(coalesce(s.phone, ''), '[^0-9]', '', 'g'), 10)
+                            from public.sales s where s.id = $1)`,
+          args: [saleId],
+        });
+        Object.assign(record.rows[0] as Record<string, unknown>, {
+          serial_unconfirmed_at: extra.serial_unconfirmed_at ?? null,
+          serial_unconfirmed_reason: extra.serial_unconfirmed_reason ?? null,
+          shares_phone_with: (shares.rows[0] as { list: unknown } | undefined)?.list ?? [],
+        });
         const attempts = await conn.queryObject({
           text: `select a.id::text, a.attempt_no, a.attempted_at, a.note,
                         o.label as outcome, g.label as agent, b.label as answered_by

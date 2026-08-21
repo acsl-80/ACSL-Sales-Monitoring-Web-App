@@ -109,6 +109,26 @@ const PRESETS = [
     filters: { verificationOutcome: "not_verified", attemptsAtLeast: 3 },
   },
   { key: "correction", label: "Waiting on Sales", filters: { correctionState: "open" } },
+  /**
+   * Where finished work lives.
+   *
+   * Verified to either degree: the call centre has spoken to the buyer and
+   * concluded something. Deliberately not the same question the scorecard's
+   * "verified" column asks - that one counts full verification only, because
+   * it is measuring how much of a consignment is confirmed. This one measures
+   * whether an agent still has work to do, and a partially verified record is
+   * one they have finished with.
+   *
+   * Unreachable is in neither: nobody has spoken to that buyer at all.
+   */
+  { key: "completed", label: "Completed", filters: { completed: true } },
+  /**
+   * Records whose stove ID was taken by another caller's rematch. Nobody has
+   * confirmed anything with these buyers and their record now names a stove
+   * they have never read out, so they are the most urgent thing in the queue
+   * and would otherwise sit invisibly inside "still to verify".
+   */
+  { key: "unconfirmed", label: "Stove ID unconfirmed", filters: { serialUnconfirmed: true } },
 ];
 
 function cellValue(row, key) {

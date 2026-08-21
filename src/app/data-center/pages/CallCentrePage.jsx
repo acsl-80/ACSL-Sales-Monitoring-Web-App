@@ -4,6 +4,8 @@ import DataCentreShell from "../components/DataCentreShell";
 import CallQueue from "../features/call-centre/CallQueue";
 import AssignmentConsole from "../features/call-centre/AssignmentConsole";
 import AssignmentLog from "../features/call-centre/AssignmentLog";
+import MyWork from "../features/call-centre/MyWork";
+import SharedPhones from "../features/call-centre/SharedPhones";
 import { useFeature } from "../lib/access";
 import { DATA_CENTER_FEATURES } from "../lib/features";
 
@@ -13,6 +15,8 @@ const PRESET_LABELS = {
   unresolved: "still to verify",
   exhausted: "chased three times and still not verified",
   correction: "waiting on Sales",
+  completed: "finished by the call centre",
+  unconfirmed: "a stove ID another caller took",
 };
 
 /** The scorecard columns, said the way the dashboard says them. */
@@ -24,7 +28,7 @@ const STATUS_LABELS = {
 };
 
 function Inner() {
-  const { can, isSuperAdmin } = useFeature();
+  const { can, isSuperAdmin, accessRole } = useFeature();
   const search = useSearch({ from: "/data-center/call-centre" });
   const navigate = useNavigate();
 
@@ -67,8 +71,24 @@ function Inner() {
     };
   }, [search, navigate]);
 
+  /**
+   * A call agent lands on their own work, not on everybody's.
+   *
+   * They were shown the same page as a supervisor - the whole queue over the
+   * whole assignment log - so the first act of every shift was working out
+   * which of it was theirs. A supervisor still sees the queue first, because
+   * their question is about the population and not about one person's day.
+   *
+   * Both see both. This is an ordering, not a permission: the server decides
+   * what anybody may read, and this decides what they meet first.
+   */
+  const agentFirst = accessRole === "call_agent" && !isSuperAdmin;
+
   return (
     <div className="space-y-4">
+      {can(DATA_CENTER_FEATURES.CALL_RECORDS_EDIT) && agentFirst && (
+        <MyWork canEdit={can(DATA_CENTER_FEATURES.CALL_RECORDS_EDIT)} />
+      )}
       <CallQueue
         key={drill?.preset ?? "all"}
         canEdit={can(DATA_CENTER_FEATURES.CALL_RECORDS_EDIT)}
@@ -80,6 +100,16 @@ function Inner() {
           nothing renders that the endpoint would 403. The levers inside are
           super admin only, decided again server-side. */}
       {isSuperAdmin && <AssignmentConsole canEdit />}
+      {/* A supervisor gets it after the console: they ask about everybody
+          first and about their own queue rarely, which is the opposite of an
+          agent and the reason this is ordered rather than hidden. */}
+      {can(DATA_CENTER_FEATURES.CALL_RECORDS_EDIT) && !agentFirst && (
+        <MyWork canEdit={can(DATA_CENTER_FEATURES.CALL_RECORDS_EDIT)} />
+      )}
+      {/* The register sits with the call centre because that is where a
+          shared number stops being a suspicion and becomes a fact: somebody
+          rings it and finds out whether it is one household or one typo. */}
+      {can(DATA_CENTER_FEATURES.RECORDS_VIEW) && <SharedPhones />}
       {can(DATA_CENTER_FEATURES.RECORDS_VIEW) && (
         <AssignmentLog
           canRun={isSuperAdmin}

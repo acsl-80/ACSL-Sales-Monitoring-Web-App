@@ -408,6 +408,16 @@ export const dataCenterClient = {
     call<StoveSearchResult>("data-center-read", "stove_search", { query }),
 
   /**
+   * Every phone number carrying more than one stove, with the records.
+   *
+   * The records rather than a count, because a count cannot tell a household
+   * from a typo and the whole point of the surface is that somebody decides
+   * which it is.
+   */
+  sharedPhones: (params: { search?: string; confirmedOnly?: boolean; limit?: number } = {}) =>
+    call<{ rows: SharedPhoneGroup[] }>("data-center-read", "shared_phones", params),
+
+  /**
    * The earliest date the module knows about, so the period control offers
    * only years the register actually holds.
    *
@@ -511,6 +521,30 @@ export type StoveSearchResult = {
     partner_name: string | null;
     transaction_id: string | null;
     sold: boolean;
+  }[];
+};
+
+/** One phone number and every stove recorded against it. */
+export type SharedPhoneGroup = {
+  phone_tail: string;
+  stove_count: number;
+  any_confirmed: boolean;
+  first_seen: string;
+  last_touched: string;
+  stoves: {
+    sale_id: string;
+    stove_id: string | null;
+    phone_as_written: string | null;
+    source: "digitalisation" | "call_centre" | "sales_app";
+    confirmed: boolean;
+    note: string | null;
+    buyer: string | null;
+    address: string | null;
+    lga: string | null;
+    partner: string | null;
+    sales_date: string | null;
+    recorded_by: string | null;
+    recorded_at: string;
   }[];
 };
 
@@ -689,6 +723,39 @@ export type BatchStove = {
 };
 
 /** Access administration. Server-gated to super_admin or grants.manage. */
+/**
+ * The two acts only the agent on the call can perform.
+ *
+ * Both live on the write endpoint beside the call record, because both are
+ * things a person does while holding a phone: the buyer reads a stove number
+ * that does not match, or gives a number somebody else is already on.
+ */
+export const dataCenterCall = {
+  /**
+   * Move this sale onto the stove ID the buyer read out.
+   *
+   * Answers with what happened rather than just success: claiming a free stove
+   * and swapping with another buyer are the same request and very different
+   * outcomes, and the second one leaves somebody else needing a call.
+   */
+  serialRematch: (saleId: string, confirmedSerial: string, note?: string) =>
+    call<{
+      saleId: string;
+      fromSerial: string;
+      toSerial: string;
+      kind: "claimed_available" | "swapped";
+      swappedWithSaleId: string | null;
+    }>("data-center-write", "serial_rematch", { saleId, confirmedSerial, note }),
+
+  /** Put this number and every stove on it into the register. */
+  recordSharedPhone: (saleId: string, phone: string, note?: string) =>
+    call<{ phoneTail: string; stoves: { sale_id: string; stove_serial_no: string | null }[] }>(
+      "data-center-write",
+      "record_shared_phone",
+      { saleId, phone, note },
+    ),
+};
+
 export const dataCenterAdmin = {
   listAccess: () => call<AccessListEntry[]>("data-center-admin", "access_list"),
   searchUsers: (query: string) =>
@@ -1097,6 +1164,23 @@ export const dataCenterAssign = {
   unassignBatch: (batchId: string, reason?: string) =>
     call<{ released: number }>("data-center-assign", "unassign_batch", { batchId, reason }),
 
+  /**
+   * Move work from one agent to another without it passing through the pool.
+   *
+   * A batch when somebody is covering a whole shift, a list of sales when the
+   * complaint is about particular records. Never both: the server would have
+   * to decide which one you meant.
+   */
+  reassign: (
+    toAgentId: string,
+    what: { batchId: string } | { saleIds: string[] },
+  ) =>
+    call<{ moved: number; toAgentId: string; batches: string[]; closedEmpty: number }>(
+      "data-center-assign",
+      "reassign",
+      { toAgentId, ...what },
+    ),
+
   unassignItem: (saleId: string) =>
     call<{ batchId: string | null }>("data-center-assign", "unassign_item", { saleId }),
 
@@ -1117,6 +1201,15 @@ export const dataCenterAssign = {
         sale_id: string; position: number; stove_serial_no: string; sales_date: string | null;
         verification_outcome: string | null; attempt_count: number | null;
         last_attempt_at: string | null;
+        /** Resolved: a correction typed on an earlier call, else the receipt. */
+        end_user_name: string | null;
+        phone: string | null;
+        alternative_phone: string | null;
+        user_state: string | null;
+        user_lga: string | null;
+        correction_state: string | null;
+        /** Set when another caller's rematch took this record's stove ID. */
+        serial_unconfirmed_at: string | null;
       }[];
     }>("data-center-assign", "my_batches"),
 

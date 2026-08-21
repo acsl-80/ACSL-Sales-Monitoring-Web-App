@@ -1,4 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
+import AgentBrief from "./AgentBrief";
+import SerialRematch from "./SerialRematch";
 import Link from "@/compat/Link";
 import { dataCenterWrite, DataCenterError } from "../../lib/client";
 import FieldRenderer, { isFieldVisible } from "./FieldRenderer";
@@ -245,19 +247,23 @@ export default function CallRecordEditor({ saleId, canEdit, onClose, onSaved }) 
               </div>
             )}
 
-            {/* What the sale says, so the agent has something to check against. */}
-            <div className="rounded-lg border border-gray-200 bg-(--dc-surface-muted) p-3 text-sm">
-              <div className="grid grid-cols-2 gap-x-4 gap-y-1.5 text-gray-700">
-                <span className="text-gray-500">Recorded phone</span>
-                <span>{record?.primary_phone ?? "—"}</span>
-                <span className="text-gray-500">Buyer</span>
-                <span>{record?.buyer_name ?? "—"}</span>
-                <span className="text-gray-500">Address</span>
-                <span className="truncate">{record?.user_residential_address ?? "—"}</span>
-                <span className="text-gray-500">Sold</span>
-                <span>{record?.sales_date ?? "—"}</span>
-              </div>
-            </div>
+            {/*
+              Everything the record knows, arranged the way a call goes.
+
+              This was four fields - phone, buyer, address, sold - which is
+              enough to dial and not enough to hold the conversation. An agent
+              who cannot say which stove, from which partner, on what terms, is
+              reading from a stub while the customer is talking.
+            */}
+            <AgentBrief record={record} />
+
+            {/* The fix that only works while the buyer is on the line. */}
+            <SerialRematch
+              saleId={saleId}
+              currentSerial={record?.stove_serial_no}
+              canEdit={canEdit}
+              onDone={() => load()}
+            />
 
             {/* The outcome. Its own control because everything downstream
                 groups by it. */}

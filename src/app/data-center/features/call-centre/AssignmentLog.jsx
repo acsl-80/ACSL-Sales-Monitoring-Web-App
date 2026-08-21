@@ -9,7 +9,7 @@ import CallRecordEditor from "./CallRecordEditor";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import {
   ClipboardList, Loader2, AlertTriangle, Play, RotateCcw, X,
-  ChevronLeft, ChevronRight, Pencil, PhoneCall, Check,
+  ChevronLeft, ChevronRight, Pencil, PhoneCall, Check, Users,
 } from "lucide-react";
 
 /**
@@ -249,6 +249,34 @@ export default function AssignmentLog({ canRun, canEdit = false }) {
   const [openSale, setOpenSale] = useState(null);
 
   /**
+   * Whose work this is, and whether to read it agent by agent.
+   *
+   * The log listed every assignment in one flat stream, newest first, which
+   * answers "what happened last" and never answers "what is Hanifa holding".
+   * That second question is the one a supervisor actually asks - before
+   * covering an absence, before moving work, before deciding who is behind.
+   */
+  const [agents, setAgents] = useState([]);
+  const [agentId, setAgentId] = useState("");
+  const [grouped, setGrouped] = useState(false);
+  const [chosen, setChosen] = useState(() => new Set());
+  const [moveTo, setMoveTo] = useState("");
+
+  useEffect(() => {
+    let live = true;
+    dataCenterAssign
+      .agents()
+      .then((r) => live && setAgents(r.agents ?? []))
+      // A missing agent list costs the filter, not the log. Failing the whole
+      // surface because a dropdown could not be filled would be worse than
+      // the dropdown being empty.
+      .catch(() => {});
+    return () => {
+      live = false;
+    };
+  }, []);
+
+  /**
    * The log filters on when work was handed out, which is the date that
    * matters here: an assignment made in March is March's work even if the
    * sale it covers was written in January.
@@ -258,13 +286,51 @@ export default function AssignmentLog({ canRun, canEdit = false }) {
     "logPeriod",
   );
 
+  /**
+   * Move what is ticked, or a whole agent's queue, to somebody else.
+   *
+   * Straight from here rather than through the pool: a supervisor covering an
+   * absence means those records, to that person, and unassign-then-assign
+   * would let the engine hand them to a third agent in between.
+   */
+  const reassign = useCallback(
+    async (what) => {
+      if (!moveTo) {
+        setError("Choose who is taking it first.");
+        return;
+      }
+      setBusy(true);
+      setError(null);
+      try {
+        const r = await dataCenterAssign.reassign(moveTo, what);
+        const name = agents.find((a) => a.agent_id === moveTo)?.full_name ?? "that agent";
+        setNotice(
+          `${r.moved} ${r.moved === 1 ? "record" : "records"} moved to ${name}` +
+            (r.closedEmpty > 0
+              ? `, and ${r.closedEmpty} emptied ${r.closedEmpty === 1 ? "batch was" : "batches were"} closed.`
+              : "."),
+        );
+        setChosen(new Set());
+        await load(currentCursorRef);
+      } catch (err) {
+        setError(
+          err instanceof DataCenterError ? err.message : "Those records could not be moved.",
+        );
+      } finally {
+        setBusy(false);
+      }
+    },
+    [moveTo, agents, load, currentCursorRef],
+  );
+
   const filters = useMemo(
     () => ({
+      ...(agentId ? { agentId } : {}),
       ...(batchState ? { batchState } : {}),
       ...(resolved.dateFrom ? { dateFrom: resolved.dateFrom } : {}),
       ...(resolved.dateTo ? { dateTo: resolved.dateTo } : {}),
     }),
-    [batchState, resolved.dateFrom, resolved.dateTo],
+    [agentId, batchState, resolved.dateFrom, resolved.dateTo],
   );
 
   const load = useCallback(
@@ -426,6 +492,35 @@ export default function AssignmentLog({ canRun, canEdit = false }) {
           area="call-centre"
           noun="assignments made"
         />
+        <label htmlFor="dc-log-agent" className="text-xs font-medium text-gray-700">
+          Agent
+        </label>
+        <select
+          id="dc-log-agent"
+          value={agentId}
+          onChange={(e) => {
+            setAgentId(e.target.value);
+            setChosen(new Set());
+          }}
+          className="rounded-md border border-gray-300 px-2 py-1 text-xs focus:border-(--dc-accent) focus:outline-none"
+        >
+          <option value="">Everyone</option>
+          {agents.map((a) => (
+            <option key={a.agent_id} value={a.agent_id}>
+              {a.full_name ?? a.email}
+              {a.records_held ? ` (${a.records_held} held)` : ""}
+            </option>
+          ))}
+        </select>
+        <label className="inline-flex items-center gap-1.5 text-xs font-medium text-gray-700">
+          <input
+            type="checkbox"
+            checked={grouped}
+            onChange={(e) => setGrouped(e.target.checked)}
+            className="h-3.5 w-3.5 rounded border-gray-300 accent-(--dc-accent)"
+          />
+          Group by agent
+        </label>
         <label htmlFor="dc-log-state" className="text-xs font-medium text-gray-700">
           Batch state
         </label>
@@ -463,6 +558,45 @@ export default function AssignmentLog({ canRun, canEdit = false }) {
         </p>
       )}
 
+      {canEdit && chosen.size > 0 && (
+        <div className="flex flex-wrap items-center gap-2 border-b border-(--dc-accent)/25 bg-(--dc-accent-soft)/50 px-4 py-2.5">
+          <span className="text-sm font-medium text-(--dc-accent-strong)">
+            {chosen.size} {chosen.size === 1 ? "record" : "records"} ticked
+          </span>
+          <select
+            value={moveTo}
+            onChange={(e) => setMoveTo(e.target.value)}
+            aria-label="Move them to"
+            className="rounded-md border border-gray-300 px-2 py-1 text-xs focus:border-(--dc-accent) focus:outline-none"
+          >
+            <option value="">Move them to...</option>
+            {agents
+              .filter((a) => a.is_enabled)
+              .map((a) => (
+                <option key={a.agent_id} value={a.agent_id}>
+                  {a.full_name ?? a.email} ({a.records_held} held)
+                </option>
+              ))}
+          </select>
+          <button
+            type="button"
+            disabled={busy || !moveTo}
+            onClick={() => reassign({ saleIds: [...chosen] })}
+            className="inline-flex items-center gap-1.5 rounded-md bg-(--dc-accent) px-2.5 py-1.5 text-xs font-medium text-white hover:bg-(--dc-accent-strong) disabled:opacity-50"
+          >
+            {busy ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Users className="h-3.5 w-3.5" />}
+            Move
+          </button>
+          <button
+            type="button"
+            onClick={() => setChosen(new Set())}
+            className="inline-flex items-center gap-1 rounded-md px-2 py-1 text-xs text-gray-600 hover:bg-white"
+          >
+            <X className="h-3 w-3" /> Clear
+          </button>
+        </div>
+      )}
+
       {loading ? (
         <p className="flex items-center gap-2 p-6 text-sm text-gray-500">
           <Loader2 className="h-4 w-4 animate-spin" /> Loading the log...
@@ -490,6 +624,11 @@ export default function AssignmentLog({ canRun, canEdit = false }) {
                   ),
                 )}
                 {canEdit && <th scope="col" className="w-12 px-3 py-2" />}
+                {canEdit && (
+                  <th scope="col" className="w-10 px-3 py-2">
+                    <span className="sr-only">Choose</span>
+                  </th>
+                )}
               </tr>
             </thead>
             <tbody>
@@ -509,7 +648,22 @@ export default function AssignmentLog({ canRun, canEdit = false }) {
                       <p className="mt-0.5 text-xs text-purple-700">{r.reclaim_reason}</p>
                     )}
                   </td>
-                  <td className="px-3 py-2 text-gray-900">{r.agent_name ?? "-"}</td>
+                  <td className="px-3 py-2 text-gray-900">
+                    {/*
+                      Grouping is a heading on the first row of each agent's
+                      run rather than a separate rendering path. The log is
+                      keyset-paginated, so a real group-by would have to page
+                      whole agents rather than whole pages, and a supervisor
+                      scanning for a name gets the same answer from a marked
+                      boundary.
+                    */}
+                    {grouped && (
+                      <span className="mb-0.5 block text-[11px] font-semibold uppercase tracking-wide text-(--dc-accent)">
+                        {r.agent_name ?? "unassigned"}
+                      </span>
+                    )}
+                    {r.agent_name ?? "-"}
+                  </td>
                   <td className="px-3 py-2 text-gray-700">{r.partner_name}</td>
                   <td className="px-3 py-2 text-gray-500">{dateOf(r.assigned_at)}</td>
                   <td className="px-3 py-2 tabular-nums text-gray-500">{r.position}</td>
@@ -542,6 +696,33 @@ export default function AssignmentLog({ canRun, canEdit = false }) {
                         outcomes={outcomes}
                         onDone={() => load(currentCursorRef)}
                       />
+                    </td>
+                  )}
+                  {canEdit && (
+                    <td className="px-3 py-2">
+                      {/*
+                        Only an open batch can be moved. A completed or
+                        reclaimed one is history, and offering a tick that the
+                        server would refuse is offering a dead end.
+                      */}
+                      {r.batch_state === "open" ? (
+                        <input
+                          type="checkbox"
+                          checked={chosen.has(r.sale_id)}
+                          aria-label={`Choose ${r.stove_serial_no} for reassignment`}
+                          onClick={(e) => e.stopPropagation()}
+                          onChange={(e) => {
+                            e.stopPropagation();
+                            setChosen((prev) => {
+                              const next = new Set(prev);
+                              if (next.has(r.sale_id)) next.delete(r.sale_id);
+                              else next.add(r.sale_id);
+                              return next;
+                            });
+                          }}
+                          className="h-4 w-4 rounded border-gray-300 accent-(--dc-accent)"
+                        />
+                      ) : null}
                     </td>
                   )}
                 </tr>

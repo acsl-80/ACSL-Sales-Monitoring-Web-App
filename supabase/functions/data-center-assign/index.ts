@@ -242,10 +242,31 @@ serve(async (req) => {
         }
         return await withReadConnection(async (conn) => {
           const r = await conn.queryObject({
+            /**
+             * Enough to make the call, not just to count it.
+             *
+             * This returned positions and serials, which is a queue an agent
+             * cannot work: no name to greet, no number to dial, and no sign of
+             * the one record that needs ringing before all the others - a
+             * buyer whose stove ID another caller took.
+             *
+             * The name and number come resolved, so a correction typed on an
+             * earlier call is what the next agent reads rather than the value
+             * off the receipt.
+             */
             text: `select l.batch_id::text, l.partner_name, l.assigned_at, l.batch_size,
                           l.sale_id::text, l.position, l.stove_serial_no, l.sales_date,
-                          l.verification_outcome, l.attempt_count, l.last_attempt_at
+                          l.verification_outcome, l.attempt_count, l.last_attempt_at,
+                          v.resolved_end_user_name as end_user_name,
+                          v.resolved_phone as phone,
+                          v.resolved_alt_phone as alternative_phone,
+                          v.resolved_state as user_state,
+                          v.resolved_lga as user_lga,
+                          v.correction_state,
+                          cr.serial_unconfirmed_at
                      from data_center.v_assignment_log l
+                     left join data_center.v_call_center_resolved v on v.sale_id = l.sale_id
+                     left join data_center.call_records cr on cr.sale_id = l.sale_id
                     where l.agent_id = $1 and l.batch_state = 'open' and l.is_active
                     order by l.assigned_at desc, l.position
                     limit 200`,
