@@ -286,6 +286,37 @@ export default function AssignmentLog({ canRun, canEdit = false }) {
     "logPeriod",
   );
 
+  const filters = useMemo(
+    () => ({
+      ...(agentId ? { agentId } : {}),
+      ...(batchState ? { batchState } : {}),
+      ...(resolved.dateFrom ? { dateFrom: resolved.dateFrom } : {}),
+      ...(resolved.dateTo ? { dateTo: resolved.dateTo } : {}),
+    }),
+    [agentId, batchState, resolved.dateFrom, resolved.dateTo],
+  );
+
+  const load = useCallback(
+    async (after = null) => {
+      setLoading(true);
+      try {
+        const page = await dataCenterAssign.log({ cursor: after, filters, limit: pageSize });
+        setRows(page.rows);
+        setCursor(page.nextCursor);
+        setMore(page.nextCursor !== null);
+        setScope(page.scope);
+        setError(null);
+      } catch (err) {
+        setError(
+          err instanceof DataCenterError ? err.message : "Could not load the assignment log.",
+        );
+      } finally {
+        setLoading(false);
+      }
+    },
+    [filters, pageSize],
+  );
+
   /**
    * Move what is ticked, or a whole agent's queue, to somebody else.
    *
@@ -323,36 +354,6 @@ export default function AssignmentLog({ canRun, canEdit = false }) {
     [moveTo, agents, load, currentCursorRef],
   );
 
-  const filters = useMemo(
-    () => ({
-      ...(agentId ? { agentId } : {}),
-      ...(batchState ? { batchState } : {}),
-      ...(resolved.dateFrom ? { dateFrom: resolved.dateFrom } : {}),
-      ...(resolved.dateTo ? { dateTo: resolved.dateTo } : {}),
-    }),
-    [agentId, batchState, resolved.dateFrom, resolved.dateTo],
-  );
-
-  const load = useCallback(
-    async (after = null) => {
-      setLoading(true);
-      try {
-        const page = await dataCenterAssign.log({ cursor: after, filters, limit: pageSize });
-        setRows(page.rows);
-        setCursor(page.nextCursor);
-        setMore(page.nextCursor !== null);
-        setScope(page.scope);
-        setError(null);
-      } catch (err) {
-        setError(
-          err instanceof DataCenterError ? err.message : "Could not load the assignment log.",
-        );
-      } finally {
-        setLoading(false);
-      }
-    },
-    [filters, pageSize],
-  );
 
   // A filter or a page size change starts the paging over: the cursor already
   // in hand points into a result set that no longer exists.

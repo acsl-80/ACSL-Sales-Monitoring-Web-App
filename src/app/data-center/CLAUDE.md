@@ -171,6 +171,11 @@ observable without seeding. Seed before claiming anything.
 
   It loads the config, transpiles every spec and prints the test list without
   opening a browser. Run it before any suite run that follows a spec edit.
+- **A clean typecheck and a green build do not mean a page renders.** A hook
+  declared above the callback it depends on passes both and throws the moment
+  React runs it. `e2e/data-center-pages-load.spec.ts` opens every page and
+  fails on what it throws; run it after any change to a page component or the
+  hook order inside one.
 - Commit at every working state with a clear message.
 - Merge `main` into this branch weekly. `main` moves daily on its own via the
   sync cron and deploys straight to production.
