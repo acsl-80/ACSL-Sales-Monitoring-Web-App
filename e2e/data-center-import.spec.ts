@@ -31,9 +31,10 @@ test.describe("bulk import", () => {
       page.getByText(/stove IDs in the file say which partner it belongs to/),
     ).toBeVisible();
 
-    // Choosing a file is refused until a partner is picked, because the stove
-    // has to belong to someone and create-sale would refuse it anyway.
-    await expect(page.getByRole("button", { name: /Choose a CSV/ })).toBeDisabled();
+    // And choosing a file is available immediately. It used to wait on the
+    // partner being picked; with nothing to pick, waiting would be waiting for
+    // an event that never comes.
+    await expect(page.getByRole("button", { name: /Choose a CSV/ })).toBeEnabled();
   });
 
   test("the panel says nothing is committed until asked", async ({ page }) => {
