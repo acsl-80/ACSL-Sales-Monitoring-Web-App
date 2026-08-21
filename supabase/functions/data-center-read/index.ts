@@ -514,6 +514,102 @@ serve(async (req) => {
        * Scoped exactly like the funnel it drills into, so a partner user
        * cannot open a partner that is not theirs by putting an id in the body.
        */
+      /**
+       * The sheet the digitisers actually work from.
+       *
+       * One row per stove the ERP transferred, already carrying the two things
+       * that cannot be typed from a receipt: the stove ID and the transfer
+       * reference. The digitiser fills in the buyer and the sale beside each
+       * one and uploads it back, and because the serial is already correct the
+       * import can resolve the partner itself rather than asking.
+       *
+       * It replaces the previous arrangement, which was a blank template and a
+       * hope: every serial was typed by hand from a printed sheet, and a
+       * mistyped serial is the one error the import cannot recover from,
+       * because it looks exactly like a stove that is not ours.
+       *
+       * Sold stoves are included but flagged. Leaving them out silently would
+       * hide the reason a sheet is short; saying so lets the digitiser skip
+       * them deliberately.
+       */
+      case "digitisation_sheet": {
+        const superAdmin = isSuperAdmin(profile.role);
+        const resolved = superAdmin
+          ? { accessRole: null, features: [] as string[] }
+          : await resolveAccess(userId);
+        if (!superAdmin && resolved.accessRole === null) {
+          return json({ error: "No Data Center access", code: "no_access" }, 403, cors);
+        }
+        if (!superAdmin && !resolved.features.includes("records.view")) {
+          return json({ error: "Not permitted", code: "no_feature" }, 403, cors);
+        }
+
+        const b = body as { organizationId?: string; month?: string; transferId?: string };
+        const organizationId = String(b.organizationId ?? "");
+        if (!UUID_RE.test(organizationId)) {
+          return json(
+            { error: "Choose which partner's sheet to download", code: "bad_input" },
+            400,
+            cors,
+          );
+        }
+        // YYYY-MM, or nothing for every month.
+        const month = typeof b.month === "string" && /^\d{4}-\d{2}$/.test(b.month)
+          ? b.month
+          : null;
+
+        const scopeInput = await resolveScope(
+          supabase,
+          userId,
+          profile.role,
+          profile.organization_id ?? null,
+        );
+        const scope = buildTransferScopeSql(
+          { ...scopeInput, requestedOrgId: organizationId },
+          1,
+          "f",
+        );
+        const args: unknown[] = [...scope.args];
+        const where = [scope.sql];
+        const p = (v: unknown) => {
+          args.push(v);
+          return `$${args.length}`;
+        };
+        if (month) where.push(`left(f.sales_date, 7) = ${p(month)}`);
+        if (b.transferId && UUID_RE.test(b.transferId)) {
+          where.push(`f.transfer_id = ${p(b.transferId)}`);
+        }
+
+        return await withReadConnection(async (connection) => {
+          const rows = await connection.queryObject({
+            text: `select ts.stove_id, f.transaction_id, f.partner_name,
+                          f.sales_rep, f.sales_date, f.transfer_state, f.transfer_branch,
+                          sb.status as stock_status,
+                          (sb.sale_id is not null) as already_recorded
+                     from data_center.transfer_funnel f
+                     join data_center.v_transfer_stoves ts on ts.transfer_id = f.transfer_id
+                     left join public.stove_ids_base sb on sb.stove_id = ts.stove_id
+                    where ${where.join(" and ")}
+                    order by f.sales_date desc nulls last, f.transaction_id, ts.stove_id
+                    limit 20000`,
+            args,
+          });
+
+          // The months on offer, so the picker lists what exists rather than a
+          // calendar of mostly-empty options.
+          const months = await connection.queryObject({
+            text: `select left(f.sales_date, 7) as month, count(*)::int as transfers
+                     from data_center.transfer_funnel f
+                    where ${scope.sql}
+                      and f.sales_date ~ '^[0-9]{4}-[0-9]{2}'
+                    group by 1 order by 1 desc`,
+            args: [...scope.args],
+          });
+
+          return json({ data: { rows: rows.rows, months: months.rows } }, 200, cors);
+        });
+      }
+
       case "partner_detail": {
         const superAdmin = isSuperAdmin(profile.role);
         const resolved = superAdmin

@@ -1057,6 +1057,24 @@ from (values
 join public.organizations o on o.id = t.org::uuid
 on conflict do nothing;
 
+-- ---------- close the loop the ERP sync closes in production ----------
+--
+-- stove_ids_base.sales_reference names the transfer a stove went out on, and
+-- production has it on all 15,498 rows because the sync writes it. The seed
+-- put the reference inside the transfer's jsonb and never back on the stove,
+-- so preview had it nowhere and anything reading it saw null.
+--
+-- That is not a cosmetic gap. The import resolves a file's partner from the
+-- stove ID and then checks the transfer reference the file carries against
+-- this column; with the column empty the check silently passes every time,
+-- which is the worst way for a check to be wrong.
+update public.stove_ids_base b
+   set sales_reference = t.transaction_id
+  from public.stove_transfer_history t,
+       jsonb_array_elements(t.stove_ids) as e
+ where e ->> 'stove_id' = b.stove_id
+   and b.sales_reference is distinct from t.transaction_id;
+
 -- Paper came back for the third one, more than has been typed. That gap is the
 -- transcription backlog the funnel is there to make visible.
 insert into data_center.record_consignments

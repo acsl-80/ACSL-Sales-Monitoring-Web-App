@@ -1,4 +1,5 @@
 // Data Center: bulk import of digitalized paper receipts.
+import { normalizeNigerianPhone } from "../_shared/nigerian-phone.ts";
 //
 // THE SHAPE, AND WHY IT IS THIS SHAPE
 //
@@ -81,7 +82,6 @@ class BadRequest extends Error {}
 // operator can work through before anything is written.
 // ---------------------------------------------------------------------------
 
-const NG_PHONE = /^(?:0|\+?234)[7-9][0-1]\d{8}$/;
 const ISO_DATE = /^\d{4}-\d{2}-\d{2}$/;
 
 /**
@@ -134,7 +134,10 @@ export interface NormalizedRow {
  * the call centre rang someone whose phone number had never arrived.
  */
 export const HEADER_ALIASES: Record<string, string[]> = {
-  stoveSerialNo: ["stove_serial_no", "Stove Serial Number", "serial", "stoveSerialNo"],
+  stoveSerialNo: ["stove_serial_no", "Stove Serial Number", "serial", "stoveSerialNo", "Stove ID", "stove_id"],
+  // Not a field on the sale: it is the transfer this stove went out on, and it
+  // is carried so the import can check the row landed in the right sheet.
+  transactionId: ["transaction_id", "Transaction ID", "sales_reference", "Sales Reference"],
   firstName:     ["first_name", "User First Name", "firstName"],
   lastName:      ["last_name", "User Last Name", "surname", "lastName"],
   endUserName:   ["end_user_name", "endUserName", "name"],
@@ -170,6 +173,135 @@ function text(raw: Record<string, unknown>, ...keys: string[]): string {
 }
 
 /**
+ * Put a file into the module's own vocabulary, using the aliases it already
+ * knows, before anything looks at it.
+ *
+ * HEADER_ALIASES existed to drive the mapping screen and nothing else, so a
+ * file whose serial column was headed "Stove ID" - the heading the transfer
+ * sheet itself uses - reached the validator as an unrecognised column and the
+ * row failed for having no serial. The alias table knew the answer and was
+ * never asked.
+ *
+ * Case and punctuation are ignored when matching, because "Stove ID",
+ * "stove id" and "Stove_ID" are the same column and only a computer thinks
+ * otherwise.
+ *
+ * An explicit mapping from the operator still wins: they are looking at the
+ * file and this is a guess, however good.
+ */
+const ALIAS_LOOKUP: Map<string, string> = (() => {
+  const m = new Map<string, string>();
+  const key = (h: string) => h.toLowerCase().replace(/[^a-z0-9]/g, "");
+  for (const [field, aliases] of Object.entries(HEADER_ALIASES)) {
+    m.set(key(field), field);
+    for (const alias of aliases) m.set(key(alias), field);
+  }
+  return m;
+})();
+
+export function autoMapRow(row: Record<string, unknown>): Record<string, unknown> {
+  const out: Record<string, unknown> = { ...row };
+  for (const [header, value] of Object.entries(row)) {
+    const field = ALIAS_LOOKUP.get(header.toLowerCase().replace(/[^a-z0-9]/g, ""));
+    // Never overwrite a value already sitting under the canonical name: a file
+    // carrying both "phone" and "Primary Phone Number" keeps the canonical one.
+    if (field && out[field] === undefined) out[field] = value;
+  }
+  return out;
+}
+
+/**
+ * Which partner does this file belong to?
+ *
+ * Nobody should have to answer that. The stove ID is printed on the stove and
+ * every one of the 15,498 in stock carries both the partner it went to and the
+ * transfer reference it went out on, so the file already knows. Asking the
+ * operator to pick from a dropdown of 278 partners was asking them to repeat
+ * something the data states, and to be wrong about it occasionally.
+ *
+ * Returns every partner the serials resolve to, so a file that spans two can
+ * say which two rather than failing with a shrug. A serial that matches no
+ * stock is not an error here: roughly one in twelve does not, that is the
+ * normal case, and it belongs in the exceptions queue rather than stopping the
+ * upload.
+ *
+ * The transfer reference, when the file carries one, is checked rather than
+ * trusted. A row whose reference disagrees with the stock record is a row
+ * somebody pasted into the wrong sheet, and it is named.
+ */
+async function resolvePartnersFromSerials(
+  conn: { queryObject: (q: unknown) => Promise<{ rows: unknown[] }> },
+  rows: Record<string, unknown>[],
+): Promise<{
+  partners: { organizationId: string; partnerName: string; count: number }[];
+  matched: number;
+  unmatched: string[];
+  mismatches: { serial: string; fileRef: string; stockRef: string }[];
+}> {
+  const serials: string[] = [];
+  const refBySerial = new Map<string, string>();
+  for (const row of rows) {
+    // The row arrives already auto-mapped, so the canonical name is enough.
+    const serial = text(row, "stoveSerialNo", ...HEADER_ALIASES.stoveSerialNo);
+    if (!serial) continue;
+    const up = serial.trim().toUpperCase();
+    serials.push(up);
+    const ref = text(row, "transactionId", ...HEADER_ALIASES.transactionId);
+    if (ref) refBySerial.set(up, ref.trim().toUpperCase());
+  }
+  if (serials.length === 0) {
+    return { partners: [], matched: 0, unmatched: [], mismatches: [] };
+  }
+
+  const found = await conn.queryObject({
+    text: `select sb.stove_id, sb.organization_id::text, sb.sales_reference,
+                  o.partner_name
+             from public.stove_ids_base sb
+             left join public.organizations o on o.id = sb.organization_id
+            where sb.stove_id = any($1::text[])`,
+    args: [[...new Set(serials)]],
+  }) as { rows: {
+    stove_id: string;
+    organization_id: string | null;
+    sales_reference: string | null;
+    partner_name: string | null;
+  }[] };
+
+  const byId = new Map(found.rows.map((r) => [r.stove_id, r]));
+  const counts = new Map<string, { partnerName: string; count: number }>();
+  const unmatched: string[] = [];
+  const mismatches: { serial: string; fileRef: string; stockRef: string }[] = [];
+  let matched = 0;
+
+  for (const serial of serials) {
+    const hit = byId.get(serial);
+    if (!hit || !hit.organization_id) {
+      unmatched.push(serial);
+      continue;
+    }
+    matched++;
+    const entry = counts.get(hit.organization_id) ??
+      { partnerName: hit.partner_name ?? "Unnamed partner", count: 0 };
+    entry.count++;
+    counts.set(hit.organization_id, entry);
+
+    const fileRef = refBySerial.get(serial);
+    if (fileRef && hit.sales_reference && fileRef !== hit.sales_reference.toUpperCase()) {
+      mismatches.push({ serial, fileRef, stockRef: hit.sales_reference });
+    }
+  }
+
+  return {
+    partners: [...counts.entries()]
+      .map(([organizationId, v]) => ({ organizationId, ...v }))
+      .sort((a, b) => b.count - a.count),
+    matched,
+    unmatched: [...new Set(unmatched)],
+    mismatches,
+  };
+}
+
+/**
  * Turn one spreadsheet row into something create-sale would accept, or explain
  * why it cannot be.
  *
@@ -178,70 +310,158 @@ function text(raw: Record<string, unknown>, ...keys: string[]): string {
  */
 export function normalizeRow(
   raw: Record<string, unknown>,
-): { ok: true; row: NormalizedRow } | { ok: false; reason: string } {
+):
+  // `hint` says what to do about it. A reason without a fix leaves a digitiser
+  // with four hundred rows and no next step, which is how a rejection file gets
+  // ignored rather than corrected.
+  | { ok: true; row: NormalizedRow; warning?: string | null }
+  | { ok: false; reason: string; hint?: string } {
   const serial = text(raw, "stove_serial_no", "Stove Serial Number", "serial", "stoveSerialNo");
-  if (!serial) return { ok: false, reason: "No stove serial number" };
+  if (!serial) {
+    return {
+      ok: false,
+      reason: "No stove serial number",
+      hint:
+        "Every row needs the stove ID printed on the stove. It is the only thing that ties this sale to a partner, so a row without one cannot be placed.",
+    };
+  }
 
   const firstName = text(raw, "first_name", "User First Name", "firstName");
   const lastName = text(raw, "last_name", "User Last Name", "surname", "lastName");
   const combined = text(raw, "end_user_name", "endUserName", "name");
   const endUserName = combined || [firstName, lastName].filter(Boolean).join(" ").trim();
-  if (!endUserName) return { ok: false, reason: "No end user name" };
-
-  const phone = text(raw, "phone", "Primary Phone Number", "primary_phone", "primaryPhone");
-  if (!phone) return { ok: false, reason: "No end user phone number" };
-  const cleanedPhone = phone.replace(/[\s-]/g, "");
-  if (!NG_PHONE.test(cleanedPhone)) {
-    return { ok: false, reason: `Phone number "${phone}" is not a valid Nigerian number` };
+  if (!endUserName) {
+    return {
+      ok: false,
+      reason: "No end user name",
+      hint:
+        "Fill in the buyer's name, either as one Name column or as First name and Last name.",
+    };
   }
 
+  // Normalised rather than merely checked. A spreadsheet writes the same
+  // number half a dozen ways and Excel eats the leading zero of any column it
+  // decides is numeric, so refusing anything but 0XXXXXXXXXX rejects work that
+  // is not wrong. One shape goes in, whatever shape came out of the file.
+  const phoneRaw = text(raw, "phone", "Primary Phone Number", "primary_phone", "primaryPhone");
+  const phoneResult = normalizeNigerianPhone(phoneRaw);
+  if (!phoneResult.ok) {
+    return { ok: false, reason: phoneResult.reason, hint: phoneResult.hint };
+  }
+  const cleanedPhone = phoneResult.phone;
+
   const salesDateRaw = text(raw, "sales_date", "Sales Date", "date", "salesDate");
-  if (!salesDateRaw) return { ok: false, reason: "No sale date" };
+  if (!salesDateRaw) {
+    return {
+      ok: false,
+      reason: "No sale date",
+      hint: "Add the date on the receipt, as 2026-07-14 or 14/07/2026.",
+    };
+  }
   // Accept both ISO and the DD/MM/YYYY a spreadsheet usually produces.
   let salesDate = salesDateRaw;
   if (!ISO_DATE.test(salesDate)) {
     const m = salesDate.match(/^(\d{1,2})[/-](\d{1,2})[/-](\d{4})$/);
-    if (!m) return { ok: false, reason: `Sale date "${salesDateRaw}" is not a date we recognise` };
+    if (!m) {
+      return {
+        ok: false,
+        reason: `Sale date "${salesDateRaw}" is not a date we recognise`,
+        hint:
+          "Write it as 2026-07-14 or 14/07/2026. If the spreadsheet shows a number like 45871, format that column as Date and save again.",
+      };
+    }
     salesDate = `${m[3]}-${m[2].padStart(2, "0")}-${m[1].padStart(2, "0")}`;
   }
   if (Number.isNaN(Date.parse(salesDate))) {
-    return { ok: false, reason: `Sale date "${salesDateRaw}" is not a real date` };
+    return {
+      ok: false,
+      reason: `Sale date "${salesDateRaw}" is not a real date`,
+      hint:
+        "Check the day and month are not swapped: 14/07/2026 is the 14th of July, not the 7th of the 14th month.",
+    };
   }
 
   const amountRaw = text(raw, "amount", "Sale Amount", "price", "saleAmount");
   const amount = Number(amountRaw.replace(/[^0-9.]/g, ""));
   if (!Number.isFinite(amount) || amount <= 0) {
-    return { ok: false, reason: `Sale amount "${amountRaw}" is not a number above zero` };
+    return {
+      ok: false,
+      reason: `Sale amount "${amountRaw}" is not a number above zero`,
+      hint:
+        "Enter digits only, like 47500. Leave out the naira sign and any commas, and do not write 'cash' or 'paid'.",
+    };
   }
 
   const receivedRaw = text(raw, "amount_received", "Amount Received", "amountReceived");
   const amountReceived = receivedRaw === "" ? null : Number(receivedRaw.replace(/[^0-9.]/g, ""));
   if (amountReceived !== null && (!Number.isFinite(amountReceived) || amountReceived < 0)) {
-    return { ok: false, reason: `Amount received "${receivedRaw}" is not a number` };
+    return {
+      ok: false,
+      reason: `Amount received "${receivedRaw}" is not a number`,
+      hint:
+        "Enter digits only, like 20000. If nothing has been paid yet, leave the cell empty rather than writing 0.00 or 'nil'.",
+    };
   }
   if (amountReceived !== null && amountReceived > amount) {
-    return { ok: false, reason: "Amount received is greater than the sale amount" };
+    return {
+      ok: false,
+      reason: "Amount received is greater than the sale amount",
+      hint:
+        "Check the two figures are the right way round. If the buyer really overpaid, record the sale amount as what they actually paid.",
+    };
   }
 
   const state = text(raw, "state", "State", "user_state", "state_backup");
-  if (!state) return { ok: false, reason: "No state" };
+  if (!state) {
+    return {
+      ok: false,
+      reason: "No state",
+      hint: "Add the buyer's state, spelled out, like Gombe or Kano.",
+    };
+  }
   const lga = text(raw, "lga", "LGA", "Local Govt Area", "lga_backup");
-  if (!lga) return { ok: false, reason: "No local government area" };
+  if (!lga) {
+    return {
+      ok: false,
+      reason: "No local government area",
+      hint: "Add the buyer's LGA. It is on the receipt under the address.",
+    };
+  }
 
   const fullAddress = text(raw, "address", "User Residential Address", "full_address", "fullAddress");
-  if (!fullAddress) return { ok: false, reason: "No residential address" };
+  if (!fullAddress) {
+    return {
+      ok: false,
+      reason: "No residential address",
+      hint:
+        "Add where the buyer lives, in enough detail for a field agent to find the house.",
+    };
+  }
 
   // The buyer defaults to the end user, which is what a receipt with one name
   // on it means.
   const contactPerson = text(raw, "contact_person", "Contact Person", "buyer") || endUserName;
   const contactPhoneRaw = text(raw, "contact_phone", "Contact Phone", "buyer_phone") || cleanedPhone;
-  const contactPhone = contactPhoneRaw.replace(/[\s-]/g, "");
-  if (!NG_PHONE.test(contactPhone)) {
-    return { ok: false, reason: `Contact phone "${contactPhoneRaw}" is not a valid Nigerian number` };
+  const contactResult = normalizeNigerianPhone(contactPhoneRaw);
+  if (!contactResult.ok) {
+    return {
+      ok: false,
+      reason: `Contact phone: ${contactResult.reason}`,
+      hint: contactResult.hint,
+    };
   }
+  const contactPhone = contactResult.phone;
 
+  // The alternative number is optional, so a bad one is dropped rather than
+  // failing the row: refusing an otherwise complete sale over a spare number
+  // nobody has rung yet costs more than it saves. It is reported as a warning
+  // on the batch instead.
   const otherPhoneRaw = text(raw, "other_phone", "Alternative Phone Number", "alt_phone");
-  const otherPhone = otherPhoneRaw ? otherPhoneRaw.replace(/[\s-]/g, "") : null;
+  const otherResult = otherPhoneRaw ? normalizeNigerianPhone(otherPhoneRaw) : null;
+  const otherPhone = otherResult?.ok ? otherResult.phone : null;
+  const otherPhoneWarning = otherPhoneRaw && !otherResult?.ok
+    ? `Alternative phone "${otherPhoneRaw}" was not usable and has been left out`
+    : null;
 
   return {
     ok: true,
@@ -260,6 +480,7 @@ export function normalizeRow(
       aka: text(raw, "aka", "AKA", "nickname") || null,
       otherPhone,
     },
+    warning: otherPhoneWarning,
   };
 }
 
@@ -490,22 +711,68 @@ serve(async (req) => {
             `That file has ${incoming.length} rows and the limit is ${maxRows}. Split it.`,
           );
         }
-        if (!organizationId) throw new BadRequest("Choose which partner this batch belongs to");
-        await requireOrganization(organizationId);
+        /**
+         * One vocabulary, before anything reads a row.
+         *
+         * The operator's mapping first, because they are looking at the file.
+         * Then the alias table fills in whatever they did not name, which is
+         * usually everything: the sheet this module hands out already uses
+         * headings the aliases know.
+         *
+         * `raw` is untouched by both. A rejected row is shown exactly as it was
+         * typed, which is the only version the person fixing it recognises.
+         */
+        const preMapped = incoming.map((row) => {
+          const copy: Record<string, unknown> = { ...row };
+          for (const [header, field] of Object.entries(mapping)) {
+            if (field && row[header] !== undefined) copy[field] = row[header];
+          }
+          return autoMapRow(copy);
+        });
+
+        /**
+         * The partner comes from the file, not from a dropdown.
+         *
+         * An explicit organizationId is still honoured, because manual entry
+         * sends one and a caller may want to pin a batch deliberately. Left
+         * out, the serials decide.
+         */
+        let resolvedOrgId = organizationId;
+        let resolution: Awaited<ReturnType<typeof resolvePartnersFromSerials>> | null = null;
+
+        if (!resolvedOrgId) {
+          resolution = await withReadConnection((c) => resolvePartnersFromSerials(c, preMapped));
+
+          if (resolution.partners.length === 0) {
+            throw new BadRequest(
+              "None of the stove IDs in this file match stock we hold, so there is no way to tell " +
+                "which partner it belongs to. Check the Stove ID column is the one from the " +
+                "transfer sheet, and that it has not been shortened or had its leading zeros " +
+                "removed by the spreadsheet.",
+            );
+          }
+
+          if (resolution.partners.length > 1) {
+            const named = resolution.partners
+              .map((p) => `${p.partnerName} (${p.count})`)
+              .join(", ");
+            throw new BadRequest(
+              `This file covers more than one partner: ${named}. Import one partner at a time, ` +
+                "so a batch can be rolled back without touching anybody else's records. " +
+                "Download a fresh sheet per partner from Partner Records and split the rows.",
+            );
+          }
+
+          resolvedOrgId = resolution.partners[0].organizationId;
+        }
+
+        await requireOrganization(resolvedOrgId);
 
         // Apply the operator's header mapping before anything else, so
         // everything downstream sees one vocabulary. A mapped column is copied
         // rather than renamed: `raw` stays exactly as the file had it, which is
         // what lets a rejected row be shown as it was typed.
-        const rows = Object.keys(mapping).length === 0
-          ? incoming
-          : incoming.map((row) => {
-            const copy: Record<string, unknown> = { ...row };
-            for (const [header, field] of Object.entries(mapping)) {
-              if (field && row[header] !== undefined) copy[field] = row[header];
-            }
-            return copy;
-          });
+        const rows = preMapped;
 
         const hash = await contentHash(rows);
         const warnOnDuplicate = Boolean(
@@ -526,7 +793,7 @@ serve(async (req) => {
                      from data_center.import_batches
                      where content_hash = $1 and organization_id = $2
                      order by uploaded_at desc limit 1`,
-              args: [hash, organizationId],
+              args: [hash, resolvedOrgId],
             });
             return r.rows[0] ?? null;
           });
@@ -559,7 +826,7 @@ serve(async (req) => {
                         content_hash, column_mapping, source_note)
                      values ($5, $1, $2, $3, $4, 'staged', $6, $7::jsonb, $8) returning id`,
               args: [
-                body.filename ?? null, userId, organizationId, rows.length,
+                body.filename ?? null, userId, resolvedOrgId, rows.length,
                 source, hash,
                 JSON.stringify(mapping),
                 body.sourceNote ?? null,
@@ -576,7 +843,27 @@ serve(async (req) => {
               args: [batchId, JSON.stringify(rows)],
             });
             await conn.queryObject("commit");
-            return json({ data: { batchId, totalRows: rows.length } }, 200, cors);
+            return json(
+              {
+                data: {
+                  batchId,
+                  totalRows: rows.length,
+                  // Stated rather than assumed: the operator picked nothing, so
+                  // the page has to show what the file turned out to be.
+                  resolvedPartner: resolution
+                    ? {
+                      organizationId: resolvedOrgId,
+                      partnerName: resolution.partners[0]?.partnerName ?? null,
+                      matched: resolution.matched,
+                      unmatched: resolution.unmatched.length,
+                      mismatches: resolution.mismatches.slice(0, 20),
+                    }
+                    : null,
+                },
+              },
+              200,
+              cors,
+            );
           } catch (err) {
             await conn.queryObject("rollback");
             throw err;
@@ -727,10 +1014,11 @@ serve(async (req) => {
                 rejected++;
                 await conn.queryObject({
                   text: `update data_center.import_rows
-                         set status = 'rejected', rejection_reason = $2, exception_reason = null,
+                         set status = 'rejected', rejection_reason = $2,
+                             rejection_hint = $3, exception_reason = null,
                              normalized = null
                          where id = $1`,
-                  args: [s.id, s.result.reason],
+                  args: [s.id, s.result.reason, s.result.hint ?? null],
                 });
                 continue;
               }
@@ -1291,8 +1579,8 @@ serve(async (req) => {
         if (!batchId) throw new BadRequest("batchId is required");
         return await withReadConnection(async (conn) => {
           const r = await conn.queryObject({
-            text: `select id, row_number, status, rejection_reason, exception_reason,
-                          stove_serial_no, corrected_serial, sale_id, raw
+            text: `select id, row_number, status, rejection_reason, rejection_hint,
+                          exception_reason, stove_serial_no, corrected_serial, sale_id, raw
                    from data_center.import_rows
                    where batch_id = $1 and ($2 = '' or status = $2)
                    order by row_number limit 300`,
