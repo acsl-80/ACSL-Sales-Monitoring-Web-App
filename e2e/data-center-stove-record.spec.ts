@@ -59,13 +59,20 @@ test.describe("one stove ID anchors the whole module", () => {
     await page.goto(`/data-center/stove/${serial}`);
     await expect(page.getByRole("heading", { name: serial })).toBeVisible({ timeout: 20_000 });
 
-    // The partner opens Partner Records at that partner, rather than at the
-    // list of 278 with the partner somewhere in it.
-    const partner = page.getByRole("link", { name: /Open this partner/ }).first();
+    /**
+     * The partner opens Partner Records AT that partner, rather than at the
+     * list of 278 with the partner somewhere in it.
+     *
+     * Located by destination rather than by name: the link's accessible name
+     * is the partner's own name, which is correct - "Open this partner" is a
+     * tooltip, and a link whose spoken name was its tooltip would stop
+     * matching what a voice-control user actually says.
+     */
+    const partner = page
+      .locator('a[href*="/data-center/partner-records"][href*="organizationId="]')
+      .first();
     await expect(partner).toBeVisible();
-    const href = await partner.getAttribute("href");
-    expect(href).toContain("/data-center/partner-records");
-    expect(href).toContain("organizationId=");
+    expect((await partner.textContent())?.trim()).toBeTruthy();
 
     await partner.click();
     await expect(page.getByRole("dialog")).toBeVisible({ timeout: 20_000 });
