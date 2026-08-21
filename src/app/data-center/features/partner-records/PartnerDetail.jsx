@@ -4,6 +4,7 @@ import { usePaged } from "../../lib/usePaged";
 import Pagination from "../../components/Pagination";
 import ExportButton from "../../components/ExportButton";
 import { plural } from "../../lib/plural";
+import { DigitisationSheetButton } from "./DigitisationSheet";
 import {
   Dialog,
   DialogContent,
@@ -182,7 +183,16 @@ function PartnerLevel({ data, repFilter, onRep, onBatch }) {
             {plural(batches.length, "batch", "batches")}
             {repFilter ? ` by ${repFilter}` : ""}
           </span>
-          <div className="ml-auto">
+          <div className="ml-auto flex flex-wrap items-center gap-2">
+            {/* The sheet the digitisers type into, taken from the partner they
+                are already looking at. It carries the stove IDs, which is the
+                one field nobody should ever key by hand. */}
+            {data.partner?.organization_id && (
+              <DigitisationSheetButton
+                organizationId={data.partner.organization_id}
+                partnerName={data.partner.partner_name}
+              />
+            )}
             <ExportButton
               columns={BATCH_COLUMNS}
               rows={() => batches}

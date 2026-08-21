@@ -300,6 +300,26 @@ export const dataCenterClient = {
     };
   } = {}) => call<TransferFunnelPage>("data-center-read", "transfer_funnel", params),
 
+  /**
+   * The sheet the digitisers work from: one row per transferred stove, already
+   * carrying the serial and the transfer reference so neither is typed.
+   */
+  digitisationSheet: (organizationId: string, month?: string | null) =>
+    call<{
+      rows: {
+        stove_id: string;
+        transaction_id: string;
+        partner_name: string;
+        sales_rep: string | null;
+        sales_date: string | null;
+        transfer_state: string | null;
+        transfer_branch: string | null;
+        stock_status: string | null;
+        already_recorded: boolean;
+      }[];
+      months: { month: string; transfers: number }[];
+    }>("data-center-read", "digitisation_sheet", { organizationId, month: month ?? undefined }),
+
   /** One partner opened up: its batches, and each rep's totals. */
   partnerDetail: (organizationId: string) =>
     call<{
@@ -597,6 +617,8 @@ export type ImportRow = {
   row_number: number;
   status: "pending" | "valid" | "rejected" | "committed" | "exception";
   rejection_reason: string | null;
+  /** What to do about it. A reason without a fix is a row that gets skipped. */
+  rejection_hint: string | null;
   exception_reason: string | null;
   stove_serial_no: string | null;
   corrected_serial: string | null;
@@ -634,14 +656,29 @@ export const dataCenterImport = {
       maxRows: number;
     }>("data-center-import", "inspect", { headers }),
 
+  /**
+   * Stage a file. `organizationId` is null for an upload: the stove IDs name
+   * the partner, and the server answers with the one it resolved. Manual entry
+   * still passes one, because a typed record has no file to read it from.
+   */
   stage: (
-    organizationId: string,
+    organizationId: string | null,
     filename: string,
     rows: Record<string, string>[],
     options: { columnMapping?: Record<string, string>; confirmDuplicate?: boolean } = {},
   ) =>
-    call<{ batchId: string; totalRows: number }>("data-center-import", "stage", {
-      organizationId,
+    call<{
+      batchId: string;
+      totalRows: number;
+      resolvedPartner: {
+        organizationId: string;
+        partnerName: string | null;
+        matched: number;
+        unmatched: number;
+        mismatches: { serial: string; fileRef: string; stockRef: string }[];
+      } | null;
+    }>("data-center-import", "stage", {
+      organizationId: organizationId ?? undefined,
       filename,
       rows,
       columnMapping: options.columnMapping ?? {},

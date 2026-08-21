@@ -1,9 +1,12 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { dataCenterImport, DataCenterError } from "../../lib/client";
 import { parseCsv, CsvError } from "../../lib/csv";
 import ColumnMapping from "./ColumnMapping";
 import ManualEntry from "./ManualEntry";
+import RejectedRows from "./RejectedRows";
 import { plural } from "../../lib/plural";
+import Pagination from "../../components/Pagination";
+import { usePaged } from "../../lib/usePaged";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -16,7 +19,7 @@ import {
 } from "@/components/ui/alert-dialog";
 import {
   Upload, Loader2, AlertTriangle, CheckCircle2, FileText, Play,
-  Eye, Undo2, Wrench, X, PenLine, Copy,
+  Eye, Undo2, Wrench, X, PenLine, Copy, ChevronDown, ChevronRight,
 } from "lucide-react";
 
 /**
@@ -139,6 +142,9 @@ function ExceptionsQueue({ batchId, canResolve, onChanged }) {
 
 export default function ImportPanel({ canUpload, canCommit, canResolve, organizations }) {
   const [batches, setBatches] = useState([]);
+  // The history grows for as long as the module runs, so it pages.
+  // A year of daily imports is a list nobody scrolls.
+
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [notice, setNotice] = useState(null);
@@ -186,17 +192,20 @@ export default function ImportPanel({ canUpload, canCommit, canResolve, organiza
       setBusy(true);
       setNotice(null);
       try {
-        const { batchId } = await dataCenterImport.stage(
-          orgId,
-          file.name,
-          file.rows,
-          options,
-        );
+        // No partner is sent. The stove IDs in the file name it, and the
+        // server says which one it worked out.
+        const staged = await dataCenterImport.stage(null, file.name, file.rows, options);
+        const { batchId, resolvedPartner } = staged;
         const counts = await dataCenterImport.validate(batchId);
         setNotice(
-          `${file.name}: ${file.rows.length} rows staged. ${counts.valid} ready, ` +
-            `${counts.exception} need a look, ${counts.rejected} could not be read. ` +
+          `${file.name}: ${file.rows.length} rows staged` +
+            (resolvedPartner?.partnerName ? ` for ${resolvedPartner.partnerName}` : "") +
+            `. ${counts.valid} ready, ${counts.exception} need a look, ` +
+            `${counts.rejected} could not be read. ` +
             `${counts.linkedToTransfer} matched to a transfer.` +
+            (resolvedPartner?.mismatches?.length
+              ? ` ${resolvedPartner.mismatches.length} row(s) carry a transfer reference that does not match the stove.`
+              : "") +
             (file.warnings?.length ? ` ${file.warnings[0]}` : ""),
         );
         setError(null);
@@ -227,10 +236,6 @@ export default function ImportPanel({ canUpload, canCommit, canResolve, organiza
     const file = event.target.files?.[0];
     event.target.value = "";
     if (!file) return;
-    if (!orgId) {
-      setError("Choose which partner this file belongs to first.");
-      return;
-    }
     setBusy(true);
     setNotice(null);
     setDuplicate(null);
@@ -387,6 +392,11 @@ export default function ImportPanel({ canUpload, canCommit, canResolve, organiza
     else runRollback(batchId, count);
   };
 
+  // The history grows for as long as the module runs. A year of daily imports
+  // is a list nobody scrolls to the bottom of, and the row somebody wants is
+  // usually recent but not always.
+  const paged = usePaged(batches, 10);
+
   return (
     <div className="overflow-hidden rounded-xl border border-gray-200 border-t-[3px] border-t-(--dc-accent) bg-white shadow-sm">
       <AlertDialog open={!!pending} onOpenChange={(next) => { if (!next) setPending(null); }}>
@@ -419,22 +429,6 @@ export default function ImportPanel({ canUpload, canCommit, canResolve, organiza
 
       {canUpload && (
         <div className="flex flex-wrap items-end gap-2 border-b border-gray-100 bg-(--dc-accent-soft)/30 px-4 py-3">
-          <div className="w-full sm:w-auto">
-            <label htmlFor="dc-import-org" className="mb-1 block text-xs font-medium text-gray-700">
-              Partner
-            </label>
-            <select
-              id="dc-import-org"
-              value={orgId}
-              onChange={(e) => setOrgId(e.target.value)}
-              className="w-full min-w-0 rounded-md border sm:w-auto sm:min-w-[200px] border-gray-300 px-2 py-1.5 text-sm focus:border-(--dc-accent) focus:outline-none"
-            >
-              <option value="">Choose a partner...</option>
-              {orgOptions.map((o) => (
-                <option key={o.id} value={o.id}>{o.partner_name}</option>
-              ))}
-            </select>
-          </div>
           <input
             ref={fileInput}
             type="file"
@@ -444,7 +438,7 @@ export default function ImportPanel({ canUpload, canCommit, canResolve, organiza
           />
           <button
             type="button"
-            disabled={busy || !orgId}
+            disabled={busy}
             onClick={() => {
               setManual(false);
               fileInput.current?.click();
@@ -456,7 +450,7 @@ export default function ImportPanel({ canUpload, canCommit, canResolve, organiza
           </button>
           <button
             type="button"
-            disabled={busy || !orgId}
+            disabled={busy}
             onClick={() => {
               setPendingFile(null);
               setDuplicate(null);
@@ -466,8 +460,12 @@ export default function ImportPanel({ canUpload, canCommit, canResolve, organiza
           >
             <PenLine className="h-4 w-4" /> Type one record
           </button>
-          <p className="text-xs text-gray-500">
-            Staged and checked on upload. Nothing is committed until you say so.
+          <p className="text-xs text-gray-600">
+            {/* Said out loud, because the dropdown that used to be here is
+                gone and its absence should read as deliberate. */}
+            The stove IDs in the file say which partner it belongs to, so there
+            is nothing to choose. Staged and checked on upload; nothing is
+            committed until you say so.
           </p>
         </div>
       )}
@@ -548,30 +546,65 @@ export default function ImportPanel({ canUpload, canCommit, canResolve, organiza
           No imports yet. Choose a CSV or type one record to begin.
         </p>
       ) : (
-        <ul className="divide-y divide-gray-100">
-          {batches.map((b) => (
-            <li key={b.id} className="px-4 py-3">
-              <div className="flex flex-wrap items-center gap-2">
-                <span
-                  className={`rounded-full border px-2.5 py-0.5 text-xs font-medium ${STATE_TONE[b.state]}`}
-                >
-                  {b.state.replace(/_/g, " ")}
-                </span>
-                <span className="text-sm font-medium text-gray-900">{b.filename ?? "(no filename)"}</span>
-                <span className="text-xs text-gray-500">
-                  {b.partner_name} · {new Date(b.uploaded_at).toLocaleString()}
-                  {b.uploaded_by_name ? ` · ${b.uploaded_by_name}` : ""}
-                </span>
-                <button
-                  type="button"
-                  onClick={() => { setOpen(open === b.id ? null : b.id); setDryRun(null); }}
-                  className="ml-auto text-xs font-medium text-gray-500 underline-offset-2 hover:text-gray-800 hover:underline"
-                >
-                  {open === b.id ? "hide" : "details"}
-                </button>
-              </div>
+        <>
+          <div className="overflow-x-auto">
+            <table className="w-full min-w-[56rem] text-sm">
+              <thead>
+                <tr className="border-b-2 border-(--dc-accent)/20 bg-(--dc-accent-soft) text-left text-xs font-semibold uppercase tracking-wide text-(--dc-accent-strong)">
+                  <th scope="col" className="px-3 py-2">State</th>
+                  <th scope="col" className="px-3 py-2">What was imported</th>
+                  <th scope="col" className="px-3 py-2">Partner</th>
+                  <th scope="col" className="px-3 py-2 text-right">Rows</th>
+                  <th scope="col" className="px-3 py-2 text-right">Committed</th>
+                  <th scope="col" className="px-3 py-2">When</th>
+                  <th scope="col" className="px-3 py-2">By whom</th>
+                  <th scope="col" className="w-10 px-3 py-2" />
+                </tr>
+              </thead>
+              <tbody>
+          {paged.slice.map((b) => (
+            <Fragment key={b.id}>
+              <tr
+                onClick={() => { setOpen(open === b.id ? null : b.id); setDryRun(null); }}
+                className="cursor-pointer border-b border-gray-100 transition hover:bg-(--dc-accent-soft)/40"
+              >
+                <td className="px-3 py-2">
+                  <span
+                    className={`whitespace-nowrap rounded-full border px-2.5 py-0.5 text-xs font-medium ${STATE_TONE[b.state]}`}
+                  >
+                    {b.state.replace(/_/g, " ")}
+                  </span>
+                </td>
+                <td className="max-w-[16rem] truncate px-3 py-2 text-sm font-medium text-gray-900">
+                  {b.filename ?? "(typed in, no file)"}
+                </td>
+                <td className="max-w-[14rem] truncate px-3 py-2 text-sm text-gray-700">
+                  {b.partner_name ?? "-"}
+                </td>
+                <td className="px-3 py-2 text-right text-sm tabular-nums text-gray-700">
+                  {b.total_rows}
+                </td>
+                <td className="px-3 py-2 text-right text-sm tabular-nums text-(--dc-accent)">
+                  {b.committed_rows}
+                </td>
+                <td className="whitespace-nowrap px-3 py-2 text-xs text-gray-600">
+                  {new Date(b.uploaded_at).toLocaleString()}
+                </td>
+                <td className="max-w-[12rem] truncate px-3 py-2 text-xs text-gray-600">
+                  {b.uploaded_by_name ?? "-"}
+                </td>
+                <td className="px-3 py-2 text-right">
+                  {open === b.id ? (
+                    <ChevronDown className="ml-auto h-4 w-4 text-gray-400" />
+                  ) : (
+                    <ChevronRight className="ml-auto h-4 w-4 text-gray-400" />
+                  )}
+                </td>
+              </tr>
 
               {open === b.id && (
+                <tr className="border-b border-gray-100 bg-(--dc-surface-muted)">
+                  <td colSpan={8} className="px-4 py-3">
                 <div className="mt-3 space-y-3">
                   <div className="grid grid-cols-2 gap-2 sm:grid-cols-5">
                     <Stat label="Rows" value={b.total_rows} />
@@ -663,11 +696,36 @@ export default function ImportPanel({ canUpload, canCommit, canResolve, organiza
                       />
                     </div>
                   )}
+
+                  {/* The refused rows, which were counted here and shown
+                      nowhere. A batch said "12 unreadable" and the only way to
+                      find out which twelve was to open the spreadsheet and
+                      guess. */}
+                  {b.rejected_rows - b.exception_rows > 0 && (
+                    <div className="rounded-lg border border-gray-200 p-3">
+                      <RejectedRows
+                        batchId={b.id}
+                        count={b.rejected_rows - b.exception_rows}
+                      />
+                    </div>
+                  )}
                 </div>
+                  </td>
+                </tr>
               )}
-            </li>
-          ))}
-        </ul>
+            </Fragment>
+          ))}              </tbody>
+            </table>
+          </div>
+          <Pagination
+            page={paged.page}
+            pageSize={paged.pageSize}
+            total={paged.total}
+            onPage={paged.setPage}
+            onPageSize={paged.setPageSize}
+            noun="import"
+          />
+        </>
       )}
     </div>
   );
