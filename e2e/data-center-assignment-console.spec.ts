@@ -90,9 +90,11 @@ test.describe("the assignment console shows who holds what", () => {
 
     // All or none, then the columns themselves. An export that is the input to
     // something else needs to be able to leave columns out.
-    await expect(page.getByRole("button", { name: "All", exact: true })).toBeVisible();
-    await expect(page.getByRole("button", { name: "None", exact: true })).toBeVisible();
-    await expect(page.getByRole("checkbox", { name: "Records held" })).toBeChecked();
+    const picker = page.getByRole("dialog");
+    await expect(picker).toBeVisible();
+    await expect(picker.getByRole("button", { name: "Select all" })).toBeVisible();
+    await expect(picker.getByRole("button", { name: "Clear all" })).toBeVisible();
+    await expect(picker.getByRole("checkbox", { name: "Records held" })).toBeChecked();
   });
 });
 

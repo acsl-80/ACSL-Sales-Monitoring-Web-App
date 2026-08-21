@@ -191,9 +191,10 @@ test.describe("the five scorecards", () => {
 
     // And each picks its columns before the file is written.
     await page.getByRole("button", { name: "Columns for Partner" }).click();
-    await expect(page.getByRole("checkbox", { name: "Issued" })).toBeChecked();
-    await page.getByRole("button", { name: "None", exact: true }).click();
-    await expect(page.getByRole("checkbox", { name: "Issued" })).not.toBeChecked();
+    const picker = page.getByRole("dialog");
+    await expect(picker.getByRole("checkbox", { name: "Issued" })).toBeChecked();
+    await picker.getByRole("button", { name: "Clear all" }).click();
+    await expect(picker.getByRole("checkbox", { name: "Issued" })).not.toBeChecked();
     await page.keyboard.press("Escape");
   });
 

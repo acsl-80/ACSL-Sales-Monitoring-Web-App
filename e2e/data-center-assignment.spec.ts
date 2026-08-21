@@ -28,7 +28,11 @@ test.describe("the assignment log", () => {
   test("admins get the levers, and they answer in the same table", async ({ page }) => {
     await signIn(page, USERS.admin);
     await page.goto("/data-center/call-centre");
-    await expect(page.getByText("Assignment Log")).toBeVisible({ timeout: 20_000 });
+    // An admin's call centre now draws the queue, the assignment console and
+    // the log, so the access check has more waiting behind it than it did.
+    // Seen stuck on "Checking your Data Center access..." for a full 20s once
+    // and fine on either side of it.
+    await expect(page.getByText("Assignment Log")).toBeVisible({ timeout: 40_000 });
 
     await expect(page.getByRole("button", { name: "Assign now" })).toBeVisible();
     await expect(
