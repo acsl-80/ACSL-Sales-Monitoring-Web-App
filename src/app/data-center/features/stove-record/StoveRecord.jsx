@@ -911,8 +911,18 @@ export default function StoveRecord({ stoveId }) {
             {data.changes.map((c) => (
               <li key={c.id} className="px-3 py-2 text-sm">
                 <p className="text-gray-900">
+                  {/*
+                    A null actor on an assignment batch is the engine, not an
+                    unknown person: every human path sets the actor, and the
+                    scheduled run has nobody to set. Saying "somebody" there
+                    invites a hunt for a person who does not exist.
+                  */}
                   <span className="font-medium">
-                    {c.changed_by_name ?? c.changed_by_email ?? "somebody"}
+                    {c.changed_by_name ??
+                      c.changed_by_email ??
+                      (c.table_name === "assignment_batches"
+                        ? "The assignment run"
+                        : "Somebody")}
                   </span>{" "}
                   {c.action === "INSERT"
                     ? "created it"

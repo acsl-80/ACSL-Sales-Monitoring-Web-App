@@ -1054,8 +1054,24 @@ serve(async (req) => {
                               ) else '{}'::text[] end as changed_fields
                          from data_center.change_log cl
                          left join public.profiles p on p.id = cl.changed_by
-                        where (cl.table_name = 'call_records' and cl.record_pk = $1)
-                           or (cl.table_name = 'assignment_batches' and cl.record_pk = $2)
+                        where ((cl.table_name = 'call_records' and cl.record_pk = $1)
+                            or (cl.table_name = 'assignment_batches' and cl.record_pk = $2))
+                          /*
+                           * An update that changed nothing is not history.
+                           *
+                           * Two triggers touch a batch's updated_at whenever a
+                           * call is logged against it, and each of those writes
+                           * an audit row whose only difference is a timestamp
+                           * the diff already excludes. Left in, they outnumber
+                           * the real edits and bury them.
+                           */
+                          and (cl.action <> 'UPDATE' or exists (
+                                select 1 from jsonb_object_keys(
+                                         coalesce(cl.new_values, '{}'::jsonb)) k
+                                 where coalesce(cl.new_values -> k, 'null'::jsonb)
+                                       is distinct from coalesce(cl.old_values -> k, 'null'::jsonb)
+                                   and k not in ('updated_at','updated_by','created_at','created_by')
+                              ))
                         order by cl.changed_at desc
                         limit 50`,
                 args: [saleId ?? "", batchId],
