@@ -100,8 +100,13 @@ decision this module takes.
 One definition of "when" for every surface. `lib/period.ts` resolves a period to
 the two values every surface already speaks, `dateFrom` and `dateTo`.
 
-Days, weeks, months, quarters, half a year, whole years picked several at a
-time, or a custom range. **This year by default.**
+Days, calendar weeks, months, quarters, half a year, whole years picked several
+at a time, or a custom range. **This year by default.**
+
+Weeks run Monday to Sunday. `getDay()` calls Sunday 0, so the naive formula
+makes Sunday belong to the week that has not started yet - checked against
+every day of a week rather than assumed, because that off-by-one only shows on
+the day fewest people are looking.
 
 ### Rules
 

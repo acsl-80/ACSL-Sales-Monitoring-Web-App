@@ -21,6 +21,8 @@ export type PeriodKey =
   | "today"
   | "last7"
   | "last30"
+  | "thisWeek"
+  | "lastWeek"
   | "thisMonth"
   | "lastMonth"
   | "thisQuarter"
@@ -75,6 +77,24 @@ function monthsBack(today: Date, months: number): Date {
   return d;
 }
 
+function addDays(d: Date, days: number): Date {
+  const out = new Date(d);
+  out.setDate(out.getDate() + days);
+  return out;
+}
+
+/**
+ * Monday, because a working week starts on one.
+ *
+ * getDay() calls Sunday 0, so Sunday has to step back six days rather than
+ * zero - the off-by-one that makes "this week" mean "next week" once every
+ * seven days, and only on the day fewest people are looking.
+ */
+function weekStart(d: Date): Date {
+  const day = d.getDay();
+  return addDays(d, day === 0 ? -6 : 1 - day);
+}
+
 const MONTH_NAME = [
   "January", "February", "March", "April", "May", "June",
   "July", "August", "September", "October", "November", "December",
@@ -84,6 +104,8 @@ export const PERIOD_CHOICES: { key: PeriodKey; label: string; group: string }[] 
   { key: "today", label: "Today", group: "Days" },
   { key: "last7", label: "Last 7 days", group: "Days" },
   { key: "last30", label: "Last 30 days", group: "Days" },
+  { key: "thisWeek", label: "This week", group: "Weeks" },
+  { key: "lastWeek", label: "Last week", group: "Weeks" },
   { key: "thisMonth", label: "This month", group: "Months" },
   { key: "lastMonth", label: "Last month", group: "Months" },
   { key: "thisQuarter", label: "This quarter", group: "Months" },
@@ -121,6 +143,24 @@ export function resolvePeriod(period: Period, today: Date = new Date()): Resolve
         dateTo: iso(today),
         label: "the last 30 days",
       };
+
+    case "thisWeek": {
+      const start = weekStart(today);
+      return {
+        dateFrom: iso(start),
+        dateTo: iso(addDays(start, 6)),
+        label: `week of ${iso(start)}`,
+      };
+    }
+
+    case "lastWeek": {
+      const start = addDays(weekStart(today), -7);
+      return {
+        dateFrom: iso(start),
+        dateTo: iso(addDays(start, 6)),
+        label: `week of ${iso(start)}`,
+      };
+    }
 
     case "thisMonth":
       return {
@@ -267,7 +307,7 @@ export function encodePeriod(period: Period): string | undefined {
 }
 
 const SIMPLE = new Set<PeriodKey>([
-  "today", "last7", "last30", "thisMonth", "lastMonth",
+  "today", "last7", "last30", "thisWeek", "lastWeek", "thisMonth", "lastMonth",
   "thisQuarter", "last6", "thisYear", "lastYear", "all",
 ]);
 
