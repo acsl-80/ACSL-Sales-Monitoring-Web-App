@@ -8,7 +8,8 @@ module never touches it. `src/styles.css` is not edited by anything here.
 
 ## The idea
 
-**One instrument panel in five colour-coded sections.** Colour is wayfinding
+**One instrument panel in five colour-coded sections, plus the panel behind
+them.** Colour is wayfinding
 and state, never decoration. Before the module had this, eleven different jobs
 were eleven identical white cards with gray borders, and nothing on screen told
 you where you were.
@@ -45,6 +46,12 @@ className, because it renders outside the page's tree.
 | Partner Records | `#8a5a08` | `#6f4806` | `#f7ecd2` |
 | Stove Records | `#33527b` | `#28405f` | `#e0e9f4` |
 | Import | `#6b3a6e` | `#542c57` | `#f1e2f2` |
+| Settings | `#414750` | `#2f343b` | `#e7e9ed` |
+
+Settings is graphite rather than a sixth hue. It is administration, not an area
+of the data, and giving it a colour of its own would put it in competition with
+the five for wayfinding. It is also the one accent that has to stay clear of
+every semantic state, since the panels on it are almost entirely state.
 
 Every accent holds at least 4.5:1 on white and on `--dc-surface-muted`, so an
 accent-coloured label is readable text rather than only a decoration colour.
@@ -138,6 +145,11 @@ Structural, never fluid type.
   height and the row renderer together.
 - The three real tables keep their wide layout at every width and pin the first
   column, so a sideways scroll still says whose row you are reading.
+- The lists that are read a screenful at a time - agents, questions, choices,
+  people - page rather than scroll, through `usePaged` and `Pagination`. Two
+  kinds of table, and which one a table is depends on how it is used: an agent
+  working a queue does not want a page number, and somebody reading a list of
+  settings does not want a virtual window.
 - Scrollers use `maxHeight: clamp(320px, 62dvh, 560px)`. `maxHeight` so five
   rows do not sit above 340px of white; `dvh` so a mobile browser's collapsing
   toolbar does not cut the last row off.
@@ -155,3 +167,9 @@ Structural, never fluid type.
    nobody finished.
 6. No new dependencies. `package.json` and `bun.lock` are in the daily
    contractor merge.
+7. Nothing in Settings deletes. A question retires and a choice deactivates,
+   because records point at both and history is not rewritten by a change of
+   mind about what to ask next. A retired row stays visible, marked.
+8. An export offers its columns. `ExportButton` takes a column list with
+   all/none, because an export that is the input to something else has to be
+   able to leave columns out.

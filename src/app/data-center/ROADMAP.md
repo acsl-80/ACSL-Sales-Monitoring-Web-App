@@ -803,3 +803,78 @@ review ran inline from the skill's degraded reference, because the shipped
 reviewer agent is not registered here.
 
 `PRODUCT.md` and `src/app/data-center/DESIGN.md` are written.
+
+## Phase 15: Settings, and assignment a person can direct: DONE
+
+Three things the module claimed and could not do, plus the surface to put them
+on.
+
+- [x] **Settings is the sixth Explore card.** Access and the change log were
+      two panels below the hub's grid, so everyone opening the module on their
+      way to a queue scrolled past a user list and an audit log to get there,
+      and the two surfaces that most need room to read had the least. Its own
+      route, its own graphite accent, gated on `grants.manage`.
+- [x] **The log reads as a log.** It rendered the audit table as it is stored:
+      an action word, a table name and a primary key. The category is derived
+      in the query and the changed field names come from the diff between the
+      two snapshots the trigger already kept, so a line now says who did what
+      to what and which fields moved. Filter chips per category, grouped by
+      day, and it exports.
+- [x] **The call form is editable.** `field_defs` and `option_values` have
+      driven the renderer since the first migration, and nothing could add a
+      row to either: adding a question took a migration written by someone who
+      writes migrations, which is not who knows what to ask. Settings edits
+      both, gated on `registry.manage`, which existed from the start and was
+      enforced nowhere. Nothing deletes; a question retires and a choice
+      deactivates, because records point at both.
+- [x] **"Something else" is an outcome.** The nine seeded ones came from the
+      workbook's Key tab, which is a closed list, and the July data shows what
+      an agent does when a call does not fit one: RESPONDED, REPONDED and NO
+      PHONE NUMBER were typed straight into a constrained column. Choosing it
+      makes `call_attempts.note` required, which is the column that was always
+      there.
+- [x] **The variables are variables.** `workflow_config` held batch size,
+      callback limit and staleness precisely so they would never be hard-coded,
+      and twenty was as fixed as if it had been. The panel reads the input type
+      off the stored jsonb rather than a list of key names, so a setting added
+      by a later migration appears without being named in two places.
+- [x] **Features tick on per person.** `feature_grants` existed with no UI. The
+      access list opens each person to the nine keys; the level is the baseline
+      and a tick is an addition. Ticking `grants.manage` is how somebody who is
+      not a super admin comes to see Settings at all.
+- [x] **Assignment can be directed.** The engine handed work out well and
+      nobody could see it or overrule it. `assign_batch_manual`,
+      `unassign_batch` and `unassign_item` are a second door onto the engine's
+      own tables under the same advisory lock: a record cannot be in two
+      batches because that is a partial unique index, not a rule each new
+      function has to remember. The console lists agents with their load,
+      drills agent to partner to serial to record, and assigning twice is how
+      one agent ends up with ten of one partner and ten of another.
+- [x] **Pagination and a column picker.** `usePaged` plus a `Pagination`
+      component for the lists that are read a screenful at a time; the two
+      genuinely large tables stay keyset-paginated and virtualized and never
+      come through it. `ExportButton` takes columns with all/none, because an
+      export that is the input to something else has to be able to leave
+      columns out.
+
+Verified against the preview database and the deployed functions rather than
+locally: `unassign_batch` released 5 into the pool, `assign_batch_manual` took
+3 and then 2 more to the same agent past a configured capacity of 1,
+`unassign_item` returned one and reclaimed nothing it should not have, and
+`agent_detail` reported 4 items across 2 batches with serials and numbers for
+the drill. On the registry side, adding a question returned 200 and it appeared
+in the next read, retiring it kept the row and stamped `retired_at`, a key the
+database cannot live with was refused, a dropdown naming no list was refused,
+and an invented setting key was refused. The change log attributed every one of
+them to the right person with the right changed fields.
+
+### Deliberately not done
+
+- **Promoting a question to a real column.** The registry supports it and
+  Settings does not perform it: a column has to exist before anything can be
+  written to it, so offering that as a button would be offering a failure. It
+  stays a migration.
+- **Capacity enforcement on a manual assign.** `assignment.max_open_batches`
+  binds the engine and not a supervisor, because overriding the engine is what
+  manual assignment is for. Proven: a second batch landed on an agent already
+  at a capacity of 1.
