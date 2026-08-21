@@ -124,7 +124,6 @@ function Card({ label, value: v, hint, skin = "neutral", to, search, arrow }) {
 const BAR_TONES = {
   fully_verified: "bg-(--dc-primary)",
   partially_verified: "bg-amber-500",
-  doubtful_verification: "bg-orange-500",
   not_verified: "bg-gray-400",
   never_called: "bg-gray-300",
   sold: "bg-(--dc-primary)",

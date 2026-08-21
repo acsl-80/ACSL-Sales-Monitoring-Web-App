@@ -41,7 +41,6 @@ const STATE_TONE = {
 const OUTCOME_TONE = {
   fully_verified: "text-(--dc-accent)",
   partially_verified: "text-amber-700",
-  doubtful_verification: "text-amber-700",
   unreachable: "text-orange-700",
   not_verified: "text-gray-500",
 };
@@ -50,7 +49,6 @@ const OUTCOME_TONE = {
 const VERIFICATION = [
   { value: "fully_verified", label: "Fully verified" },
   { value: "partially_verified", label: "Partially verified" },
-  { value: "doubtful_verification", label: "Doubtful" },
   { value: "unreachable", label: "Unreachable" },
   { value: "not_verified", label: "Not verified" },
 ];

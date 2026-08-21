@@ -81,6 +81,25 @@ Deno.serve(async (req) => {
       initialPaymentProofImageId,
     } = body;
 
+    /**
+     * One household, one number, two stoves.
+     *
+     * The rule below is one live sale per phone, and it is right for the Sell
+     * Stove form: an agent standing in front of a customer who types a number
+     * already on file has almost certainly typed the wrong number. It is wrong
+     * for a digitiser working through a stack of receipts, where a man who
+     * bought stoves for two wives wrote the same number on both.
+     *
+     * So the rule stays, and the Data Center's digitalisation path - and only
+     * that path - can say it means it. The Sell Stove form and the mobile app
+     * never send this field, so nothing about them changes.
+     *
+     * `allowSharedPhone` does not skip the check. It turns the refusal into a
+     * report, so the caller learns which sales already hold the number and can
+     * record the sharing rather than discovering it later.
+     */
+    const allowSharedPhone = body.allowSharedPhone === true;
+
     // ── Authenticate ─────────────────────────────────────────────────────────
     const anonClient = createClient(
       Deno.env.get("SUPABASE_URL")!,
@@ -167,6 +186,8 @@ Deno.serve(async (req) => {
       }
     }
 
+    let sharesPhoneWith: { id: string; transaction_id: string; phone: string | null }[] = [];
+
     // ── End-user phone uniqueness ─────────────────────────────────────────────
     // Every sale must be tied to a unique end-user phone. Compare digits-only so
     // "0801…" and "+234 801 …" collide. Cancelled sales live in
@@ -194,11 +215,20 @@ Deno.serve(async (req) => {
           const rowDigits = String(r.phone ?? "").replace(/\D+/g, "");
           return rowDigits.length >= 10 && rowDigits.slice(-10) === tail;
         });
-        if (clash) {
+        if (clash && !allowSharedPhone) {
           return jsonError(
             `This end user phone is already used on sale ${clash.transaction_id}. Each sale must have a unique end user phone number.`,
             409
           );
+        }
+        // Carried to the end so the response can name every sale already on
+        // this number. A caller that opted in has to be able to record the
+        // sharing, and it cannot do that from a number alone.
+        if (clash) {
+          sharesPhoneWith = (dupes ?? []).filter((r: { phone: string | null }) => {
+            const rowDigits = String(r.phone ?? "").replace(/\D+/g, "");
+            return rowDigits.length >= 10 && rowDigits.slice(-10) === tail;
+          });
         }
       }
     }
@@ -563,6 +593,19 @@ Deno.serve(async (req) => {
           status: saleStatus,
           sale_id: saleId,
           data: { id: saleId },
+          /*
+            Named only when there is something to name, so a caller that did
+            not opt in sees exactly the response it saw before. The Data Center
+            reads this to register the sharing; nothing else looks at it.
+          */
+          ...(sharesPhoneWith.length > 0
+            ? {
+              shares_phone_with: sharesPhoneWith.map((r) => ({
+                sale_id: r.id,
+                transaction_id: r.transaction_id,
+              })),
+            }
+            : {}),
         }),
         { status: 200 }
       )

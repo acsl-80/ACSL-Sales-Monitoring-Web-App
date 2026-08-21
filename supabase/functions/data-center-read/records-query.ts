@@ -69,7 +69,7 @@ export interface RecordsFilters {
   includeArchived?: boolean;
 
   // --- Table 2 only. Rejected outright when reading Table 1. ---
-  /** fully_verified | partially_verified | doubtful_verification | unreachable | not_verified */
+  /** fully_verified | partially_verified | unreachable | not_verified */
   verificationOutcome?: string;
   /** A scorecard column: verified | unverified | unreachable | unresolved. */
   outcomeGroup?: string;
@@ -192,7 +192,6 @@ const PLATFORMS = new Set(["web", "mobile"]);
 const VERIFICATION_OUTCOMES = new Set([
   "fully_verified",
   "partially_verified",
-  "doubtful_verification",
   "unreachable",
   "not_verified",
 ]);
@@ -375,7 +374,13 @@ export function buildRecordsQuery(
       if (f.outcomeGroup === "verified") {
         where.push(`cr.verification_outcome = ${p("fully_verified")}`);
       } else if (f.outcomeGroup === "unverified") {
-        where.push(`cr.verification_outcome in (${p("partially_verified")}, ${p("doubtful_verification")})`);
+        /*
+         * Unverified is partially verified alone now that "doubtful" is gone.
+         * Kept as one branch rather than folded into the equality above,
+         * because the scorecard column it feeds is a group and the next
+         * outcome added to that group belongs here rather than in a rewrite.
+         */
+        where.push(`cr.verification_outcome in (${p("partially_verified")})`);
       } else if (f.outcomeGroup === "unreachable") {
         where.push(`cr.verification_outcome = ${p("unreachable")}`);
       } else {

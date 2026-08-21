@@ -323,9 +323,9 @@ test.describe("the headline figures", () => {
 
     await page.getByRole("link", { name: /^Unverified:/ }).click();
 
-    // Both sides define unverified as partially_verified or
-    // doubtful_verification: the funnel view, the scorecard compute and the
-    // queue filter all carry that same pair.
+    // Both sides define unverified the same way - the funnel view, the
+    // scorecard compute and the queue filter all read it off one list, which
+    // is why removing an outcome from that list moved all three together.
     await expect(page).toHaveURL(/status=unverified/);
     await expect(page.getByText(/Narrowed from the dashboard/)).toBeVisible({
       timeout: 20_000,

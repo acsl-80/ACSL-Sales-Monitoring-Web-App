@@ -1241,9 +1241,54 @@ serve(async (req) => {
               normalized: string | null;
               transaction_id: string | null;
               duplicate_of_row: number | null;
+              /** Stoves already on this row's number. Amber, never a block. */
+              shared_phone_with: string[] | null;
             };
 
             const verdicts: Verdict[] = [];
+            /**
+             * Which of these numbers is already carrying a stove.
+             *
+             * One household with one number and two stoves is allowed on this
+             * path, so this never refuses a row - it marks it, so the person
+             * who can tell a family from a mistyped digit is looking at both
+             * stoves before anything commits. Without it the sheet validates
+             * clean and then fails at commit one row at a time, with the
+             * reason arriving long after the rows that caused it.
+             *
+             * The tail is the comparison key create-sale uses, which is also
+             * what idx_sales_phone_tail is built on, so this is an index
+             * lookup rather than a scan.
+             */
+            const tailOf = (v: string | null | undefined) =>
+              String(v ?? "").replace(/\D+/g, "").slice(-10);
+
+            const tails = new Map<string, string[]>();
+            for (const item of shaped) {
+              if (!item.result.ok) continue;
+              const tail = tailOf((item.result as { ok: true; row: NormalizedRow }).row.phone);
+              if (tail.length === 10) tails.set(tail, []);
+            }
+
+            if (tails.size > 0) {
+              const live = await conn.queryObject<{ tail: string; stove_serial_no: string }>({
+                text: `select right(regexp_replace(coalesce(s.phone, ''), '[^0-9]', '', 'g'), 10) as tail,
+                              s.stove_serial_no
+                         from public.sales s
+                        where s.is_archived is not true
+                          and right(regexp_replace(coalesce(s.phone, ''), '[^0-9]', '', 'g'), 10)
+                              = any($1::text[])`,
+                args: [[...tails.keys()]],
+              });
+              for (const row of live.rows) {
+                tails.get(row.tail)?.push(row.stove_serial_no);
+              }
+            }
+
+            // And the same number twice inside this one file, which the query
+            // above cannot see because neither row is a sale yet.
+            const seenPhone = new Map<string, string[]>();
+
             let valid = 0, rejected = 0, exception = 0, linked = 0;
 
             for (const s of shaped) {
@@ -1259,6 +1304,7 @@ serve(async (req) => {
                   normalized: null,
                   transaction_id: null,
                   duplicate_of_row: null,
+                  shared_phone_with: null,
                 });
                 continue;
               }
@@ -1272,6 +1318,23 @@ serve(async (req) => {
                 // tied to the same transfer as the row it repeats, and saying
                 // "2 matched" for one stove would overstate the reconciliation.
                 if (transactionId) linked++;
+              }
+
+              /**
+               * Everything already on this number: live sales first, then
+               * earlier rows of this same file. Both matter - a sheet that
+               * repeats a number is exactly as worth looking at as one that
+               * collides with the register.
+               */
+              const tail = tailOf(row.phone);
+              let sharedWith: string[] | null = null;
+              if (tail.length === 10) {
+                const already = [
+                  ...(tails.get(tail) ?? []),
+                  ...(seenPhone.get(tail) ?? []),
+                ].filter((serial) => serial && serial !== row.stoveSerialNo);
+                if (already.length > 0) sharedWith = [...new Set(already)];
+                seenPhone.set(tail, [...(seenPhone.get(tail) ?? []), row.stoveSerialNo]);
               }
 
               let exceptionReason: string | null = null;
@@ -1298,6 +1361,7 @@ serve(async (req) => {
                   normalized: JSON.stringify(row),
                   transaction_id: transactionId,
                   duplicate_of_row: duplicateOf,
+                  shared_phone_with: sharedWith,
                 });
               } else {
                 valid++;
@@ -1317,8 +1381,33 @@ serve(async (req) => {
                   normalized: JSON.stringify(canonical),
                   transaction_id: transactionId,
                   duplicate_of_row: duplicateOf,
+                  shared_phone_with: sharedWith,
                 });
               }
+            }
+
+            /**
+             * Sharing is mutual, so the flag is too.
+             *
+             * Walking the rows in order, the first stove on a number sees
+             * nothing ahead of it and the later ones see it - which shows two
+             * of three rows amber and reads as though the first is fine. A
+             * person scanning the sheet has to see every row in the group,
+             * from whichever one they happen to be looking at.
+             */
+            const group = new Map<string, Set<string>>();
+            for (const v of verdicts) {
+              if (!v.shared_phone_with || !v.stove_serial_no) continue;
+              for (const other of [...v.shared_phone_with, v.stove_serial_no]) {
+                if (!group.has(other)) group.set(other, new Set());
+                for (const each of [...v.shared_phone_with, v.stove_serial_no]) {
+                  if (each !== other) group.get(other)!.add(each);
+                }
+              }
+            }
+            for (const v of verdicts) {
+              const mates = v.stove_serial_no ? group.get(v.stove_serial_no) : null;
+              if (mates && mates.size > 0) v.shared_phone_with = [...mates].sort();
             }
 
             if (verdicts.length > 0) {
@@ -1339,13 +1428,17 @@ serve(async (req) => {
                               stove_serial_no  = coalesce(v.stove_serial_no, r.stove_serial_no),
                               normalized       = v.normalized::jsonb,
                               transaction_id   = v.transaction_id,
-                              duplicate_of_row = v.duplicate_of_row
+                              duplicate_of_row = v.duplicate_of_row,
+                              shared_phone_with = case
+                                when v.shared_phone_with is null then null
+                                else array(select jsonb_array_elements_text(v.shared_phone_with))
+                              end
                          from jsonb_to_recordset($1::jsonb) as v(
                                 id uuid, status text,
                                 rejection_reason text, rejection_hint text,
                                 exception_reason text, stove_serial_no text,
                                 normalized text, transaction_id text,
-                                duplicate_of_row int
+                                duplicate_of_row int, shared_phone_with jsonb
                               )
                         where r.id = v.id`,
                 args: [JSON.stringify(verdicts)],
@@ -1543,6 +1636,7 @@ serve(async (req) => {
           };
 
           let saleId: string | null = null;
+          let sharesPhoneWith: { sale_id: string }[] = [];
           let reason = "";
           // Three attempts, but only for a transaction ID collision. Any other
           // refusal is a fact about the row and retrying would just produce the
@@ -1556,13 +1650,34 @@ serve(async (req) => {
                   Authorization: authHeader,
                   apikey: Deno.env.get("SUPABASE_ANON_KEY") ?? "",
                 },
-                body: JSON.stringify({ ...payload, transactionId: newTransactionId() }),
+                /**
+                 * The digitalisation path means it about a shared number.
+                 *
+                 * create-sale refuses a phone already on a live sale, which is
+                 * right in front of a customer and wrong over a stack of
+                 * receipts where a man bought stoves for two wives on one
+                 * number. The flag does not skip the check; it turns the
+                 * refusal into a report, and the answer comes back naming the
+                 * sales already on the number so the sharing can be recorded
+                 * rather than discovered later.
+                 *
+                 * Only this path sends it. The Sell Stove form and the mobile
+                 * app never do, so nothing about them changes.
+                 */
+                body: JSON.stringify({
+                  ...payload,
+                  transactionId: newTransactionId(),
+                  allowSharedPhone: true,
+                }),
               });
               const out = await res.json().catch(() => ({}));
               // create-sale answers { success, sale_id, data: { id } }.
               const created = out?.data?.id ?? out?.sale_id ?? out?.saleId ?? null;
               if (res.ok && created) {
                 saleId = created;
+                sharesPhoneWith = Array.isArray(out?.shares_phone_with)
+                  ? (out.shares_phone_with as { sale_id: string }[])
+                  : [];
                 break;
               }
               reason = out?.message ?? out?.error ?? `create-sale refused this row (${res.status})`;
@@ -1598,6 +1713,39 @@ serve(async (req) => {
                   text: "update data_center.import_claims set sale_id = $2 where row_id = $1",
                   args: [row.id, saleId],
                 });
+
+                /**
+                 * A number holding more than one stove goes on the register.
+                 *
+                 * Both ends of it: the sale just created, and every sale that
+                 * already held the number - because a person opening either
+                 * record should see the other, and a row written for only one
+                 * side makes the second stove invisible from the first.
+                 *
+                 * In the same transaction as the commit, so a number can never
+                 * be shared without the register saying so.
+                 */
+                if (sharesPhoneWith.length > 0) {
+                  await conn.queryObject({
+                    text: `insert into data_center.shared_phones
+                             (phone_tail, sale_id, stove_id, phone_as_written,
+                              source, created_by, updated_by)
+                           select right(regexp_replace(coalesce(s.phone, ''), '[^0-9]', '', 'g'), 10),
+                                  s.id, s.stove_serial_no, s.phone,
+                                  'digitalisation', $2, $2
+                             from public.sales s
+                            where s.id = any($1::uuid[])
+                              and length(regexp_replace(coalesce(s.phone, ''), '[^0-9]', '', 'g')) >= 10
+                           on conflict (phone_tail, sale_id) do update
+                              set stove_id = excluded.stove_id,
+                                  phone_as_written = excluded.phone_as_written,
+                                  updated_at = now(), updated_by = excluded.updated_by`,
+                    args: [
+                      [saleId, ...sharesPhoneWith.map((r) => r.sale_id)],
+                      userId,
+                    ],
+                  });
+                }
               } else {
                 // Release the claim: the sale did not happen, so nothing should
                 // be holding the stove.

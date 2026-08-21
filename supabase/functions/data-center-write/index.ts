@@ -165,7 +165,7 @@ const WRITABLE_COLUMNS = new Set([
 ]);
 
 const VERIFICATION_OUTCOMES = new Set([
-  "fully_verified", "partially_verified", "doubtful_verification", "not_verified",
+  "fully_verified", "partially_verified", "not_verified",
 ]);
 
 /**

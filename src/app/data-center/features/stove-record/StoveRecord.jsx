@@ -43,7 +43,6 @@ const words = (v) => (v ? String(v).replace(/_/g, " ") : null);
 const OUTCOME_TONE = {
   fully_verified: "bg-(--dc-accent-soft) text-(--dc-accent-strong)",
   partially_verified: "bg-amber-100 text-amber-800",
-  doubtful_verification: "bg-amber-100 text-amber-800",
   unreachable: "bg-orange-100 text-orange-800",
   not_verified: "bg-gray-100 text-gray-700",
 };

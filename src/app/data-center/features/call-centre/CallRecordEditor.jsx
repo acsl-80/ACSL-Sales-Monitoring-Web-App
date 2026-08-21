@@ -30,7 +30,6 @@ import {
 const OUTCOMES = [
   { value: "not_verified", label: "Not verified", tone: "bg-gray-100 text-gray-700" },
   { value: "partially_verified", label: "Partially verified", tone: "bg-amber-100 text-amber-800" },
-  { value: "doubtful_verification", label: "Doubtful", tone: "bg-orange-100 text-orange-800" },
   { value: "fully_verified", label: "Fully verified", tone: "bg-(--dc-primary)/10 text-(--dc-accent)" },
 ];
 

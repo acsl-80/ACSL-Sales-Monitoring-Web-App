@@ -43,7 +43,6 @@ const COLUMNS = [
 const OUTCOME_TONE = {
   fully_verified: "bg-(--dc-primary)/10 text-(--dc-accent)",
   partially_verified: "bg-amber-100 text-amber-800",
-  doubtful_verification: "bg-orange-100 text-orange-800",
   not_verified: "bg-gray-100 text-gray-600",
 };
 

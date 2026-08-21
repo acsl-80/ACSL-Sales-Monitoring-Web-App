@@ -42,7 +42,6 @@ const n = (v) => NUMBER.format(Number(v ?? 0));
 const OUTCOME_TONE = {
   fully_verified: "text-(--dc-accent)",
   partially_verified: "text-amber-700",
-  doubtful_verification: "text-amber-700",
   unreachable: "text-orange-700",
   not_verified: "text-gray-600",
 };
