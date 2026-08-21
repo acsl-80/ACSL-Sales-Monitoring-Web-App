@@ -122,8 +122,8 @@ test.describe("the variables are editable", () => {
     await expect(page.getByRole("heading", { name: "Variables" })).toBeVisible({
       timeout: 20_000,
     });
-    await expect(page.getByLabel("assignment.batch_size")).toBeVisible();
-    await expect(page.getByLabel("callback_limit")).toBeVisible();
+    await expect(page.getByLabel("assignment.batch_size", { exact: true })).toBeVisible();
+    await expect(page.getByLabel("callback_limit", { exact: true })).toBeVisible();
   });
 
   test("only a setting that already exists can be changed", async ({ page }) => {
@@ -153,7 +153,7 @@ test.describe("features are ticked on per person", () => {
 
     await page.getByRole("button", { name: /^Features for / }).first().click();
 
-    await expect(page.getByText("Extra features")).toBeVisible();
+    await expect(page.getByText("Extra features", { exact: true })).toBeVisible();
     // The level is the baseline and a tick is an addition; grants.manage is the
     // one that decides whether somebody who is not a super admin sees this page.
     await expect(page.getByText("grants.manage").first()).toBeVisible();

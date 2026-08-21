@@ -80,15 +80,20 @@ test.describe("viewer and editor are different animals", () => {
     await signIn(page, USERS.callCentre);
     await page.goto("/data-center");
 
-    // An editor holds import.upload and call_records.edit, so nothing on the
-    // hub is locked. Asserting the cards rather than a feature count tests the
-    // gate itself instead of a label describing it.
+    // An editor holds import.upload and call_records.edit, so every area of
+    // the data is open to them. Asserting the cards rather than a feature count
+    // tests the gate itself instead of a label describing it.
     for (const area of ["Dashboard", "Call Centre", "Partner Records", "Stove Records", "Bulk Import"]) {
       await expect(page.getByRole("link", { name: `Open ${area}` })).toBeVisible({
         timeout: 20_000,
       });
     }
-    await expect(page.getByText(/^Needs /)).toHaveCount(0);
+
+    // Settings is the exception, and deliberately. Administration is not an
+    // editor's job: deciding who may enter the module and rewriting the
+    // questions every agent answers are two things an editor does not do.
+    await expect(page.getByRole("link", { name: "Open Settings" })).toHaveCount(0);
+    await expect(page.getByText(/^Needs /)).toHaveText("Needs grants.manage");
   });
 
   test("viewer: the reading areas open, the writing one does not", async ({ page }) => {
@@ -193,9 +198,9 @@ test.describe("the change log is readable and categorised", () => {
       "aria-pressed",
       "true",
     );
-    await expect(page.getByText(/granted an access grant|No access changes yet/)).toBeVisible({
-      timeout: 15_000,
-    });
+    await expect(
+      page.getByText(/granted an access grant|No access changes yet/).first(),
+    ).toBeVisible({ timeout: 15_000 });
 
     // The raw table name never reaches the reader.
     await expect(page.getByText("data_center.module_access")).toHaveCount(0);

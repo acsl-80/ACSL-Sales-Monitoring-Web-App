@@ -81,7 +81,10 @@ function Inner() {
           super admin only, decided again server-side. */}
       {isSuperAdmin && <AssignmentConsole canEdit />}
       {can(DATA_CENTER_FEATURES.RECORDS_VIEW) && (
-        <AssignmentLog canRun={isSuperAdmin} />
+        <AssignmentLog
+          canRun={isSuperAdmin}
+          canEdit={can(DATA_CENTER_FEATURES.CALL_RECORDS_EDIT)}
+        />
       )}
     </div>
   );

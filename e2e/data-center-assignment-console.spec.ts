@@ -23,9 +23,14 @@ test.describe("the assignment console shows who holds what", () => {
       page.getByRole("heading", { name: "Agents and their work" }),
     ).toBeVisible({ timeout: 20_000 });
 
+    // Scoped to the console's own table: the call queue above it has an Agent
+    // column too, and an unscoped header lookup finds both.
+    const console_ = page
+      .getByRole("heading", { name: "Agents and their work" })
+      .locator("xpath=ancestor::div[contains(@class,'rounded-xl')][1]");
     for (const column of ["Agent", "Level", "Batches", "Records held", "Last activity"]) {
       await expect(
-        page.getByRole("columnheader", { name: column, exact: true }),
+        console_.getByRole("columnheader", { name: column, exact: true }),
       ).toBeVisible();
     }
 
@@ -188,5 +193,77 @@ test.describe("assigning by hand goes through the engine's own tables", () => {
 
     const refused = await callEdgeFunction(page, "data-center-assign", { action: "agents" });
     expect(refused.status).toBe(403);
+  });
+});
+
+/**
+ * The assignment log, as a place of work.
+ *
+ * It was a table you could only look at, which made it a report: seeing that a
+ * record had been rung twice and concluded nothing, you then went and found it
+ * in the queue. The row is now the way in.
+ */
+test.describe("the assignment log can be worked from", () => {
+  test("it says what a row is, and pages without an offset", async ({ page }) => {
+    const bodies: string[] = [];
+    page.on("request", (req) => {
+      if (req.url().includes("/functions/v1/data-center-read")) {
+        bodies.push(req.postData() ?? "");
+      }
+    });
+
+    await signIn(page, USERS.admin);
+    await page.goto("/data-center/call-centre");
+
+    await expect(page.getByText("Assignment Log")).toBeVisible({ timeout: 20_000 });
+    // The table was read as a list of batches, which it is not.
+    await expect(
+      page.getByText(/One line per record handed to an agent/),
+    ).toBeVisible();
+
+    await expect(page.getByRole("button", { name: "Previous page" })).toBeDisabled();
+    await expect(page.getByLabel("Per page")).toBeVisible();
+
+    // Keyset, never OFFSET: at 500,000 rows page 400 would read every row
+    // before it.
+    await expect
+      .poll(() => bodies.some((b) => b.includes('"assignment_log"')), { timeout: 15_000 })
+      .toBe(true);
+    for (const body of bodies) {
+      expect(body).not.toContain('"offset"');
+    }
+  });
+
+  test("a row opens the record, and the quick edit logs a call", async ({ page }) => {
+    await signIn(page, USERS.admin);
+    await page.goto("/data-center/call-centre");
+    await expect(page.getByText("Assignment Log")).toBeVisible({ timeout: 20_000 });
+
+    const quick = page.getByRole("button", { name: /^Quick edit / }).first();
+    test.skip((await quick.count()) === 0, "Nothing assigned to work from");
+
+    // The quick edit is the two things anyone actually does here, without
+    // opening the record at all.
+    await quick.click();
+    await expect(page.getByLabel("Log a call")).toBeVisible();
+    await expect(page.getByText("Settle the verification")).toBeVisible();
+    await page.keyboard.press("Escape");
+
+    // And the row itself opens the same enrichment editor the queue opens.
+    await page.getByRole("row").filter({ has: quick }).click();
+    await expect(page.getByRole("dialog")).toBeVisible({ timeout: 20_000 });
+    await page.keyboard.press("Escape");
+    await expect(page.getByRole("dialog")).toHaveCount(0);
+  });
+
+  test("a viewer gets the log to read and nothing to press", async ({ page }) => {
+    await signIn(page, USERS.manager);
+    await page.goto("/data-center/call-centre");
+    await expect(page.getByText("Assignment Log")).toBeVisible({ timeout: 20_000 });
+
+    // A viewer holds no call_records.edit, so the row is not a door and the
+    // pencil is not drawn. The endpoint refuses regardless.
+    await expect(page.getByRole("button", { name: /^Quick edit / })).toHaveCount(0);
+    await expect(page.getByText(/Open a row to enrich it/)).toHaveCount(0);
   });
 });
