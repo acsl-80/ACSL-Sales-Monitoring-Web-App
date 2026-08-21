@@ -878,3 +878,86 @@ them to the right person with the right changed fields.
   binds the engine and not a supervisor, because overriding the engine is what
   manual assignment is for. Proven: a second batch landed on an agent already
   at a capacity of 1.
+
+## Phase 16: the stove record, and one period for every surface: DONE
+
+The module could describe populations and could not describe one stove. Every
+surface answered a question about a group - which partners are behind, which
+agents are busy, what arrived on Tuesday - and the question people actually
+walk over and ask is "what happened to this one?". Answering it meant opening
+Partner Records for the transfer, Stove Records for the sale, the call queue
+for the verification and the import history for who typed it, then joining four
+screens by eye.
+
+- [x] **`/data-center/stove/<id>`, the record.** Nine sources gathered on one
+      page: the register that issued the serial, the consignment that sent it
+      to a partner, the sale it became with every field the Sell Stove form
+      collects, the file or the bench that typed that sale up, what the call
+      centre added on top, every call anybody made, and every field anybody has
+      edited since. Read together in one round trip, because a person holding a
+      serial is asking one question.
+- [x] **A journey strip.** The module's own reconciliation funnel, restated for
+      one stove: issued, transferred, paper back, sold, typed up, called,
+      verified. It lives in `journey.js` rather than in the component, because
+      the partner scorecards count exactly these stages across a batch and a
+      page that invented its own stage names would be a second definition.
+- [x] **Every name that is a thing is a door.** The partner opens Partner
+      Records at that partner, the rep opens their records, the agent opens
+      their queue, and a neighbour on the same consignment opens its own
+      record. Nothing on the page is a private copy of another surface.
+- [x] **The finder.** One box taking either of the two things written on paper:
+      the serial off the label or the reference off the consignment note. An
+      exact serial navigates rather than listing a result of one; a partial
+      serial is a shortlist, because half a number read off a scuffed label is
+      the normal case; a reference opens the consignment.
+- [x] **One period control, everywhere.** Days, weeks, months, quarters, half a
+      year, whole years picked several at a time, or a custom range. This year
+      by default. Held in the URL like every other narrowing here, so back
+      restores it and a filtered view can be sent to somebody. Partner Records
+      gained a server-side date filter to take it.
+- [x] **The one-stove-one-owner rule, made visible.** Both halves were already
+      enforced at the only door a sale comes through, and the phone comparison
+      already ignores the country code. What was missing was any way to see it
+      from a record; the stove page asks, and says so loudly if a number turns
+      up on another sale.
+
+Verified against the deployed function rather than locally: `stove_detail`
+returned all nine sections for a real serial with 56 sale fields, 150 stoves on
+its consignment and two change-log entries; `stove_search` resolved an exact
+serial to a record, a five-character prefix to 25 candidates, a transfer
+reference to its consignment and a nonsense string to a stated nothing;
+`period_bounds` reported the register's true earliest date; and the funnel
+returned 2 of 3 consignments for July. The period boundaries were checked
+against a fixed date by hand, including the two that cross a year: last month
+in January is December of the previous year, and last six months in January
+starts in August.
+
+### A question for the owner, not taken here
+
+**Should `public.sales` carry a unique index on the phone comparison key?**
+
+Today the rule is enforced in `create-sale`, which every writer goes through -
+the Sell Stove form, the digitalisation workbench and the bulk import all
+commit that way, so all three inherit it. A unique index would make the rule
+impossible to break rather than merely refused, which is stronger.
+
+It is also a change to how the *sales app* fails. Every other writer would
+begin seeing a raw Postgres constraint error in place of create-sale's sentence
+naming the sale that already holds the number, and any legacy row that already
+violates it would fail the migration. Production holds no violations today, but
+production holds eleven live sales; that is the rule holding for want of data,
+not the rule being enforced by the database.
+
+`supabase/manual/20260821_sales_phone_tail_concurrently.sql` carries the check
+to run against production before trusting any page that reports on this.
+
+### Deliberately not done
+
+- **A period control on the Dashboard.** The scorecards read precomputed values
+  from `metric_snapshots`, which is what makes them load at 500,000 rows. A
+  date filter there is not a filter, it is a recompute per range, and offering
+  a control that silently did nothing would be worse than not offering one.
+  Ranged metrics are a compute change, not a UI one.
+- **A period control on the stove record.** The timelines on that page are one
+  record's own history. A filter there would hide calls somebody made, which is
+  the opposite of what a complete record is for.
