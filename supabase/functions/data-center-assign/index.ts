@@ -377,6 +377,166 @@ serve(async (req) => {
         });
       }
 
+      /**
+       * Move work from one agent to another, without it touching the pool.
+       *
+       * Unassign-then-assign looks equivalent and is not: between the two the
+       * records are back in the pool, where the engine's next run can hand
+       * them to somebody else entirely. A supervisor moving one agent's queue
+       * to a colleague who is covering for them means those records, to that
+       * person.
+       *
+       * It takes either a whole batch or a list of records, because the
+       * complaint arrives both ways: "cover for her today" and "this one is
+       * her cousin, give it to somebody else".
+       *
+       * The receiving agent's batch is per partner, which is the assignment
+       * engine's own invariant - an agent's queue never mixes partners, so a
+       * move has to land in a batch of the right partner or make one.
+       */
+      case "reassign": {
+        {
+          const denied = requireAssignment();
+          if (denied) return denied;
+        }
+        const toAgent = String(body.toAgentId ?? "");
+        const batchId = body.batchId ? String(body.batchId) : null;
+        const saleIds = Array.isArray(body.saleIds) ? body.saleIds.map(String) : [];
+        if (!toAgent) {
+          return json({ error: "toAgentId is required", code: "bad_input" }, 400, cors);
+        }
+        if (!batchId && saleIds.length === 0) {
+          return json(
+            { error: "Give a batchId or a list of saleIds", code: "bad_input" },
+            400,
+            cors,
+          );
+        }
+
+        return await withConnection(async (conn) => {
+          await conn.queryObject("begin");
+          try {
+            await conn.queryObject({
+              text: "select set_config('data_center.actor', $1, true)",
+              args: [userId],
+            });
+
+            // The same lock the engine takes. Moving work and handing work out
+            // are the same act from the queue's point of view, and running
+            // both at once is how one record ends up in two places.
+            const got = await conn.queryObject<{ locked: boolean }>(
+              "select pg_try_advisory_xact_lock(8150621) as locked",
+            );
+            if (!got.rows[0]?.locked) {
+              await conn.queryObject("rollback");
+              return json(
+                {
+                  error: "The assignment engine is running. Try again in a moment.",
+                  code: "busy",
+                },
+                409,
+                cors,
+              );
+            }
+
+            // Everything being moved, with the partner it belongs to, because
+            // that decides which batch it can land in.
+            const moving = await conn.queryObject<
+              { item_id: string; sale_id: string; organization_id: string; batch_id: string }
+            >({
+              text: `select ai.id::text as item_id, ai.sale_id::text,
+                            ab.organization_id::text, ab.id::text as batch_id
+                       from data_center.assignment_items ai
+                       join data_center.assignment_batches ab on ab.id = ai.batch_id
+                      where ai.is_active and ab.state = 'open'
+                        and ($1::uuid is null or ab.id = $1::uuid)
+                        and ($2::uuid[] is null or ai.sale_id = any($2::uuid[]))
+                      for update`,
+              args: [batchId, saleIds.length > 0 ? saleIds : null],
+            });
+
+            if (moving.rows.length === 0) {
+              await conn.queryObject("rollback");
+              return json(
+                {
+                  error: "Nothing there to move. It may already have been reassigned or completed.",
+                  code: "nothing_to_move",
+                },
+                404,
+                cors,
+              );
+            }
+
+            // One destination batch per partner, reused across the whole move
+            // so a supervisor covering a shift does not leave the receiving
+            // agent with a batch of one for every record.
+            const byPartner = new Map<string, string[]>();
+            for (const item of moving.rows) {
+              if (!byPartner.has(item.organization_id)) byPartner.set(item.organization_id, []);
+              byPartner.get(item.organization_id)!.push(item.item_id);
+            }
+
+            let moved = 0;
+            const destinations: string[] = [];
+            for (const [org, itemIds] of byPartner) {
+              const made = await conn.queryObject<{ id: string }>({
+                text: `insert into data_center.assignment_batches
+                         (organization_id, assigned_to, size, state, created_by, updated_by)
+                       values ($1, $2, $3, 'open', $4, $4)
+                       returning id::text`,
+                args: [org, toAgent, itemIds.length, userId],
+              });
+              const target = made.rows[0].id;
+              destinations.push(target);
+              const done = await conn.queryObject({
+                text: `update data_center.assignment_items
+                          set batch_id = $1
+                        where id = any($2::uuid[])`,
+                args: [target, itemIds],
+              });
+              moved += Number(done.rowCount ?? itemIds.length);
+            }
+
+            /**
+             * A batch left with nothing in it is closed, not left open.
+             *
+             * An empty open batch counts towards its agent's capacity and
+             * shows on the console as work they are holding, which is exactly
+             * what a reassignment was meant to take off them.
+             */
+            const emptied = await conn.queryObject<{ id: string }>({
+              text: `update data_center.assignment_batches ab
+                        set state = 'completed', completed_at = now(),
+                            updated_by = $1, updated_at = now()
+                      where ab.state = 'open'
+                        and not exists (
+                          select 1 from data_center.assignment_items ai
+                           where ai.batch_id = ab.id and ai.is_active
+                        )
+                      returning ab.id::text`,
+              args: [userId],
+            });
+
+            await conn.queryObject("commit");
+            return json(
+              {
+                data: {
+                  moved,
+                  toAgentId: toAgent,
+                  batches: destinations,
+                  closedEmpty: emptied.rows.length,
+                },
+              },
+              200,
+              cors,
+            );
+          } catch (err) {
+            await conn.queryObject("rollback");
+            throw err;
+          }
+        });
+      }
+
       /** Take a whole batch back into the pool. */
       case "unassign_batch": {
         {

@@ -1225,6 +1225,76 @@ serve(async (req) => {
         });
       }
 
+      /**
+       * Every phone number carrying more than one stove, with the detail.
+       *
+       * A number appearing twice is usually a typo and occasionally a family,
+       * and the only way to tell is to look at both records side by side -
+       * same surname, same address, sequential serials off one consignment
+       * reads as a household; two different names in two states reads as a
+       * digit typed wrong. So this returns the records, not a count.
+       *
+       * Grouped in SQL rather than in the browser, because the group is the
+       * unit a person reads and stitching it client-side would page through
+       * the middle of one.
+       */
+      case "shared_phones": {
+        const superAdmin = isSuperAdmin(profile.role);
+        const resolved = superAdmin
+          ? { accessRole: null, features: [] as string[] }
+          : await resolveAccess(userId);
+        if (!superAdmin && resolved.accessRole === null) {
+          return json({ error: "No Data Center access", code: "no_access" }, 403, cors);
+        }
+        if (!superAdmin && !resolved.features.includes("records.view")) {
+          return json({ error: "Not permitted", code: "no_feature" }, 403, cors);
+        }
+
+        const b = body as { search?: string; confirmedOnly?: boolean; limit?: number };
+        const limit = Math.min(Math.max(Number(b.limit) || 100, 1), 500);
+        const term = String(b.search ?? "").trim().slice(0, 100);
+
+        return await withReadConnection(async (connection) => {
+          const rows = await connection.queryObject({
+            text: `with grouped as (
+                     select sp.phone_tail,
+                            count(*)::int as stove_count,
+                            bool_or(sp.confirmed) as any_confirmed,
+                            min(sp.created_at) as first_seen,
+                            max(sp.updated_at) as last_touched,
+                            json_agg(json_build_object(
+                              'sale_id', sp.sale_id::text,
+                              'stove_id', sp.stove_id,
+                              'phone_as_written', sp.phone_as_written,
+                              'source', sp.source,
+                              'confirmed', sp.confirmed,
+                              'note', sp.note,
+                              'buyer', s.end_user_name,
+                              'address', s.state_backup,
+                              'lga', s.lga_backup,
+                              'partner', s.partner_name,
+                              'sales_date', s.sales_date,
+                              'recorded_by', p.full_name,
+                              'recorded_at', sp.created_at
+                            ) order by sp.created_at) as stoves
+                       from data_center.shared_phones sp
+                       left join public.sales s on s.id = sp.sale_id
+                       left join public.profiles p on p.id = sp.created_by
+                      group by sp.phone_tail
+                     having count(*) > 1
+                   )
+                   select * from grouped
+                    where ($1::text = '' or phone_tail like '%' || $1 || '%'
+                           or stoves::text ilike '%' || $1 || '%')
+                      and ($2::boolean is not true or any_confirmed)
+                    order by last_touched desc
+                    limit $3`,
+            args: [term, b.confirmedOnly === true, limit],
+          });
+          return json({ data: { rows: rows.rows } }, 200, cors);
+        });
+      }
+
       case "stove_search": {
         const superAdmin = isSuperAdmin(profile.role);
         const resolved = superAdmin

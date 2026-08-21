@@ -84,6 +84,18 @@ export interface RecordsFilters {
   /** The business rule "called three times and still not verified". */
   attemptsAtLeast?: number;
   attemptsAtMost?: number;
+  /**
+   * Records the call centre has finished with: verified to either degree.
+   *
+   * Deliberately not the same question as the scorecard's "verified" column.
+   * That one asks how much of what a partner was sent has been confirmed, and
+   * counts only full verification. This one asks whether the call centre still
+   * has work to do on a record, and a partially verified record is one it has
+   * concluded. Unreachable is not here: nobody has spoken to that buyer yet.
+   */
+  completed?: boolean;
+  /** Records whose stove ID was taken by another caller's rematch. */
+  serialUnconfirmed?: boolean;
 }
 
 /**
@@ -338,7 +350,9 @@ export function buildRecordsQuery(
     f.correctionState !== undefined ||
     f.hasCallRecord !== undefined ||
     f.attemptsAtLeast !== undefined ||
-    f.attemptsAtMost !== undefined;
+    f.attemptsAtMost !== undefined ||
+    f.completed !== undefined ||
+    f.serialUnconfirmed !== undefined;
 
   if (table === "records" && callCentreOnly) {
     throw new BadRequest("Call centre filters need the call centre table");
@@ -367,6 +381,23 @@ export function buildRecordsQuery(
       } else {
         where.push(`cr.verification_outcome = ${p(f.verificationOutcome)}`);
       }
+    }
+
+    if (f.completed !== undefined) {
+      where.push(
+        f.completed
+          ? `cr.verification_outcome in (${p("fully_verified")}, ${p("partially_verified")})`
+          : `(cr.verification_outcome is null
+              or cr.verification_outcome not in (${p("fully_verified")}, ${p("partially_verified")}))`,
+      );
+    }
+
+    if (f.serialUnconfirmed !== undefined) {
+      where.push(
+        f.serialUnconfirmed
+          ? "cr.serial_unconfirmed_at is not null"
+          : "cr.serial_unconfirmed_at is null",
+      );
     }
 
     if (f.outcomeGroup) {

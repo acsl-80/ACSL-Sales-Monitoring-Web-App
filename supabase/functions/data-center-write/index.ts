@@ -580,6 +580,314 @@ serve(async (req) => {
         }
       }
 
+      /**
+       * The buyer reads the number off the label and it does not match.
+       *
+       * This is the one correction only the agent on the call can make, and
+       * until now the only thing they could do with it was send the sale back
+       * to Sales, where nobody has the buyer on the phone. Three cases, and
+       * only the third is interesting:
+       *
+       *   a. The confirmed ID is not in the stove register at all. Nothing to
+       *      rematch - a misread, or a stove that never came through us.
+       *   b. It is in the register and unsold. Move the sale onto it and
+       *      release the old one back to available.
+       *   c. It is already sold to somebody else. Two stoves were swapped in
+       *      the field, most likely on the day they were handed out. The
+       *      caller confirming takes precedence, so the two sales exchange
+       *      stoves - and the OTHER buyer's record is flagged, because nobody
+       *      has confirmed anything with them and an agent has to ring them.
+       *
+       * WHY THIS WRITES TO public.sales
+       *
+       * The module's rule is that it never CREATES a sale outside create-sale,
+       * so stock linking, status and scoping stay in one place. This is not a
+       * creation: it moves one column on an existing sale and the two stock
+       * rows that must move with it. create-sale cannot do it - update-sale
+       * does not touch the serial either - and doing it in two steps from the
+       * client would leave a window where a stove belongs to nobody or to two
+       * people. So it happens here, in one transaction, under a lock, with the
+       * stock bookkeeping in the same statement list as the sale.
+       *
+       * WHY THE LOCK
+       *
+       * Read the stove, decide, then write is exactly the check-then-act shape
+       * that assignment and the metrics run were both raced in testing. Two
+       * agents confirming the same stove at the same moment is rarer and no
+       * less wrong.
+       */
+      case "serial_rematch": {
+        const saleId = String(body.saleId ?? "");
+        const confirmed = String(body.confirmedSerial ?? "").trim().slice(0, 120);
+        const note = body.note == null ? null : String(body.note).slice(0, 500);
+        if (!saleId) throw new BadRequest("saleId is required");
+        if (!confirmed) throw new BadRequest("confirmedSerial is required");
+
+        await begin();
+        try {
+          // 8150621 is the assignment engine's lock; a different number, so a
+          // rematch and an assignment run do not block each other for no
+          // reason. They touch different rows.
+          const got = await conn.queryObject<{ locked: boolean }>(
+            "select pg_try_advisory_xact_lock(8150622) as locked",
+          );
+          if (!got.rows[0]?.locked) {
+            await conn.queryObject("rollback");
+            return json(
+              {
+                error: "Another stove ID is being rematched right now. Try again in a moment.",
+                code: "busy",
+              },
+              409,
+              cors,
+            );
+          }
+
+          /**
+           * The partner of the STOVE, not of the sale.
+           *
+           * "Within partner" means the two stoves came out of the same
+           * partner's consignment - which is the only way two of them get
+           * swapped, at the moment they are handed out. A sale's own
+           * organization_id is a different fact and the two legitimately
+           * disagree: a sale written under one org against stock transferred
+           * to another is ordinary, and comparing those would refuse valid
+           * swaps while allowing stoves to cross partners.
+           */
+          const mine = await conn.queryObject<
+            { stove_serial_no: string | null; stock_org: string | null; end_user_name: string | null }
+          >({
+            text: `select s.stove_serial_no, b.organization_id::text as stock_org, s.end_user_name
+                     from public.sales s
+                     left join public.stove_ids_base b
+                            on upper(b.stove_id) = upper(s.stove_serial_no)
+                    where s.id = $1 and s.is_archived is not true`,
+            args: [saleId],
+          });
+          if (mine.rows.length === 0) throw new BadRequest("No such sale");
+          const current = mine.rows[0].stove_serial_no ?? "";
+          const org = mine.rows[0].stock_org;
+
+          if (current.toUpperCase() === confirmed.toUpperCase()) {
+            await conn.queryObject("rollback");
+            return json(
+              {
+                error: `This record already carries ${current}. Nothing to change.`,
+                code: "no_change",
+              },
+              400,
+              cors,
+            );
+          }
+
+          // Case (a): not ours at all.
+          const target = await conn.queryObject<
+            { stove_id: string; status: string; sale_id: string | null; organization_id: string | null }
+          >({
+            text: `select stove_id, status, sale_id::text, organization_id::text
+                     from public.stove_ids_base
+                    where upper(stove_id) = upper($1) limit 1`,
+            args: [confirmed],
+          });
+          if (target.rows.length === 0) {
+            await conn.queryObject("rollback");
+            return json(
+              {
+                error:
+                  `"${confirmed}" is not in the stove register. Read the number back to the buyer ` +
+                  `a digit at a time - an O for a zero and a 1 for a 7 are the usual two - and if it ` +
+                  `still does not match, send the sale back to Sales with the number they gave you.`,
+                code: "unknown_serial",
+              },
+              404,
+              cors,
+            );
+          }
+          const stove = target.rows[0];
+
+          // The answer to the cross-partner question: within a partner only.
+          // A stove crossing partners changes two sets of reconciliation
+          // numbers, and is far likelier to be a data problem than two
+          // customers swapping stoves across partner lines.
+          if (org && stove.organization_id && stove.organization_id !== org) {
+            // Named for what it is: both stoves' partners, not the sale's.
+            await conn.queryObject("rollback");
+            return json(
+              {
+                error:
+                  `"${confirmed}" belongs to a different partner, so it cannot be swapped here. ` +
+                  `A stove crossing partners changes both partners' figures and needs somebody to ` +
+                  `look at it. Log the number the buyer gave you and send the sale back to Sales.`,
+                code: "cross_partner",
+              },
+              409,
+              cors,
+            );
+          }
+
+          const otherSaleId = stove.sale_id;
+          const kind = otherSaleId ? "swapped" : "claimed_available";
+
+          // The sale takes the confirmed stove.
+          await conn.queryObject({
+            text: `update public.sales set stove_serial_no = $2, updated_at = now(), updated_by = $3
+                    where id = $1`,
+            args: [saleId, stove.stove_id, userId],
+          });
+
+          if (otherSaleId) {
+            // Case (c): they exchange. The other sale takes what this one had,
+            // which keeps both stoves owned and neither owned twice.
+            await conn.queryObject({
+              text: `update public.sales set stove_serial_no = $2, updated_at = now(), updated_by = $3
+                      where id = $1`,
+              args: [otherSaleId, current, userId],
+            });
+            await conn.queryObject({
+              text: `update public.stove_ids_base set sale_id = $2, status = 'sold'
+                      where upper(stove_id) = upper($1)`,
+              args: [current, otherSaleId],
+            });
+
+            /**
+             * The displaced buyer is flagged, not quietly moved.
+             *
+             * Nobody has confirmed anything with them. Their record now names
+             * a stove they have never read out, on the word of a different
+             * customer, and an agent has to ring them before it can be
+             * verified. Silently rewriting it would turn one uncertain record
+             * into two records that both look settled.
+             */
+            await conn.queryObject({
+              text: `insert into data_center.call_records (sale_id, created_by)
+                     values ($1, $2) on conflict (sale_id) do nothing`,
+              args: [otherSaleId, userId],
+            });
+            await conn.queryObject({
+              text: `update data_center.call_records
+                        set serial_unconfirmed_at = now(),
+                            serial_unconfirmed_reason = $2,
+                            updated_by = $3, updated_at = now(), version = version + 1
+                      where sale_id = $1`,
+              args: [
+                otherSaleId,
+                `Another buyer confirmed ${stove.stove_id} on a call, so this record now carries ` +
+                  `${current} instead. Ring this buyer and confirm which stove they actually have.`,
+                userId,
+              ],
+            });
+          } else {
+            // Case (b): the old stove goes back on the shelf.
+            await conn.queryObject({
+              text: `update public.stove_ids_base set sale_id = null, status = 'available'
+                      where upper(stove_id) = upper($1)`,
+              args: [current],
+            });
+          }
+
+          await conn.queryObject({
+            text: `update public.stove_ids_base set sale_id = $2, status = 'sold'
+                    where upper(stove_id) = upper($1)`,
+            args: [stove.stove_id, saleId],
+          });
+
+          // This record is settled: it carries the number its buyer read out.
+          await conn.queryObject({
+            text: `insert into data_center.call_records (sale_id, stated_serial, created_by)
+                   values ($1, $2, $3)
+                   on conflict (sale_id) do update
+                      set stated_serial = excluded.stated_serial,
+                          serial_unconfirmed_at = null,
+                          serial_unconfirmed_reason = null,
+                          updated_by = excluded.created_by, updated_at = now(),
+                          version = data_center.call_records.version + 1`,
+            args: [saleId, stove.stove_id, userId],
+          });
+
+          await conn.queryObject({
+            text: `insert into data_center.serial_rematches
+                     (sale_id, from_serial, to_serial, swapped_with_sale_id, kind, note, created_by)
+                   values ($1, $2, $3, $4, $5, $6, $7)`,
+            args: [saleId, current, stove.stove_id, otherSaleId, kind, note, userId],
+          });
+
+          await conn.queryObject("commit");
+          return json(
+            {
+              data: {
+                saleId,
+                fromSerial: current,
+                toSerial: stove.stove_id,
+                kind,
+                swappedWithSaleId: otherSaleId,
+              },
+            },
+            200,
+            cors,
+          );
+        } catch (err) {
+          await conn.queryObject("rollback");
+          throw err;
+        }
+      }
+
+      /**
+       * A number the call confirms is already carrying another stove.
+       *
+       * On this path the rule still applies - one number, one stove - and what
+       * the agent gets is a flag rather than a refusal, naming what is already
+       * on it. Recording it here is what puts it on the register, so the next
+       * person to open either record sees the other.
+       */
+      case "record_shared_phone": {
+        const saleId = String(body.saleId ?? "");
+        const phone = String(body.phone ?? "").trim();
+        const note = body.note == null ? null : String(body.note).slice(0, 500);
+        if (!saleId) throw new BadRequest("saleId is required");
+        const tail = phone.replace(/\D+/g, "").slice(-10);
+        if (tail.length !== 10) {
+          throw new BadRequest("That number is too short to match on");
+        }
+
+        await begin();
+        try {
+          /**
+           * Every sale on the number, this one included, in one insert - so
+           * the register never holds one half of a sharing. Which is what a
+           * row written for only the new side would be: invisible from the
+           * record that was there first.
+           */
+          const written = await conn.queryObject<{ sale_id: string; stove_serial_no: string }>({
+            text: `insert into data_center.shared_phones
+                     (phone_tail, sale_id, stove_id, phone_as_written, source, confirmed,
+                      note, created_by, updated_by)
+                   select $1, s.id, s.stove_serial_no, s.phone, 'call_centre', true, $3, $2, $2
+                     from public.sales s
+                    where s.is_archived is not true
+                      and (s.id = $4::uuid
+                           or right(regexp_replace(coalesce(s.phone, ''), '[^0-9]', '', 'g'), 10) = $1)
+                   on conflict (phone_tail, sale_id) do update
+                      set source = 'call_centre', confirmed = true,
+                          note = coalesce(excluded.note, data_center.shared_phones.note),
+                          stove_id = excluded.stove_id,
+                          phone_as_written = excluded.phone_as_written,
+                          updated_at = now(), updated_by = excluded.updated_by
+                   returning sale_id::text, stove_id as stove_serial_no`,
+            args: [tail, userId, note, saleId],
+          });
+
+          await conn.queryObject("commit");
+          return json(
+            { data: { phoneTail: tail, stoves: written.rows } },
+            200,
+            cors,
+          );
+        } catch (err) {
+          await conn.queryObject("rollback");
+          throw err;
+        }
+      }
+
       default:
         return json(
           { error: `Unknown action: ${body.action ?? "(none)"}`, code: "unknown_action" },
