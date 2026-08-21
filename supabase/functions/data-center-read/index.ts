@@ -606,7 +606,35 @@ serve(async (req) => {
             args: [...scope.args],
           });
 
-          return json({ data: { rows: rows.rows, months: months.rows } }, 200, cors);
+          /**
+           * The sheet's shape, from config rather than from the component.
+           *
+           * The columns, which are required, and where each dropdown's choices
+           * come from all live in workflow_config, so changing the sheet is
+           * data entry. Sending the spec with the rows means the file the
+           * digitiser gets and the form the app shows cannot drift: both read
+           * this.
+           */
+          const spec = await connection.queryObject<{ columns: unknown; format: unknown }>({
+            text: `select
+                     (select value from data_center.workflow_config
+                       where key = 'digitisation.sheet_columns') as columns,
+                     (select value from data_center.workflow_config
+                       where key = 'digitisation.sheet_format')  as format`,
+          });
+
+          return json(
+            {
+              data: {
+                rows: rows.rows,
+                months: months.rows,
+                columns: spec.rows[0]?.columns ?? [],
+                format: spec.rows[0]?.format ?? "xlsx",
+              },
+            },
+            200,
+            cors,
+          );
         });
       }
 

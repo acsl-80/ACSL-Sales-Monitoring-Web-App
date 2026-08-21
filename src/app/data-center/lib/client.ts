@@ -336,6 +336,18 @@ export const dataCenterClient = {
         already_recorded: boolean;
       }[];
       months: { month: string; transfers: number }[];
+      /** The sheet's columns, from workflow_config. Editable in Settings. */
+      columns: {
+        field: string;
+        header: string;
+        required?: boolean;
+        locked?: boolean;
+        type?: string;
+        options?: string[];
+        optionList?: string;
+        help?: string;
+      }[];
+      format: "xlsx" | "csv";
     }>("data-center-read", "digitisation_sheet", { organizationId, month: month ?? undefined }),
 
   /** One partner opened up: its batches, and each rep's totals. */

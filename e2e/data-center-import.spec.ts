@@ -545,3 +545,117 @@ test.describe("a rejected row says what to do about it", () => {
     await callEdgeFunction(page, "data-center-import", { action: "rollback", batchId });
   });
 });
+
+/**
+ * The sheet goes out as a workbook and comes back as one.
+ *
+ * A CSV cannot carry a dropdown, and a blank cell under "Previous Stove Type"
+ * gets "Charcoal stove", "CHARCOAL" and "chacoal" typed into it - every one a
+ * row the import refuses for a value the typist had no way of knowing. These
+ * hold the round trip, in a real browser, because the writer and the reader are
+ * both hand-rolled and a unit test of either alone would prove half of it.
+ */
+test.describe("the digitalisation sheet is a workbook", () => {
+  test("what is written can be read back, dropdowns and all", async ({ page }) => {
+    await signIn(page, USERS.admin);
+    await page.goto("/data-center/import");
+    await expect(page.getByRole("heading", { name: "Bulk Import" })).toBeVisible({
+      timeout: 20_000,
+    });
+
+    // Build a workbook and parse it again, in the page, using the module's own
+    // code on both sides. Node has no DOMParser, so this is the only place the
+    // reader can actually run.
+    const result = await page.evaluate(async () => {
+      const mod = await import("/src/app/data-center/lib/xlsx.ts");
+      const columns = [
+        { header: "Stove ID", help: "Filled in from the transfer." },
+        { header: "Primary Phone Number", help: "Format as Text first." },
+        { header: "Previous Stove Type", options: ["charcoal", "wood_stove", "other"] },
+        { header: "Wonderbox", options: ["Yes", "No"] },
+      ];
+      const rows = [
+        { "Stove ID": "PRV000101", "Primary Phone Number": "8012345678",
+          "Previous Stove Type": "charcoal", "Wonderbox": "Yes" },
+        { "Stove ID": "PRV000102", "Primary Phone Number": "+234 801 234 5679",
+          "Previous Stove Type": "other", "Wonderbox": "No" },
+      ];
+      const blob = mod.buildWorkbook(columns, rows, { sheetName: "Digitalisation" });
+      const back = await mod.parseWorkbook(blob);
+      return {
+        canRead: mod.canReadWorkbooks(),
+        size: blob.size,
+        headers: back.headers,
+        rows: back.rows,
+        warnings: back.warnings,
+      };
+    });
+
+    expect(result.canRead).toBe(true);
+    expect(result.size).toBeGreaterThan(1000);
+    expect(result.headers).toEqual([
+      "Stove ID", "Primary Phone Number", "Previous Stove Type", "Wonderbox",
+    ]);
+    // The guidance row is prose under every heading and would otherwise become
+    // a record claiming a buyer called "Format as Text first".
+    expect(result.warnings.join(" ")).toMatch(/guidance row was skipped/);
+    expect(result.rows).toHaveLength(2);
+    expect(result.rows[0]["Stove ID"]).toBe("PRV000101");
+    expect(result.rows[1]["Previous Stove Type"]).toBe("other");
+    // The phone survives as typed; normalising it is the import's job, later.
+    expect(result.rows[1]["Primary Phone Number"]).toBe("+234 801 234 5679");
+  });
+
+  test("the sheet's columns come from settings, not from the code", async ({ page }) => {
+    await signIn(page, USERS.admin);
+    await page.goto("/data-center/import");
+    await expect(page.getByRole("heading", { name: "Bulk Import" })).toBeVisible({
+      timeout: 20_000,
+    });
+
+    const funnel = await callEdgeFunction(page, "data-center-read", {
+      action: "transfer_funnel",
+      limit: 1,
+    });
+    const transfer = (funnel.body as { data: { rows: { organization_id: string }[] } }).data.rows[0];
+
+    const sheet = await callEdgeFunction(page, "data-center-read", {
+      action: "digitisation_sheet",
+      organizationId: transfer.organization_id,
+    });
+    const data = (sheet.body as {
+      data: {
+        columns: { field: string; header: string; options?: string[]; locked?: boolean }[];
+        format: string;
+      };
+    }).data;
+
+    // Editable in Settings rather than compiled in, which is what stops the
+    // sheet and the form drifting apart.
+    expect(data.columns.length).toBeGreaterThan(20);
+    expect(data.format).toBe("xlsx");
+
+    const byField = Object.fromEntries(data.columns.map((c) => [c.field, c]));
+    // The three the transfer already knows are locked, so nobody types a serial.
+    expect(byField.stoveSerialNo.locked).toBe(true);
+    expect(byField.transactionId.locked).toBe(true);
+    // And the choices match the form's exactly, which is the whole point of
+    // sending them rather than letting each side keep its own list.
+    expect(byField.previousStoveType.options).toEqual(["charcoal", "wood_stove", "other"]);
+    expect(byField.potQuantity.options).toEqual(["0", "1", "2"]);
+  });
+
+  test("a workbook uploads where a CSV did", async ({ page }) => {
+    await signIn(page, USERS.admin);
+    await page.goto("/data-center/import");
+    await expect(page.getByRole("heading", { name: "Bulk Import" })).toBeVisible({
+      timeout: 20_000,
+    });
+
+    // Both formats are offered, and the button no longer says CSV only.
+    const input = page.locator('input[type="file"]');
+    await expect(input).toHaveAttribute("accept", /\.xlsx/);
+    await expect(input).toHaveAttribute("accept", /\.csv/);
+    await expect(page.getByRole("button", { name: /Choose a file/ })).toBeVisible();
+  });
+});

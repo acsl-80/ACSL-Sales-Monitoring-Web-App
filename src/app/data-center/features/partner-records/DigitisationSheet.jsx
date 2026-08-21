@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { dataCenterClient, DataCenterError } from "../../lib/client";
 import { toCsv, downloadCsv } from "../../lib/export";
+import { buildWorkbook, downloadWorkbook } from "../../lib/xlsx";
 import { plural } from "../../lib/plural";
 import {
   Dialog,
@@ -32,27 +33,20 @@ import { Loader2, Download, FileSpreadsheet, TriangleAlert } from "lucide-react"
  */
 
 /**
- * What the digitiser fills in, in the order a receipt reads.
+ * Which value from a transfer row fills a locked column.
  *
- * Every heading here is one the import's alias table recognises, so a sheet
- * that comes back untouched maps itself and nobody opens the column mapper.
+ * The columns themselves come from `workflow_config`, so the sheet is edited
+ * in Settings rather than here. What stays in code is only the join between a
+ * column's field name and the transfer it is being filled from, because that
+ * is a fact about this query rather than a preference about the sheet.
  */
-const BLANK_COLUMNS = [
-  "User First Name",
-  "User Last Name",
-  "Primary Phone Number",
-  "Alternative Phone Number",
-  "Sales Date",
-  "Sale Amount",
-  "Amount Received",
-  "State",
-  "LGA",
-  "User Residential Address",
-  "AKA",
-];
-
-/** Carried from the transfer, so they are right before anyone types. */
-const CARRIED_COLUMNS = ["Stove ID", "Transaction ID", "Partner", "Sales Rep", "Transfer Date"];
+const CARRIED = {
+  stoveSerialNo: (r) => r.stove_id,
+  transactionId: (r) => r.transaction_id,
+  partnerName: (r) => r.partner_name,
+  salesRep: (r) => r.sales_rep ?? "",
+  transferDate: (r) => r.sales_date ?? "",
+};
 
 export default function DigitisationSheet({ organizationId, partnerName, onClose }) {
   const [data, setData] = useState(null);
@@ -79,23 +73,47 @@ export default function DigitisationSheet({ organizationId, partnerName, onClose
   const recorded = rows.length - fresh.length;
   const chosen = includeRecorded ? rows : fresh;
 
+  const columns = data?.columns ?? [];
+  const asXlsx = (data?.format ?? "xlsx") === "xlsx";
+
   const download = () => {
     const out = chosen.map((r) => {
-      const row = {
-        "Stove ID": r.stove_id,
-        "Transaction ID": r.transaction_id,
-        "Partner": r.partner_name,
-        "Sales Rep": r.sales_rep ?? "",
-        "Transfer Date": r.sales_date ?? "",
-      };
-      for (const c of BLANK_COLUMNS) row[c] = "";
+      const row = {};
+      for (const c of columns) {
+        const fill = CARRIED[c.field];
+        row[c.header] = fill ? fill(r) : "";
+      }
       return row;
     });
     const name = (partnerName ?? "partner").replace(/\W+/g, "-").toLowerCase();
-    downloadCsv(
-      `digitisation-${name}${month ? `-${month}` : ""}.csv`,
-      toCsv(out, [...CARRIED_COLUMNS, ...BLANK_COLUMNS]),
-    );
+    const stem = `digitisation-${name}${month ? `-${month}` : ""}`;
+
+    if (asXlsx) {
+      /**
+       * A workbook, so the choices are choices.
+       *
+       * A CSV cannot carry a dropdown, and a blank cell under "Previous Stove
+       * Type" gets "Charcoal stove", "CHARCOAL" and "chacoal" typed into it -
+       * every one a row the import refuses for a value the typist had no way
+       * of knowing. The dropdowns move that whole class of failure from after
+       * the upload to before it.
+       */
+      downloadWorkbook(
+        `${stem}.xlsx`,
+        buildWorkbook(
+          columns.map((c) => ({
+            header: c.header,
+            options: c.options,
+            help: c.help ?? (c.required ? "Required." : c.locked ? "Filled in already." : ""),
+            width: c.locked ? 18 : 24,
+          })),
+          out,
+          { sheetName: "Digitalisation" },
+        ),
+      );
+    } else {
+      downloadCsv(`${stem}.csv`, toCsv(out, columns.map((c) => c.header)));
+    }
     onClose();
   };
 
@@ -212,7 +230,7 @@ export default function DigitisationSheet({ organizationId, partnerName, onClose
                           Filled in already
                         </td>
                         <td className="px-3 py-2 text-gray-700">
-                          {CARRIED_COLUMNS.join(", ")}
+                          {columns.filter((c) => c.locked).map((c) => c.header).join(", ")}
                         </td>
                       </tr>
                       <tr>
@@ -220,15 +238,34 @@ export default function DigitisationSheet({ organizationId, partnerName, onClose
                           For you to fill
                         </td>
                         <td className="px-3 py-2 text-gray-700">
-                          {BLANK_COLUMNS.join(", ")}
+                          {columns
+                            .filter((c) => !c.locked)
+                            .map((c) => `${c.header}${c.required ? " *" : ""}`)
+                            .join(", ")}
                         </td>
                       </tr>
+                      {columns.some((c) => c.options?.length) && (
+                        <tr>
+                          <td className="bg-(--dc-accent-soft)/40 px-3 py-2 align-top text-xs font-semibold uppercase tracking-wide text-(--dc-accent-strong)">
+                            Pick from a list
+                          </td>
+                          <td className="px-3 py-2 text-gray-700">
+                            {columns
+                              .filter((c) => c.options?.length)
+                              .map((c) => `${c.header} (${c.options.join(", ")})`)
+                              .join("  ·  ")}
+                          </td>
+                        </tr>
+                      )}
                     </tbody>
                   </table>
                 </div>
                 <p className="mt-2 text-xs text-gray-600">
-                  Format the phone column as Text before typing. Left as numbers,
-                  a spreadsheet drops the leading zero from every number in it.
+                  {asXlsx
+                    ? "The listed columns are dropdowns, so there is nothing to spell. Row 2 is guidance and is skipped on upload."
+                    : "Format the phone column as Text before typing. Left as numbers, a spreadsheet drops the leading zero from every number in it."}{" "}
+                  The columns come from Settings, so this sheet and the form
+                  cannot drift apart.
                 </p>
               </div>
             </>
@@ -250,7 +287,7 @@ export default function DigitisationSheet({ organizationId, partnerName, onClose
             className="inline-flex items-center gap-1.5 rounded-md bg-(--dc-accent) px-4 py-1.5 text-sm font-medium text-white transition hover:bg-(--dc-accent-strong) disabled:opacity-40"
           >
             <Download className="h-4 w-4" />
-            Download {plural(chosen.length, "row")}
+            Download {plural(chosen.length, "row")} ({asXlsx ? "xlsx" : "csv"})
           </button>
         </div>
       </DialogContent>

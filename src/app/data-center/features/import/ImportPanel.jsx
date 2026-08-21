@@ -1,6 +1,7 @@
 import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { dataCenterImport, DataCenterError } from "../../lib/client";
 import { parseCsv, CsvError } from "../../lib/csv";
+import { parseWorkbook, canReadWorkbooks } from "../../lib/xlsx";
 import ColumnMapping from "./ColumnMapping";
 import ManualEntry from "./ManualEntry";
 import RejectedRows from "./RejectedRows";
@@ -239,7 +240,25 @@ export default function ImportPanel({ canUpload, canCommit, canResolve }) {
     setNotice(null);
     setDuplicate(null);
     try {
-      const parsed = parseCsv(await file.text());
+      /**
+       * A workbook or a CSV, the same validator behind both.
+       *
+       * The sheet this module hands out is a workbook, because a CSV cannot
+       * carry a dropdown. It has to come back as one, and both parsers return
+       * the same shape so nothing downstream knows which it was.
+       */
+      const isWorkbook = /\.xlsx$/i.test(file.name);
+      if (isWorkbook && !canReadWorkbooks()) {
+        setError(
+          "This browser cannot open .xlsx files. Save the sheet as CSV from your " +
+            "spreadsheet program and upload that instead - the columns are the same.",
+        );
+        setBusy(false);
+        return;
+      }
+      const parsed = isWorkbook
+        ? await parseWorkbook(file)
+        : parseCsv(await file.text());
       const held = {
         name: file.name,
         rows: parsed.rows,
@@ -430,7 +449,7 @@ export default function ImportPanel({ canUpload, canCommit, canResolve }) {
           <input
             ref={fileInput}
             type="file"
-            accept=".csv,text/csv"
+            accept=".csv,.xlsx,text/csv,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
             onChange={onFile}
             className="hidden"
           />
@@ -444,7 +463,7 @@ export default function ImportPanel({ canUpload, canCommit, canResolve }) {
             className="inline-flex items-center gap-1.5 rounded-md bg-(--dc-accent) px-3 py-1.5 text-sm font-medium text-white hover:bg-(--dc-accent-strong) disabled:opacity-50"
           >
             {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : <FileText className="h-4 w-4" />}
-            Choose a CSV
+            Choose a file
           </button>
           <button
             type="button"
