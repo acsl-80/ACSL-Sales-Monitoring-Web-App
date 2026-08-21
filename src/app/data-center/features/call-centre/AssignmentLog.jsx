@@ -425,6 +425,7 @@ export default function AssignmentLog({ canRun, canEdit = false }) {
           period={period}
           onChange={setPeriod}
           earliest={earliest}
+          area="call-centre"
           noun="assignments made"
         />
         <label htmlFor="dc-log-state" className="text-xs font-medium text-gray-700">

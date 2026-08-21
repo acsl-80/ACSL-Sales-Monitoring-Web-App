@@ -253,7 +253,14 @@ export function encodePeriod(period: Period): string | undefined {
     return ys.length ? `years:${ys.join(",")}` : undefined;
   }
   if (period.key === "custom") {
-    if (!period.from && !period.to) return undefined;
+    /**
+     * An empty custom range still encodes.
+     *
+     * It used to return undefined, which dropped the parameter, which decoded
+     * back to the default - so clicking "Custom range" opened the two date
+     * boxes and closed them again before anybody could type in one. The mode
+     * is a choice the person made; it survives having nothing in it yet.
+     */
     return `custom:${period.from ?? ""}..${period.to ?? ""}`;
   }
   return period.key;
@@ -282,9 +289,10 @@ export function decodePeriod(raw: unknown): Period {
   if (raw.startsWith("custom:")) {
     const [from, to] = raw.slice(7).split("..");
     const ok = (v: string) => (ISO_DATE.test(v) ? v : undefined);
-    const f = ok(from ?? "");
-    const t = ok(to ?? "");
-    return f || t ? { key: "custom", from: f, to: t } : DEFAULT_PERIOD;
+    // Custom with neither date set is still custom: the person chose the mode
+    // and has not filled it in. resolvePeriod answers "any date" for it, which
+    // is the honest reading of a range with no ends.
+    return { key: "custom", from: ok(from ?? ""), to: ok(to ?? "") };
   }
 
   return SIMPLE.has(raw as PeriodKey) ? { key: raw as PeriodKey } : DEFAULT_PERIOD;

@@ -242,6 +242,7 @@ export default function PartnerRecords() {
           period={period}
           onChange={setPeriod}
           earliest={earliest}
+          area="partner-records"
           noun="consignments"
         />
         <label className="inline-flex items-center gap-2 text-sm text-gray-700">

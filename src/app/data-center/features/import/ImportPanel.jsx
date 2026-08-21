@@ -571,6 +571,7 @@ export default function ImportPanel({ canUpload, canCommit, canResolve }) {
           period={period}
           onChange={setPeriod}
           earliest={earliest}
+          area="import"
           noun="imports"
         />
       </div>

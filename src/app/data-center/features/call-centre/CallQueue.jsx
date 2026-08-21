@@ -254,6 +254,7 @@ export default function CallQueue({ canEdit, drill = null }) {
             period={period}
             onChange={setPeriod}
             earliest={earliest}
+          area="call-centre"
             noun="records"
           />
         )}

@@ -265,6 +265,31 @@ test.describe("one period, asked the same way on every surface", () => {
     await expect(page.getByText(/includes 2025 as well/)).toBeVisible();
   });
 
+  test("a custom range stays open long enough to type in", async ({ page }) => {
+    await signIn(page, USERS.admin);
+    await page.goto("/data-center/stove-records");
+
+    await page.getByRole("button", { name: /showing sales for/ }).click();
+    await page.getByRole("button", { name: "Custom range", exact: true }).click();
+
+    /**
+     * An empty custom range used to encode to nothing, which dropped the URL
+     * parameter, which decoded back to the default - so the two date boxes
+     * opened and closed again before anybody could type in one. The mode is a
+     * choice; it survives having nothing in it yet.
+     */
+    await expect(page.getByLabel("From date")).toBeVisible();
+    await page.getByLabel("From date").fill("2026-03-01");
+    await page.getByLabel("To date").fill("2026-03-31");
+
+    await expect(page).toHaveURL(/period=custom%3A2026-03-01\.\.2026-03-31/, {
+      timeout: 20_000,
+    });
+    await expect(
+      page.getByRole("button", { name: /showing sales for 2026-03-01 to 2026-03-31/ }),
+    ).toBeVisible();
+  });
+
   test("Partner Records takes the same control, on the consignment date", async ({ page }) => {
     await signIn(page, USERS.admin);
     await page.goto("/data-center/partner-records");

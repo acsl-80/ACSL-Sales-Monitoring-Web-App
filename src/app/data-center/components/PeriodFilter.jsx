@@ -28,6 +28,14 @@ export default function PeriodFilter({
   earliest = null,
   /** Named so the chip says what is being narrowed, not just when. */
   noun = "records",
+  /**
+   * Which area's accent the popover wears.
+   *
+   * Radix portals the panel to <body>, so it cannot inherit the colour of the
+   * page that opened it, and colour is wayfinding in this module - a slate-blue
+   * panel opening out of an ochre page reads as a different area's control.
+   */
+  area = "stove-records",
   className = "",
 }) {
   const [open, setOpen] = useState(false);
@@ -72,7 +80,7 @@ export default function PeriodFilter({
         <PopoverContent
           align="start"
           className="dc-root w-[min(92vw,28rem)] p-0"
-          data-area="stove-records"
+          data-area={area}
         >
           <div className="max-h-[70dvh] overflow-y-auto p-3">
             {groups.map((g) => (
