@@ -164,8 +164,18 @@ const WRITABLE_COLUMNS = new Set([
   "other_comments",
 ]);
 
+/**
+ * The four the table allows, which was three here for as long as this has
+ * existed.
+ *
+ * `unreachable` was in the check constraint, in the queue's filters, in the
+ * funnel view's unreachable_count and in a scorecard column - and could not be
+ * set by anybody, because this list refused it and the editor never offered
+ * it. So the Unreachable column was permanently zero and read as "we always
+ * get through", which is the opposite of what an empty column meant.
+ */
 const VERIFICATION_OUTCOMES = new Set([
-  "fully_verified", "partially_verified", "not_verified",
+  "fully_verified", "partially_verified", "unreachable", "not_verified",
 ]);
 
 /**

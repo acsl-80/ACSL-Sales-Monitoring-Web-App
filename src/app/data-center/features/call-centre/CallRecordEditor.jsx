@@ -33,6 +33,12 @@ const OUTCOMES = [
   { value: "not_verified", label: "Not verified", tone: "bg-gray-100 text-gray-700" },
   { value: "partially_verified", label: "Partially verified", tone: "bg-amber-100 text-amber-800" },
   { value: "fully_verified", label: "Fully verified", tone: "bg-(--dc-primary)/10 text-(--dc-accent)" },
+  /*
+    Nobody could reach this buyer, which is a conclusion and not a blank. It
+    was missing here and refused by the write endpoint, so the scorecard column
+    counting it could never be anything but zero.
+  */
+  { value: "unreachable", label: "Unreachable", tone: "bg-orange-100 text-orange-800" },
 ];
 
 // The record's own fields, as opposed to registry questions. Grouped so the

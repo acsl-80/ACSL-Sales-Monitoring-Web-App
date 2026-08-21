@@ -200,10 +200,39 @@ test.describe("the outcomes and reasons that were removed", () => {
     const refused = await callEdgeFunction(page, "data-center-write", {
       action: "save_call_record",
       saleId,
-      verificationOutcome: "doubtful_verification",
-      values: {},
+      // Inside `values`, which is where the endpoint looks. Sent at the top
+      // level it was validated by nothing and answered 200, which said more
+      // about the test than about the rule.
+      values: { verification_outcome: "doubtful_verification" },
     });
-    expect(refused.status).toBeGreaterThanOrEqual(400);
+    expect(refused.status).toBe(400);
+    expect(JSON.stringify(refused.body)).toMatch(/Unknown verification outcome/);
+  });
+
+  test("unreachable is an outcome an agent can actually set", async ({ page }) => {
+    await signIn(page, USERS.admin);
+    const { saleId } = await anySale(page);
+
+    /**
+     * It was in the check constraint, the queue's filters, the funnel's
+     * unreachable_count and a scorecard column - and refused by the write
+     * endpoint, so that column could only ever be zero and read as "we always
+     * get through". Asserted here because a permanently empty metric is
+     * indistinguishable from a true one until somebody tries to move it.
+     */
+    const ok = await callEdgeFunction(page, "data-center-write", {
+      action: "save_call_record",
+      saleId,
+      values: { verification_outcome: "unreachable" },
+    });
+    expect(ok.status).toBe(200);
+
+    // Put it back, so the next test reads the record the seed intended.
+    await callEdgeFunction(page, "data-center-write", {
+      action: "save_call_record",
+      saleId,
+      values: { verification_outcome: "not_verified" },
+    });
   });
 
   test("a wrong name is no longer a reason to send a sale back to Sales", async ({ page }) => {
