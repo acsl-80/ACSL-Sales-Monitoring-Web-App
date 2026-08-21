@@ -104,7 +104,7 @@ function Inner() {
           first and about their own queue rarely, which is the opposite of an
           agent and the reason this is ordered rather than hidden. */}
       {can(DATA_CENTER_FEATURES.CALL_RECORDS_EDIT) && !agentFirst && (
-        <MyWork canEdit={can(DATA_CENTER_FEATURES.CALL_RECORDS_EDIT)} />
+        <MyWork canEdit={can(DATA_CENTER_FEATURES.CALL_RECORDS_EDIT)} hideWhenEmpty />
       )}
       {/* The register sits with the call centre because that is where a
           shared number stops being a suspicion and becomes a fact: somebody

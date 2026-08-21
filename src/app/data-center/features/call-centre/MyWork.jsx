@@ -54,7 +54,7 @@ function standing(item) {
   };
 }
 
-export default function MyWork({ canEdit }) {
+export default function MyWork({ canEdit, hideWhenEmpty = false }) {
   const [items, setItems] = useState(null);
   const [error, setError] = useState(null);
   const [openSale, setOpenSale] = useState(null);
@@ -119,6 +119,15 @@ export default function MyWork({ canEdit }) {
       </p>
     );
   }
+
+  /**
+   * A supervisor is not a call agent and is never assigned anything, so for
+   * them this panel is permanently empty - and a panel that always says
+   * nothing is worse than no panel, because it holds a place on the page and
+   * teaches people to skip past it. An agent still sees the empty state,
+   * because for them "nothing is assigned to you" is the answer they came for.
+   */
+  if (hideWhenEmpty && items.length === 0) return null;
 
   return (
     <>
