@@ -113,7 +113,13 @@ function Empty({ children }) {
 /** The funnel, for one stove, left to right. */
 function Journey({ stages }) {
   return (
-    <ol className="flex snap-x gap-2 overflow-x-auto pb-1">
+    /*
+      A grid rather than a scrolling row. Seven stages at a readable width are
+      wider than the content column, so a row hid the last of them behind a
+      horizontal scroll nobody thinks to try - and the hidden one was Verified,
+      which is the stage most people opened the page to see.
+    */
+    <ol className="grid grid-cols-2 gap-2 sm:grid-cols-4 lg:grid-cols-7">
       {stages.map((s) => {
         const Icon =
           s.state === REACHED ? CircleCheck : s.state === TROUBLE ? CircleAlert : CircleDashed;
@@ -126,7 +132,7 @@ function Journey({ stages }) {
         return (
           <li
             key={s.key}
-            className={`min-w-[9.5rem] flex-1 shrink-0 snap-start rounded-lg border px-3 py-2 ${tone}`}
+            className={`rounded-lg border px-3 py-2 ${tone}`}
           >
             <p className="flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wide">
               <Icon className="h-3.5 w-3.5 shrink-0" aria-hidden />
@@ -385,12 +391,18 @@ export default function StoveRecord({ stoveId }) {
               {s.stove_id}
             </h1>
             <div className="mt-2 flex flex-wrap items-center gap-1.5">
+              {/*
+                The stock register already says "sold" when it is sold, so the
+                second pill said the same word twice in a row. It only earns
+                its place when the two disagree - a sale exists but stock has
+                not caught up, which is worth seeing.
+              */}
               <span className="rounded-full bg-gray-100 px-2 py-0.5 text-xs font-medium text-gray-700">
                 {words(s.stock_status) ?? "unknown stock status"}
               </span>
-              {sold && (
-                <span className="rounded-full bg-(--dc-accent-soft) px-2 py-0.5 text-xs font-medium text-(--dc-accent-strong)">
-                  sold
+              {sold && s.stock_status !== "sold" && (
+                <span className="rounded-full bg-amber-100 px-2 py-0.5 text-xs font-medium text-amber-800">
+                  sold, stock says {words(s.stock_status) ?? "nothing"}
                 </span>
               )}
               {outcome && (
@@ -551,7 +563,14 @@ export default function StoveRecord({ stoveId }) {
               <Detail label="Contact person" value={sale?.contact_person} />
               <Detail label="Contact phone" value={sale?.contact_phone} />
               <Detail label="Sold on" value={dateOf(sale?.sales_date ?? s.sales_date)} />
-              <Detail label="Transaction ID" value={sale?.transaction_id} />
+              {/*
+                Named for the system it belongs to. "Transfer reference" sits a
+                few rows above and this one is a different thing entirely - one
+                names the consignment from the ERP, the other names the sale in
+                the sales app. Two fields both called an ID is how somebody
+                quotes the wrong one down a phone.
+              */}
+              <Detail label="Sales app reference" value={sale?.transaction_id} />
               <Detail label="State" value={sale?.state_backup ?? s.user_state} />
               <Detail label="LGA" value={sale?.lga_backup ?? s.user_lga} />
               <Detail
