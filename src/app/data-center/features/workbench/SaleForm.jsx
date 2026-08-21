@@ -487,6 +487,26 @@ export default function SaleForm({ values, onChange, disabled, errors = {} }) {
           statement on a printed record.
         </p>
         <div className="space-y-1.5 rounded-lg border border-gray-200 p-3">
+          {/* All six at once, because a signed paper agreement means the buyer
+              agreed to all six and ticking them singly is six clicks to record
+              one fact. It stays a deliberate act: the label says what is being
+              asserted, and unticking one afterwards is how a genuinely partial
+              agreement gets recorded. */}
+          <label className="flex items-start gap-2 border-b border-gray-100 pb-2 text-sm font-medium text-gray-900">
+            <input
+              type="checkbox"
+              checked={allTerms}
+              disabled={disabled}
+              onChange={(e) =>
+                set(
+                  "termsAccepted",
+                  Object.fromEntries(TERMS.map((t) => [t.key, e.target.checked])),
+                )
+              }
+              className="mt-0.5 h-4 w-4 shrink-0 accent-(--dc-accent)"
+            />
+            The buyer agreed to all six, as signed on the paper agreement
+          </label>
           {TERMS.map((t) => (
             <label key={t.key} className="flex items-start gap-2 text-sm text-gray-700">
               <input
