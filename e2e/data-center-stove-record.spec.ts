@@ -119,8 +119,7 @@ test.describe("one stove ID anchors the whole module", () => {
 
     const path = await download.path();
     const text = await import("node:fs/promises").then((fs) => fs.readFile(path!, "utf8"));
-    const [header, row] = text.trim().split(/?
-/);
+    const [header, row] = text.trim().split(/\r?\n/);
     expect(header).toContain("stove id");
     expect(row).toContain(serial);
   });

@@ -162,6 +162,15 @@ observable without seeding. Seed before claiming anything.
 
 ## Shipping
 
+- **`tsc` does not cover `e2e/`.** `tsconfig.json` includes `src/**` only, so a
+  clean typecheck says nothing about the specs and a syntax error in one is not
+  found until the whole suite fails to collect - which costs a full run to
+  learn. Parse them first, in seconds:
+
+      bun run e2e -- --list
+
+  It loads the config, transpiles every spec and prints the test list without
+  opening a browser. Run it before any suite run that follows a spec edit.
 - Commit at every working state with a clear message.
 - Merge `main` into this branch weekly. `main` moves daily on its own via the
   sync cron and deploys straight to production.
