@@ -33,7 +33,9 @@ test.describe("the partner drill goes partner to stove", () => {
         page.getByRole("dialog").getByText(stat, { exact: true }).first(),
       ).toBeVisible();
     }
-    await expect(page.getByText("Consignments")).toBeVisible();
+    // Exact: the period control's chip reads "consignments for 2026", so a
+    // substring match now finds two things that are not the same thing.
+    await expect(page.getByText("Consignments", { exact: true })).toBeVisible();
     await expect(page.getByRole("columnheader", { name: "Reference" })).toBeVisible();
   });
 
