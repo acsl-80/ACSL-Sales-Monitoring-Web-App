@@ -1,9 +1,9 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { dataCenterClient, DataCenterError } from "../../lib/client";
-import { toCsv, downloadCsv } from "../../lib/export";
+import ExportButton from "../../components/ExportButton";
 import { plural } from "../../lib/plural";
 import {
-  Handshake, Loader2, AlertTriangle, Search, X, Clock, Download, TriangleAlert,
+  Handshake, Loader2, AlertTriangle, Search, X, Clock, TriangleAlert,
 } from "lucide-react";
 
 /**
@@ -68,6 +68,32 @@ function cell(row, key) {
   return typeof v === "number" ? NUMBER.format(v) : String(v);
 }
 
+/**
+ * What the export offers, and what each column is called in the file.
+ *
+ * Named here rather than dumping the raw keys, because the file is read by
+ * someone reconciling against a spreadsheet who has never seen this schema and
+ * should not have to guess what received_is_logged means.
+ */
+const EXPORT_COLUMNS = [
+  { key: "partner_name", label: "Partner" },
+  { key: "transaction_id", label: "Transfer reference" },
+  { key: "sales_rep", label: "Sales rep" },
+  { key: "transfer_state", label: "State" },
+  { key: "transfer_branch", label: "Branch" },
+  { key: "sales_date", label: "Transfer date" },
+  { key: "issued_count", label: "Issued" },
+  { key: "received_count", label: "Received" },
+  { key: "received_is_logged", label: "Received was logged" },
+  { key: "digitalised_count", label: "Digitalised" },
+  { key: "verified_count", label: "Verified" },
+  { key: "unverified_count", label: "Unverified" },
+  { key: "unreachable_count", label: "Unreachable" },
+  { key: "unresolved_count", label: "Yet to be resolved" },
+  { key: "outstanding_count", label: "Outstanding" },
+  { key: "partner_id", label: "Partner id" },
+];
+
 export default function PartnerRecords() {
   const [rows, setRows] = useState([]);
   const [computedAt, setComputedAt] = useState(null);
@@ -125,18 +151,6 @@ export default function PartnerRecords() {
     [rows],
   );
 
-  const exportCsv = () => {
-    downloadCsv(
-      "partner-records.csv",
-      toCsv(rows, [
-        "partner_name", "partner_id", "transaction_id", "sales_rep",
-        "transfer_state", "transfer_branch", "sales_date",
-        "issued_count", "received_count", "received_is_logged", "digitalised_count",
-        "verified_count", "unverified_count", "unreachable_count", "unresolved_count",
-        "outstanding_count",
-      ]),
-    );
-  };
 
   return (
     <div className="overflow-hidden rounded-xl border border-gray-200 border-t-[3px] border-t-(--dc-accent) bg-white shadow-sm">
@@ -157,14 +171,14 @@ export default function PartnerRecords() {
             showing {scope}
           </span>
         )}
-        <button
-          type="button"
-          onClick={exportCsv}
-          disabled={rows.length === 0}
-          className="ml-auto inline-flex items-center gap-1.5 rounded-md border border-(--dc-accent)/30 px-2.5 py-1.5 text-xs font-medium text-(--dc-accent) transition hover:bg-(--dc-accent-soft)/60 disabled:opacity-50"
-        >
-          <Download className="h-3.5 w-3.5" /> Export CSV
-        </button>
+        <div className="ml-auto">
+          <ExportButton
+            columns={EXPORT_COLUMNS}
+            rows={() => rows}
+            filename="partner-records.csv"
+            disabled={rows.length === 0}
+          />
+        </div>
       </div>
 
       <div className="grid grid-cols-2 gap-2 border-b border-gray-100 px-4 py-3 sm:grid-cols-5">

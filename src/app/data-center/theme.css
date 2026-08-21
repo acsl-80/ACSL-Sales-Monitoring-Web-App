@@ -81,3 +81,32 @@
   --dc-accent-strong: #2f343b;
   --dc-accent-soft: #e7e9ed;
 }
+
+/*
+ * Figure colours: the dashboard's headline numbers.
+ *
+ * A deliberate exception to "colour is wayfinding and state, never
+ * decoration". Eight identical white cards is what the dashboard was, and a
+ * page of them reads as a wall rather than as four answers to four questions.
+ * Each headline figure carries one fixed hue, so the colour identifies the
+ * metric and stays the same wherever that metric appears.
+ *
+ * The two that are also states keep their state meaning: unverified is the
+ * amber this module already uses for "partial, needs attention", and nothing
+ * else on the dashboard borrows it.
+ *
+ * Every gradient is dark enough for white text at >= 4.5:1 against its
+ * lighter stop, which is the stop the text actually sits over at the top left.
+ */
+.dc-root {
+  --dc-fig-transferred: linear-gradient(135deg, #2f5d9e 0%, #1d3f70 100%);
+  --dc-fig-sold: linear-gradient(135deg, #5b7314 0%, #3d4d0c 100%);
+  --dc-fig-verified: linear-gradient(135deg, #10736d 0%, #0a4744 100%);
+  --dc-fig-unverified: linear-gradient(135deg, #a86a12 0%, #7a4b08 100%);
+
+  /* The second row is support, not headline: tinted grounds, dark text. */
+  --dc-fig-soft-neutral: linear-gradient(135deg, #f6f7f2 0%, #eceee4 100%);
+  --dc-fig-soft-warn: linear-gradient(135deg, #fdf4e3 0%, #f8e8cc 100%);
+  --dc-fig-soft-info: linear-gradient(135deg, #eef3fa 0%, #dfe9f6 100%);
+  --dc-fig-soft-plum: linear-gradient(135deg, #f6eef7 0%, #eee0f0 100%);
+}

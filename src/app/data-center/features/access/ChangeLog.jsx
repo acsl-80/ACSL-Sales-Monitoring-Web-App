@@ -1,11 +1,10 @@
 import { useCallback, useEffect, useState } from "react";
 import { dataCenterAdmin, DataCenterError } from "../../lib/client";
-import { toCsv, downloadCsv } from "../../lib/export";
+import ExportButton from "../../components/ExportButton";
 import { plural } from "../../lib/plural";
 import {
   Loader2,
   History,
-  Download,
   PhoneCall,
   PhoneOutgoing,
   FileText,
@@ -110,6 +109,18 @@ function groupByDay(entries) {
   return groups;
 }
 
+/** What the log export offers. Ids last: they are for matching, not reading. */
+const LOG_EXPORT_COLUMNS = [
+  { key: "changed_at", label: "When", get: (r) => new Date(r.changed_at).toISOString() },
+  { key: "who", label: "Who" },
+  { key: "category_label", label: "Part of the module" },
+  { key: "action", label: "Action" },
+  { key: "subject", label: "What" },
+  { key: "fields_changed", label: "Fields changed" },
+  { key: "record_pk", label: "Reference" },
+  { key: "table_name", label: "Table" },
+];
+
 function Entry({ entry }) {
   const category = BY_KEY[entry.category] ?? BY_KEY.other;
   const Icon = category.icon;
@@ -167,22 +178,14 @@ export default function ChangeLog() {
     load(category);
   }, [load, category]);
 
-  const exportCsv = () => {
-    const rows = entries.map((e) => ({
-      when: new Date(e.changed_at).toISOString(),
-      who: e.changed_by_name || "system",
-      category: (BY_KEY[e.category] ?? BY_KEY.other).label,
-      action: e.action,
+  const exportRows = () =>
+    entries.map((e) => ({
+      ...e,
+      category_label: (BY_KEY[e.category] ?? BY_KEY.other).label,
       subject: (BY_KEY[e.category] ?? BY_KEY.other).subject,
-      reference: e.record_pk,
-      table: e.table_name,
       fields_changed: (e.changed_fields ?? []).join(" "),
+      who: e.changed_by_name || "system",
     }));
-    downloadCsv(
-      `data-center-changes-${category}.csv`,
-      toCsv(rows, ["when", "who", "category", "action", "subject", "reference", "table", "fields_changed"]),
-    );
-  };
 
   const groups = groupByDay(entries);
   const active = category === "all" ? null : BY_KEY[category];
@@ -202,14 +205,12 @@ export default function ChangeLog() {
                 : "Every change anyone makes inside the Data Center, newest first."}
             </p>
           </div>
-          <button
-            type="button"
-            onClick={exportCsv}
+          <ExportButton
+            columns={LOG_EXPORT_COLUMNS}
+            rows={exportRows}
+            filename={`data-center-changes-${category}.csv`}
             disabled={entries.length === 0}
-            className="inline-flex items-center gap-1.5 rounded-md border border-(--dc-accent)/30 px-2.5 py-1.5 text-sm font-medium text-(--dc-accent) transition hover:bg-(--dc-accent-soft)/60 disabled:opacity-40"
-          >
-            <Download className="h-4 w-4" /> Export CSV
-          </button>
+          />
         </div>
 
         {/* One filter row. Categories are what a reader actually asks for:

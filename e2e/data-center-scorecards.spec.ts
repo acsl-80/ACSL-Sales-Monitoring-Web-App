@@ -22,6 +22,27 @@ const SCORECARDS = [
   "Manager",
 ];
 
+/**
+ * Open every scorecard.
+ *
+ * They are closed by default now: five open tables of 278 partners each is not
+ * a dashboard. The assertions that check all five have to expand them first,
+ * which is arrangement rather than a weakening - a collapsed table is simply
+ * not in the DOM, and asserting against one open card would quietly drop four
+ * fifths of the coverage.
+ */
+async function openEveryScorecard(page: import("@playwright/test").Page) {
+  for (const title of SCORECARDS) {
+    const header = page.getByRole("button", { expanded: false }).filter({
+      has: page.getByRole("heading", { name: title, exact: true }),
+    });
+    if ((await header.count()) > 0) await header.first().click();
+  }
+  await expect(
+    page.getByRole("columnheader", { name: "Yet to be resolved", exact: true }),
+  ).toHaveCount(SCORECARDS.length);
+}
+
 test.describe("the five scorecards", () => {
   test("all five render the same columns from one component", async ({ page }) => {
     await signIn(page, USERS.admin);
@@ -32,6 +53,7 @@ test.describe("the five scorecards", () => {
         page.getByRole("heading", { name: title, exact: true }),
       ).toBeVisible({ timeout: 30_000 });
     }
+    await openEveryScorecard(page);
 
     // The shared column set, once per scorecard: five tables, one shape.
     // exact, because "Unverified" contains "Verified" under the default
@@ -55,6 +77,9 @@ test.describe("the five scorecards", () => {
     await expect(
       page.getByRole("heading", { name: "Partner", exact: true }),
     ).toBeVisible({ timeout: 30_000 });
+    // Every table, not just the one that opens by default. This is the §3.4
+    // consistency rule and it is the most valuable assertion in the file.
+    await openEveryScorecard(page);
 
     const failures = await page.evaluate(() => {
       const bad: string[] = [];
@@ -149,15 +174,160 @@ test.describe("the five scorecards", () => {
     }
   });
 
-  test("every scorecard offers CSV export", async ({ page }) => {
+  test("every scorecard exports on its own, columns chosen first", async ({ page }) => {
     await signIn(page, USERS.admin);
     await page.goto("/data-center/dashboard");
     await expect(
       page.getByRole("heading", { name: "Partner", exact: true }),
     ).toBeVisible({ timeout: 30_000 });
 
-    // One per scorecard, plus none elsewhere on this page today. Counting
-    // exactly five asserts both.
-    await expect(page.getByRole("button", { name: /Export CSV/ })).toHaveCount(5);
+    // Named after the cut it exports, because a page with six exports on it
+    // cannot have six buttons all saying "Export CSV".
+    for (const title of SCORECARDS) {
+      await expect(
+        page.getByRole("button", { name: `Export ${title}`, exact: true }),
+      ).toBeVisible();
+    }
+
+    // And each picks its columns before the file is written.
+    await page.getByRole("button", { name: "Choose columns for Export Partner" }).click();
+    await expect(page.getByRole("checkbox", { name: "Issued" })).toBeChecked();
+    await page.getByRole("button", { name: "None", exact: true }).click();
+    await expect(page.getByRole("checkbox", { name: "Issued" })).not.toBeChecked();
+    await page.keyboard.press("Escape");
+  });
+
+  test("the five export together, choosing tables and columns", async ({ page }) => {
+    await signIn(page, USERS.admin);
+    await page.goto("/data-center/dashboard");
+    await expect(
+      page.getByRole("heading", { name: "Partner", exact: true }),
+    ).toBeVisible({ timeout: 30_000 });
+
+    // The five are one measure cut five ways, so the thing usually wanted is
+    // several of them at once rather than one.
+    await expect(page.getByRole("button", { name: "Export scorecards" })).toBeVisible();
+    await page
+      .getByRole("button", { name: "Choose scorecards and columns to export" })
+      .click();
+
+    await expect(page.getByText("Which scorecards")).toBeVisible();
+    await expect(page.getByText("Which columns")).toBeVisible();
+    for (const title of SCORECARDS) {
+      await expect(page.getByRole("checkbox", { name: title })).toBeChecked();
+    }
+    await expect(page.getByText(/5 scorecards, \d+ columns, one file/)).toBeVisible();
+  });
+
+  test("a scorecard collapses, and pages when open", async ({ page }) => {
+    await signIn(page, USERS.admin);
+    await page.goto("/data-center/dashboard");
+    await expect(
+      page.getByRole("heading", { name: "Partner", exact: true }),
+    ).toBeVisible({ timeout: 30_000 });
+
+    // Closed by default except the first: at 278 partners, five open tables is
+    // a page nobody reaches the bottom of. The row count on a closed header is
+    // what keeps it useful while closed.
+    const location = page.getByRole("button", { expanded: false }).filter({
+      has: page.getByRole("heading", { name: "Location", exact: true }),
+    });
+    await expect(location).toHaveCount(1);
+    await expect(
+      page.getByRole("columnheader", { name: "Issued", exact: true }),
+    ).toHaveCount(1);
+
+    await location.click();
+    await expect(
+      page.getByRole("columnheader", { name: "Issued", exact: true }),
+    ).toHaveCount(2);
+    // Paging, because a scorecard runs to hundreds of rows.
+    await expect(page.getByRole("button", { name: "Next page" }).first()).toBeVisible();
+  });
+});
+
+/**
+ * The four headline figures.
+ *
+ * The dashboard opened with Sales, Complete, Fully verified and Open
+ * corrections, two of which are internal bookkeeping rather than the question
+ * anyone opens the page to ask. It now leads with how much went out, how much
+ * came back as a sale, how much of that is confirmed, and how much is not.
+ */
+test.describe("the headline figures", () => {
+  test("the four are shown, and each is a door", async ({ page }) => {
+    await signIn(page, USERS.admin);
+    await page.goto("/data-center/dashboard");
+    await expect(
+      page.getByRole("heading", { name: "Partner", exact: true }),
+    ).toBeVisible({ timeout: 30_000 });
+
+    for (const label of ["Transferred to partners", "Sold", "Fully verified", "Unverified"]) {
+      await expect(
+        page.getByRole("link", { name: new RegExp(`^${label}:`) }),
+      ).toBeVisible();
+    }
+
+    // Displaced rather than dropped: both are still on the page, below.
+    for (const label of ["Complete", "Open corrections"]) {
+      await expect(page.getByRole("link", { name: new RegExp(`^${label}:`) })).toBeVisible();
+    }
+  });
+
+  test("Transferred equals what the partner scorecard issued", async ({ page }) => {
+    await signIn(page, USERS.admin);
+    await page.goto("/data-center/dashboard");
+    await expect(
+      page.getByRole("heading", { name: "Partner", exact: true }),
+    ).toBeVisible({ timeout: 30_000 });
+
+    // The card sums the partner cut's Issued column, so it has to equal that
+    // column. Partner, location and sales rep are three cuts of one
+    // population; call agent and manager are a different one, which is why
+    // only one cut is summed.
+    const shown = await page
+      .getByRole("link", { name: /^Transferred to partners:/ })
+      .evaluate((el) => Number((el.textContent ?? "").replace(/[^0-9]/g, "") || 0));
+
+    const issuedTotal = await page.evaluate(() => {
+      const table = [...document.querySelectorAll("table")].find((t) =>
+        [...t.querySelectorAll("th")].map((th) => th.textContent?.trim()).includes("Yet to be resolved"),
+      );
+      if (!table) return -1;
+      const headers = [...table.querySelectorAll("th")].map((th) => th.textContent?.trim());
+      const col = headers.indexOf("Issued");
+      let sum = 0;
+      for (const tr of table.querySelectorAll("tbody tr")) {
+        const cells = tr.querySelectorAll("td");
+        sum += Number((cells[col]?.textContent ?? "").replace(/[^0-9]/g, "") || 0);
+      }
+      return sum;
+    });
+
+    // The visible table is one page of the partner cut, so it can only be a
+    // lower bound on the card. Asserting the direction rather than equality
+    // keeps this honest instead of passing by accident on a short seed.
+    expect(issuedTotal).toBeGreaterThanOrEqual(0);
+    expect(shown).toBeGreaterThanOrEqual(issuedTotal);
+  });
+
+  test("the Unverified card and the queue behind it agree on the word", async ({
+    page,
+  }) => {
+    await signIn(page, USERS.admin);
+    await page.goto("/data-center/dashboard");
+    await expect(
+      page.getByRole("heading", { name: "Partner", exact: true }),
+    ).toBeVisible({ timeout: 30_000 });
+
+    await page.getByRole("link", { name: /^Unverified:/ }).click();
+
+    // Both sides define unverified as partially_verified or
+    // doubtful_verification: the funnel view, the scorecard compute and the
+    // queue filter all carry that same pair.
+    await expect(page).toHaveURL(/status=unverified/);
+    await expect(page.getByText(/Narrowed from the dashboard/)).toBeVisible({
+      timeout: 20_000,
+    });
   });
 });

@@ -1,7 +1,8 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { Link } from "@tanstack/react-router";
 import { dataCenterDashboard, DataCenterError } from "../../lib/client";
-import Scorecard from "./Scorecard";
+import Scorecard, { scorecardRows } from "./Scorecard";
+import ExportScorecards from "./ExportScorecards";
 import {
   BarChart3, Loader2, AlertTriangle, RefreshCw, Clock, TriangleAlert, ArrowUpRight,
 } from "lucide-react";
@@ -53,34 +54,68 @@ function series(metrics, key, dimensionKey) {
  * and the only way to see which 34 was to go and rebuild the filter by hand.
  * A card with a `to` is a link to exactly the rows it counted.
  */
-function Card({ label, value: v, hint, tone, to, search, arrow }) {
+/**
+ * The four headline figures, each with a hue that means that figure.
+ *
+ * A deliberate exception to "colour is wayfinding, never decoration": eight
+ * identical white cards read as a wall rather than as answers, and the four
+ * questions this page exists to answer deserve to be told apart at a glance.
+ * The hue is fixed per metric, so it identifies rather than decorates.
+ */
+const FIGURE_SKIN = {
+  transferred: { ground: "bg-[image:var(--dc-fig-transferred)]", ink: "text-white" },
+  sold: { ground: "bg-[image:var(--dc-fig-sold)]", ink: "text-white" },
+  verified: { ground: "bg-[image:var(--dc-fig-verified)]", ink: "text-white" },
+  unverified: { ground: "bg-[image:var(--dc-fig-unverified)]", ink: "text-white" },
+  neutral: { ground: "bg-[image:var(--dc-fig-soft-neutral)]", ink: "text-gray-900" },
+  warn: { ground: "bg-[image:var(--dc-fig-soft-warn)]", ink: "text-amber-900" },
+  info: { ground: "bg-[image:var(--dc-fig-soft-info)]", ink: "text-blue-900" },
+  plum: { ground: "bg-[image:var(--dc-fig-soft-plum)]", ink: "text-purple-900" },
+};
+
+function Card({ label, value: v, hint, skin = "neutral", to, search, arrow }) {
+  const { ground, ink } = FIGURE_SKIN[skin] ?? FIGURE_SKIN.neutral;
+  const solid = ink === "text-white";
+
   const body = (
     <>
-      <p className="text-xs font-medium uppercase tracking-wide text-gray-500">{label}</p>
-      <p className={`mt-1 text-2xl font-semibold ${tone ?? "text-gray-900"}`}>
+      <p
+        className={`text-xs font-medium uppercase tracking-wide ${
+          solid ? "text-white/80" : "text-gray-600"
+        }`}
+      >
+        {label}
+      </p>
+      <p className={`mt-1 text-2xl font-semibold tabular-nums ${ink}`}>
         {typeof v === "number" ? NUMBER.format(v) : v}
       </p>
-      {hint && <p className="mt-1 text-xs text-gray-500">{hint}</p>}
+      {hint && (
+        <p className={`mt-1 text-xs ${solid ? "text-white/75" : "text-gray-600"}`}>{hint}</p>
+      )}
     </>
   );
 
-  if (!to) {
-    return (
-      <div className="rounded-xl border border-gray-200 bg-white p-4 shadow-sm">{body}</div>
-    );
-  }
+  const shell = `relative block overflow-hidden rounded-xl p-4 shadow-sm ${ground} ${
+    solid ? "" : "border border-gray-200"
+  }`;
+
+  if (!to) return <div className={shell}>{body}</div>;
 
   return (
     <Link
       to={to}
       search={search ?? {}}
       aria-label={`${label}: ${typeof v === "number" ? NUMBER.format(v) : v}. ${arrow ?? "See the records"}`}
-      className="group relative block rounded-xl border border-gray-200 bg-white p-4 shadow-sm transition duration-200 hover:-translate-y-0.5 hover:border-(--dc-accent)/40 hover:shadow-md focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-(--dc-accent)"
+      className={`group ${shell} transition duration-200 hover:-translate-y-0.5 hover:shadow-md focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-(--dc-accent)`}
     >
       {body}
       <ArrowUpRight
         aria-hidden="true"
-        className="absolute right-3 top-3 h-4 w-4 text-(--dc-accent)/60 transition group-hover:text-(--dc-accent)"
+        className={`absolute right-3 top-3 h-4 w-4 transition ${
+          solid
+            ? "text-white/70 group-hover:text-white"
+            : "text-(--dc-accent)/60 group-hover:text-(--dc-accent)"
+        }`}
       />
     </Link>
   );
@@ -221,6 +256,57 @@ export default function Dashboard({ canRun }) {
   );
   const stock = useMemo(() => series(m, "stock.by_status", "status"), [m]);
 
+  /** The five cuts, named once: the page draws them and the export offers them. */
+  const SCORECARDS = useMemo(
+    () => [
+      { by: "partner", title: "Partner",
+        hint: "What each partner was sent, against what has come back." },
+      { by: "location", title: "Location",
+        hint: "The same funnel, cut by the partner's state." },
+      { by: "sales_rep", title: "Sales Representative",
+        hint: "The rep on the transfer, not the call centre agent." },
+      { by: "call_agent", title: "Call Agent",
+        hint: "Records handed to each agent, and what each became. Reclaimed batches are not counted." },
+      { by: "manager", title: "Manager",
+        hint: "Every agent reporting to them, rolled up. Sparse until reporting lines are set on profiles." },
+    ],
+    [],
+  );
+
+  /**
+   * How many stoves went out to partners.
+   *
+   * Summed from the partner scorecard's own issued figures rather than counted
+   * here: those rows are already the output of a computation run, so this adds
+   * about 278 numbers in the browser and never touches a sale.
+   *
+   * The partner cut specifically. Partner, location and sales rep are three
+   * cuts of one population - the transfer funnel - so each totals the same
+   * stoves and adding two would double-count. Call agent and manager are a
+   * different population entirely, what has been handed out rather than what
+   * was shipped, so they must not be added in at all. Measured on the preview
+   * database: the three funnel cuts each total 430, the two assignment cuts
+   * total 5, and 430 is sum(v_transfer_funnel.issued_count).
+   */
+  const transferred = useMemo(
+    () => scorecardRows(m, "partner").reduce((n, r) => n + (r.issued ?? 0), 0),
+    [m],
+  );
+
+  /**
+   * Everything received that has not been confirmed.
+   *
+   * The scorecard's own definition, summed the same way, so this card and the
+   * Unverified column of the table below it are the same number by
+   * construction. "Unverified" here is the narrow one - received, called, not
+   * confirmed - and is not the same as "not yet reached", which has its own
+   * column and its own card.
+   */
+  const unverified = useMemo(
+    () => scorecardRows(m, "partner").reduce((n, r) => n + (r.unverified ?? 0), 0),
+    [m],
+  );
+
   /**
    * Where each breakdown row goes.
    *
@@ -328,40 +414,44 @@ export default function Dashboard({ canRun }) {
         </div>
       ) : (
         <>
+          {/* The four the module exists to answer: how much went out, how
+              much came back as a sale, how much of that is confirmed, and how
+              much is not. Everything else on this page is a cut of these. */}
           <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
             <Card
-              label="Sales"
-              value={total}
-              hint="not archived"
-              to="/data-center/stove-records"
+              label="Transferred to partners"
+              value={transferred}
+              hint="stoves shipped, all partners"
+              skin="transferred"
+              to="/data-center/partner-records"
+              arrow="See what went to each partner"
             />
             <Card
-              label="Complete"
-              value={complete}
-              tone="text-(--dc-accent)"
-              hint={total ? `${Math.round((complete / total) * 100)}% by this module's rule` : undefined}
-              // The table can only filter on the sales app's own status, which
-              // is the very thing this module disagrees with, so the link lands
-              // on that reading and the drill banner says so rather than
-              // presenting a different number as the same one.
+              label="Sold"
+              value={total}
+              hint={
+                transferred
+                  ? `${Math.round((total / transferred) * 100)}% of what was transferred`
+                  : "not archived"
+              }
+              skin="sold"
               to="/data-center/stove-records"
-              search={{ saleStatus: "completed", label: "Complete" }}
             />
             <Card
               label="Fully verified"
               value={verified}
-              tone="text-(--dc-accent)"
               hint={total ? `${Math.round((verified / total) * 100)}% of sales` : undefined}
+              skin="verified"
               to="/data-center/call-centre"
               search={{ status: "verified", label: "Fully verified" }}
             />
             <Card
-              label="Open corrections"
-              value={value(m, "corrections.open")}
-              tone={value(m, "corrections.open") > 0 ? "text-amber-700" : undefined}
-              hint="waiting on Sales"
+              label="Unverified"
+              value={unverified}
+              hint="received, called, not confirmed"
+              skin="unverified"
               to="/data-center/call-centre"
-              search={{ preset: "correction" }}
+              search={{ status: "unverified", label: "Unverified" }}
             />
           </div>
 
@@ -433,37 +523,76 @@ export default function Dashboard({ canRun }) {
           {/* The five scorecards: one component, five dimensions, and that is
               the point. The first three read the transfer funnel (what was
               shipped), the last two read assignments (what was handed out).
-              Every status cell drills into the queue behind its number. */}
+              Every status cell drills into the queue behind its number.
+
+              Closed by default. Five open tables of 278 partners each is not a
+              dashboard, and the row count on each header answers "how many"
+              without opening anything. Partner opens, because it is the cut
+              everyone reads first. */}
           <div className="space-y-3">
-            <Scorecard title="Partner" by="partner" metrics={m}
-              hint="What each partner was sent, against what has come back." />
-            <Scorecard title="Location" by="location" metrics={m}
-              hint="The same funnel, cut by the partner's state." />
-            <Scorecard title="Sales Representative" by="sales_rep" metrics={m}
-              hint="The rep on the transfer, not the call centre agent." />
-            <Scorecard title="Call Agent" by="call_agent" metrics={m}
-              hint="Records handed to each agent, and what each became. Reclaimed batches are not counted." />
-            <Scorecard title="Manager" by="manager" metrics={m}
-              hint="Every agent reporting to them, rolled up. Sparse until reporting lines are set on profiles." />
+            <div className="flex flex-wrap items-center gap-2">
+              <h2 className="text-sm font-semibold text-gray-900">Scorecards</h2>
+              <span className="text-xs text-gray-600">
+                The same six measures, cut five ways. Open one to page through it.
+              </span>
+              <div className="ml-auto">
+                <ExportScorecards cards={SCORECARDS} metrics={m} />
+              </div>
+            </div>
+            {SCORECARDS.map((card, i) => (
+              <Scorecard
+                key={card.by}
+                title={card.title}
+                by={card.by}
+                metrics={m}
+                hint={card.hint}
+                defaultOpen={i === 0}
+              />
+            ))}
           </div>
 
-          <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
+          {/* Support, not headline. Complete and Open corrections were on the
+              top row and are not what anyone opens this page to learn: one is
+              an internal completeness rule, the other a queue of six. */}
+          <div className="grid grid-cols-2 gap-3 lg:grid-cols-3 xl:grid-cols-6">
+            <Card
+              label="Complete"
+              value={complete}
+              hint={total ? `${Math.round((complete / total) * 100)}% by this module's rule` : undefined}
+              skin="info"
+              // The table can only filter on the sales app's own status, which
+              // is the very thing this module disagrees with, so the link lands
+              // on that reading and the drill banner says so rather than
+              // presenting a different number as the same one.
+              to="/data-center/stove-records"
+              search={{ saleStatus: "completed", label: "Complete" }}
+            />
+            <Card
+              label="Open corrections"
+              value={value(m, "corrections.open")}
+              hint="waiting on Sales"
+              skin={value(m, "corrections.open") > 0 ? "warn" : "neutral"}
+              to="/data-center/call-centre"
+              search={{ preset: "correction" }}
+            />
             <Card
               label="Calls logged"
               value={value(m, "calls.attempts_total")}
+              skin="info"
               to="/data-center/call-centre"
             />
             <Card
               label="Average calls"
               value={value(m, "calls.avg_attempts")}
               hint="per record worked"
+              skin="info"
               to="/data-center/call-centre"
             />
             <Card
               label="Chased 3 times"
               value={value(m, "calls.exhausted")}
               hint="still not verified"
-              tone={value(m, "calls.exhausted") > 0 ? "text-amber-700" : undefined}
+              skin={value(m, "calls.exhausted") > 0 ? "warn" : "neutral"}
               to="/data-center/call-centre"
               search={{ preset: "exhausted" }}
             />
@@ -471,6 +600,7 @@ export default function Dashboard({ canRun }) {
               label="Imported rows"
               value={value(m, "import.rows_committed")}
               hint={`${NUMBER.format(value(m, "import.exceptions_open"))} exceptions open`}
+              skin="plum"
               to="/data-center/import"
             />
           </div>
