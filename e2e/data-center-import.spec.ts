@@ -583,7 +583,7 @@ test.describe("a rejected row says what to do about it", () => {
  * both hand-rolled and a unit test of either alone would prove half of it.
  */
 test.describe("the digitalisation sheet is a workbook", () => {
-  test("the sheet downloads, and the same file uploads back", async ({ page }) => {
+  test("the sheet downloads, and the same file uploads back", async ({ page }, testInfo) => {
     await signIn(page, USERS.admin);
 
     // Download it the way a digitiser does: from the partner they are looking
@@ -607,9 +607,12 @@ test.describe("the digitalisation sheet is a workbook", () => {
     const waitForDownload = page.waitForEvent("download");
     await page.getByRole("button", { name: /Download .* \(xlsx\)/ }).click();
     const download = await waitForDownload;
-    const path = await download.path();
     expect(download.suggestedFilename()).toMatch(/\.xlsx$/);
-    expect(path).toBeTruthy();
+    // Saved under its real name. Playwright's temp path has no extension, and
+    // uploading that would test the content sniffing rather than the ordinary
+    // path a person takes.
+    const path = testInfo.outputPath(download.suggestedFilename());
+    await download.saveAs(path);
 
     // And back in through the uploader, which parses it with the module's own
     // reader in a real browser. Node has no DOMParser, so this is the only
@@ -618,7 +621,7 @@ test.describe("the digitalisation sheet is a workbook", () => {
     await expect(page.getByRole("heading", { name: "Bulk Import" })).toBeVisible({
       timeout: 20_000,
     });
-    await page.locator('input[type="file"]').setInputFiles(path!);
+    await page.locator('input[type="file"]').setInputFiles(path);
 
     /**
      * The sheet is downloaded empty of buyers, so every row is refused for

@@ -1,7 +1,7 @@
 import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { dataCenterImport, DataCenterError } from "../../lib/client";
 import { parseCsv, CsvError } from "../../lib/csv";
-import { parseWorkbook, canReadWorkbooks } from "../../lib/xlsx";
+import { parseWorkbook, canReadWorkbooks, looksLikeWorkbook } from "../../lib/xlsx";
 import ColumnMapping from "./ColumnMapping";
 import ManualEntry from "./ManualEntry";
 import RejectedRows from "./RejectedRows";
@@ -247,7 +247,8 @@ export default function ImportPanel({ canUpload, canCommit, canResolve }) {
        * carry a dropdown. It has to come back as one, and both parsers return
        * the same shape so nothing downstream knows which it was.
        */
-      const isWorkbook = /\.xlsx$/i.test(file.name);
+      // What it is, not what it is called. See looksLikeWorkbook.
+      const isWorkbook = await looksLikeWorkbook(file);
       if (isWorkbook && !canReadWorkbooks()) {
         setError(
           "This browser cannot open .xlsx files. Save the sheet as CSV from your " +

@@ -268,6 +268,25 @@ export function downloadWorkbook(filename: string, blob: Blob): void {
 
 /* ----------------------------------------------------------------- reading */
 
+/**
+ * Is this a workbook, whatever it happens to be called?
+ *
+ * Read from the first four bytes rather than the extension. A file arrives
+ * renamed, or saved without an extension, or handed over by something that
+ * strips it, and deciding by name means a workbook gets parsed as text: the
+ * reader finds one unreadable header and reports that none of the columns are
+ * recognised, which sends somebody looking at their column names for a fault
+ * that is not there.
+ *
+ * PK is the local file header every ZIP starts with, and an xlsx is a
+ * ZIP.
+ */
+export async function looksLikeWorkbook(file: Blob): Promise<boolean> {
+  if (file.size < 4) return false;
+  const head = new Uint8Array(await file.slice(0, 4).arrayBuffer());
+  return head[0] === 0x50 && head[1] === 0x4b && head[2] === 0x03 && head[3] === 0x04;
+}
+
 /** Whether this browser can open the workbooks this module writes. */
 export function canReadWorkbooks(): boolean {
   return typeof DecompressionStream !== "undefined";
