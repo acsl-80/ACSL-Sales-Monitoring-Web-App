@@ -207,10 +207,11 @@ test.describe("the change log is readable and categorised", () => {
     // the biggest page so it landed last: the chip read Access while the rows
     // were every category. Showing the wrong rows under a filter is worse than
     // showing none, because nothing about it looks wrong.
-    const subjects = await page
-      .locator("li p")
-      .filter({ hasText: /granted|revoked|changed|added|updated|advanced|logged/ })
-      .allInnerTexts();
+    // The first paragraph of each entry is the sentence; the second, when it
+    // is there, lists the fields that moved. Matching on a verb caught both,
+    // and "2 fields changed" is not a subject.
+    const subjects = await page.locator("li div > p:first-child").allInnerTexts();
+    expect(subjects.length).toBeGreaterThan(0);
     for (const line of subjects) {
       expect(line).toMatch(/access grant/);
     }
