@@ -30,6 +30,9 @@ import { buildScopeSql, buildTransferScopeSql, type ScopeInput } from "./scope.t
 // a permissive origin turns any page the user visits into a caller.
 // Override with DATA_CENTER_ALLOWED_ORIGINS (comma separated) if a new host
 // appears; Vercel preview URLs are matched by suffix.
+/** The id shape every drill parameter has to be before it reaches SQL. */
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
 const DEFAULT_ORIGINS = [
   "https://sales.atmosfair.com.ng",
   "http://localhost:5173",
@@ -501,6 +504,254 @@ serve(async (req) => {
        * applies. An agent may additionally always see their own batches
        * through data-center-assign's my_batches, which needs no extra grant.
        */
+      /**
+       * One partner, opened up.
+       *
+       * The header, every batch that partner was sent, and each rep's totals.
+       * Three reads rather than one, because they answer three questions and a
+       * single join would multiply the batch rows by the rep rows.
+       *
+       * Scoped exactly like the funnel it drills into, so a partner user
+       * cannot open a partner that is not theirs by putting an id in the body.
+       */
+      case "partner_detail": {
+        const superAdmin = isSuperAdmin(profile.role);
+        const resolved = superAdmin
+          ? { accessRole: null, features: [] as string[] }
+          : await resolveAccess(userId);
+        if (!superAdmin && resolved.accessRole === null) {
+          return json({ error: "No Data Center access", code: "no_access" }, 403, cors);
+        }
+        if (!superAdmin && !resolved.features.includes("records.view")) {
+          return json({ error: "Not permitted", code: "no_feature" }, 403, cors);
+        }
+        const organizationId = String((body as { organizationId?: string }).organizationId ?? "");
+        if (!UUID_RE.test(organizationId)) {
+          return json({ error: "organizationId must be a UUID", code: "bad_input" }, 400, cors);
+        }
+
+        const scopeInput = await resolveScope(
+          supabase,
+          userId,
+          profile.role,
+          profile.organization_id ?? null,
+        );
+        const scope = buildTransferScopeSql(
+          { ...scopeInput, requestedOrgId: organizationId },
+          1,
+          "f",
+        );
+
+        return await withReadConnection(async (connection) => {
+          const batches = await connection.queryObject({
+            text: `select f.transfer_id::text, f.transaction_id, f.organization_id::text,
+                          f.partner_name, f.partner_id, f.transfer_state, f.transfer_branch,
+                          f.sales_rep, f.sales_date, f.transfer_date,
+                          f.issued_count, f.received_count, f.digitalised_count,
+                          f.verified_count, f.unverified_count, f.unreachable_count,
+                          f.unresolved_count, f.outstanding_count
+                     from data_center.transfer_funnel f
+                    where ${scope.sql}
+                    order by f.sales_date desc nulls last, f.transaction_id
+                    limit 500`,
+            args: [...scope.args],
+          });
+
+          // Per rep, for this partner and overall. "How many has this rep got"
+          // is asked both ways and answering only one of them invites the
+          // reader to assume the other.
+          const reps = await connection.queryObject({
+            text: `with here as (
+                     select f.sales_rep, sum(f.issued_count)::int as stoves_here,
+                            count(*)::int as batches_here
+                       from data_center.transfer_funnel f
+                      where ${scope.sql} and f.sales_rep is not null
+                      group by f.sales_rep
+                   ), everywhere as (
+                     select f.sales_rep, sum(f.issued_count)::int as stoves_total,
+                            count(distinct f.organization_id)::int as partners_total
+                       from data_center.transfer_funnel f
+                      where f.sales_rep in (select sales_rep from here)
+                      group by f.sales_rep
+                   )
+                   select h.sales_rep, h.stoves_here, h.batches_here,
+                          e.stoves_total, e.partners_total
+                     from here h join everywhere e on e.sales_rep = h.sales_rep
+                    order by h.stoves_here desc`,
+            args: [...scope.args],
+          });
+
+          const header = batches.rows[0] as Record<string, unknown> | undefined;
+          return json(
+            {
+              data: {
+                partner: header
+                  ? {
+                    organization_id: header.organization_id,
+                    partner_name: header.partner_name,
+                    partner_id: header.partner_id,
+                    transfer_state: header.transfer_state,
+                    transfer_branch: header.transfer_branch,
+                  }
+                  : null,
+                batches: batches.rows,
+                reps: reps.rows,
+              },
+            },
+            200,
+            cors,
+          );
+        });
+      }
+
+      /**
+       * The stoves in one batch.
+       *
+       * Every serial the transfer carried, whether it has since been sold, and
+       * if sold what has become of it: verified or not, assigned to whom, or
+       * assigned to nobody. Unassigned is a state worth seeing, which is why it
+       * is a left join and not a filter.
+       */
+      case "batch_stoves": {
+        const superAdmin = isSuperAdmin(profile.role);
+        const resolved = superAdmin
+          ? { accessRole: null, features: [] as string[] }
+          : await resolveAccess(userId);
+        if (!superAdmin && resolved.accessRole === null) {
+          return json({ error: "No Data Center access", code: "no_access" }, 403, cors);
+        }
+        if (!superAdmin && !resolved.features.includes("records.view")) {
+          return json({ error: "Not permitted", code: "no_feature" }, 403, cors);
+        }
+        const transferId = String((body as { transferId?: string }).transferId ?? "");
+        if (!UUID_RE.test(transferId)) {
+          return json({ error: "transferId must be a UUID", code: "bad_input" }, 400, cors);
+        }
+
+        const scopeInput = await resolveScope(
+          supabase,
+          userId,
+          profile.role,
+          profile.organization_id ?? null,
+        );
+        const scope = buildTransferScopeSql({ ...scopeInput, requestedOrgId: null }, 2, "f");
+
+        return await withReadConnection(async (connection) => {
+          const rows = await connection.queryObject({
+            text: `select b.stove_id, b.transaction_id,
+                          sb.status as stock_status, sb.sale_id::text,
+                          c.sales_date, c.end_user_name,
+                          coalesce(c.corrected_phone, c.primary_phone) as phone,
+                          c.user_state, c.verification_outcome, c.attempt_count,
+                          ba.assigned_to::text as agent_id,
+                          ap.full_name as agent_name,
+                          ba.state as batch_state
+                     from data_center.v_transfer_stoves b
+                     join data_center.transfer_funnel f on f.transfer_id = b.transfer_id
+                     left join public.stove_ids_base sb on sb.stove_id = b.stove_id
+                     left join data_center.v_call_center c on c.sale_id = sb.sale_id
+                     left join data_center.assignment_items ai
+                            on ai.sale_id = sb.sale_id and ai.is_active
+                     left join data_center.assignment_batches ba on ba.id = ai.batch_id
+                     left join public.profiles ap on ap.id = ba.assigned_to
+                    where b.transfer_id = $1 and ${scope.sql}
+                    order by b.stove_id
+                    limit 2000`,
+            args: [transferId, ...scope.args],
+          });
+          return json({ data: { stoves: rows.rows } }, 200, cors);
+        });
+      }
+
+      /**
+       * One stove, everything known about it.
+       *
+       * The end of the drill: the transfer it arrived on, the sale if it was
+       * sold, the buyer, the verification, who is holding it and every call
+       * anyone made. Assembled here rather than by the client making five
+       * requests and stitching them, which is five chances to show a half
+       * answer while the rest is still in flight.
+       */
+      case "stove_detail": {
+        const superAdmin = isSuperAdmin(profile.role);
+        const resolved = superAdmin
+          ? { accessRole: null, features: [] as string[] }
+          : await resolveAccess(userId);
+        if (!superAdmin && resolved.accessRole === null) {
+          return json({ error: "No Data Center access", code: "no_access" }, 403, cors);
+        }
+        if (!superAdmin && !resolved.features.includes("records.view")) {
+          return json({ error: "Not permitted", code: "no_feature" }, 403, cors);
+        }
+        const stoveId = String((body as { stoveId?: string }).stoveId ?? "").trim().slice(0, 120);
+        if (!stoveId) {
+          return json({ error: "stoveId is required", code: "bad_input" }, 400, cors);
+        }
+
+        const scopeInput = await resolveScope(
+          supabase,
+          userId,
+          profile.role,
+          profile.organization_id ?? null,
+        );
+        const scope = buildTransferScopeSql({ ...scopeInput, requestedOrgId: null }, 2, "f");
+
+        return await withReadConnection(async (connection) => {
+          const found = await connection.queryObject({
+            text: `select sb.stove_id, sb.status as stock_status, sb.factory,
+                          sb.sales_reference, sb.transfer_sales_date,
+                          sb.sale_id::text,
+                          f.transfer_id::text, f.transaction_id, f.partner_name,
+                          f.partner_id, f.sales_rep, f.transfer_state, f.transfer_branch,
+                          f.organization_id::text,
+                          c.sales_date, c.end_user_name, c.aka,
+                          coalesce(c.corrected_phone, c.primary_phone) as phone,
+                          c.alternative_phone, c.user_state, c.user_lga,
+                          c.user_residential_address, c.amount, c.total_paid,
+                          c.payment_status, c.sale_status, c.platform,
+                          c.sale_agent_name, c.sales_model,
+                          c.verification_outcome, c.call_outcome, c.attempt_count,
+                          c.last_attempt_at, c.correction_state, c.correction_reason,
+                          ba.id::text as batch_id, ba.state as batch_state,
+                          ba.assigned_at, ba.assigned_to::text as agent_id,
+                          ap.full_name as agent_name, ap.email as agent_email
+                     from public.stove_ids_base sb
+                     left join data_center.v_transfer_stoves b on b.stove_id = sb.stove_id
+                     left join data_center.transfer_funnel f on f.transfer_id = b.transfer_id
+                     left join data_center.v_call_center c on c.sale_id = sb.sale_id
+                     left join data_center.assignment_items ai
+                            on ai.sale_id = sb.sale_id and ai.is_active
+                     left join data_center.assignment_batches ba on ba.id = ai.batch_id
+                     left join public.profiles ap on ap.id = ba.assigned_to
+                    where sb.stove_id = $1 and (f.transfer_id is null or ${scope.sql})
+                    limit 1`,
+            args: [stoveId, ...scope.args],
+          });
+          const stove = found.rows[0] as Record<string, unknown> | undefined;
+          if (!stove) {
+            return json({ error: "No such stove", code: "not_found" }, 404, cors);
+          }
+
+          // The calls, if it ever became a sale somebody rang about.
+          const attempts = stove.sale_id
+            ? await connection.queryObject({
+              text: `select a.attempt_no, a.attempted_at, a.note,
+                            o.label as outcome, ab.label as answered_by,
+                            p.full_name as logged_by
+                       from data_center.call_attempts a
+                       left join data_center.option_values o on o.id = a.outcome_id
+                       left join data_center.option_values ab on ab.id = a.answered_by_id
+                       left join public.profiles p on p.id = a.created_by
+                      where a.sale_id = $1
+                      order by a.attempt_no`,
+              args: [stove.sale_id],
+            })
+            : { rows: [] };
+
+          return json({ data: { stove, attempts: attempts.rows } }, 200, cors);
+        });
+      }
+
       case "assignment_log": {
         const superAdmin = isSuperAdmin(profile.role);
         const resolved = superAdmin

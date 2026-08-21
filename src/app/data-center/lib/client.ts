@@ -300,6 +300,33 @@ export const dataCenterClient = {
     };
   } = {}) => call<TransferFunnelPage>("data-center-read", "transfer_funnel", params),
 
+  /** One partner opened up: its batches, and each rep's totals. */
+  partnerDetail: (organizationId: string) =>
+    call<{
+      partner: {
+        organization_id: string;
+        partner_name: string;
+        partner_id: string | null;
+        transfer_state: string | null;
+        transfer_branch: string | null;
+      } | null;
+      batches: PartnerBatch[];
+      reps: PartnerRep[];
+    }>("data-center-read", "partner_detail", { organizationId }),
+
+  /** Every stove in one batch, sold or not, assigned or not. */
+  batchStoves: (transferId: string) =>
+    call<{ stoves: BatchStove[] }>("data-center-read", "batch_stoves", { transferId }),
+
+  /** One stove, everything: the transfer, the sale, the agent, the calls. */
+  stoveDetail: (stoveId: string) =>
+    call<{ stove: Record<string, unknown>; attempts: Record<string, unknown>[] }>(
+      "data-center-read",
+      "stove_detail",
+      { stoveId },
+    ),
+
+
   /** Table 2. Same paging contract, plus the call centre's own filters. */
   getCallQueue: (params: {
     cursor?: RecordsCursor | null;
@@ -440,6 +467,54 @@ export type WorkflowSetting = {
   key: string;
   value: unknown;
   description: string | null;
+};
+
+/** One transfer a partner received, as the partner drill lists it. */
+export type PartnerBatch = {
+  transfer_id: string;
+  transaction_id: string;
+  organization_id: string;
+  partner_name: string;
+  partner_id: string | null;
+  transfer_state: string | null;
+  transfer_branch: string | null;
+  sales_rep: string | null;
+  sales_date: string | null;
+  transfer_date: string | null;
+  issued_count: number;
+  received_count: number;
+  digitalised_count: number;
+  verified_count: number;
+  unverified_count: number;
+  unreachable_count: number;
+  unresolved_count: number;
+  outstanding_count: number;
+};
+
+/** A rep's totals, for this partner and across every partner. */
+export type PartnerRep = {
+  sales_rep: string;
+  stoves_here: number;
+  batches_here: number;
+  stoves_total: number;
+  partners_total: number;
+};
+
+/** One stove inside a batch, with what has become of it. */
+export type BatchStove = {
+  stove_id: string;
+  transaction_id: string;
+  stock_status: string | null;
+  sale_id: string | null;
+  sales_date: string | null;
+  end_user_name: string | null;
+  phone: string | null;
+  user_state: string | null;
+  verification_outcome: string | null;
+  attempt_count: number | null;
+  agent_id: string | null;
+  agent_name: string | null;
+  batch_state: string | null;
 };
 
 /** Access administration. Server-gated to super_admin or grants.manage. */

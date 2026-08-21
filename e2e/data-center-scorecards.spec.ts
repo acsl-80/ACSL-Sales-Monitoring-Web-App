@@ -190,7 +190,7 @@ test.describe("the five scorecards", () => {
     }
 
     // And each picks its columns before the file is written.
-    await page.getByRole("button", { name: "Choose columns for Export Partner" }).click();
+    await page.getByRole("button", { name: "Columns for Partner" }).click();
     await expect(page.getByRole("checkbox", { name: "Issued" })).toBeChecked();
     await page.getByRole("button", { name: "None", exact: true }).click();
     await expect(page.getByRole("checkbox", { name: "Issued" })).not.toBeChecked();

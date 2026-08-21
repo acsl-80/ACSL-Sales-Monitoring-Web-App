@@ -86,7 +86,7 @@ test.describe("the assignment console shows who holds what", () => {
     await expect(page.getByRole("button", { name: "Export agents" })).toBeVisible();
     // The page carries two exports, so each column picker is named after the
     // one it belongs to rather than both saying "choose columns".
-    await page.getByRole("button", { name: "Choose columns for Export agents" }).click();
+    await page.getByRole("button", { name: "Columns for agents" }).click();
 
     // All or none, then the columns themselves. An export that is the input to
     // something else needs to be able to leave columns out.

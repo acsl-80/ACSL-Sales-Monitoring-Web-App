@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { dataCenterClient, DataCenterError } from "../../lib/client";
 import ExportButton from "../../components/ExportButton";
+import PartnerDetail from "./PartnerDetail";
 import { plural } from "../../lib/plural";
 import {
   Handshake, Loader2, AlertTriangle, Search, X, Clock, TriangleAlert,
@@ -96,6 +97,7 @@ const EXPORT_COLUMNS = [
 
 export default function PartnerRecords() {
   const [rows, setRows] = useState([]);
+  const [openPartner, setOpenPartner] = useState(null);
   const [computedAt, setComputedAt] = useState(null);
   const [scope, setScope] = useState(null);
   const [loading, setLoading] = useState(true);
@@ -270,7 +272,14 @@ export default function PartnerRecords() {
             </thead>
             <tbody>
               {rows.map((row) => (
-                <tr key={row.transfer_id} className="group border-b border-gray-100">
+                <tr
+                  key={row.transfer_id}
+                  onClick={() => setOpenPartner(row)}
+                  // The whole row, because the question "which 15 of those 200
+                  // are verified" was unanswerable from this table: it could
+                  // say 200 and 15 and offered no way to ask which.
+                  className="group cursor-pointer border-b border-gray-100"
+                >
                   {COLUMNS.map((c, i) => (
                     <td
                       key={c.key}
@@ -303,6 +312,13 @@ export default function PartnerRecords() {
             </tbody>
           </table>
         </div>
+      )}
+      {openPartner && (
+        <PartnerDetail
+          organizationId={openPartner.organization_id}
+          partnerName={openPartner.partner_name}
+          onClose={() => setOpenPartner(null)}
+        />
       )}
     </div>
   );

@@ -1,6 +1,12 @@
 import { useState } from "react";
-import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
-import { Download, ChevronDown } from "lucide-react";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
+import { Download, ChevronDown, Check } from "lucide-react";
 import { toCsv, downloadCsv } from "../lib/export";
 import { plural } from "../lib/plural";
 
@@ -12,10 +18,15 @@ import { plural } from "../lib/plural";
  * pasted into a partner's own spreadsheet wants four columns; the same table
  * pasted into a reconciliation wants twenty and the internal ids as well.
  *
- * The picker is a popover so it does not push the table down, and the choice
- * is per-mount rather than remembered: an export is a one-off act, and a
- * remembered column set is how somebody sends a file that quietly omits the
- * column the recipient asked for.
+ * The picker is a centred dialog at 90% of the viewport rather than a popover
+ * anchored to the button. A table here can carry twenty columns, and twenty
+ * checkboxes inside a 20rem popover is a scroll within a scroll on a desktop
+ * and unusable in a hand. At 90% the whole list is in front of you, in columns
+ * of its own, and choosing reads as the deliberate act it is.
+ *
+ * The choice is per-mount rather than remembered: an export is a one-off act,
+ * and a remembered column set is how somebody sends a file that quietly omits
+ * the column the recipient asked for.
  */
 export default function ExportButton({
   columns,
@@ -28,6 +39,7 @@ export default function ExportButton({
   const [open, setOpen] = useState(false);
 
   const chosen = columns.filter((c) => !excluded.has(c.key));
+  const subject = label.replace(/^Export /i, "");
 
   const toggle = (key) => {
     setExcluded((prev) => {
@@ -47,69 +59,103 @@ export default function ExportButton({
   };
 
   return (
-    <div className="inline-flex overflow-hidden rounded-md border border-(--dc-accent)/30">
-      <button
-        type="button"
-        onClick={run}
-        disabled={disabled || chosen.length === 0}
-        className="inline-flex items-center gap-1.5 px-2.5 py-1.5 text-sm font-medium text-(--dc-accent) transition hover:bg-(--dc-accent-soft)/60 disabled:opacity-40"
-      >
-        <Download className="h-4 w-4" /> {label}
-      </button>
-      <Popover open={open} onOpenChange={setOpen}>
-        <PopoverTrigger asChild>
-          <button
-            type="button"
-            disabled={disabled}
-            // Named after its own export, because a page can carry two of
-            // these and "Choose columns to export" twice tells a screen
-            // reader nothing about which table it belongs to.
-            aria-label={`Choose columns for ${label}`}
-            className="border-l border-(--dc-accent)/30 px-1.5 py-1.5 text-(--dc-accent) transition hover:bg-(--dc-accent-soft)/60 disabled:opacity-40"
-          >
-            <ChevronDown className="h-4 w-4" />
-          </button>
-        </PopoverTrigger>
-        <PopoverContent align="end" className="dc-root w-[min(20rem,90vw)] p-0">
-          <div className="flex items-center justify-between border-b border-gray-100 px-3 py-2">
-            <p className="text-xs font-semibold uppercase tracking-wide text-gray-600">
-              {plural(chosen.length, "column")}
-            </p>
-            <div className="flex gap-1.5">
+    <>
+      <div className="inline-flex overflow-hidden rounded-md border border-(--dc-accent)/30">
+        <button
+          type="button"
+          onClick={run}
+          disabled={disabled || chosen.length === 0}
+          className="inline-flex items-center gap-1.5 px-2.5 py-1.5 text-sm font-medium text-(--dc-accent) transition hover:bg-(--dc-accent-soft)/60 disabled:opacity-40"
+        >
+          <Download className="h-4 w-4" /> {label}
+        </button>
+        <button
+          type="button"
+          disabled={disabled}
+          onClick={() => setOpen(true)}
+          // Named after what it picks columns for, because a page can carry
+          // several exports and one shared label tells a screen reader nothing
+          // about which table it belongs to. The word "Export" is deliberately
+          // dropped: leaving it in makes this button's name contain the other
+          // button's name, so anything looking for "Export CSV" finds two
+          // controls and cannot tell them apart.
+          aria-label={`Columns for ${subject}`}
+          className="border-l border-(--dc-accent)/30 px-1.5 py-1.5 text-(--dc-accent) transition hover:bg-(--dc-accent-soft)/60 disabled:opacity-40"
+        >
+          <ChevronDown className="h-4 w-4" />
+        </button>
+      </div>
+
+      <Dialog open={open} onOpenChange={setOpen}>
+        <DialogContent className="dc-root flex max-h-[90dvh] w-[90vw] max-w-[90vw] flex-col gap-0 overflow-hidden border-0 p-0 sm:max-w-[90vw]">
+          <DialogHeader className="border-b border-gray-100 bg-(--dc-accent-soft)/40 px-5 py-4 text-left">
+            <DialogTitle className="text-base">Columns for {subject}</DialogTitle>
+            <DialogDescription>
+              Everything ticked goes into the file, in this order. Untick what the
+              person opening it does not need.
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="mx-auto w-full max-w-5xl flex-1 overflow-y-auto p-5">
+            <div className="mb-3 flex flex-wrap items-center gap-2">
               <button
                 type="button"
                 onClick={() => setExcluded(new Set())}
-                className="rounded px-1.5 py-0.5 text-xs font-medium text-(--dc-accent) transition hover:bg-(--dc-accent-soft)"
+                className="rounded-md border border-(--dc-accent)/30 px-2.5 py-1.5 text-sm font-medium text-(--dc-accent) transition hover:bg-(--dc-accent-soft)/60"
               >
-                All
+                Select all
               </button>
               <button
                 type="button"
                 onClick={() => setExcluded(new Set(columns.map((c) => c.key)))}
-                className="rounded px-1.5 py-0.5 text-xs font-medium text-gray-600 transition hover:bg-gray-100"
+                className="rounded-md border border-gray-300 px-2.5 py-1.5 text-sm font-medium text-gray-700 transition hover:bg-gray-50"
               >
-                None
+                Clear all
               </button>
+              <p className="text-sm text-gray-600">
+                {plural(chosen.length, "column")} of {columns.length}
+              </p>
+            </div>
+
+            {/* Columns of checkboxes, so twenty of them are one glance rather
+                than one scroll. Steps 1 to 2 to 3 with the width. */}
+            <div className="grid grid-cols-1 gap-x-6 gap-y-0.5 sm:grid-cols-2 lg:grid-cols-3">
+              {columns.map((c) => (
+                <label
+                  key={c.key}
+                  className="flex cursor-pointer items-center gap-2 rounded px-2 py-1.5 text-sm text-gray-700 transition hover:bg-(--dc-accent-soft)/40"
+                >
+                  <input
+                    type="checkbox"
+                    checked={!excluded.has(c.key)}
+                    onChange={() => toggle(c.key)}
+                    className="h-4 w-4 shrink-0 accent-(--dc-accent)"
+                  />
+                  <span className="min-w-0 truncate">{c.label}</span>
+                </label>
+              ))}
             </div>
           </div>
-          <div className="max-h-72 overflow-y-auto p-1.5">
-            {columns.map((c) => (
-              <label
-                key={c.key}
-                className="flex cursor-pointer items-center gap-2 rounded px-2 py-1.5 text-sm text-gray-700 hover:bg-(--dc-accent-soft)/40"
-              >
-                <input
-                  type="checkbox"
-                  checked={!excluded.has(c.key)}
-                  onChange={() => toggle(c.key)}
-                  className="h-4 w-4 accent-(--dc-accent)"
-                />
-                {c.label}
-              </label>
-            ))}
+
+          <div className="flex flex-wrap items-center justify-end gap-2 border-t border-gray-100 px-5 py-3">
+            <button
+              type="button"
+              onClick={() => setOpen(false)}
+              className="rounded-md border border-gray-300 px-3 py-1.5 text-sm font-medium text-gray-700 transition hover:bg-gray-50"
+            >
+              Cancel
+            </button>
+            <button
+              type="button"
+              onClick={run}
+              disabled={chosen.length === 0}
+              className="inline-flex items-center gap-1.5 rounded-md bg-(--dc-accent) px-4 py-1.5 text-sm font-medium text-white transition hover:bg-(--dc-accent-strong) disabled:opacity-40"
+            >
+              <Check className="h-4 w-4" /> Export {plural(chosen.length, "column")}
+            </button>
           </div>
-        </PopoverContent>
-      </Popover>
-    </div>
+        </DialogContent>
+      </Dialog>
+    </>
   );
 }
