@@ -73,6 +73,7 @@ import { Route as AdminBranchesIndexRouteImport } from './routes/admin/branches/
 import { Route as AdminAppConfigIndexRouteImport } from './routes/admin/app-config/index'
 import { Route as AdminAgreementImagesIndexRouteImport } from './routes/admin/agreement-images/index'
 import { Route as AdminAgentsIndexRouteImport } from './routes/admin/agents/index'
+import { Route as DataCenterStoveStoveIdRouteImport } from './routes/data-center/stove.$stoveId'
 import { Route as SuperAdminAgentSalesCreateIndexRouteImport } from './routes/super-admin-agent/sales/create/index'
 import { Route as DocsSuperadminSalesIndexRouteImport } from './routes/docs/superadmin/sales/index'
 import { Route as DocsAdminSalesIndexRouteImport } from './routes/docs/admin/sales/index'
@@ -415,6 +416,11 @@ const AdminAgentsIndexRoute = AdminAgentsIndexRouteImport.update({
   path: '/admin/agents/',
   getParentRoute: () => rootRouteImport,
 } as any)
+const DataCenterStoveStoveIdRoute = DataCenterStoveStoveIdRouteImport.update({
+  id: '/data-center/stove/$stoveId',
+  path: '/data-center/stove/$stoveId',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const SuperAdminAgentSalesCreateIndexRoute =
   SuperAdminAgentSalesCreateIndexRouteImport.update({
     id: '/super-admin-agent/sales/create/',
@@ -482,6 +488,7 @@ export interface FileRoutesByFullPath {
   '/unauthorized/': typeof UnauthorizedIndexRoute
   '/user-guide/': typeof UserGuideIndexRoute
   '/user-management/': typeof UserManagementIndexRoute
+  '/data-center/stove/$stoveId': typeof DataCenterStoveStoveIdRoute
   '/admin/agents/': typeof AdminAgentsIndexRoute
   '/admin/agreement-images/': typeof AdminAgreementImagesIndexRoute
   '/admin/app-config/': typeof AdminAppConfigIndexRoute
@@ -553,6 +560,7 @@ export interface FileRoutesByTo {
   '/unauthorized': typeof UnauthorizedIndexRoute
   '/user-guide': typeof UserGuideIndexRoute
   '/user-management': typeof UserManagementIndexRoute
+  '/data-center/stove/$stoveId': typeof DataCenterStoveStoveIdRoute
   '/admin/agents': typeof AdminAgentsIndexRoute
   '/admin/agreement-images': typeof AdminAgreementImagesIndexRoute
   '/admin/app-config': typeof AdminAppConfigIndexRoute
@@ -625,6 +633,7 @@ export interface FileRoutesById {
   '/unauthorized/': typeof UnauthorizedIndexRoute
   '/user-guide/': typeof UserGuideIndexRoute
   '/user-management/': typeof UserManagementIndexRoute
+  '/data-center/stove/$stoveId': typeof DataCenterStoveStoveIdRoute
   '/admin/agents/': typeof AdminAgentsIndexRoute
   '/admin/agreement-images/': typeof AdminAgreementImagesIndexRoute
   '/admin/app-config/': typeof AdminAppConfigIndexRoute
@@ -698,6 +707,7 @@ export interface FileRouteTypes {
     | '/unauthorized/'
     | '/user-guide/'
     | '/user-management/'
+    | '/data-center/stove/$stoveId'
     | '/admin/agents/'
     | '/admin/agreement-images/'
     | '/admin/app-config/'
@@ -769,6 +779,7 @@ export interface FileRouteTypes {
     | '/unauthorized'
     | '/user-guide'
     | '/user-management'
+    | '/data-center/stove/$stoveId'
     | '/admin/agents'
     | '/admin/agreement-images'
     | '/admin/app-config'
@@ -840,6 +851,7 @@ export interface FileRouteTypes {
     | '/unauthorized/'
     | '/user-guide/'
     | '/user-management/'
+    | '/data-center/stove/$stoveId'
     | '/admin/agents/'
     | '/admin/agreement-images/'
     | '/admin/app-config/'
@@ -912,6 +924,7 @@ export interface RootRouteChildren {
   UnauthorizedIndexRoute: typeof UnauthorizedIndexRoute
   UserGuideIndexRoute: typeof UserGuideIndexRoute
   UserManagementIndexRoute: typeof UserManagementIndexRoute
+  DataCenterStoveStoveIdRoute: typeof DataCenterStoveStoveIdRoute
   AdminAgentsIndexRoute: typeof AdminAgentsIndexRoute
   AdminAgreementImagesIndexRoute: typeof AdminAgreementImagesIndexRoute
   AdminAppConfigIndexRoute: typeof AdminAppConfigIndexRoute
@@ -1396,6 +1409,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AdminAgentsIndexRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/data-center/stove/$stoveId': {
+      id: '/data-center/stove/$stoveId'
+      path: '/data-center/stove/$stoveId'
+      fullPath: '/data-center/stove/$stoveId'
+      preLoaderRoute: typeof DataCenterStoveStoveIdRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/super-admin-agent/sales/create/': {
       id: '/super-admin-agent/sales/create/'
       path: '/super-admin-agent/sales/create'
@@ -1472,6 +1492,7 @@ const rootRouteChildren: RootRouteChildren = {
   UnauthorizedIndexRoute: UnauthorizedIndexRoute,
   UserGuideIndexRoute: UserGuideIndexRoute,
   UserManagementIndexRoute: UserManagementIndexRoute,
+  DataCenterStoveStoveIdRoute: DataCenterStoveStoveIdRoute,
   AdminAgentsIndexRoute: AdminAgentsIndexRoute,
   AdminAgreementImagesIndexRoute: AdminAgreementImagesIndexRoute,
   AdminAppConfigIndexRoute: AdminAppConfigIndexRoute,

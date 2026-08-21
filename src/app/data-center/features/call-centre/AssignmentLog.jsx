@@ -1,4 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
+import PeriodFilter from "../../components/PeriodFilter";
+import { usePeriod } from "../../lib/usePeriod";
 import { dataCenterAssign, dataCenterWrite, DataCenterError } from "../../lib/client";
 import { plural } from "../../lib/plural";
 import ExportButton from "../../components/ExportButton";
@@ -242,7 +244,21 @@ export default function AssignmentLog({ canRun, canEdit = false }) {
   const [currentCursorRef, setCurrentCursorRef] = useState(null);
   const [openSale, setOpenSale] = useState(null);
 
-  const filters = useMemo(() => (batchState ? { batchState } : {}), [batchState]);
+  /**
+   * The log filters on when work was handed out, which is the date that
+   * matters here: an assignment made in March is March's work even if the
+   * sale it covers was written in January.
+   */
+  const { period, setPeriod, resolved, earliest } = usePeriod("/data-center/call-centre");
+
+  const filters = useMemo(
+    () => ({
+      ...(batchState ? { batchState } : {}),
+      ...(resolved.dateFrom ? { dateFrom: resolved.dateFrom } : {}),
+      ...(resolved.dateTo ? { dateTo: resolved.dateTo } : {}),
+    }),
+    [batchState, resolved.dateFrom, resolved.dateTo],
+  );
 
   const load = useCallback(
     async (after = null) => {
@@ -396,6 +412,12 @@ export default function AssignmentLog({ canRun, canEdit = false }) {
       </div>
 
       <div className="flex flex-wrap items-center gap-2 border-b border-gray-100 px-4 py-2.5">
+        <PeriodFilter
+          period={period}
+          onChange={setPeriod}
+          earliest={earliest}
+          noun="assignments"
+        />
         <label htmlFor="dc-log-state" className="text-xs font-medium text-gray-700">
           Batch state
         </label>

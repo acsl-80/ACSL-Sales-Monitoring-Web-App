@@ -1,5 +1,6 @@
 import Link from "@/compat/Link";
 import { useFeature } from "./lib/access";
+import StoveFinder from "./features/stove-record/StoveFinder";
 import { DATA_CENTER_FEATURES } from "./lib/features";
 import {
   BarChart3, PhoneCall, Handshake, Database, Upload, Settings2, Lock, ArrowRight,
@@ -151,14 +152,26 @@ export default function Explore() {
   const { can } = useFeature();
 
   return (
-    <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3">
+    <div className="space-y-4">
+      {/*
+        The finder is above the grid, not inside it.
+
+        Every card here answers a question about a population - which partners,
+        which agents, which imports. The single most common arrival is somebody
+        holding one serial, and for them the whole grid is a detour. It only
+        shows to people who can read records; for anyone else it would be a box
+        whose every answer is a refusal.
+      */}
+      {can(DATA_CENTER_FEATURES.RECORDS_VIEW) && <StoveFinder />}
+      <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3">
       {AREAS.map((area) => (
         <AreaCard
-          key={area.href}
-          area={area}
-          unlocked={can(area.key) || (area.altKey ? can(area.altKey) : false)}
-        />
-      ))}
+            key={area.href}
+            area={area}
+            unlocked={can(area.key) || (area.altKey ? can(area.altKey) : false)}
+          />
+        ))}
+      </div>
     </div>
   );
 }

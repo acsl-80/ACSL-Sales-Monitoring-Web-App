@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
+import Link from "@/compat/Link";
 import { dataCenterClient, DataCenterError } from "../../lib/client";
 import { usePaged } from "../../lib/usePaged";
 import Pagination from "../../components/Pagination";
@@ -14,7 +15,7 @@ import {
 } from "@/components/ui/dialog";
 import {
   Loader2, ChevronRight, ArrowLeft, Handshake, Package, Boxes,
-  UserRound, PhoneCall, MapPin,
+  UserRound, PhoneCall, MapPin, ExternalLink,
 } from "lucide-react";
 
 /**
@@ -462,6 +463,16 @@ function StoveLevel({ stoveId }) {
 
   return (
     <div className="space-y-4">
+      {/*
+        This panel is a summary inside a dialog; the record has a page. Offer
+        it, rather than growing the dialog until it is the page badly.
+      */}
+      <Link
+        href={`/data-center/stove/${encodeURIComponent(s.stove_id)}`}
+        className="inline-flex items-center gap-1.5 rounded-md border border-(--dc-accent)/30 px-2.5 py-1.5 text-sm font-medium text-(--dc-accent) transition hover:bg-(--dc-accent-soft)/60"
+      >
+        <ExternalLink className="h-4 w-4" /> Open the full record for {s.stove_id}
+      </Link>
       <section>
         <h4 className="mb-2 flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wide text-(--dc-accent-strong)">
           <Package className="h-3.5 w-3.5" /> Where it came from

@@ -429,6 +429,8 @@ serve(async (req) => {
           salesRep?: string;
           outstandingOnly?: boolean;
           search?: string;
+          dateFrom?: string;
+          dateTo?: string;
         };
 
         const scope = buildTransferScopeSql(
@@ -444,6 +446,26 @@ serve(async (req) => {
         };
 
         if (filters.transferState) where.push(`f.transfer_state = ${p(filters.transferState)}`);
+        /**
+         * The period, on the date the consignment went out.
+         *
+         * `sales_date` on this view is text rather than a date - it comes
+         * through the ERP sync that way - so every comparison is guarded by
+         * the shape test first. Casting an unguarded text column to date is
+         * how one malformed row from an upstream system takes the whole page
+         * down with an error nobody can act on.
+         */
+        const ISO = /^\d{4}-\d{2}-\d{2}$/;
+        if (filters.dateFrom && ISO.test(filters.dateFrom)) {
+          where.push(
+            `(f.sales_date ~ '^[0-9]{4}-[0-9]{2}-[0-9]{2}' and left(f.sales_date, 10)::date >= ${p(filters.dateFrom)}::date)`,
+          );
+        }
+        if (filters.dateTo && ISO.test(filters.dateTo)) {
+          where.push(
+            `(f.sales_date ~ '^[0-9]{4}-[0-9]{2}-[0-9]{2}' and left(f.sales_date, 10)::date <= ${p(filters.dateTo)}::date)`,
+          );
+        }
         if (filters.salesRep) where.push(`f.sales_rep = ${p(filters.salesRep)}`);
         // The queue that matters, and the reason for the partial index.
         if (filters.outstandingOnly) where.push("f.outstanding_count > 0");
@@ -872,7 +894,418 @@ serve(async (req) => {
             })
             : { rows: [] };
 
-          return json({ data: { stove, attempts: attempts.rows } }, 200, cors);
+          /**
+           * Everything else that touched this stove, gathered in one place.
+           *
+           * The stove ID is the anchor the whole module hangs off: the ERP
+           * issued it, a transfer sent it to a partner, a receipt turned it
+           * into a sale, an import or a digitiser typed that receipt up, a
+           * call agent rang the buyer, and somebody may have sent it back to
+           * Sales to be corrected. Each of those lives in a different table,
+           * and until now answering "what happened to this stove" meant
+           * opening five surfaces and joining them by eye.
+           *
+           * They are read together because none of them depends on another,
+           * only on the sale_id and stove_id already resolved above, so the
+           * page costs one round trip rather than six.
+           */
+          const saleId = stove.sale_id as string | null;
+          const transferId = stove.transfer_id as string | null;
+          const transactionId = stove.transaction_id as string | null;
+          const batchId = (stove.batch_id as string | null) ?? "";
+
+          const [
+            sale, enrichment, provenance, changes, consignment, phoneTwins, siblings,
+          ] = await Promise.all([
+              // The sale exactly as the sales app holds it, every field the
+              // Sell Stove form collects. Anything less and this page would be
+              // a summary of the record rather than the record.
+              saleId
+                ? connection.queryObject({
+                  text: `select s.transaction_id, s.sales_date, s.contact_person,
+                                s.contact_phone, s.end_user_name, s.aka, s.phone,
+                                s.other_phone, s.state_backup, s.lga_backup,
+                                s.partner_name, s.amount, s.total_paid,
+                                s.payment_status, s.is_installment, s.retailer_branch,
+                                s.pot_quantity, s.heat_retention_device,
+                                s.previous_stove_type, s.previous_stove_other,
+                                s.meals_per_day, s.cooking_fuel_source,
+                                s.cooking_location, s.terms_accepted, s.status,
+                                s.platform, s.is_archived,
+                                s.agent_approved, s.agent_approved_at,
+                                s.cancelled_at, s.cancel_reason,
+                                s.created_at, s.updated_at, s.signature,
+                                ad.full_address, ad.street, ad.city,
+                                ad.state as address_state, ad.country,
+                                ad.latitude, ad.longitude,
+                                pm.name as payment_model, pm.duration_months,
+                                cb.full_name as created_by_name,
+                                cb.email as created_by_email,
+                                ub.full_name as updated_by_name,
+                                apb.full_name as approved_by_name,
+                                sob.full_name as sold_on_behalf_of_name,
+                                cnb.full_name as cancelled_by_name,
+                                si.url as stove_image_url,
+                                ag.url as agreement_image_url,
+                                o.partner_id as org_partner_id,
+                                o.branch as org_branch,
+                                o.contact_person as org_contact,
+                                o.contact_phone as org_phone,
+                                o.state as org_state
+                           from public.sales s
+                           left join public.addresses ad on ad.id = s.address_id
+                           left join public.payment_models pm on pm.id = s.payment_model_id
+                           left join public.profiles cb on cb.id = s.created_by
+                           left join public.profiles ub on ub.id = s.updated_by
+                           left join public.profiles apb on apb.id = s.agent_approved_by
+                           left join public.profiles sob on sob.id = s.sold_on_behalf_of
+                           left join public.profiles cnb on cnb.id = s.cancelled_by
+                           left join public.uploads si on si.id = s.stove_image_id
+                           left join public.uploads ag on ag.id = s.agreement_image_id
+                           left join public.organizations o on o.id = s.organization_id
+                          where s.id = $1`,
+                  args: [saleId],
+                })
+                : { rows: [] },
+
+              // What the call centre added on top, with the dropdown values
+              // resolved to the labels a person chose rather than their ids.
+              saleId
+                ? connection.queryObject({
+                  text: `select cr.verification_outcome, cr.corrected_phone,
+                                cr.corrected_alt_phone, cr.corrected_end_user_name,
+                                cr.corrected_address, cr.corrected_state,
+                                cr.corrected_lga, cr.ward, cr.landmark,
+                                cr.stated_serial, cr.answers, cr.other_comments,
+                                cr.attempt_count, cr.last_attempt_at, cr.version,
+                                cr.created_at, cr.updated_at,
+                                cr.correction_requested_at, cr.correction_note,
+                                cr.correction_resolved_at,
+                                co.label as call_outcome,
+                                cro.label as correction_reason,
+                                ag.full_name as call_agent_name,
+                                ag.email as call_agent_email,
+                                crb.full_name as created_by_name,
+                                urb.full_name as updated_by_name,
+                                rqb.full_name as correction_requested_by_name,
+                                rsb.full_name as correction_resolved_by_name
+                           from data_center.call_records cr
+                           left join data_center.option_values co on co.id = cr.call_outcome_id
+                           left join data_center.option_values cro on cro.id = cr.correction_reason_id
+                           left join public.profiles ag on ag.id = cr.call_agent_id
+                           left join public.profiles crb on crb.id = cr.created_by
+                           left join public.profiles urb on urb.id = cr.updated_by
+                           left join public.profiles rqb on rqb.id = cr.correction_requested_by
+                           left join public.profiles rsb on rsb.id = cr.correction_resolved_by
+                          where cr.sale_id = $1`,
+                  args: [saleId],
+                })
+                : { rows: [] },
+
+              /**
+               * How the record got in.
+               *
+               * Matched on the serial as well as the sale, because a row that
+               * was rejected never got a sale_id and those are exactly the
+               * ones somebody is trying to account for.
+               */
+              connection.queryObject({
+                text: `select ir.row_number, ir.status, ir.rejection_reason,
+                              ir.exception_reason, ir.rejection_hint,
+                              ir.confirmed_at, ir.last_edited_at,
+                              (ir.draft_values is not null) as had_draft,
+                              b.id::text as batch_id, b.source, b.filename,
+                              b.state as batch_state, b.uploaded_at, b.committed_at,
+                              eb.full_name as edited_by_name,
+                              cfb.full_name as confirmed_by_name,
+                              ub.full_name as uploaded_by_name,
+                              cmb.full_name as committed_by_name
+                         from data_center.import_rows ir
+                         join data_center.import_batches b on b.id = ir.batch_id
+                         left join public.profiles eb on eb.id = ir.last_edited_by
+                         left join public.profiles cfb on cfb.id = ir.confirmed_by
+                         left join public.profiles ub on ub.id = b.uploaded_by
+                         left join public.profiles cmb on cmb.id = b.committed_by
+                        where ($1::uuid is not null and ir.sale_id = $1::uuid)
+                           or ir.stove_serial_no = $2
+                        order by b.uploaded_at desc
+                        limit 20`,
+                args: [saleId, stoveId],
+              }),
+
+              /**
+               * Every edit anybody made, as fields rather than snapshots.
+               *
+               * The trigger stores the whole row before and after; a page that
+               * printed both would be unreadable. changed_fields is the
+               * difference, computed the same way the Settings log computes
+               * it, so the two read alike.
+               */
+              connection.queryObject({
+                text: `select cl.id::text as id, cl.table_name, cl.action,
+                              cl.changed_at, p.full_name as changed_by_name,
+                              p.email as changed_by_email,
+                              case when cl.action = 'UPDATE' then (
+                                select coalesce(array_agg(k order by k), '{}')
+                                  from jsonb_object_keys(coalesce(cl.new_values, '{}'::jsonb)) k
+                                 where coalesce(cl.new_values -> k, 'null'::jsonb)
+                                       is distinct from coalesce(cl.old_values -> k, 'null'::jsonb)
+                                   and k not in ('updated_at','updated_by','created_at','created_by')
+                              ) else '{}'::text[] end as changed_fields
+                         from data_center.change_log cl
+                         left join public.profiles p on p.id = cl.changed_by
+                        where (cl.table_name = 'call_records' and cl.record_pk = $1)
+                           or (cl.table_name = 'assignment_batches' and cl.record_pk = $2)
+                        order by cl.changed_at desc
+                        limit 50`,
+                args: [saleId ?? "", batchId],
+              }),
+
+              // Whether the paper for this transfer ever came back at all.
+              transactionId
+                ? connection.queryObject({
+                  text: `select rc.received_count, rc.received_at, rc.note, rc.source,
+                                p.full_name as logged_by
+                           from data_center.record_consignments rc
+                           left join public.profiles p on p.id = rc.created_by
+                          where rc.transaction_id = $1
+                          order by rc.received_at desc
+                          limit 5`,
+                  args: [transactionId],
+                })
+                : { rows: [] },
+
+              /**
+               * Anybody else holding this phone number.
+               *
+               * The rule is one stove to one phone, and create-sale already
+               * refuses a second sale on a number whose last ten digits are
+               * already live - so in a healthy register this comes back empty
+               * every time. It is asked anyway, because the one place a
+               * violation would be noticed is the record that names the buyer,
+               * the serial and the number together, and a rule nobody can
+               * observe is a rule nobody trusts.
+               *
+               * The tail is compared exactly as create-sale compares it, which
+               * is also the expression idx_sales_phone_tail is built on, so
+               * this is an index lookup rather than a scan of every sale.
+               */
+              saleId
+                ? connection.queryObject({
+                  text: `with me as (
+                           select id,
+                                  right(regexp_replace(coalesce(phone, ''), '[^0-9]', '', 'g'), 10) as tail
+                             from public.sales where id = $1
+                         )
+                         select s2.stove_serial_no, s2.transaction_id,
+                                s2.end_user_name, s2.sales_date, s2.phone,
+                                sb2.stove_id
+                           from public.sales s2
+                           join me on s2.id <> me.id
+                           left join public.stove_ids_base sb2 on sb2.sale_id = s2.id
+                          where s2.is_archived is not true
+                            and length(me.tail) = 10
+                            and right(regexp_replace(coalesce(s2.phone, ''), '[^0-9]', '', 'g'), 10)
+                                = me.tail
+                          limit 5`,
+                  args: [saleId],
+                })
+                : { rows: [] },
+
+              // How many stoves rode along on the same transfer, and how many
+              // of those have become sales. Cast to int: count() is a bigint
+              // and JSON.stringify throws on those.
+              transferId
+                ? connection.queryObject({
+                  text: `select count(*)::int as total,
+                                count(sb.sale_id)::int as sold
+                           from data_center.v_transfer_stoves ts
+                           join public.stove_ids_base sb on sb.stove_id = ts.stove_id
+                          where ts.transfer_id = $1`,
+                  args: [transferId],
+                })
+                : { rows: [] },
+            ]);
+
+          return json(
+            {
+              data: {
+                stove,
+                attempts: attempts.rows,
+                sale: sale.rows[0] ?? null,
+                enrichment: enrichment.rows[0] ?? null,
+                provenance: provenance.rows,
+                changes: changes.rows,
+                consignment: consignment.rows,
+                phoneTwins: phoneTwins.rows,
+                siblings: siblings.rows[0] ?? null,
+              },
+            },
+            200,
+            cors,
+          );
+        });
+      }
+
+      /**
+       * One box, two anchors.
+       *
+       * A stove ID is the identifier everything else hangs off, so it resolves
+       * straight to the record. A transaction reference names a whole transfer,
+       * so it resolves to the batch and the stoves on it, which is what
+       * somebody holding a receipt with only the reference on it actually has.
+       *
+       * A prefix returns candidates rather than nothing, because half a serial
+       * read off a smudged label is the common case and refusing it sends the
+       * person back to the paper.
+       */
+      /**
+       * The earliest date anything in the module knows about.
+       *
+       * The period control offers whole years, and offering years the register
+       * does not hold reads as "no sales that year" rather than "we were not
+       * trading". One cheap read, cached by the caller for the session, rather
+       * than a guessed start year baked into the front end.
+       */
+      case "period_bounds": {
+        const superAdmin = isSuperAdmin(profile.role);
+        const resolved = superAdmin
+          ? { accessRole: null, features: [] as string[] }
+          : await resolveAccess(userId);
+        if (!superAdmin && resolved.accessRole === null) {
+          return json({ error: "No Data Center access", code: "no_access" }, 403, cors);
+        }
+
+        return await withReadConnection(async (connection) => {
+          const found = await connection.queryObject({
+            // min() on an indexed column is an index scan, not a table scan;
+            // idx_sales_sales_date_id serves it either way round.
+            text: `select
+                     (select min(sales_date)::text from public.sales
+                       where is_archived is not true) as earliest_sale,
+                     (select min(left(f.sales_date, 10)) from data_center.transfer_funnel f
+                       where f.sales_date ~ '^[0-9]{4}-[0-9]{2}-[0-9]{2}') as earliest_transfer`,
+          });
+          const row = (found.rows[0] ?? {}) as {
+            earliest_sale: string | null;
+            earliest_transfer: string | null;
+          };
+          // The earlier of the two, because one control covers both kinds of
+          // surface and a year is offered if either has anything in it.
+          const candidates = [row.earliest_sale, row.earliest_transfer].filter(
+            (v): v is string => Boolean(v),
+          );
+          return json(
+            {
+              data: {
+                earliest: candidates.length > 0 ? candidates.sort()[0] : null,
+                earliestSale: row.earliest_sale,
+                earliestTransfer: row.earliest_transfer,
+              },
+            },
+            200,
+            cors,
+          );
+        });
+      }
+
+      case "stove_search": {
+        const superAdmin = isSuperAdmin(profile.role);
+        const resolved = superAdmin
+          ? { accessRole: null, features: [] as string[] }
+          : await resolveAccess(userId);
+        if (!superAdmin && resolved.accessRole === null) {
+          return json({ error: "No Data Center access", code: "no_access" }, 403, cors);
+        }
+        if (!superAdmin && !resolved.features.includes("records.view")) {
+          return json({ error: "Not permitted", code: "no_feature" }, 403, cors);
+        }
+
+        const raw = String((body as { query?: string }).query ?? "").trim().slice(0, 120);
+        if (raw.length < 3) {
+          return json(
+            { error: "Type at least three characters", code: "bad_input" },
+            400,
+            cors,
+          );
+        }
+
+        const scopeInput = await resolveScope(
+          supabase,
+          userId,
+          profile.role,
+          profile.organization_id ?? null,
+        );
+        const scope = buildTransferScopeSql({ ...scopeInput, requestedOrgId: null }, 2, "f");
+        // Escaped, so a serial containing % or _ searches for itself rather
+        // than for everything.
+        const like = `${raw.replace(/[%_\\]/g, (c) => `\\${c}`)}%`;
+
+        return await withReadConnection(async (connection) => {
+          // An exact stove ID is the answer, not a candidate.
+          const exact = await connection.queryObject({
+            text: `select sb.stove_id from public.stove_ids_base sb
+                    where upper(sb.stove_id) = upper($1) limit 1`,
+            args: [raw],
+          });
+          if (exact.rows.length > 0) {
+            return json(
+              {
+                data: {
+                  kind: "stove",
+                  stoveId: (exact.rows[0] as { stove_id: string }).stove_id,
+                  stoves: [],
+                  transfers: [],
+                },
+              },
+              200,
+              cors,
+            );
+          }
+
+          const [transfers, stoves] = await Promise.all([
+            // A transfer reference, under either name it goes by: the funnel
+            // calls it transaction_id, the stock table sales_reference.
+            connection.queryObject({
+              text: `select f.transfer_id::text, f.transaction_id, f.partner_name,
+                            f.organization_id::text, f.sales_rep, f.sales_date,
+                            f.issued_count, f.digitalised_count, f.verified_count
+                       from data_center.transfer_funnel f
+                      where upper(f.transaction_id) like upper($1)
+                        and ${scope.sql}
+                      order by f.sales_date desc nulls last
+                      limit 10`,
+              args: [like, ...scope.args],
+            }),
+            // Partial serials. Ordered by the serial itself so a run of them
+            // reads in the order they are printed on the labels.
+            connection.queryObject({
+              text: `select sb.stove_id, sb.status as stock_status,
+                            f.partner_name, f.transaction_id,
+                            (sb.sale_id is not null) as sold
+                       from public.stove_ids_base sb
+                       left join data_center.v_transfer_stoves b on b.stove_id = sb.stove_id
+                       left join data_center.transfer_funnel f on f.transfer_id = b.transfer_id
+                      where upper(sb.stove_id) like upper($1)
+                        and (f.transfer_id is null or ${scope.sql})
+                      order by sb.stove_id
+                      limit 25`,
+              args: [like, ...scope.args],
+            }),
+          ]);
+
+          return json(
+            {
+              data: {
+                kind: transfers.rows.length > 0 || stoves.rows.length > 0 ? "matches" : "none",
+                stoveId: null,
+                transfers: transfers.rows,
+                stoves: stoves.rows,
+              },
+            },
+            200,
+            cors,
+          );
         });
       }
 

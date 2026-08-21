@@ -18,6 +18,11 @@ type StoveRecordsSearch = {
   dateFrom?: string;
   dateTo?: string;
   label?: string;
+  /**
+   * The shared period control, as one parameter. `thisYear` is the default and
+   * is left out of the URL entirely, so an unfiltered link stays clean.
+   */
+  period?: string;
 };
 
 const str = (v: unknown) => (typeof v === "string" && v !== "" ? v : undefined);
@@ -30,6 +35,7 @@ export const Route = createFileRoute("/data-center/stove-records")({
     dateFrom: str(search.dateFrom),
     dateTo: str(search.dateTo),
     label: str(search.label),
+    period: str(search.period),
   }),
   component: Page,
 });

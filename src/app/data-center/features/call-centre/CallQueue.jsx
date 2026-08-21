@@ -1,4 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
+import PeriodFilter from "../../components/PeriodFilter";
+import { usePeriod } from "../../lib/usePeriod";
 import { useRecords, PAGE_SIZE } from "../../lib/useRecords";
 import { useIsPhone } from "../../lib/useMediaQuery";
 import { plural } from "../../lib/plural";
@@ -155,16 +157,31 @@ export default function CallQueue({ canEdit, drill = null }) {
     return () => clearTimeout(timer);
   }, [search]);
 
+  const { period, setPeriod, resolved, earliest } = usePeriod("/data-center/call-centre");
+
+  /**
+   * A drill that names its own dates outranks the period, the same way it does
+   * on the records table: following "March" from a chart is a request for
+   * March, not an invitation to re-widen it to the year.
+   */
+  const drillSetsDates = Boolean(drill?.filters?.dateFrom || drill?.filters?.dateTo);
+
   const filters = useMemo(() => {
     const base = PRESETS.find((p) => p.key === preset)?.filters ?? {};
     // A drill-through narrows whatever the preset says, and it comes from the
     // URL rather than from state, so it survives reloads and back navigation.
     return {
+      ...(drillSetsDates
+        ? {}
+        : {
+            ...(resolved.dateFrom ? { dateFrom: resolved.dateFrom } : {}),
+            ...(resolved.dateTo ? { dateTo: resolved.dateTo } : {}),
+          }),
       ...base,
       ...(drill?.filters ?? {}),
       ...(appliedSearch ? { search: appliedSearch } : {}),
     };
-  }, [preset, appliedSearch, drill]);
+  }, [preset, appliedSearch, drill, drillSetsDates, resolved.dateFrom, resolved.dateTo]);
 
   const { rows, loading, loadingMore, error, hasMore, scope, loadMore, reload } =
     useRecords(filters, "call_center");
@@ -231,6 +248,15 @@ export default function CallQueue({ canEdit, drill = null }) {
             </button>
           ))}
         </div>
+
+        {!drillSetsDates && (
+          <PeriodFilter
+            period={period}
+            onChange={setPeriod}
+            earliest={earliest}
+            noun="records"
+          />
+        )}
 
         <div className="relative w-full min-w-0 sm:ml-auto sm:w-auto sm:min-w-[220px]">
           <Search className="pointer-events-none absolute left-2.5 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-400" />

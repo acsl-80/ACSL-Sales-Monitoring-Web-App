@@ -23,6 +23,11 @@ type CallCentreSearch = {
   preset?: string;
   /** One exact outcome, where a scorecard column's four-outcome group is too wide. */
   verificationOutcome?: string;
+  /**
+   * The shared period control, as one parameter. `thisYear` is the default and
+   * is left out of the URL entirely, so an unfiltered link stays clean.
+   */
+  period?: string;
 };
 
 const str = (v: unknown) => (typeof v === "string" && v !== "" ? v : undefined);
@@ -38,6 +43,7 @@ export const Route = createFileRoute("/data-center/call-centre")({
     label: str(search.label),
     preset: str(search.preset),
     verificationOutcome: str(search.verificationOutcome),
+    period: str(search.period),
   }),
   component: Page,
 });

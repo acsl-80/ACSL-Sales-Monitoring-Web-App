@@ -1,8 +1,11 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
+import { useSearch } from "@tanstack/react-router";
 import { dataCenterClient, DataCenterError } from "../../lib/client";
 import ExportButton from "../../components/ExportButton";
 import PartnerDetail from "./PartnerDetail";
 import { plural } from "../../lib/plural";
+import PeriodFilter from "../../components/PeriodFilter";
+import { usePeriod } from "../../lib/usePeriod";
 import {
   Handshake, Loader2, AlertTriangle, Search, X, Clock, TriangleAlert,
 } from "lucide-react";
@@ -97,7 +100,19 @@ const EXPORT_COLUMNS = [
 
 export default function PartnerRecords() {
   const [rows, setRows] = useState([]);
-  const [openPartner, setOpenPartner] = useState(null);
+  /**
+   * A partner named in a link is open on arrival.
+   *
+   * The stove record links here by id, and landing on the full list with the
+   * partner merely somewhere in it would make the link a suggestion rather
+   * than a destination.
+   */
+  const linked = useSearch({ from: "/data-center/partner-records" });
+  const [openPartner, setOpenPartner] = useState(() =>
+    linked.organizationId
+      ? { organization_id: linked.organizationId, partner_name: linked.partnerName ?? "" }
+      : null,
+  );
   const [computedAt, setComputedAt] = useState(null);
   const [scope, setScope] = useState(null);
   const [loading, setLoading] = useState(true);
@@ -105,6 +120,13 @@ export default function PartnerRecords() {
   const [search, setSearch] = useState("");
   const [applied, setApplied] = useState("");
   const [outstandingOnly, setOutstandingOnly] = useState(false);
+  /**
+   * Partner Records had no date filter at all, which made it the one surface
+   * that could not be asked the same question as the rest: a scorecard over
+   * all time beside a record list over this year reads as a contradiction
+   * rather than as two different questions.
+   */
+  const { period, setPeriod, resolved, earliest } = usePeriod("/data-center/partner-records");
 
   useEffect(() => {
     const t = setTimeout(() => setApplied(search), 350);
@@ -119,6 +141,8 @@ export default function PartnerRecords() {
         filters: {
           ...(applied ? { search: applied } : {}),
           ...(outstandingOnly ? { outstandingOnly: true } : {}),
+          ...(resolved.dateFrom ? { dateFrom: resolved.dateFrom } : {}),
+          ...(resolved.dateTo ? { dateTo: resolved.dateTo } : {}),
         },
       });
       setRows(page.rows);
@@ -132,7 +156,7 @@ export default function PartnerRecords() {
     } finally {
       setLoading(false);
     }
-  }, [applied, outstandingOnly]);
+  }, [applied, outstandingOnly, resolved.dateFrom, resolved.dateTo]);
 
   useEffect(() => {
     load();
@@ -214,6 +238,12 @@ export default function PartnerRecords() {
             className="w-full rounded-md border border-gray-300 py-1.5 pl-8 pr-3 text-sm focus:border-(--dc-accent) focus:outline-none"
           />
         </div>
+        <PeriodFilter
+          period={period}
+          onChange={setPeriod}
+          earliest={earliest}
+          noun="consignments"
+        />
         <label className="inline-flex items-center gap-2 text-sm text-gray-700">
           <input
             type="checkbox"

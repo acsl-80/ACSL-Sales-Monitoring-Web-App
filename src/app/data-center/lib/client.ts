@@ -271,11 +271,28 @@ export type TransferFunnelRow = {
   computed_at: string;
 };
 
+export type TransferFunnelFilters = {
+  organizationId?: string;
+  transferState?: string;
+  salesRep?: string;
+  outstandingOnly?: boolean;
+  search?: string;
+  /** The shared period control's output. YYYY-MM-DD, inclusive. */
+  dateFrom?: string;
+  dateTo?: string;
+};
+
 export type TransferFunnelPage = {
   rows: TransferFunnelRow[];
   scope: string;
   computedAt: string | null;
 };
+
+let boundsCache: Promise<{
+  earliest: string | null;
+  earliestSale: string | null;
+  earliestTransfer: string | null;
+}> | null = null;
 
 export const dataCenterClient = {
   /**
@@ -368,13 +385,49 @@ export const dataCenterClient = {
   batchStoves: (transferId: string) =>
     call<{ stoves: BatchStove[] }>("data-center-read", "batch_stoves", { transferId }),
 
-  /** One stove, everything: the transfer, the sale, the agent, the calls. */
+  /**
+   * One stove, everything.
+   *
+   * The whole of it: where the ERP issued it, the transfer that sent it to a
+   * partner, the sale it became, who typed that sale up and from which file,
+   * the call centre's own additions, every call anybody made, and every field
+   * anybody has edited since. Nine tables, one request, because a person
+   * holding a serial is asking one question.
+   */
   stoveDetail: (stoveId: string) =>
-    call<{ stove: Record<string, unknown>; attempts: Record<string, unknown>[] }>(
-      "data-center-read",
-      "stove_detail",
-      { stoveId },
-    ),
+    call<StoveRecord>("data-center-read", "stove_detail", { stoveId }),
+
+  /**
+   * Find a stove by its ID, or a whole transfer by its reference.
+   *
+   * Two anchors because two things get written on paper. An exact serial is an
+   * answer and the caller should navigate straight to it; anything else is a
+   * shortlist.
+   */
+  stoveSearch: (query: string) =>
+    call<StoveSearchResult>("data-center-read", "stove_search", { query }),
+
+  /**
+   * The earliest date the module knows about, so the period control offers
+   * only years the register actually holds.
+   *
+   * Cached for the session: it moves once, when the oldest record is older
+   * than the oldest record, and asking on every page is a request whose answer
+   * is the same every time.
+   */
+  periodBounds: () => {
+    boundsCache ??= call<{
+      earliest: string | null;
+      earliestSale: string | null;
+      earliestTransfer: string | null;
+    }>("data-center-read", "period_bounds", {}).catch((err) => {
+      // A failed lookup must not poison the session: clear it so the next
+      // caller retries rather than inheriting the rejection forever.
+      boundsCache = null;
+      throw err;
+    });
+    return boundsCache;
+  },
 
 
   /** Table 2. Same paging contract, plus the call centre's own filters. */
@@ -393,6 +446,74 @@ export const dataCenterClient = {
  * form renderer knows, which is what makes adding a question an insert rather
  * than a release.
  */
+/**
+ * Everything one stove ID anchors.
+ *
+ * Kept loose on purpose. The sale carries whatever columns public.sales
+ * carries, and the call centre's `answers` carry whatever questions the
+ * registry currently asks - both change without a release, and a type that
+ * enumerated them would be wrong the first time somebody adds a question.
+ * What is named here is only the structure the page navigates by.
+ */
+export type StoveRecord = {
+  stove: Record<string, unknown>;
+  attempts: Record<string, unknown>[];
+  sale: Record<string, unknown> | null;
+  enrichment: Record<string, unknown> | null;
+  provenance: Record<string, unknown>[];
+  changes: {
+    id: string;
+    table_name: string;
+    action: string;
+    changed_at: string;
+    changed_by_name: string | null;
+    changed_by_email: string | null;
+    changed_fields: string[];
+  }[];
+  consignment: Record<string, unknown>[];
+  /**
+   * Any other live sale carrying this buyer's phone number.
+   *
+   * One stove to one phone is the rule, and create-sale enforces it, so this
+   * is empty in a healthy register. It is carried anyway so the record can
+   * show a violation rather than leave it to be discovered by a call agent
+   * ringing a number that answers about a different stove.
+   */
+  phoneTwins: {
+    stove_id: string | null;
+    stove_serial_no: string | null;
+    transaction_id: string | null;
+    end_user_name: string | null;
+    sales_date: string | null;
+    phone: string | null;
+  }[];
+  siblings: { total: number; sold: number } | null;
+};
+
+export type StoveSearchResult = {
+  /** "stove" is an exact hit and should be opened, not listed. */
+  kind: "stove" | "matches" | "none";
+  stoveId: string | null;
+  transfers: {
+    transfer_id: string;
+    transaction_id: string;
+    partner_name: string | null;
+    organization_id: string;
+    sales_rep: string | null;
+    sales_date: string | null;
+    issued_count: number;
+    digitalised_count: number;
+    verified_count: number;
+  }[];
+  stoves: {
+    stove_id: string;
+    stock_status: string | null;
+    partner_name: string | null;
+    transaction_id: string | null;
+    sold: boolean;
+  }[];
+};
+
 export type FieldDef = {
   key: string;
   label: string;

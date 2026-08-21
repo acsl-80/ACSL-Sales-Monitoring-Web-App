@@ -1,5 +1,8 @@
 import { useEffect, useMemo, useState } from "react";
+import Link from "@/compat/Link";
 import { useRecords, PAGE_SIZE } from "../../lib/useRecords";
+import PeriodFilter from "../../components/PeriodFilter";
+import { usePeriod } from "../../lib/usePeriod";
 import { useVirtualRows } from "../../lib/useVirtualRows";
 import { useIsPhone } from "../../lib/useMediaQuery";
 import { Loader2, AlertTriangle, Search, X, Database, Filter } from "lucide-react";
@@ -62,8 +65,32 @@ const STATUS_TONE = {
   not_applicable: "bg-gray-100 text-gray-600",
 };
 
+/**
+ * The serial, as a way in.
+ *
+ * Every row in this table is about one stove, and the serial is the only
+ * column that names a thing with a page of its own. Making it a link is what
+ * turns a table of sales into a way to reach any one of their histories.
+ */
+function SerialLink({ serial, className = "" }) {
+  if (!serial) return <span className={className}>—</span>;
+  return (
+    <Link
+      href={`/data-center/stove/${encodeURIComponent(serial)}`}
+      onClick={(e) => e.stopPropagation()}
+      title={`Everything about ${serial}`}
+      className={`font-mono text-(--dc-accent) underline decoration-(--dc-accent)/30 underline-offset-2 transition hover:decoration-(--dc-accent) ${className}`}
+    >
+      {serial}
+    </Link>
+  );
+}
+
 function Cell({ row, column }) {
   const value = cellValue(row, column.key);
+  if (column.key === "stove_serial_no") {
+    return <SerialLink serial={row.stove_serial_no} className="truncate" />;
+  }
   if (column.key === "sale_status" || column.key === "payment_status") {
     const tone = STATUS_TONE[row[column.key]] ?? "bg-gray-100 text-gray-600";
     return (
@@ -96,7 +123,7 @@ function PhoneRow({ row }) {
         </span>
       </div>
       <div className="flex items-center gap-2 text-xs text-gray-500">
-        <span className="truncate font-mono">{cellValue(row, "stove_serial_no")}</span>
+        <SerialLink serial={row.stove_serial_no} className="truncate" />
         <span aria-hidden="true">·</span>
         <span className="truncate">{cellValue(row, "partner_name")}</span>
       </div>
@@ -173,7 +200,7 @@ function FilterBar({ draft, setDraft, onClear, active }) {
   );
 }
 
-export default function RecordsTable({ drill = null }) {
+export default function RecordsTable({ drill = null, routeId = "/data-center/stove-records" }) {
   // Two states, deliberately. `draft` is what the user is typing; `applied` is
   // what has been asked of the server. Debouncing between them is what stops a
   // request per keystroke.
@@ -188,9 +215,35 @@ export default function RecordsTable({ drill = null }) {
   // A drill-through from the dashboard narrows the table, and what the user
   // types narrows it further: their filters come last so they always win. The
   // drill lives in the URL, not in state, so back leaves it behind.
+  const { period, setPeriod, resolved, earliest } = usePeriod(routeId);
+
+  /**
+   * A dashboard drill that carries its own dates outranks the period.
+   *
+   * Clicking "March" on a chart is a request for March, and a period control
+   * quietly reasserting "this year" over it would answer a question nobody
+   * asked. So when the drill names dates, it wins and the control steps aside
+   * rather than displaying a period the table is not on.
+   */
+  const drillSetsDates = Boolean(drill?.filters?.dateFrom || drill?.filters?.dateTo);
+
+  /**
+   * Precedence, widest first: the period, then the drill, then what the user
+   * typed. Their own filters come last so they always win, which is the rule
+   * this table has always followed.
+   */
   const filters = useMemo(
-    () => ({ ...(drill?.filters ?? {}), ...applied }),
-    [drill, applied],
+    () => ({
+      ...(drillSetsDates
+        ? {}
+        : {
+            ...(resolved.dateFrom ? { dateFrom: resolved.dateFrom } : {}),
+            ...(resolved.dateTo ? { dateTo: resolved.dateTo } : {}),
+          }),
+      ...(drill?.filters ?? {}),
+      ...applied,
+    }),
+    [drill, applied, drillSetsDates, resolved.dateFrom, resolved.dateTo],
   );
 
   const { rows, loading, loadingMore, error, hasMore, scope, loadMore } =
@@ -253,6 +306,22 @@ export default function RecordsTable({ drill = null }) {
           </button>
         </div>
       )}
+
+      <div className="flex flex-wrap items-center gap-2 border-b border-gray-100 bg-(--dc-accent-soft)/20 px-4 py-2.5">
+        {drillSetsDates ? (
+          <p className="text-xs text-gray-600">
+            The dates come from the dashboard figure you followed. Clear the
+            narrowing above to choose a period yourself.
+          </p>
+        ) : (
+          <PeriodFilter
+            period={period}
+            onChange={setPeriod}
+            earliest={earliest}
+            noun="sales"
+          />
+        )}
+      </div>
 
       <FilterBar
         draft={draft}

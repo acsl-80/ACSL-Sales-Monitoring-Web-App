@@ -630,7 +630,18 @@ test.describe("the digitalisation sheet is a workbook", () => {
      * mapping is not a template, and this one handed out eleven columns its
      * own importer did not recognise until the alias table learned them.
      */
-    await expect(page.getByText(/rows staged/)).toBeVisible({ timeout: 40_000 });
+    /**
+     * The same sheet, downloaded twice, is the same bytes - so every run after
+     * the first meets the duplicate-content guard instead of the staging
+     * summary. The guard is right and worth keeping; it just has to be
+     * answered before the round trip can be judged.
+     */
+    const staged = page.getByText(/rows staged/);
+    const guard = page.getByRole("button", { name: "Upload it again" });
+    await expect(staged.or(guard).first()).toBeVisible({ timeout: 40_000 });
+    if (await guard.isVisible()) await guard.click();
+
+    await expect(staged).toBeVisible({ timeout: 40_000 });
     await expect(page.getByText(/None of these headers are recognised/)).toHaveCount(0);
     await expect(page.getByText(/cannot open .xlsx/)).toHaveCount(0);
 

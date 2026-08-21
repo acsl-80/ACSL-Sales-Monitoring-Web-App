@@ -68,7 +68,16 @@ test.describe("the assignment log", () => {
       action: "run",
     });
     expect(refused.status).toBe(403);
-    expect(JSON.stringify(refused.body)).toMatch(/Only a super admin/);
+    /**
+     * The refusal names the permission and how to get it.
+     *
+     * It used to say "Only a super admin", which stopped being true when the
+     * data manager level was added: assignment is theirs to run too. A message
+     * that names the wrong authority sends people to the wrong person.
+     */
+    const said = JSON.stringify(refused.body);
+    expect(said).toMatch(/assignment\.manage/);
+    expect(said).toMatch(/data manager/);
   });
 
   test("a call agent can read their own batches", async ({ page }) => {

@@ -152,7 +152,12 @@ test.describe("access and the log live on Settings, not on the hub", () => {
 
     // The seeded grants are listed with their levels.
     await expect(page.getByText("callcentre@preview.acsl.test")).toBeVisible();
-    await expect(page.getByText("manager@preview.acsl.test")).toBeVisible();
+    /**
+     * Anchored, because "manager@" is a substring of "datamanager@" and a
+     * loose match started resolving to two people the day that account was
+     * seeded.
+     */
+    await expect(page.getByText(/^manager@preview\.acsl\.test/)).toBeVisible();
   });
 
   test("an editor is refused Settings by URL, not merely offered no card", async ({

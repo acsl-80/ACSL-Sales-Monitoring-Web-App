@@ -2,6 +2,7 @@ import { useMemo } from "react";
 import { useNavigate, useSearch } from "@tanstack/react-router";
 import DataCentreShell from "../components/DataCentreShell";
 import RecordsTable from "../features/records/RecordsTable";
+import StoveFinder from "../features/stove-record/StoveFinder";
 import { DATA_CENTER_FEATURES } from "../lib/features";
 
 /**
@@ -41,7 +42,18 @@ function Inner() {
     };
   }, [search, navigate]);
 
-  return <RecordsTable drill={drill} />;
+  /*
+   * The finder sits above the table because the table answers 'which records
+   * match this' and people just as often arrive knowing exactly which record
+   * they want. Filtering a register of half a million rows down to one serial
+   * is the long way round to a thing that has its own page.
+   */
+  return (
+    <div className="space-y-4">
+      <StoveFinder />
+      <RecordsTable drill={drill} />
+    </div>
+  );
 }
 
 export default function StoveRecordsPage() {
