@@ -1214,17 +1214,51 @@ serve(async (req) => {
             // fixable.
             const firstSeen = new Map<string, number>();
 
+            /**
+             * Every verdict decided in memory, then written in one statement.
+             *
+             * The lookups above were already batched - one query for stock,
+             * one for transfers - but the verdicts were written back a row at
+             * a time, and each of those is a network round trip from the edge
+             * runtime to Postgres. Measured against the preview: 200 rows took
+             * 22.2 seconds, past the client's own 20-second abort, so a sheet
+             * this module hands out could not be validated through the UI at
+             * all. At the 500,000 rows this module is built for it would be
+             * about fifteen hours.
+             *
+             * `jsonb_to_recordset` turns the whole set of verdicts into rows
+             * Postgres can join against, which makes the write one statement
+             * regardless of batch size. This is the same shape the staging
+             * insert already uses.
+             */
+            type Verdict = {
+              id: string;
+              status: "rejected" | "exception" | "valid";
+              rejection_reason: string | null;
+              rejection_hint: string | null;
+              exception_reason: string | null;
+              stove_serial_no: string | null;
+              normalized: string | null;
+              transaction_id: string | null;
+              duplicate_of_row: number | null;
+            };
+
+            const verdicts: Verdict[] = [];
             let valid = 0, rejected = 0, exception = 0, linked = 0;
+
             for (const s of shaped) {
               if (!s.result.ok) {
                 rejected++;
-                await conn.queryObject({
-                  text: `update data_center.import_rows
-                         set status = 'rejected', rejection_reason = $2,
-                             rejection_hint = $3, exception_reason = null,
-                             normalized = null
-                         where id = $1`,
-                  args: [s.id, s.result.reason, s.result.hint ?? null],
+                verdicts.push({
+                  id: s.id,
+                  status: "rejected",
+                  rejection_reason: s.result.reason,
+                  rejection_hint: s.result.hint ?? null,
+                  exception_reason: null,
+                  stove_serial_no: null,
+                  normalized: null,
+                  transaction_id: null,
+                  duplicate_of_row: null,
                 });
                 continue;
               }
@@ -1254,16 +1288,16 @@ serve(async (req) => {
 
               if (exceptionReason) {
                 exception++;
-                await conn.queryObject({
-                  text: `update data_center.import_rows
-                         set status = 'exception', exception_reason = $2, rejection_reason = null,
-                             stove_serial_no = $3, normalized = $4::jsonb,
-                             transaction_id = $5, duplicate_of_row = $6
-                         where id = $1`,
-                  args: [
-                    s.id, exceptionReason, row.stoveSerialNo, JSON.stringify(row),
-                    transactionId, duplicateOf,
-                  ],
+                verdicts.push({
+                  id: s.id,
+                  status: "exception",
+                  rejection_reason: null,
+                  rejection_hint: null,
+                  exception_reason: exceptionReason,
+                  stove_serial_no: row.stoveSerialNo,
+                  normalized: JSON.stringify(row),
+                  transaction_id: transactionId,
+                  duplicate_of_row: duplicateOf,
                 });
               } else {
                 valid++;
@@ -1273,15 +1307,49 @@ serve(async (req) => {
                 // that validated on `SA000000A0` would be refused at commit for
                 // a stove recorded as `SA000000a0`.
                 const canonical = { ...row, stoveSerialNo: found!.stove_id };
-                await conn.queryObject({
-                  text: `update data_center.import_rows
-                         set status = 'valid', rejection_reason = null, exception_reason = null,
-                             stove_serial_no = $2, normalized = $3::jsonb,
-                             transaction_id = $4, duplicate_of_row = null
-                         where id = $1`,
-                  args: [s.id, found!.stove_id, JSON.stringify(canonical), transactionId],
+                verdicts.push({
+                  id: s.id,
+                  status: "valid",
+                  rejection_reason: null,
+                  rejection_hint: null,
+                  exception_reason: null,
+                  stove_serial_no: found!.stove_id,
+                  normalized: JSON.stringify(canonical),
+                  transaction_id: transactionId,
+                  duplicate_of_row: duplicateOf,
                 });
               }
+            }
+
+            if (verdicts.length > 0) {
+              /**
+               * `normalized` arrives as a JSON *string* inside the payload and
+               * is cast back to jsonb here rather than nested as an object,
+               * because nesting it would make the outer document depend on the
+               * shape of every row's contents - and one row carrying a key
+               * that collides with a column name would silently reshape the
+               * recordset.
+               */
+              await conn.queryObject({
+                text: `update data_center.import_rows r
+                          set status           = v.status,
+                              rejection_reason = v.rejection_reason,
+                              rejection_hint   = v.rejection_hint,
+                              exception_reason = v.exception_reason,
+                              stove_serial_no  = coalesce(v.stove_serial_no, r.stove_serial_no),
+                              normalized       = v.normalized::jsonb,
+                              transaction_id   = v.transaction_id,
+                              duplicate_of_row = v.duplicate_of_row
+                         from jsonb_to_recordset($1::jsonb) as v(
+                                id uuid, status text,
+                                rejection_reason text, rejection_hint text,
+                                exception_reason text, stove_serial_no text,
+                                normalized text, transaction_id text,
+                                duplicate_of_row int
+                              )
+                        where r.id = v.id`,
+                args: [JSON.stringify(verdicts)],
+              });
             }
 
             await conn.queryObject({
