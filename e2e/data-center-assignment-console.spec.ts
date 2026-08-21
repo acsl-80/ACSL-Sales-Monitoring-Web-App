@@ -84,7 +84,9 @@ test.describe("the assignment console shows who holds what", () => {
     ).toBeVisible({ timeout: 20_000 });
 
     await expect(page.getByRole("button", { name: "Export agents" })).toBeVisible();
-    await page.getByRole("button", { name: "Choose columns to export" }).click();
+    // The page carries two exports, so each column picker is named after the
+    // one it belongs to rather than both saying "choose columns".
+    await page.getByRole("button", { name: "Choose columns for Export agents" }).click();
 
     // All or none, then the columns themselves. An export that is the input to
     // something else needs to be able to leave columns out.
@@ -111,10 +113,29 @@ test.describe("assigning by hand goes through the engine's own tables", () => {
       };
     }).data;
 
-    test.skip(state.pool.length === 0, "Nothing callable in the pool to assign");
+    // Arrange rather than skip. A skipped test reads as a pass, and this one
+    // is the only thing proving manual assignment end to end - so if the pool
+    // happens to be empty because everything is already assigned, put one
+    // record back and use that. Unassigning is itself under test below.
+    let pool = state.pool;
+    if (pool.length === 0) {
+      const held = await callEdgeFunction(page, "data-center-assign", {
+        action: "agent_detail",
+        agentId: state.agents[0].agent_id,
+      });
+      const items = (held.body as { data: { items: { sale_id: string }[] } }).data.items;
+      expect(items.length).toBeGreaterThan(0);
+      await callEdgeFunction(page, "data-center-assign", {
+        action: "unassign_item",
+        saleId: items[0].sale_id,
+      });
+      const refreshed = await callEdgeFunction(page, "data-center-assign", { action: "agents" });
+      pool = (refreshed.body as { data: { pool: typeof state.pool } }).data.pool;
+    }
+    expect(pool.length).toBeGreaterThan(0);
 
     const agent = state.agents[0];
-    const partner = state.pool[0];
+    const partner = pool[0];
     const want = Math.min(2, partner.callable);
 
     const assigned = await callEdgeFunction(page, "data-center-assign", {
@@ -149,8 +170,10 @@ test.describe("assigning by hand goes through the engine's own tables", () => {
 
     const after = await callEdgeFunction(page, "data-center-assign", { action: "agents" });
     const poolAfter = (after.body as { data: { pool: { callable: number }[] } }).data.pool;
+    // Exactly what it took, back where it came from. Compared against the pool
+    // as it stood after arranging, not before.
     expect(poolAfter.reduce((n, p) => n + p.callable, 0)).toBe(
-      state.pool.reduce((n, p) => n + p.callable, 0),
+      pool.reduce((n, p) => n + p.callable, 0),
     );
   });
 

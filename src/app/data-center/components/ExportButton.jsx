@@ -61,7 +61,10 @@ export default function ExportButton({
           <button
             type="button"
             disabled={disabled}
-            aria-label="Choose columns to export"
+            // Named after its own export, because a page can carry two of
+            // these and "Choose columns to export" twice tells a screen
+            // reader nothing about which table it belongs to.
+            aria-label={`Choose columns for ${label}`}
             className="border-l border-(--dc-accent)/30 px-1.5 py-1.5 text-(--dc-accent) transition hover:bg-(--dc-accent-soft)/60 disabled:opacity-40"
           >
             <ChevronDown className="h-4 w-4" />
