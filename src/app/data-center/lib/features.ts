@@ -38,6 +38,10 @@ export const DATA_CENTER_FEATURES = {
   REGISTRY_MANAGE: "registry.manage",
   /** Grant and revoke tier-2 features for other users. */
   GRANTS_MANAGE: "grants.manage",
+  /** Work the digitalisation workbench: open a stove and type its sale. */
+  DIGITISATION_WORK: "digitisation.work",
+  /** Hand work to call agents, and take it back. */
+  ASSIGNMENT_MANAGE: "assignment.manage",
 } as const;
 
 export type DataCenterFeature =
@@ -58,4 +62,6 @@ export const FEATURE_LABELS: Record<DataCenterFeature, string> = {
   [DATA_CENTER_FEATURES.DASHBOARD_VIEW]: "View dashboards",
   [DATA_CENTER_FEATURES.REGISTRY_MANAGE]: "Manage fields and option lists",
   [DATA_CENTER_FEATURES.GRANTS_MANAGE]: "Manage feature access",
+  [DATA_CENTER_FEATURES.DIGITISATION_WORK]: "Use the digitalisation workbench",
+  [DATA_CENTER_FEATURES.ASSIGNMENT_MANAGE]: "Assign and reassign call work",
 };

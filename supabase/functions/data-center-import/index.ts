@@ -1314,8 +1314,15 @@ serve(async (req) => {
               });
               if (saleId) {
                 await conn.queryObject({
+                  // confirmed_by is recorded apart from resolved_by on purpose.
+                  // "Who typed this" and "who let it through" are different
+                  // answers and are often different people, which is the whole
+                  // of the control: a row reaches public.sales because somebody
+                  // released it, not because somebody typed it.
                   text: `update data_center.import_rows
-                         set status = 'committed', sale_id = $2, resolved_by = $3, resolved_at = now()
+                         set status = 'committed', sale_id = $2,
+                             resolved_by = $3, resolved_at = now(),
+                             confirmed_by = $3, confirmed_at = now()
                          where id = $1`,
                   args: [row.id, saleId, userId],
                 });
@@ -1575,6 +1582,306 @@ serve(async (req) => {
             args: [userId, profile.organization_id ?? null],
           });
           return json({ data: r.rows }, 200, cors);
+        });
+      }
+
+      /**
+       * A stove, opened for typing.
+       *
+       * Returns whatever has been typed so far and who last touched it, so two
+       * people do not work the same receipt without knowing. There is no lock:
+       * a lock on a row somebody may walk away from needs a timeout, and a
+       * timeout is a second way to lose work. Saying who is on it is enough
+       * for a room of four people, which is the room this is for.
+       */
+      case "workbench_open": {
+        requireFeature("digitisation.work");
+        const stoveId = String(body.stoveId ?? "").trim().toUpperCase();
+        if (!stoveId) throw new BadRequest("Which stove?");
+
+        return await withReadConnection(async (conn) => {
+          const stock = await conn.queryObject<{
+            stove_id: string; organization_id: string | null; sales_reference: string | null;
+            status: string | null; sale_id: string | null; partner_name: string | null;
+          }>({
+            text: `select sb.stove_id, sb.organization_id::text, sb.sales_reference,
+                          sb.status, sb.sale_id::text, o.partner_name
+                     from public.stove_ids_base sb
+                     left join public.organizations o on o.id = sb.organization_id
+                    where sb.stove_id = $1`,
+            args: [stoveId],
+          });
+          const stove = stock.rows[0];
+          if (!stove) {
+            throw new BadRequest(
+              `No stove with the ID "${stoveId}" is in stock. Check it against the transfer ` +
+                "sheet: a digit dropped or an O typed for a zero looks exactly like this.",
+            );
+          }
+
+          const existing = await conn.queryObject({
+            text: `select r.id::text, r.status, r.draft_values, r.normalized,
+                          r.rejection_reason, r.rejection_hint,
+                          r.confirmed_at, r.sale_id::text,
+                          r.last_edited_at, p.full_name as last_edited_by_name,
+                          b.id::text as batch_id, b.uploaded_by::text as owner_id
+                     from data_center.import_rows r
+                     join data_center.import_batches b on b.id = r.batch_id
+                     left join public.profiles p on p.id = r.last_edited_by
+                    where r.stove_serial_no = $1
+                      and b.state <> 'rolled_back'
+                    order by r.last_edited_at desc nulls last
+                    limit 1`,
+            args: [stoveId],
+          });
+
+          return json(
+            {
+              data: {
+                stove: {
+                  stoveId: stove.stove_id,
+                  organizationId: stove.organization_id,
+                  partnerName: stove.partner_name,
+                  transactionId: stove.sales_reference,
+                  stockStatus: stove.status,
+                  alreadySold: Boolean(stove.sale_id),
+                },
+                work: existing.rows[0] ?? null,
+              },
+            },
+            200,
+            cors,
+          );
+        });
+      }
+
+      /**
+       * Save what has been typed, finished or not.
+       *
+       * `complete` is the typist saying they are done, not the server deciding
+       * it. A draft is never judged: validating a half-typed record and
+       * rejecting it for fields nobody has reached yet is the fastest way to
+       * teach somebody to stop saving their work.
+       *
+       * Every typist gets one open workbench batch per partner, reused. A batch
+       * per record would make the confirmation queue a list of one-row batches
+       * and the whole point is to be able to release a morning's work together.
+       */
+      case "workbench_save": {
+        requireFeature("digitisation.work");
+        const stoveId = String(body.stoveId ?? "").trim().toUpperCase();
+        const values = (body.values ?? {}) as Record<string, unknown>;
+        const complete = body.complete === true;
+        if (!stoveId) throw new BadRequest("Which stove?");
+
+        const record = autoMapRow({ ...values, stoveSerialNo: stoveId });
+
+        // Finishing means it has to hold together. Half-typed does not.
+        const shape = complete ? normalizeRow(record) : null;
+        const finished = shape?.ok ? shape.row : null;
+        if (complete) {
+          if (shape && !shape.ok) {
+            return json(
+              {
+                error: shape.reason,
+                code: "incomplete",
+                data: {
+                  hint: shape.hint ??
+                    "Fill that in and save again, or Save draft to come back to it.",
+                },
+              },
+              400,
+              cors,
+            );
+          }
+        }
+
+        return await withConnection(async (conn) => {
+          const stock = await conn.queryObject<{ organization_id: string | null }>({
+            text: "select organization_id::text from public.stove_ids_base where stove_id = $1",
+            args: [stoveId],
+          });
+          const organizationId = stock.rows[0]?.organization_id;
+          if (!organizationId) {
+            throw new BadRequest(`No stove with the ID "${stoveId}" is in stock.`);
+          }
+          await requireOrganization(organizationId);
+
+          await conn.queryObject("begin");
+          try {
+            await conn.queryObject({
+              text: "select set_config('data_center.actor', $1, true)",
+              args: [userId],
+            });
+
+            const open = await conn.queryObject<{ id: string }>({
+              text: `select id from data_center.import_batches
+                      where source = 'workbench' and uploaded_by = $1
+                        and organization_id = $2 and state = 'staged'
+                      order by uploaded_at desc limit 1`,
+              args: [userId, organizationId],
+            });
+            let batchId = open.rows[0]?.id;
+            if (!batchId) {
+              const made = await conn.queryObject<{ id: string }>({
+                text: `insert into data_center.import_batches
+                         (source, filename, uploaded_by, organization_id, total_rows,
+                          state, content_hash, source_note)
+                       values ('workbench', null, $1, $2, 0, 'staged', $3,
+                               'Typed one stove at a time in the workbench')
+                       returning id`,
+                // The hash is built here rather than in SQL: using $1 as both a
+                // uuid column and a string to concatenate left Postgres unable
+                // to decide what type the parameter was.
+                args: [userId, organizationId, `workbench:${userId}:${organizationId}`],
+              });
+              batchId = made.rows[0].id;
+            }
+
+            const existing = await conn.queryObject<{ id: string; confirmed_at: string | null }>({
+              text: `select r.id::text, r.confirmed_at
+                       from data_center.import_rows r
+                       join data_center.import_batches b on b.id = r.batch_id
+                      where r.stove_serial_no = $1 and b.source = 'workbench'
+                        and b.state <> 'rolled_back'
+                      limit 1`,
+              args: [stoveId],
+            });
+
+            if (existing.rows[0]?.confirmed_at) {
+              await conn.queryObject("rollback");
+              return json(
+                {
+                  error:
+                    `Stove ${stoveId} has already been confirmed and is in the sales app. ` +
+                    "Change it there rather than here, so there is one version of it.",
+                  code: "already_confirmed",
+                },
+                409,
+                cors,
+              );
+            }
+
+            const status = complete ? "valid" : "draft";
+            if (existing.rows[0]) {
+              await conn.queryObject({
+                text: `update data_center.import_rows
+                          set draft_values = $2::jsonb, status = $3,
+                              normalized = case when $3 = 'valid' then $4::jsonb else null end,
+                              last_edited_by = $5, last_edited_at = now(),
+                              rejection_reason = null, rejection_hint = null
+                        where id = $1`,
+                args: [
+                  existing.rows[0].id, JSON.stringify(values), status,
+                  finished ? JSON.stringify(finished) : null,
+                  userId,
+                ],
+              });
+            } else {
+              const next = await conn.queryObject<{ n: number }>({
+                text: `select coalesce(max(row_number), 0) + 1 as n
+                         from data_center.import_rows where batch_id = $1`,
+                args: [batchId],
+              });
+              await conn.queryObject({
+                text: `insert into data_center.import_rows
+                         (batch_id, row_number, raw, status, stove_serial_no,
+                          draft_values, normalized, last_edited_by, last_edited_at)
+                       values ($1, $2, $3::jsonb, $4, $5, $3::jsonb,
+                               case when $4 = 'valid' then $6::jsonb else null end,
+                               $7, now())`,
+                args: [
+                  batchId, next.rows[0].n, JSON.stringify(values), status, stoveId,
+                  finished ? JSON.stringify(finished) : null,
+                  userId,
+                ],
+              });
+              await conn.queryObject({
+                text: `update data_center.import_batches
+                          set total_rows = (select count(*) from data_center.import_rows
+                                             where batch_id = $1)
+                        where id = $1`,
+                args: [batchId],
+              });
+            }
+
+            await conn.queryObject("commit");
+            return json({ data: { batchId, stoveId, status } }, 200, cors);
+          } catch (err) {
+            await conn.queryObject("rollback");
+            throw err;
+          }
+        });
+      }
+
+      /**
+       * What this person has on the bench, and what is waiting to be released.
+       *
+       * Their drafts first, because that is what somebody opens this to
+       * continue. The rest of the queue is the confirmation surface's problem.
+       */
+      case "workbench_queue": {
+        requireFeature("digitisation.work");
+        return await withReadConnection(async (conn) => {
+          const mine = await conn.queryObject({
+            text: `select r.stove_serial_no, r.status, r.last_edited_at,
+                          r.draft_values, b.organization_id::text, o.partner_name,
+                          r.rejection_reason, r.rejection_hint
+                     from data_center.import_rows r
+                     join data_center.import_batches b on b.id = r.batch_id
+                     left join public.organizations o on o.id = b.organization_id
+                    where b.source = 'workbench' and r.last_edited_by = $1
+                      and r.confirmed_at is null and b.state <> 'rolled_back'
+                    order by r.last_edited_at desc
+                    limit 200`,
+            args: [userId],
+          });
+          const staleDays = Number(await readConfig(conn, "workbench.draft_stale_days", 7)) || 7;
+          const abandoned = await conn.queryObject({
+            text: `select r.stove_serial_no, r.last_edited_at, p.full_name as last_edited_by_name,
+                          o.partner_name
+                     from data_center.import_rows r
+                     join data_center.import_batches b on b.id = r.batch_id
+                     left join public.profiles p on p.id = r.last_edited_by
+                     left join public.organizations o on o.id = b.organization_id
+                    where b.source = 'workbench' and r.status = 'draft'
+                      and r.last_edited_by is distinct from $1
+                      and r.last_edited_at < now() - make_interval(days => $2::int)
+                    order by r.last_edited_at
+                    limit 100`,
+            args: [userId, staleDays],
+          });
+          return json(
+            { data: { mine: mine.rows, abandoned: abandoned.rows, staleDays } },
+            200,
+            cors,
+          );
+        });
+      }
+
+      /**
+       * Both streams, side by side, with what is waiting on a person.
+       *
+       * Deliberately not one queue. A file of four hundred rows and one record
+       * somebody typed are different decisions, and one button over both would
+       * hide that.
+       */
+      case "awaiting_confirmation": {
+        requireFeature("records.view");
+        return await withReadConnection(async (conn) => {
+          const rows = await conn.queryObject({
+            text: `select batch_id::text, stream, source, filename,
+                          organization_id::text, partner_name, uploaded_at,
+                          uploaded_by_name,
+                          awaiting::int, still_drafting::int, refused::int,
+                          exceptions::int, confirmed::int, total_rows::int,
+                          last_worked_on, worked_by
+                     from data_center.v_awaiting_confirmation
+                    where awaiting > 0 or still_drafting > 0
+                    order by stream, last_worked_on desc nulls last, uploaded_at desc
+                    limit 200`,
+          });
+          return json({ data: { batches: rows.rows } }, 200, cors);
         });
       }
 

@@ -24,9 +24,19 @@ export type FeatureKey =
   | "import.exceptions"
   | "import.commit"
   | "registry.manage"
-  | "access.manage";
+  | "access.manage"
+  /** Work the digitalisation workbench: open a stove and type its sale. */
+  | "digitisation.work"
+  /**
+   * Hand work to call agents and take it back.
+   *
+   * Its own key because assignment was reachable only by a super admin, which
+   * put "reassign Hanifa's queue, she is on leave" on the same shoulder as
+   * running the company's user accounts.
+   */
+  | "assignment.manage";
 
-export type AccessRole = "viewer" | "editor" | "call_agent";
+export type AccessRole = "viewer" | "editor" | "call_agent" | "data_manager";
 
 const VIEWER: FeatureKey[] = ["records.view", "call_records.view", "dashboard.view"];
 
@@ -38,6 +48,10 @@ export const ROLE_FEATURES: Record<string, FeatureKey[]> = {
     "call_records.edit",
     "import.upload",
     "import.exceptions",
+    // The workbench is the same act as an upload at a different speed, so the
+    // level that may upload may also type. Confirming is still not theirs:
+    // import.commit is what releases a record, and it stays separate.
+    "digitisation.work",
   ],
 
   /**
@@ -52,6 +66,29 @@ export const ROLE_FEATURES: Record<string, FeatureKey[]> = {
    * different job, so it gets a different set rather than a rung on a ladder.
    */
   call_agent: [...VIEWER, "call_records.edit"],
+
+  /**
+   * The person who runs the module.
+   *
+   * Everything inside it: the calling, the records, both ways of getting a
+   * paper receipt into the system, the decision to release what has been
+   * entered, and deciding who calls whom.
+   *
+   * `grants.manage` is deliberately withheld. Deciding who may enter the
+   * module at all is account administration rather than data management, and
+   * a level that can grant itself more is not a level. A super admin can still
+   * add it to one person by hand if a particular team needs it.
+   */
+  data_manager: [
+    ...VIEWER,
+    "call_records.edit",
+    "import.upload",
+    "import.exceptions",
+    "import.commit",
+    "digitisation.work",
+    "assignment.manage",
+    "registry.manage",
+  ],
 };
 
 /** The keys a level implies, plus whatever was granted to the user directly. */
