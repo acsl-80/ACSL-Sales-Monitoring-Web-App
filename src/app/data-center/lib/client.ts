@@ -689,9 +689,10 @@ export const dataCenterImport = {
    * One record, typed. A batch of one through the same four steps, so a
    * hand-keyed receipt is validated, dry-run and audited exactly like a file.
    */
-  manualEntry: (organizationId: string, record: Record<string, string>) =>
+  /** `organizationId` is optional: the stove serial in the record names it. */
+  manualEntry: (organizationId: string | null, record: Record<string, string>) =>
     call<{ batchId: string; totalRows: number }>("data-center-import", "manual_entry", {
-      organizationId,
+      organizationId: organizationId || undefined,
       record,
     }),
 

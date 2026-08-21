@@ -140,7 +140,7 @@ function ExceptionsQueue({ batchId, canResolve, onChanged }) {
   );
 }
 
-export default function ImportPanel({ canUpload, canCommit, canResolve, organizations }) {
+export default function ImportPanel({ canUpload, canCommit, canResolve }) {
   const [batches, setBatches] = useState([]);
   // The history grows for as long as the module runs, so it pages.
   // A year of daily imports is a list nobody scrolls.
@@ -152,7 +152,6 @@ export default function ImportPanel({ canUpload, canCommit, canResolve, organiza
   const [progress, setProgress] = useState(null);
   const [open, setOpen] = useState(null);
   const [dryRun, setDryRun] = useState(null);
-  const [orgId, setOrgId] = useState("");
   // A file held between inspection and staging, while the operator maps its
   // strays. Null whenever there is nothing to decide.
   const [pendingFile, setPendingFile] = useState(null);
@@ -229,7 +228,7 @@ export default function ImportPanel({ canUpload, canCommit, canResolve, organiza
         setBusy(false);
       }
     },
-    [orgId, refresh],
+    [refresh],
   );
 
   const onFile = async (event) => {
@@ -277,7 +276,7 @@ export default function ImportPanel({ canUpload, canCommit, canResolve, organiza
     setBusy(true);
     setNotice(null);
     try {
-      const { batchId } = await dataCenterImport.manualEntry(orgId, record);
+      const { batchId } = await dataCenterImport.manualEntry(null, record);
       const counts = await dataCenterImport.validate(batchId);
       setNotice(
         counts.valid === 1
@@ -358,7 +357,6 @@ export default function ImportPanel({ canUpload, canCommit, canResolve, organiza
     }
   };
 
-  const orgOptions = useMemo(() => organizations ?? [], [organizations]);
 
   /**
    * What the two irreversible actions are about to do, in the module's own
@@ -473,7 +471,6 @@ export default function ImportPanel({ canUpload, canCommit, canResolve, organiza
       {canUpload && manual && (
         <ManualEntry
           busy={busy}
-          partnerName={orgOptions.find((o) => o.id === orgId)?.partner_name}
           onCancel={() => setManual(false)}
           onSubmit={submitManual}
         />

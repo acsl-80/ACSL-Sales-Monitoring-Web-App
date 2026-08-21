@@ -1,12 +1,12 @@
 import DataCentreShell from "../components/DataCentreShell";
-import ImportSection from "../features/import/ImportSection";
+import ImportPanel from "../features/import/ImportPanel";
 import { useFeature } from "../lib/access";
 import { DATA_CENTER_FEATURES } from "../lib/features";
 
 function Inner() {
   const { can } = useFeature();
   return (
-    <ImportSection
+    <ImportPanel
       canUpload={can(DATA_CENTER_FEATURES.IMPORT_UPLOAD)}
       canCommit={can(DATA_CENTER_FEATURES.IMPORT_COMMIT)}
       canResolve={can(DATA_CENTER_FEATURES.IMPORT_EXCEPTIONS)}

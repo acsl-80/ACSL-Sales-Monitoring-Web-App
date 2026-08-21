@@ -887,17 +887,42 @@ serve(async (req) => {
        */
       case "manual_entry": {
         requireFeature("import.upload");
-        const record = body.record as Record<string, unknown> | undefined;
-        const organizationId = String(body.organizationId ?? "");
-        if (!record || typeof record !== "object") throw new BadRequest("No record given");
-        if (!organizationId) throw new BadRequest("Choose which partner this record belongs to");
+        const rawRecord = body.record as Record<string, unknown> | undefined;
+        if (!rawRecord || typeof rawRecord !== "object") throw new BadRequest("No record given");
+        // Same auto-mapping a file gets. One validator, whatever the channel.
+        const record = autoMapRow(rawRecord);
+
+        /**
+         * The serial names the partner here too.
+         *
+         * A typed record is a batch of one through the same path, so it
+         * resolves the same way rather than asking a question the file is not
+         * asked. An explicit organizationId still wins, for a caller that has
+         * one.
+         */
+        let organizationId = String(body.organizationId ?? "");
+        if (!organizationId) {
+          const found = await withReadConnection((c) => resolvePartnersFromSerials(c, [record]));
+          if (found.partners.length !== 1) {
+            throw new BadRequest(
+              found.partners.length === 0
+                ? "That stove ID does not match any stock we hold, so there is no way to tell " +
+                  "which partner this sale belongs to. Check the ID against the transfer sheet."
+                : "That stove ID matches more than one partner, which should not happen. " +
+                  "Report it rather than working around it.",
+            );
+          }
+          organizationId = found.partners[0].organizationId;
+        }
         await requireOrganization(organizationId);
 
         // Fail on the shape before writing anything. A file gets staged first
         // because the operator wants to see all the failures at once; a single
         // record is better answered immediately.
         const shape = normalizeRow(record);
-        if (!shape.ok) throw new BadRequest(shape.reason);
+        if (!shape.ok) {
+          throw new BadRequest(shape.hint ? `${shape.reason}. ${shape.hint}` : shape.reason);
+        }
 
         const hash = await contentHash([record]);
 

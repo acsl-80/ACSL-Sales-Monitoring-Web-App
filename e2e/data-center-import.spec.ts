@@ -15,14 +15,21 @@ import { signIn, USERS, callEdgeFunction } from "./helpers";
  */
 
 test.describe("bulk import", () => {
-  test("super admin sees the panel and the partner picker", async ({ page }) => {
+  test("super admin sees the panel, and no partner to pick", async ({ page }) => {
     await signIn(page, USERS.admin);
     await page.goto("/data-center/import");
 
     await expect(page.getByRole("heading", { name: "Bulk Import" })).toBeVisible({
       timeout: 20_000,
     });
-    await expect(page.getByLabel("Partner")).toBeVisible();
+    // The dropdown of 278 partners is gone on purpose: every stove in stock
+    // carries the partner it went to, so the file already knows and asking was
+    // asking somebody to repeat what the data states and be wrong about it
+    // occasionally.
+    await expect(page.getByLabel("Partner")).toHaveCount(0);
+    await expect(
+      page.getByText(/stove IDs in the file say which partner it belongs to/),
+    ).toBeVisible();
 
     // Choosing a file is refused until a partner is picked, because the stove
     // has to belong to someone and create-sale would refuse it anyway.
@@ -39,7 +46,7 @@ test.describe("bulk import", () => {
     // The promise the whole four-step shape exists to keep, stated where the
     // operator will read it.
     await expect(
-      page.getByText(/Nothing is committed until you say so/),
+      page.getByText(/nothing is\s+committed until you say so/i),
     ).toBeVisible();
   });
 
@@ -94,7 +101,7 @@ test.describe("import hardening", () => {
     await expect(page.getByRole("heading", { name: "Bulk Import" })).toBeVisible({
       timeout: 20_000,
     });
-    await page.getByLabel("Partner").selectOption({ index: 1 });
+    // No partner is chosen. The stove IDs in the file name it.
   }
 
   test("a file with a column nobody recognises stops to be mapped", async ({ page }) => {
@@ -235,7 +242,7 @@ test.describe("import hardening, against the server", () => {
     await expect(page.getByRole("heading", { name: "Bulk Import" })).toBeVisible({
       timeout: 20_000,
     });
-    await page.getByLabel("Partner").selectOption({ label: PARTNER });
+    // No partner is chosen. The stove IDs in the file name it.
   }
 
   test("the same serial twice in one file names the row it duplicates", async ({
@@ -356,5 +363,184 @@ test.describe("staging is scoped to the caller's partners", () => {
     ).not.toBeNull();
     expect(stage!.status).toBe(400);
     expect(JSON.stringify(stage!.body)).toMatch(/not one you can import for/);
+  });
+});
+
+/**
+ * What the change to the import is actually for.
+ *
+ * The partner came from a dropdown of 278 and never needed to; phone numbers
+ * were checked by one regex that refused most of the ways a real spreadsheet
+ * writes a correct number; and a refused row said what was wrong and never what
+ * to do about it.
+ */
+test.describe("the file names its own partner", () => {
+  test("a sheet downloaded for a partner uploads without choosing one", async ({
+    page,
+  }) => {
+    await signIn(page, USERS.admin);
+    await page.goto("/data-center/import");
+    await expect(page.getByRole("heading", { name: "Bulk Import" })).toBeVisible({
+      timeout: 20_000,
+    });
+
+    // The sheet the digitisers get, taken the way Partner Records hands it out.
+    const funnel = await callEdgeFunction(page, "data-center-read", {
+      action: "transfer_funnel",
+      limit: 1,
+    });
+    const transfer = (funnel.body as {
+      data: { rows: { organization_id: string; partner_name: string }[] };
+    }).data.rows[0];
+
+    const sheet = await callEdgeFunction(page, "data-center-read", {
+      action: "digitisation_sheet",
+      organizationId: transfer.organization_id,
+    });
+    expect(sheet.status).toBe(200);
+    const available = (sheet.body as {
+      data: { rows: { stove_id: string; transaction_id: string; already_recorded: boolean }[] };
+    }).data.rows.filter((r) => !r.already_recorded);
+    test.skip(available.length < 2, "No unrecorded stoves left in the first transfer");
+
+    // Filled in the way a spreadsheet really produces it: the leading zero of
+    // the phone eaten by Excel, and the headings the sheet itself carries.
+    const rows = available.slice(0, 2).map((r, i) => ({
+      "Stove ID": r.stove_id,
+      "Transaction ID": r.transaction_id,
+      "User First Name": `E2E${i}`,
+      "User Last Name": "Partner-From-File",
+      "Primary Phone Number": i === 0 ? "8039876543" : "+234 803 987 6544",
+      "Sales Date": "2026-07-20",
+      "Sale Amount": "47500",
+      "Amount Received": "47500",
+      "State": "Gombe",
+      "LGA": "Akko",
+      "User Residential Address": "1 E2E Street",
+    }));
+
+    const staged = await callEdgeFunction(page, "data-center-import", {
+      action: "stage",
+      rows,
+      filename: "e2e-partner-from-file.csv",
+      confirmDuplicate: true,
+    });
+    expect(staged.status).toBe(200);
+    const data = (staged.body as {
+      data: {
+        batchId: string;
+        resolvedPartner: { partnerName: string; matched: number; unmatched: number } | null;
+      };
+    }).data;
+
+    // It worked the partner out, and says so rather than leaving it implied.
+    expect(data.resolvedPartner?.partnerName).toBe(transfer.partner_name);
+    expect(data.resolvedPartner?.matched).toBe(2);
+    expect(data.resolvedPartner?.unmatched).toBe(0);
+
+    // Both phones were written differently and neither is 0XXXXXXXXXX.
+    const validated = await callEdgeFunction(page, "data-center-import", {
+      action: "validate",
+      batchId: data.batchId,
+    });
+    expect((validated.body as { data: { valid: number } }).data.valid).toBe(2);
+
+    await callEdgeFunction(page, "data-center-import", {
+      action: "rollback",
+      batchId: data.batchId,
+    });
+  });
+
+  test("serials that match nothing are refused with a reason, not a guess", async ({
+    page,
+  }) => {
+    await signIn(page, USERS.admin);
+    await page.goto("/data-center/import");
+    await expect(page.getByRole("heading", { name: "Bulk Import" })).toBeVisible({
+      timeout: 20_000,
+    });
+
+    const junk = await callEdgeFunction(page, "data-center-import", {
+      action: "stage",
+      confirmDuplicate: true,
+      filename: "e2e-junk.csv",
+      rows: [{ "Stove ID": "NOT-A-REAL-STOVE-ID", "Primary Phone Number": "08039876543" }],
+    });
+    expect(junk.status).toBe(400);
+    // Naming a partner anyway would be a guess, and a guess here files a sale
+    // against somebody who never made it.
+    expect((junk.body as { error: string }).error).toMatch(/do not match|match stock we hold/i);
+  });
+});
+
+test.describe("a rejected row says what to do about it", () => {
+  test("every refusal carries a fix, not just a reason", async ({ page }) => {
+    await signIn(page, USERS.admin);
+    await page.goto("/data-center/import");
+    await expect(page.getByRole("heading", { name: "Bulk Import" })).toBeVisible({
+      timeout: 20_000,
+    });
+
+    const funnel = await callEdgeFunction(page, "data-center-read", {
+      action: "transfer_funnel",
+      limit: 1,
+    });
+    const transfer = (funnel.body as { data: { rows: { organization_id: string }[] } }).data.rows[0];
+    const sheet = await callEdgeFunction(page, "data-center-read", {
+      action: "digitisation_sheet",
+      organizationId: transfer.organization_id,
+    });
+    const available = (sheet.body as {
+      data: { rows: { stove_id: string; transaction_id: string; already_recorded: boolean }[] };
+    }).data.rows.filter((r) => !r.already_recorded);
+    test.skip(available.length < 2, "No unrecorded stoves left to work with");
+
+    const base = {
+      "User First Name": "E2E",
+      "User Last Name": "Hints",
+      "Sales Date": "2026-07-20",
+      "Sale Amount": "47500",
+      "State": "Gombe",
+      "LGA": "Akko",
+      "User Residential Address": "1 E2E Street",
+    };
+    const staged = await callEdgeFunction(page, "data-center-import", {
+      action: "stage",
+      confirmDuplicate: true,
+      filename: "e2e-hints.csv",
+      rows: [
+        // A number that really is broken, and a date nobody can read.
+        { ...base, "Stove ID": available[0].stove_id, "Primary Phone Number": "0803216454" },
+        {
+          ...base,
+          "Stove ID": available[1].stove_id,
+          "Primary Phone Number": "08039876543",
+          "Sales Date": "not a date",
+        },
+      ],
+    });
+    expect(staged.status).toBe(200);
+    const batchId = (staged.body as { data: { batchId: string } }).data.batchId;
+
+    await callEdgeFunction(page, "data-center-import", { action: "validate", batchId });
+    const rows = await callEdgeFunction(page, "data-center-import", {
+      action: "rows",
+      batchId,
+      status: "rejected",
+    });
+    const rejected = (rows.body as {
+      data: { rejection_reason: string | null; rejection_hint: string | null }[];
+    }).data;
+
+    expect(rejected.length).toBe(2);
+    for (const r of rejected) {
+      expect(r.rejection_reason).toBeTruthy();
+      // The reason alone leaves a digitiser with four hundred rows and no next
+      // step, which is how a rejection file gets ignored rather than corrected.
+      expect(r.rejection_hint).toBeTruthy();
+      expect(r.rejection_hint!.length).toBeGreaterThan(20);
+    }
+
+    await callEdgeFunction(page, "data-center-import", { action: "rollback", batchId });
   });
 });
