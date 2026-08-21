@@ -75,9 +75,17 @@ function Shell({ title, description, breadcrumb, feature, children }) {
     );
   }
 
-  // A page whose feature is not granted says so, rather than rendering a
-  // surface whose every request would come back 403.
-  if (feature && !can(feature)) {
+  /**
+   * A page whose feature is not granted says so, rather than rendering a
+   * surface whose every request would come back 403.
+   *
+   * `feature` may be a list, meaning any one of them opens the page. Bulk
+   * Import needs that: it holds the uploader and the workbench, and somebody
+   * granted only the bench should still get in rather than being told they
+   * lack a permission for a panel they were not going to use.
+   */
+  const needed = feature ? (Array.isArray(feature) ? feature : [feature]) : null;
+  if (needed && !needed.some((key) => can(key))) {
     return (
       <div className="mx-auto mt-16 max-w-md rounded-xl border border-gray-200 border-t-[3px] border-t-(--dc-accent) bg-white p-8 text-center shadow-sm">
         <ShieldOff className="mx-auto h-10 w-10 text-gray-400" />
@@ -85,7 +93,14 @@ function Shell({ title, description, breadcrumb, feature, children }) {
           Not part of your access
         </h1>
         <p className="mt-2 text-sm text-gray-600">
-          This area needs <code className="rounded bg-gray-100 px-1">{feature}</code>.
+          This area needs{" "}
+          {needed.map((key, i) => (
+            <span key={key}>
+              {i > 0 ? " or " : ""}
+              <code className="rounded bg-gray-100 px-1">{key}</code>
+            </span>
+          ))}
+          .
         </p>
         <Link
           href="/data-center"

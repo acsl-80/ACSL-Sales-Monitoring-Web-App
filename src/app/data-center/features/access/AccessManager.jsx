@@ -59,9 +59,21 @@ const ROLE_META = {
     tone: "border-amber-300 bg-amber-50 text-amber-800",
     button: "border-amber-400/50 text-amber-700 hover:bg-amber-50",
   },
+  data_manager: {
+    label: "Data manager", icon: ShieldCheck,
+    blurb: "Runs the module: both input streams, confirmation, and who calls whom.",
+    tone: "border-(--dc-accent)/40 bg-(--dc-accent-soft) text-(--dc-accent-strong)",
+    button: "border-(--dc-accent)/40 text-(--dc-accent) hover:bg-(--dc-accent-soft)",
+  },
 };
 
-const ROLES = ["viewer", "call_agent", "editor"];
+/**
+ * In order of reach, which is the order somebody choosing reads them in.
+ *
+ * Not a ladder, though: a call agent is not half an editor, and a data
+ * manager is not an editor with extras. Each is a job.
+ */
+const ROLES = ["viewer", "call_agent", "editor", "data_manager"];
 
 function RoleChip({ role }) {
   const meta = ROLE_META[role];

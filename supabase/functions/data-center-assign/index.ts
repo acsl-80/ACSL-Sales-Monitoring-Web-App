@@ -111,6 +111,28 @@ serve(async (req) => {
     }
     const can = (key: string) => superAdmin || (access?.features ?? []).includes(key);
 
+    /**
+     * Handing work out is a permission, not a job title.
+     *
+     * It was super-admin-only, which put "reassign Hanifa's queue, she is on
+     * leave" on the same shoulder as running the company's user accounts. A
+     * data manager holds `assignment.manage` and a super admin still passes by
+     * short-circuit, so nothing that worked before stops working.
+     */
+    const requireAssignment = () =>
+      can("assignment.manage")
+        ? null
+        : json(
+          {
+            error:
+              "This needs the assignment.manage permission. A super admin can add it " +
+              "from Settings, or grant the data manager level.",
+            code: "no_feature",
+          },
+          403,
+          cors,
+        );
+
     let body: {
       action?: string;
       agentId?: string;
@@ -135,8 +157,9 @@ serve(async (req) => {
        * and the eventual schedule will call it with an admin's authority too.
        */
       case "run": {
-        if (!superAdmin) {
-          return json({ error: "Only a super admin assigns work", code: "no_feature" }, 403, cors);
+        {
+          const denied = requireAssignment();
+          if (denied) return denied;
         }
         return await withConnection(async (conn) => {
           const reclaimed = await conn.queryObject<{ n: number }>({
@@ -163,8 +186,9 @@ serve(async (req) => {
 
       /** Take back quiet batches without assigning anything new. */
       case "reclaim": {
-        if (!superAdmin) {
-          return json({ error: "Only a super admin reclaims work", code: "no_feature" }, 403, cors);
+        {
+          const denied = requireAssignment();
+          if (denied) return denied;
         }
         return await withConnection(async (conn) => {
           const r = await conn.queryObject<{ n: number }>({
@@ -237,8 +261,9 @@ serve(async (req) => {
        * always asked together, because assigning is choosing one of each.
        */
       case "agents": {
-        if (!superAdmin) {
-          return json({ error: "Only a super admin assigns work", code: "no_feature" }, 403, cors);
+        {
+          const denied = requireAssignment();
+          if (denied) return denied;
         }
         return await withReadConnection(async (conn) => {
           const agents = await conn.queryObject({
@@ -295,8 +320,9 @@ serve(async (req) => {
        * from partner to serial costs nothing once it is open.
        */
       case "agent_detail": {
-        if (!superAdmin) {
-          return json({ error: "Only a super admin assigns work", code: "no_feature" }, 403, cors);
+        {
+          const denied = requireAssignment();
+          if (denied) return denied;
         }
         if (!body.agentId) {
           return json({ error: "agentId is required", code: "bad_input" }, 400, cors);
@@ -325,8 +351,9 @@ serve(async (req) => {
        * function, not here, so the rule holds for anything that ever calls it.
        */
       case "assign_manual": {
-        if (!superAdmin) {
-          return json({ error: "Only a super admin assigns work", code: "no_feature" }, 403, cors);
+        {
+          const denied = requireAssignment();
+          if (denied) return denied;
         }
         if (!body.agentId || !body.organizationId) {
           return json(
@@ -352,8 +379,9 @@ serve(async (req) => {
 
       /** Take a whole batch back into the pool. */
       case "unassign_batch": {
-        if (!superAdmin) {
-          return json({ error: "Only a super admin assigns work", code: "no_feature" }, 403, cors);
+        {
+          const denied = requireAssignment();
+          if (denied) return denied;
         }
         if (!body.batchId) {
           return json({ error: "batchId is required", code: "bad_input" }, 400, cors);
@@ -369,8 +397,9 @@ serve(async (req) => {
 
       /** Take one record back, because the complaint is usually about one. */
       case "unassign_item": {
-        if (!superAdmin) {
-          return json({ error: "Only a super admin assigns work", code: "no_feature" }, 403, cors);
+        {
+          const denied = requireAssignment();
+          if (denied) return denied;
         }
         if (!body.saleId) {
           return json({ error: "saleId is required", code: "bad_input" }, 400, cors);

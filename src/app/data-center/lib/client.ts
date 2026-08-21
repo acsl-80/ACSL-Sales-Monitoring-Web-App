@@ -32,12 +32,27 @@ export type AccessRole = "viewer" | "call_agent" | "editor";
 export class DataCenterError extends Error {
   readonly status: number;
   readonly code: string;
+  /**
+   * Whatever the failure carried beyond its message.
+   *
+   * The import returns a `hint` on a refusal - what the person should actually
+   * do about it - and this class used to drop it on the floor, so every hint
+   * the server took care to write reached nobody. A failure that says only
+   * what is wrong leaves the reader where they started.
+   */
+  readonly data: Record<string, unknown> | null;
 
-  constructor(message: string, status: number, code = "unknown") {
+  constructor(
+    message: string,
+    status: number,
+    code = "unknown",
+    data: Record<string, unknown> | null = null,
+  ) {
     super(message);
     this.name = "DataCenterError";
     this.status = status;
     this.code = code;
+    this.data = data;
   }
 }
 
@@ -79,11 +94,14 @@ async function call<T>(fn: string, action: string, payload: unknown = {}): Promi
     }
 
     if (!response.ok) {
-      const detail = body as { error?: string; code?: string } | null;
+      const detail = body as
+        | { error?: string; code?: string; data?: Record<string, unknown> }
+        | null;
       throw new DataCenterError(
         detail?.error ?? `Request to ${fn} failed.`,
         response.status,
         detail?.code ?? "request_failed",
+        detail?.data ?? null,
       );
     }
 
@@ -695,6 +713,89 @@ export const dataCenterImport = {
       organizationId: organizationId || undefined,
       record,
     }),
+
+  /** Open one stove for typing: who it belongs to, and any work already on it. */
+  workbenchOpen: (stoveId: string) =>
+    call<{
+      stove: {
+        stoveId: string;
+        organizationId: string | null;
+        partnerName: string | null;
+        transactionId: string | null;
+        stockStatus: string | null;
+        alreadySold: boolean;
+      };
+      work: {
+        id: string;
+        status: string;
+        draft_values: Record<string, unknown> | null;
+        normalized: Record<string, unknown> | null;
+        rejection_reason: string | null;
+        rejection_hint: string | null;
+        confirmed_at: string | null;
+        sale_id: string | null;
+        last_edited_at: string | null;
+        last_edited_by_name: string | null;
+        batch_id: string;
+        owner_id: string;
+      } | null;
+    }>("data-center-import", "workbench_open", { stoveId }),
+
+  /**
+   * Save what has been typed. `complete` is the typist saying they are done;
+   * a draft is never judged, so half-typed work is never rejected.
+   */
+  workbenchSave: (stoveId: string, values: Record<string, unknown>, complete: boolean) =>
+    call<{ batchId: string; stoveId: string; status: "draft" | "valid" }>(
+      "data-center-import",
+      "workbench_save",
+      { stoveId, values, complete },
+    ),
+
+  /** What this person has on the bench, and what others have abandoned. */
+  workbenchQueue: () =>
+    call<{
+      mine: {
+        stove_serial_no: string;
+        status: string;
+        last_edited_at: string;
+        draft_values: Record<string, unknown> | null;
+        organization_id: string;
+        partner_name: string | null;
+        rejection_reason: string | null;
+        rejection_hint: string | null;
+      }[];
+      abandoned: {
+        stove_serial_no: string;
+        last_edited_at: string;
+        last_edited_by_name: string | null;
+        partner_name: string | null;
+      }[];
+      staleDays: number;
+    }>("data-center-import", "workbench_queue"),
+
+  /** Both input streams, with what is waiting on somebody to release it. */
+  awaitingConfirmation: () =>
+    call<{
+      batches: {
+        batch_id: string;
+        stream: "bulk_import" | "workbench";
+        source: string;
+        filename: string | null;
+        organization_id: string | null;
+        partner_name: string | null;
+        uploaded_at: string;
+        uploaded_by_name: string | null;
+        awaiting: number;
+        still_drafting: number;
+        refused: number;
+        exceptions: number;
+        confirmed: number;
+        total_rows: number;
+        last_worked_on: string | null;
+        worked_by: string[];
+      }[];
+    }>("data-center-import", "awaiting_confirmation"),
 
   validate: (batchId: string) =>
     call<{

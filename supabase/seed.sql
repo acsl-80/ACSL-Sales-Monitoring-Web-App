@@ -897,7 +897,12 @@ from (values
   -- them in front of an empty table. Decided 2026-08-19: the Data Center keeps
   -- mirroring the sales app's scope rule, and call centre accounts are given
   -- the role that already means "ACSL staff". See src/app/data-center/PLAN.md.
-  ('b0000000-0000-4000-8000-000000000006'::uuid,'callcentre@preview.acsl.test', 'Preview Call Centre',   'acsl_agent',         null)
+  ('b0000000-0000-4000-8000-000000000006'::uuid,'callcentre@preview.acsl.test', 'Preview Call Centre',   'acsl_agent',         null),
+  -- The person who runs the Data Center without running the application. Held
+  -- as its own account rather than tested through the super admin, because a
+  -- super admin passes every check by short-circuit and so proves nothing
+  -- about what the level actually grants.
+  ('b0000000-0000-4000-8000-000000000007'::uuid,'datamanager@preview.acsl.test','Preview Data Manager',  'acsl_agent_manager', null)
 ) as u(id, email, full_name, role, org)
 on conflict (id) do nothing;
 
@@ -999,7 +1004,8 @@ insert into data_center.module_access (user_id, access_role)
 values
   ('b0000000-0000-4000-8000-000000000006', 'editor'),
   ('b0000000-0000-4000-8000-000000000003', 'call_agent'),
-  ('b0000000-0000-4000-8000-000000000002', 'viewer')
+  ('b0000000-0000-4000-8000-000000000002', 'viewer'),
+  ('b0000000-0000-4000-8000-000000000007', 'data_manager')
 on conflict (user_id) do update set access_role = excluded.access_role;
 
 -- Taking work. Separate from the grant on purpose: holding the role is a

@@ -58,12 +58,16 @@ const AREAS = [
     blurb: "Every sold stove with the detail captured at the point of sale.",
   },
   {
+    // Either the uploader or the bench opens it, so the card unlocks on
+    // either. AreaCard names the first key when it is locked, which is the
+    // one most people are missing.
     key: DATA_CENTER_FEATURES.IMPORT_UPLOAD,
+    altKey: DATA_CENTER_FEATURES.DIGITISATION_WORK,
     href: "/data-center/import",
     area: "import",
     name: "Bulk Import",
+    blurb: "Receipts typed at the bench or uploaded in bulk, released on confirmation.",
     icon: Upload,
-    blurb: "Digitalized receipts, validated against stock before anything is committed.",
   },
   {
     key: DATA_CENTER_FEATURES.GRANTS_MANAGE,
@@ -149,7 +153,11 @@ export default function Explore() {
   return (
     <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3">
       {AREAS.map((area) => (
-        <AreaCard key={area.href} area={area} unlocked={can(area.key)} />
+        <AreaCard
+          key={area.href}
+          area={area}
+          unlocked={can(area.key) || (area.altKey ? can(area.altKey) : false)}
+        />
       ))}
     </div>
   );

@@ -15,7 +15,7 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.39.3";
 import { withConnection, withReadConnection } from "../_shared/data-center-db.ts";
-import { ROLE_FEATURES } from "../_shared/data-center-roles.ts";
+import { ROLE_FEATURES, featuresFor } from "../_shared/data-center-roles.ts";
 
 const DEFAULT_ORIGINS = [
   "https://sales.atmosfair.com.ng",
@@ -172,19 +172,47 @@ serve(async (req) => {
 
     // Authority check, server-side, before anything else. The UI hiding the
     // access section is presentation; this is the permission.
-    let allowed = isSuperAdmin(profile.role);
-    if (!allowed) {
-      allowed = await withReadConnection(async (conn) => {
-        const g = await conn.queryObject<{ n: number }>({
-          text: `select count(*)::int n from data_center.feature_grants
-                 where user_id = $1 and feature_key = 'grants.manage'`,
+    /**
+     * Two different jobs reach this function.
+     *
+     * Granting access needs `grants.manage`. Editing the call form and the
+     * runtime settings needs `registry.manage`, which a data manager holds and
+     * a grants administrator may not. Gating the whole function on the first
+     * meant a data manager could not open Settings at all, so the level that
+     * runs the module could not configure it.
+     *
+     * The level's own keys count as well as an individual grant, which is what
+     * `featuresFor` is for: a role is a starting set, not a decoration.
+     */
+    const held = isSuperAdmin(profile.role)
+      ? null
+      : await withReadConnection(async (conn) => {
+        const r = await conn.queryObject<{ access_role: string | null; keys: string[] }>({
+          text: `select m.access_role,
+                        coalesce(array_agg(g.feature_key) filter (where g.feature_key is not null),
+                                 '{}') as keys
+                   from data_center.module_access m
+                   left join data_center.feature_grants g on g.user_id = m.user_id
+                  where m.user_id = $1
+                  group by m.access_role`,
           args: [callerId],
         });
-        return (g.rows[0]?.n ?? 0) > 0;
+        const row = r.rows[0];
+        return row ? featuresFor(row.access_role, row.keys) : [];
       });
-    }
-    if (!allowed) {
-      return json({ error: "Not permitted to manage access", code: "forbidden" }, 403, cors);
+
+    const holds = (key: string) => held === null || held.includes(key);
+    if (!holds("grants.manage") && !holds("registry.manage")) {
+      return json(
+        {
+          error:
+            "Settings needs either grants.manage, to decide who may use the module, " +
+            "or registry.manage, to change what it asks and how it behaves.",
+          code: "forbidden",
+        },
+        403,
+        cors,
+      );
     }
 
     /**
@@ -195,14 +223,8 @@ serve(async (req) => {
      * enforced anywhere.
      */
     const superAdmin = isSuperAdmin(profile.role);
-    const canManageRegistry = superAdmin || await withReadConnection(async (conn) => {
-      const g = await conn.queryObject<{ n: number }>({
-        text: `select count(*)::int n from data_center.feature_grants
-               where user_id = $1 and feature_key = 'registry.manage'`,
-        args: [callerId],
-      });
-      return (g.rows[0]?.n ?? 0) > 0;
-    });
+    const canManageRegistry = holds("registry.manage");
+    const canManageGrants = holds("grants.manage");
     const requireRegistry = () =>
       canManageRegistry
         ? null
@@ -267,6 +289,13 @@ serve(async (req) => {
 
         case "access_grant":
         case "access_update": {
+          if (!canManageGrants) {
+            return json(
+              { error: "This needs the grants.manage permission", code: "no_feature" },
+              403,
+              cors,
+            );
+          }
           if (!body.userId || !VALID_ROLES.has(body.accessRole ?? "")) {
             return json(
               {
@@ -300,6 +329,13 @@ serve(async (req) => {
         }
 
         case "access_revoke": {
+          if (!canManageGrants) {
+            return json(
+              { error: "This needs the grants.manage permission", code: "no_feature" },
+              403,
+              cors,
+            );
+          }
           if (!body.userId) {
             return json({ error: "userId is required", code: "bad_input" }, 400, cors);
           }
@@ -589,6 +625,13 @@ serve(async (req) => {
          * is how someone who is not a super admin comes to see Settings at all.
          */
         case "feature_grants_list": {
+          if (!canManageGrants) {
+            return json(
+              { error: "This needs the grants.manage permission", code: "no_feature" },
+              403,
+              cors,
+            );
+          }
           const rows = await conn.queryObject({
             text: `select user_id::text, feature_key from data_center.feature_grants
                     order by user_id, feature_key`,
@@ -597,6 +640,21 @@ serve(async (req) => {
         }
 
         case "feature_grant_set": {
+          /**
+           * Withholding grants.manage from the data manager level meant
+           * nothing while this action was ungated: a data manager could tick
+           * grants.manage onto themselves and become an access administrator
+           * in one request. A level that can grant itself more is not a level,
+           * which is the exact sentence the role table already carried and
+           * this endpoint quietly contradicted.
+           */
+          if (!canManageGrants) {
+            return json(
+              { error: "This needs the grants.manage permission", code: "no_feature" },
+              403,
+              cors,
+            );
+          }
           const userId = body.userId ? String(body.userId) : "";
           const featureKey = String(body.featureKey ?? "").trim();
           if (!userId || !featureKey) {
