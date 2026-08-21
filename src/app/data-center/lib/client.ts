@@ -971,7 +971,9 @@ export const dataCenterImport = {
   partners: () =>
     call<{ id: string; partner_name: string }[]>("data-center-import", "partners"),
 
-  batches: () => call<ImportBatch[]>("data-center-import", "batches"),
+  /** The history, narrowed by the shared period control on upload date. */
+  batches: (range: { dateFrom?: string; dateTo?: string } = {}) =>
+    call<ImportBatch[]>("data-center-import", "batches", range),
 
   rows: (batchId: string, status = "") =>
     call<ImportRow[]>("data-center-import", "rows", { batchId, status }),

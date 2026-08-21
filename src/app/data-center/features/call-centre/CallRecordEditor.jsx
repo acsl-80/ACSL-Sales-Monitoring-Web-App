@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
+import Link from "@/compat/Link";
 import { dataCenterWrite, DataCenterError } from "../../lib/client";
 import FieldRenderer, { isFieldVisible } from "./FieldRenderer";
 import {
@@ -198,10 +199,27 @@ export default function CallRecordEditor({ saleId, canEdit, onClose, onSaved }) 
             {record?.end_user_name ?? "Call record"}
           </DialogTitle>
           <DialogDescription className="mt-0.5 truncate text-sm text-gray-600">
-            {record
-              ? [record.stove_serial_no, record.partner_name, record.user_state]
-                .filter(Boolean).join(" · ")
-              : "Loading this record"}
+            {record ? (
+              <>
+                {/*
+                  The serial leads out to the whole history. An agent on a call
+                  who is told something that does not match the record needs
+                  the transfer, the import and the previous calls, and going
+                  and finding those by hand is what this page exists to end.
+                */}
+                <Link
+                  href={`/data-center/stove/${encodeURIComponent(record.stove_serial_no)}`}
+                  className="text-(--dc-accent) underline decoration-(--dc-accent)/30 underline-offset-2 hover:decoration-(--dc-accent)"
+                >
+                  {record.stove_serial_no}
+                </Link>
+                {[record.partner_name, record.user_state].filter(Boolean).map((v) => (
+                  <span key={v}> · {v}</span>
+                ))}
+              </>
+            ) : (
+              "Loading this record"
+            )}
           </DialogDescription>
         </DialogHeader>
 

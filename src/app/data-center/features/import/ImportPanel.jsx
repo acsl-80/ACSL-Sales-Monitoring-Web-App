@@ -1,4 +1,6 @@
 import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import PeriodFilter from "../../components/PeriodFilter";
+import { usePeriod } from "../../lib/usePeriod";
 import { dataCenterImport, DataCenterError } from "../../lib/client";
 import { parseCsv, CsvError } from "../../lib/csv";
 import { parseWorkbook, canReadWorkbooks, looksLikeWorkbook } from "../../lib/xlsx";
@@ -165,16 +167,26 @@ export default function ImportPanel({ canUpload, canCommit, canResolve }) {
   const [pending, setPending] = useState(null);
   const fileInput = useRef(null);
 
+  /**
+   * The history takes the same period as everything else, on upload date. It
+   * is the surface most likely to be asked "what came in last week", and it
+   * was the one that could only answer "here are the last fifty".
+   */
+  const { period, setPeriod, resolved, earliest } = usePeriod("/data-center/import");
+
   const refresh = useCallback(async () => {
     try {
-      setBatches(await dataCenterImport.batches());
+      setBatches(await dataCenterImport.batches({
+        ...(resolved.dateFrom ? { dateFrom: resolved.dateFrom } : {}),
+        ...(resolved.dateTo ? { dateTo: resolved.dateTo } : {}),
+      }));
       setError(null);
     } catch (err) {
       setError(err instanceof DataCenterError ? err.message : "Could not load import batches.");
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [resolved.dateFrom, resolved.dateTo]);
 
   useEffect(() => {
     refresh();
@@ -554,13 +566,28 @@ export default function ImportPanel({ canUpload, canCommit, canResolve }) {
         </div>
       )}
 
+      <div className="flex flex-wrap items-center gap-2 border-b border-gray-100 bg-(--dc-accent-soft)/20 px-4 py-2.5">
+        <PeriodFilter
+          period={period}
+          onChange={setPeriod}
+          earliest={earliest}
+          noun="imports"
+        />
+      </div>
+
       {loading ? (
         <p className="flex items-center gap-2 p-6 text-sm text-gray-500">
           <Loader2 className="h-4 w-4 animate-spin" /> Loading batches...
         </p>
       ) : batches.length === 0 ? (
         <p className="m-4 rounded-lg border border-dashed border-(--dc-accent)/30 p-6 text-center text-sm text-gray-500">
-          No imports yet. Choose a CSV or type one record to begin.
+          {/*
+            "No imports at all" and "none in this period" are different facts,
+            and answering the second with the first sends somebody looking for
+            a file they did upload.
+          */}
+          No imports in this period. Widen it above, or choose a file or type
+          one record to begin.
         </p>
       ) : (
         <>

@@ -18,7 +18,8 @@ import {
 type PeriodRoute =
   | "/data-center/stove-records"
   | "/data-center/call-centre"
-  | "/data-center/partner-records";
+  | "/data-center/partner-records"
+  | "/data-center/import";
 
 /**
  * The period a surface is showing, held in the URL.

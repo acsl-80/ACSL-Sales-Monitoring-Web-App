@@ -1,4 +1,5 @@
 import { Fragment, useCallback, useEffect, useMemo, useState } from "react";
+import Link from "@/compat/Link";
 import { dataCenterAssign, DataCenterError } from "../../lib/client";
 import { usePaged } from "../../lib/usePaged";
 import Pagination from "../../components/Pagination";
@@ -31,6 +32,7 @@ import {
   RefreshCw,
   Users,
   PhoneOff,
+  ExternalLink,
 } from "lucide-react";
 
 /**
@@ -385,6 +387,14 @@ function AgentDetail({ agent, onChanged, onOpenRecord }) {
                           {item.position}
                         </td>
                         <td className="px-3 py-1.5">
+                          {/*
+                            Two different destinations, so two controls rather
+                            than one that guesses. The serial opens the call
+                            record, which is what a supervisor looking at a
+                            queue wants; the arrow beside it opens the whole
+                            history, which is what they want when the record
+                            does not explain itself.
+                          */}
                           <button
                             type="button"
                             onClick={() => onOpenRecord(item.sale_id)}
@@ -392,6 +402,14 @@ function AgentDetail({ agent, onChanged, onOpenRecord }) {
                           >
                             {item.stove_serial_no}
                           </button>
+                          <Link
+                            href={`/data-center/stove/${encodeURIComponent(item.stove_serial_no)}`}
+                            aria-label={`Everything about ${item.stove_serial_no}`}
+                            title={`Everything about ${item.stove_serial_no}`}
+                            className="ml-1.5 inline-block align-middle text-gray-400 transition hover:text-(--dc-accent)"
+                          >
+                            <ExternalLink className="h-3.5 w-3.5" />
+                          </Link>
                         </td>
                         <td className="px-3 py-1.5 tabular-nums text-gray-700">
                           {item.number_on_record || "-"}

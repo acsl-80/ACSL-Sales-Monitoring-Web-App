@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
+import Link from "@/compat/Link";
 import PeriodFilter from "../../components/PeriodFilter";
 import { usePeriod } from "../../lib/usePeriod";
 import { dataCenterAssign, dataCenterWrite, DataCenterError } from "../../lib/client";
@@ -149,8 +150,13 @@ function QuickEdit({ row, outcomes, onDone }) {
         className="dc-root w-[min(22rem,90vw)] p-3"
         data-area="call-centre"
       >
-        <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-(--dc-accent-strong)">
-          {row.stove_serial_no}
+        <p className="mb-2 text-xs font-semibold uppercase tracking-wide">
+          <Link
+            href={`/data-center/stove/${encodeURIComponent(row.stove_serial_no)}`}
+            className="text-(--dc-accent-strong) underline decoration-(--dc-accent)/30 underline-offset-2 hover:decoration-(--dc-accent)"
+          >
+            {row.stove_serial_no}
+          </Link>
         </p>
         {error && <p className="mb-2 text-xs text-red-600">{error}</p>}
 
@@ -505,7 +511,22 @@ export default function AssignmentLog({ canRun, canEdit = false }) {
                   <td className="px-3 py-2 text-gray-700">{r.partner_name}</td>
                   <td className="px-3 py-2 text-gray-500">{dateOf(r.assigned_at)}</td>
                   <td className="px-3 py-2 tabular-nums text-gray-500">{r.position}</td>
-                  <td className="px-3 py-2 font-mono text-xs text-gray-700">{r.stove_serial_no}</td>
+                  <td className="px-3 py-2 font-mono text-xs">
+                    {/*
+                      The serial is the way out of this table into the whole
+                      history of the stove it names. The row itself opens the
+                      call record, so the click has to stop here rather than
+                      doing both.
+                    */}
+                    <Link
+                      href={`/data-center/stove/${encodeURIComponent(r.stove_serial_no)}`}
+                      onClick={(e) => e.stopPropagation()}
+                      title={`Everything about ${r.stove_serial_no}`}
+                      className="text-(--dc-accent) underline decoration-(--dc-accent)/30 underline-offset-2 hover:decoration-(--dc-accent)"
+                    >
+                      {r.stove_serial_no}
+                    </Link>
+                  </td>
                   <td className={`px-3 py-2 text-xs font-medium ${OUTCOME_TONE[r.verification_outcome] ?? "text-gray-500"}`}>
                     {outcomeLabel(r.verification_outcome)}
                   </td>

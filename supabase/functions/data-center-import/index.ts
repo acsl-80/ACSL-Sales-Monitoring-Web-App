@@ -2087,6 +2087,26 @@ serve(async (req) => {
 
       case "batches": {
         requireFeature("import.upload");
+        /**
+         * The history takes the same period as every other surface.
+         *
+         * On when the file was uploaded, which is the date this table is
+         * about: a batch uploaded in March is March's work whatever dates the
+         * receipts inside it carry.
+         */
+        const ISO = /^\d{4}-\d{2}-\d{2}$/;
+        const bf = (body as { dateFrom?: string; dateTo?: string });
+        const args: unknown[] = [];
+        const where: string[] = [];
+        if (typeof bf.dateFrom === "string" && ISO.test(bf.dateFrom)) {
+          args.push(bf.dateFrom);
+          where.push(`b.uploaded_at >= $${args.length}::date`);
+        }
+        if (typeof bf.dateTo === "string" && ISO.test(bf.dateTo)) {
+          args.push(bf.dateTo);
+          where.push(`b.uploaded_at < ($${args.length}::date + 1)`);
+        }
+        const filter = where.length > 0 ? `where ${where.join(" and ")}` : "";
         return await withReadConnection(async (conn) => {
           const r = await conn.queryObject({
             text: `select b.id, b.filename, b.state, b.total_rows, b.valid_rows,
@@ -2098,7 +2118,9 @@ serve(async (req) => {
                    from data_center.import_batches b
                    left join public.organizations o on o.id = b.organization_id
                    left join public.profiles p on p.id = b.uploaded_by
-                   order by b.uploaded_at desc limit 50`,
+                   ${filter}
+                   order by b.uploaded_at desc limit 200`,
+            args,
           });
           return json({ data: r.rows }, 200, cors);
         });
