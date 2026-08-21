@@ -202,6 +202,19 @@ test.describe("the change log is readable and categorised", () => {
       page.getByText(/granted an access grant|No access changes yet/).first(),
     ).toBeVisible({ timeout: 15_000 });
 
+    // And nothing from another category is left underneath it. Picking a
+    // category used to race the request already in flight, and "everything" is
+    // the biggest page so it landed last: the chip read Access while the rows
+    // were every category. Showing the wrong rows under a filter is worse than
+    // showing none, because nothing about it looks wrong.
+    const subjects = await page
+      .locator("li p")
+      .filter({ hasText: /granted|revoked|changed|added|updated|advanced|logged/ })
+      .allInnerTexts();
+    for (const line of subjects) {
+      expect(line).toMatch(/access grant/);
+    }
+
     // The raw table name never reaches the reader.
     await expect(page.getByText("data_center.module_access")).toHaveCount(0);
   });

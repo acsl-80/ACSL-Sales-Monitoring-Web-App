@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { dataCenterAdmin, DataCenterError } from "../../lib/client";
 import ExportButton from "../../components/ExportButton";
 import { plural } from "../../lib/plural";
@@ -162,15 +162,33 @@ export default function ChangeLog() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
 
+  /**
+   * Only the newest request may write the list.
+   *
+   * Without this, picking a category races the request already in flight: the
+   * "everything" page is the biggest one and lands last, so the chip reads
+   * Access while the rows underneath are every category. Showing the wrong
+   * rows under a filter is worse than showing none, because nothing about it
+   * looks wrong.
+   *
+   * The same guard the user search in AccessManager has needed since it was
+   * written, for the same reason.
+   */
+  const token = useRef(0);
+
   const load = useCallback(async (which) => {
+    const mine = ++token.current;
     setLoading(true);
     try {
-      setEntries(await dataCenterAdmin.changeLog(100, which));
+      const rows = await dataCenterAdmin.changeLog(100, which);
+      if (mine !== token.current) return;
+      setEntries(rows);
       setError(null);
     } catch (err) {
+      if (mine !== token.current) return;
       setError(err instanceof DataCenterError ? err.message : "Could not load the log.");
     } finally {
-      setLoading(false);
+      if (mine === token.current) setLoading(false);
     }
   }, []);
 
@@ -258,7 +276,7 @@ export default function ChangeLog() {
           {groups.map((group) => (
             <section key={group.label}>
               <h3 className="sticky top-0 z-10 border-y border-gray-100 bg-(--dc-surface-muted) px-4 py-1.5 text-xs font-semibold uppercase tracking-wide text-gray-600">
-                {group.label}
+                {group.label}{" "}
                 <span className="ml-2 font-normal normal-case tracking-normal text-gray-500">
                   {plural(group.entries.length, "change")}
                 </span>
