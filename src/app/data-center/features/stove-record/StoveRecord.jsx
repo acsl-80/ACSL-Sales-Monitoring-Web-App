@@ -418,7 +418,9 @@ export default function StoveRecord({ stoveId }) {
             <CopyId value={s.stove_id} />
             <ExportButton
               columns={exportShape.columns}
-              rows={exportShape.rows}
+              // A thunk, which is the contract: ExportButton calls rows(),
+              // so nothing is built until somebody actually exports.
+              rows={() => exportShape.rows}
               filename={`stove-${s.stove_id}.csv`}
               label="Export this record"
             />

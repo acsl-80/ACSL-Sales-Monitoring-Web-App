@@ -83,7 +83,7 @@ export function journeyOf({ stove, sale, enrichment, provenance, consignment, at
     {
       key: "called",
       title: "Called",
-      state: calls > 0 ? REACHED : s.sale_id ? WAITING : WAITING,
+      state: calls > 0 ? REACHED : WAITING,
       when: at(enrichment?.last_attempt_at ?? s.last_attempt_at),
       detail:
         calls > 0

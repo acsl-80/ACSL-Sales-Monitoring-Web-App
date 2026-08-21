@@ -100,6 +100,31 @@ test.describe("one stove ID anchors the whole module", () => {
     await expect(page.getByRole("heading", { name: /^PRV/ })).toBeVisible({ timeout: 20_000 });
   });
 
+  test("the record exports as one row, with the columns picked", async ({ page }) => {
+    await signIn(page, USERS.admin);
+    const serial = await aSoldSerial(page);
+    await page.goto(`/data-center/stove/${serial}`);
+    await expect(page.getByRole("heading", { name: serial })).toBeVisible({ timeout: 20_000 });
+
+    /**
+     * Exercised through the real button rather than by inspecting the shape.
+     * ExportButton takes `rows` as a thunk and calls it; passing the array
+     * itself typechecks, renders, and throws the moment somebody clicks - a
+     * whole class of defect that only a real click finds.
+     */
+    const waitForDownload = page.waitForEvent("download");
+    await page.getByRole("button", { name: "Export this record" }).click();
+    const download = await waitForDownload;
+    expect(download.suggestedFilename()).toBe(`stove-${serial}.csv`);
+
+    const path = await download.path();
+    const text = await import("node:fs/promises").then((fs) => fs.readFile(path!, "utf8"));
+    const [header, row] = text.trim().split(/?
+/);
+    expect(header).toContain("stove id");
+    expect(row).toContain(serial);
+  });
+
   test("a serial nobody has says so, and offers a way on", async ({ page }) => {
     await signIn(page, USERS.admin);
     await page.goto("/data-center/stove/PRV999999");
