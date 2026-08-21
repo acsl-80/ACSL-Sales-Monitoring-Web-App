@@ -255,7 +255,10 @@ export default function AssignmentLog({ canRun, canEdit = false }) {
    * matters here: an assignment made in March is March's work even if the
    * sale it covers was written in January.
    */
-  const { period, setPeriod, resolved, earliest } = usePeriod("/data-center/call-centre");
+  const { period, setPeriod, resolved, earliest } = usePeriod(
+    "/data-center/call-centre",
+    "logPeriod",
+  );
 
   const filters = useMemo(
     () => ({
@@ -422,7 +425,7 @@ export default function AssignmentLog({ canRun, canEdit = false }) {
           period={period}
           onChange={setPeriod}
           earliest={earliest}
-          noun="assignments"
+          noun="assignments made"
         />
         <label htmlFor="dc-log-state" className="text-xs font-medium text-gray-700">
           Batch state

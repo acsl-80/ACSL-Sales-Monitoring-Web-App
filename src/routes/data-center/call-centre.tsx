@@ -28,6 +28,12 @@ type CallCentreSearch = {
    * is left out of the URL entirely, so an unfiltered link stays clean.
    */
   period?: string;
+  /**
+   * The assignment log's own period. Separate from the queue's because they
+   * are stacked on one page and ask about two different dates: when a stove
+   * was sold, and when the work on it was handed out.
+   */
+  logPeriod?: string;
 };
 
 const str = (v: unknown) => (typeof v === "string" && v !== "" ? v : undefined);
@@ -44,6 +50,7 @@ export const Route = createFileRoute("/data-center/call-centre")({
     preset: str(search.preset),
     verificationOutcome: str(search.verificationOutcome),
     period: str(search.period),
+    logPeriod: str(search.logPeriod),
   }),
   component: Page,
 });

@@ -33,14 +33,21 @@ type PeriodRoute =
  *
  * `earliest` comes from the server, once per session, so the year list offers
  * only years the register actually holds.
+ *
+ * `param` names the search key, because one page can hold two surfaces asking
+ * about two different dates. The Call Centre stacks the queue, which is about
+ * when a stove was sold, over the assignment log, which is about when the work
+ * was handed out. Sharing one value between them would mean narrowing the log
+ * to last week silently re-narrowed the queue as well, which is the surprise
+ * this control exists to remove rather than to introduce.
  */
-export function usePeriod(routeId: PeriodRoute): {
+export function usePeriod(routeId: PeriodRoute, param: string = "period"): {
   period: Period;
   setPeriod: (next: Period) => void;
   resolved: ResolvedPeriod;
   earliest: string | null;
 } {
-  const search = useSearch({ from: routeId }) as { period?: string };
+  const search = useSearch({ from: routeId }) as Record<string, string | undefined>;
   const navigate = useNavigate();
   const [earliest, setEarliest] = useState<string | null>(null);
 
@@ -57,7 +64,7 @@ export function usePeriod(routeId: PeriodRoute): {
     };
   }, []);
 
-  const period = useMemo(() => decodePeriod(search.period), [search.period]);
+  const period = useMemo(() => decodePeriod(search[param]), [search, param]);
 
   const setPeriod = useCallback(
     (next: Period) => {
@@ -65,12 +72,12 @@ export function usePeriod(routeId: PeriodRoute): {
         to: routeId,
         search: (prev: Record<string, unknown>) => ({
           ...prev,
-          period: encodePeriod(next),
+          [param]: encodePeriod(next),
         }),
         replace: true,
       });
     },
-    [navigate, routeId],
+    [navigate, routeId, param],
   );
 
   const resolved = useMemo(() => resolvePeriod(period), [period]);
