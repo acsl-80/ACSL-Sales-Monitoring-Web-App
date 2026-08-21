@@ -139,18 +139,18 @@ export const HEADER_ALIASES: Record<string, string[]> = {
   // is carried so the import can check the row landed in the right sheet.
   transactionId: ["transaction_id", "Transaction ID", "sales_reference", "Sales Reference"],
   firstName:     ["first_name", "User First Name", "firstName"],
-  lastName:      ["last_name", "User Last Name", "surname", "lastName"],
+  lastName:      ["last_name", "User Last Name", "surname", "lastName", "endUserSurname"],
   endUserName:   ["end_user_name", "endUserName", "name"],
   phone:         ["phone", "Primary Phone Number", "primary_phone", "primaryPhone"],
-  otherPhone:    ["other_phone", "Alternative Phone Number", "alt_phone"],
+  otherPhone:    ["other_phone", "Alternative Phone Number", "alt_phone", "otherPhone"],
   salesDate:     ["sales_date", "Sales Date", "date", "salesDate"],
   amount:        ["amount", "Sale Amount", "price", "saleAmount"],
   amountReceived:["amount_received", "Amount Received", "amountReceived"],
-  state:         ["state", "State", "user_state", "state_backup"],
-  lga:           ["lga", "LGA", "Local Govt Area", "lga_backup"],
+  state:         ["state", "State", "user_state", "state_backup", "stateBackup"],
+  lga:           ["lga", "LGA", "Local Govt Area", "lga_backup", "lgaBackup"],
   fullAddress:   ["address", "User Residential Address", "full_address", "fullAddress"],
-  contactPerson: ["contact_person", "Contact Person", "buyer"],
-  contactPhone:  ["contact_phone", "Contact Phone", "buyer_phone"],
+  contactPerson: ["contact_person", "Contact Person", "buyer", "contactPerson"],
+  contactPhone:  ["contact_phone", "Contact Phone", "buyer_phone", "contactPhone"],
   aka:           ["aka", "AKA", "nickname"],
 };
 
@@ -208,6 +208,100 @@ export function autoMapRow(row: Record<string, unknown>): Record<string, unknown
     if (field && out[field] === undefined) out[field] = value;
   }
   return out;
+}
+
+/**
+ * The fields create-sale accepts beyond the spine every row must have.
+ *
+ * The commit payload was a fixed list of thirteen, which was right while the
+ * only way in was a spreadsheet of thirteen columns. The workbench collects
+ * the whole form - the consents as actually ticked, the signature, the two
+ * photographs, the stove set, the cooking habits, the payment model - and all
+ * of it was being dropped between the row and the sale.
+ *
+ * Named explicitly rather than spread wholesale: a row's raw values come from
+ * a file somebody else wrote, and forwarding whatever it happens to contain
+ * into create-sale is how a column called `organizationId` in a partner's
+ * spreadsheet ends up deciding whose sale it is.
+ */
+const PASSTHROUGH_FIELDS = [
+  "signature",
+  "stoveImageId",
+  "agreementImageId",
+  "retailerBranch",
+  "potQuantity",
+  "heatRetentionDevice",
+  "previousStoveType",
+  "previousStoveOther",
+  "mealsPerDay",
+  "cookingFuelSource",
+  "cookingLocation",
+  "isInstallment",
+  "paymentModelId",
+  "initialPaymentAmount",
+  "initialPaymentMethod",
+  "initialPaymentProofImageId",
+] as const;
+
+/** Whatever of the above this row actually carries, and nothing else. */
+function passthroughFrom(source: Record<string, unknown> | null | undefined) {
+  const out: Record<string, unknown> = {};
+  if (!source) return out;
+  for (const key of PASSTHROUGH_FIELDS) {
+    const value = source[key];
+    if (value !== undefined && value !== null && value !== "") out[key] = value;
+  }
+  return out;
+}
+
+/**
+ * The six consents.
+ *
+ * A row typed at the bench carries what the typist actually ticked, and that
+ * is the truthful answer. A row from a spreadsheet has no such column, and
+ * asserts them as accepted on paper, which is what the paper agreement is:
+ * `import.require_paper_agreement` exists to make that assumption a setting
+ * rather than a silent constant.
+ */
+function termsFrom(source: Record<string, unknown> | null | undefined) {
+  const given = source?.termsAccepted;
+  if (given && typeof given === "object") {
+    const map = given as Record<string, unknown>;
+    // Only accepted if every one is. A partly ticked agreement is not one.
+    if (TERMS_KEYS.every((k) => map[k] === true)) {
+      return Object.fromEntries(TERMS_KEYS.map((k) => [k, true]));
+    }
+    return map;
+  }
+  return Object.fromEntries(TERMS_KEYS.map((k) => [k, true]));
+}
+
+/**
+ * The sales app's own field names, translated to the import's.
+ *
+ * Two vocabularies for one record. Sell Stove holds the address in a nested
+ * `addressData` and the state in `stateBackup`, because that is what
+ * create-sale takes; the import holds them flat, because that is what a
+ * spreadsheet column is. Neither is wrong and neither is going to change, so
+ * the bench translates at the seam.
+ *
+ * Found by testing the whole path rather than the pieces: every part worked
+ * and a complete record was still refused for having no address, because the
+ * address was sitting one level down under a different name.
+ */
+function fromSaleForm(values: Record<string, unknown>): Record<string, unknown> {
+  const address = (values.addressData ?? {}) as Record<string, unknown>;
+  const name = [values.endUserName, values.endUserSurname]
+    .map((x) => String(x ?? "").trim())
+    .filter(Boolean)
+    .join(" ");
+  return {
+    ...values,
+    endUserName: name || values.endUserName,
+    state: values.state ?? values.stateBackup ?? address.state,
+    lga: values.lga ?? values.lgaBackup ?? address.city,
+    fullAddress: values.fullAddress ?? address.fullAddress,
+  };
 }
 
 /**
@@ -302,6 +396,23 @@ async function resolvePartnersFromSerials(
 }
 
 /**
+ * One field, read by its canonical name and every alias the module knows.
+ *
+ * `normalizeRow` listed its own aliases at each call site, and the lists were
+ * not the same as HEADER_ALIASES. `otherPhone` was the one that showed: the
+ * alias table says `otherPhone` is the canonical name, the call site asked for
+ * `other_phone`, `Alternative Phone Number` and `alt_phone`, and a form that
+ * sends the canonical name had its value dropped in silence.
+ *
+ * Exactly the shape of the "Stove ID" bug a few commits earlier - a table that
+ * knows the answer and a reader that does not ask it. Asking it here means a
+ * new alias is one edit, in the table, and every reader gets it.
+ */
+function field(raw: Record<string, unknown>, key: keyof typeof HEADER_ALIASES, ...extra: string[]) {
+  return text(raw, key as string, ...(HEADER_ALIASES[key] ?? []), ...extra);
+}
+
+/**
  * Turn one spreadsheet row into something create-sale would accept, or explain
  * why it cannot be.
  *
@@ -316,7 +427,7 @@ export function normalizeRow(
   // ignored rather than corrected.
   | { ok: true; row: NormalizedRow; warning?: string | null }
   | { ok: false; reason: string; hint?: string } {
-  const serial = text(raw, "stove_serial_no", "Stove Serial Number", "serial", "stoveSerialNo");
+  const serial = field(raw, "stoveSerialNo");
   if (!serial) {
     return {
       ok: false,
@@ -326,9 +437,9 @@ export function normalizeRow(
     };
   }
 
-  const firstName = text(raw, "first_name", "User First Name", "firstName");
-  const lastName = text(raw, "last_name", "User Last Name", "surname", "lastName");
-  const combined = text(raw, "end_user_name", "endUserName", "name");
+  const firstName = field(raw, "firstName");
+  const lastName = field(raw, "lastName");
+  const combined = field(raw, "endUserName");
   const endUserName = combined || [firstName, lastName].filter(Boolean).join(" ").trim();
   if (!endUserName) {
     return {
@@ -343,14 +454,14 @@ export function normalizeRow(
   // number half a dozen ways and Excel eats the leading zero of any column it
   // decides is numeric, so refusing anything but 0XXXXXXXXXX rejects work that
   // is not wrong. One shape goes in, whatever shape came out of the file.
-  const phoneRaw = text(raw, "phone", "Primary Phone Number", "primary_phone", "primaryPhone");
+  const phoneRaw = field(raw, "phone");
   const phoneResult = normalizeNigerianPhone(phoneRaw);
   if (!phoneResult.ok) {
     return { ok: false, reason: phoneResult.reason, hint: phoneResult.hint };
   }
   const cleanedPhone = phoneResult.phone;
 
-  const salesDateRaw = text(raw, "sales_date", "Sales Date", "date", "salesDate");
+  const salesDateRaw = field(raw, "salesDate");
   if (!salesDateRaw) {
     return {
       ok: false,
@@ -381,7 +492,7 @@ export function normalizeRow(
     };
   }
 
-  const amountRaw = text(raw, "amount", "Sale Amount", "price", "saleAmount");
+  const amountRaw = field(raw, "amount");
   const amount = Number(amountRaw.replace(/[^0-9.]/g, ""));
   if (!Number.isFinite(amount) || amount <= 0) {
     return {
@@ -392,7 +503,7 @@ export function normalizeRow(
     };
   }
 
-  const receivedRaw = text(raw, "amount_received", "Amount Received", "amountReceived");
+  const receivedRaw = field(raw, "amountReceived");
   const amountReceived = receivedRaw === "" ? null : Number(receivedRaw.replace(/[^0-9.]/g, ""));
   if (amountReceived !== null && (!Number.isFinite(amountReceived) || amountReceived < 0)) {
     return {
@@ -411,7 +522,7 @@ export function normalizeRow(
     };
   }
 
-  const state = text(raw, "state", "State", "user_state", "state_backup");
+  const state = field(raw, "state", "stateBackup");
   if (!state) {
     return {
       ok: false,
@@ -419,7 +530,7 @@ export function normalizeRow(
       hint: "Add the buyer's state, spelled out, like Gombe or Kano.",
     };
   }
-  const lga = text(raw, "lga", "LGA", "Local Govt Area", "lga_backup");
+  const lga = field(raw, "lga", "lgaBackup");
   if (!lga) {
     return {
       ok: false,
@@ -428,7 +539,7 @@ export function normalizeRow(
     };
   }
 
-  const fullAddress = text(raw, "address", "User Residential Address", "full_address", "fullAddress");
+  const fullAddress = field(raw, "fullAddress");
   if (!fullAddress) {
     return {
       ok: false,
@@ -440,8 +551,8 @@ export function normalizeRow(
 
   // The buyer defaults to the end user, which is what a receipt with one name
   // on it means.
-  const contactPerson = text(raw, "contact_person", "Contact Person", "buyer") || endUserName;
-  const contactPhoneRaw = text(raw, "contact_phone", "Contact Phone", "buyer_phone") || cleanedPhone;
+  const contactPerson = field(raw, "contactPerson") || endUserName;
+  const contactPhoneRaw = field(raw, "contactPhone") || cleanedPhone;
   const contactResult = normalizeNigerianPhone(contactPhoneRaw);
   if (!contactResult.ok) {
     return {
@@ -456,7 +567,7 @@ export function normalizeRow(
   // failing the row: refusing an otherwise complete sale over a spare number
   // nobody has rung yet costs more than it saves. It is reported as a warning
   // on the batch instead.
-  const otherPhoneRaw = text(raw, "other_phone", "Alternative Phone Number", "alt_phone");
+  const otherPhoneRaw = field(raw, "otherPhone");
   const otherResult = otherPhoneRaw ? normalizeNigerianPhone(otherPhoneRaw) : null;
   const otherPhone = otherResult?.ok ? otherResult.phone : null;
   const otherPhoneWarning = otherPhoneRaw && !otherResult?.ok
@@ -477,7 +588,7 @@ export function normalizeRow(
       state,
       lga,
       fullAddress,
-      aka: text(raw, "aka", "AKA", "nickname") || null,
+      aka: field(raw, "aka") || null,
       otherPhone,
     },
     warning: otherPhoneWarning,
@@ -1179,11 +1290,19 @@ serve(async (req) => {
 
         const slice = await withReadConnection(async (conn) => {
           const r = await conn.queryObject<{
-            id: string; stove_serial_no: string; normalized: NormalizedRow;
+            id: string;
+            stove_serial_no: string;
+            normalized: NormalizedRow;
+            // What the row carried beyond the spine. Without these two the
+            // passthrough has nothing to read and every extra field the bench
+            // collects is dropped between the row and the sale.
+            draft_values: Record<string, unknown> | null;
+            raw: Record<string, unknown> | null;
           }>({
-            text: `select id, stove_serial_no, normalized from data_center.import_rows
-                   where batch_id = $1 and status = 'valid'
-                   order by row_number limit $2`,
+            text: `select id, stove_serial_no, normalized, draft_values, raw
+                     from data_center.import_rows
+                    where batch_id = $1 and status = 'valid'
+                    order by row_number limit $2`,
             args: [batchId, sliceSize],
           });
           return r.rows;
@@ -1252,6 +1371,9 @@ serve(async (req) => {
           // payment model, a drawn signature or an uploaded photo, and
           // create-sale requires none of them.
           const n = row.normalized;
+          const extras = (row.draft_values ?? row.raw ?? null) as
+            | Record<string, unknown>
+            | null;
           const payload = {
             stoveSerialNo: n.stoveSerialNo,
             salesDate: n.salesDate,
@@ -1265,13 +1387,21 @@ serve(async (req) => {
             amountReceived: n.amountReceived,
             stateBackup: n.state,
             lgaBackup: n.lga,
-            addressData: { fullAddress: n.fullAddress, state: n.state, city: n.lga },
+            // The bench already holds a full addressData with coordinates when
+            // the address came off a map; a spreadsheet row has only the three
+            // strings. Keep the richer one where it exists.
+            addressData: (extras?.addressData &&
+                typeof extras.addressData === "object" &&
+                (extras.addressData as Record<string, unknown>).fullAddress)
+              ? extras.addressData
+              : { fullAddress: n.fullAddress, state: n.state, city: n.lga },
             organizationId: org.organization_id,
             partnerName: org.partner_name,
-            // The six consents. A digitalized receipt asserts they were
-            // accepted on paper, which is what the paper agreement is. See
-            // workflow_config `import.require_paper_agreement`.
-            termsAccepted: Object.fromEntries(TERMS_KEYS.map((k) => [k, true])),
+            // Everything the row carried beyond the spine. A bench row brings
+            // the signature, the photographs and the rest of the form; a
+            // spreadsheet row brings none of it and the object is empty.
+            ...passthroughFrom(extras),
+            termsAccepted: termsFrom(extras),
           };
 
           let saleId: string | null = null;
@@ -1674,7 +1804,7 @@ serve(async (req) => {
         const complete = body.complete === true;
         if (!stoveId) throw new BadRequest("Which stove?");
 
-        const record = autoMapRow({ ...values, stoveSerialNo: stoveId });
+        const record = autoMapRow(fromSaleForm({ ...values, stoveSerialNo: stoveId }));
 
         // Finishing means it has to hold together. Half-typed does not.
         const shape = complete ? normalizeRow(record) : null;

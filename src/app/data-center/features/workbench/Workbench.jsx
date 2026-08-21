@@ -3,11 +3,11 @@ import { dataCenterClient, dataCenterImport, DataCenterError } from "../../lib/c
 import { usePaged } from "../../lib/usePaged";
 import Pagination from "../../components/Pagination";
 import ExportButton from "../../components/ExportButton";
-import SaleForm, { missingFields } from "./SaleForm";
+import SaleForm, { blankSale, saleProblems, withDefaults, TERMS } from "./SaleForm";
 import { plural } from "../../lib/plural";
 import {
   Loader2, ChevronRight, ArrowLeft, Search, Save, CheckCircle2,
-  TriangleAlert, Clock, UserRound, Lightbulb,
+  TriangleAlert, Clock, UserRound, Lightbulb, FileText,
 } from "lucide-react";
 
 /**
@@ -430,6 +430,48 @@ function StoveList({ batch, onPick }) {
 }
 
 /* -------------------------------------------------------------- the bench */
+/**
+ * The form, as the agreement generator expects a sale to look.
+ *
+ * The generator reads a database row - snake_case, one `end_user_name` - and
+ * the form holds camelCase with the name in two boxes. Rather than teach the
+ * generator a second shape, the record is translated here: it is the sales
+ * app's document and it should keep reading the sales app's rows.
+ */
+function asSaleRecord(values, stove) {
+  const full = [values.endUserName, values.endUserSurname]
+    .map((x) => (x || "").trim())
+    .filter(Boolean)
+    .join(" ");
+  return {
+    transaction_id: values.transactionId || stove?.transactionId || "",
+    stove_serial_no: values.stoveSerialNo || stove?.stoveId || "",
+    sales_date: values.salesDate,
+    end_user_name: full,
+    aka: values.aka,
+    phone: values.phone,
+    other_phone: values.otherPhone,
+    contact_person: values.contactPerson,
+    contact_phone: values.contactPhone,
+    partner_name: values.partnerName || stove?.partnerName || "",
+    retailer_branch: values.retailerBranch,
+    amount: values.amount === "" ? null : Number(values.amount),
+    state_backup: values.stateBackup,
+    lga_backup: values.lgaBackup,
+    address: values.addressData,
+    pot_quantity: values.potQuantity,
+    heat_retention_device: values.heatRetentionDevice,
+    previous_stove_type: values.previousStoveType,
+    previous_stove_other: values.previousStoveOther,
+    meals_per_day: values.mealsPerDay,
+    cooking_fuel_source: values.cookingFuelSource,
+    cooking_location: values.cookingLocation,
+    terms_accepted: values.termsAccepted,
+    signature: values.signature,
+    is_installment: values.isInstallment ?? false,
+  };
+}
+
 
 function Bench({ stoveId, onSaved, onBack }) {
   const [state, setState] = useState(null);
@@ -453,7 +495,19 @@ function Bench({ stoveId, onSaved, onBack }) {
       .then((d) => {
         if (!live) return;
         setState(d);
-        const start = d.work?.draft_values ?? d.work?.normalized ?? {};
+        /**
+         * Start from what is already known rather than from nothing.
+         *
+         * The stove names its own partner and the transfer it went out on, and
+         * both are printed on the agreement. Making somebody retype them is
+         * asking for a typo in a field the system could have filled in.
+         */
+        const start = {
+          ...blankSale(),
+          ...(d.work?.draft_values ?? d.work?.normalized ?? {}),
+          stoveSerialNo: d.stove.stoveId,
+          partnerName: d.work?.draft_values?.partnerName ?? d.stove.partnerName ?? "",
+        };
         setValues(start);
         lastSaved.current = JSON.stringify(start);
         setError(null);
@@ -472,7 +526,9 @@ function Bench({ stoveId, onSaved, onBack }) {
       setError(null);
       setHint(null);
       try {
-        const body = valuesRef.current;
+        // The contact defaults are applied before saving, so what is stored is
+        // what the validator judged rather than a shape only the screen had.
+        const body = complete ? withDefaults(valuesRef.current) : valuesRef.current;
         const out = await dataCenterImport.workbenchSave(stoveId, body, complete);
         lastSaved.current = JSON.stringify(body);
         setSavedAt(new Date().toISOString());
@@ -540,7 +596,10 @@ function Bench({ stoveId, onSaved, onBack }) {
   }
 
   const { stove, work } = state;
-  const missing = missingFields(values);
+  // The sales app's own rules, so a record accepted here is accepted there.
+  const problems = saleProblems(values);
+  const problemCount = Object.keys(problems).length;
+  const termsMissing = !TERMS.every((t) => values.termsAccepted?.[t.key] === true);
   const dirty = JSON.stringify(values) !== lastSaved.current;
   const locked = Boolean(work?.confirmed_at);
 
@@ -604,7 +663,7 @@ function Bench({ stoveId, onSaved, onBack }) {
         values={values}
         onChange={setField}
         disabled={locked || saving}
-        showMissing={showMissing}
+        errors={showMissing ? problems : {}}
       />
 
       <div className="flex flex-wrap items-center gap-2 border-t border-gray-100 pt-3">
@@ -633,6 +692,28 @@ function Bench({ stoveId, onSaved, onBack }) {
         </span>
 
         <div className="ml-auto flex flex-wrap items-center gap-2">
+          {/* The same replica the sales app prints, built from what is on
+              screen. Seeing it before saving is how a typist notices they have
+              put the surname in the first-name box. */}
+          <button
+            type="button"
+            disabled={saving}
+            onClick={async () => {
+              try {
+                const { buildAgreementBlobUrl } = await import(
+                  "@/app/admin/components/sales/agreement/AgreementPDFGenerator"
+                );
+                const url = await buildAgreementBlobUrl(asSaleRecord(values, stove));
+                window.open(url, "_blank", "noopener");
+              } catch {
+                setError("The agreement preview could not be built from this record yet.");
+                setHint("It needs at least a name, a date and the stove serial.");
+              }
+            }}
+            className="inline-flex items-center gap-1.5 rounded-md border border-gray-300 px-3 py-1.5 text-sm font-medium text-gray-700 transition hover:bg-gray-50 disabled:opacity-40"
+          >
+            <FileText className="h-4 w-4" /> View agreement
+          </button>
           <button
             type="button"
             disabled={locked || saving}
@@ -646,12 +727,15 @@ function Bench({ stoveId, onSaved, onBack }) {
             disabled={locked || saving}
             onClick={async () => {
               setShowMissing(true);
-              if (missing.length > 0) {
+              if (problemCount > 0 || termsMissing) {
                 setError(
-                  `Still to fill in: ${missing.length} ${missing.length === 1 ? "field" : "fields"}.`,
+                  problemCount > 0
+                    ? `${plural(problemCount, "field")} still to sort out.`
+                    : "The six terms all have to be ticked.",
                 );
                 setHint(
-                  "The empty ones are outlined in red. Save draft instead if you want to come back to it.",
+                  "What is wrong is written under each one. Save draft instead if you " +
+                    "want to come back to it: nothing typed is lost either way.",
                 );
                 return;
               }
