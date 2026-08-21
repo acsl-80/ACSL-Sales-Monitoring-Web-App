@@ -152,7 +152,77 @@ export const HEADER_ALIASES: Record<string, string[]> = {
   contactPerson: ["contact_person", "Contact Person", "buyer", "contactPerson"],
   contactPhone:  ["contact_phone", "Contact Phone", "buyer_phone", "contactPhone"],
   aka:           ["aka", "AKA", "nickname"],
+
+  // ---------------------------------------------------------------------
+  // The rest of the sale, as the digitalisation sheet asks for it.
+  //
+  // The sheet is written from workflow_config and read by this table, and
+  // until these existed it handed out eleven columns its own importer did
+  // not recognise - so every digitiser met the column mapper every time,
+  // for a file this module had just written. A sheet whose own headings
+  // need mapping is not a template.
+  // ---------------------------------------------------------------------
+  partnerName:        ["partner_name", "Partner", "Partner Name", "partnerName"],
+  salesRep:           ["sales_rep", "Sales Rep", "Sales Representative", "salesRep"],
+  transferDate:       ["transfer_date", "Transfer Date", "transferDate"],
+  potQuantity:        ["pot_quantity", "Pots Quantity", "Pot Quantity", "potQuantity"],
+  heatRetentionDevice:["heat_retention_device", "Wonderbox", "Heat Retention Device",
+                       "heatRetentionDevice"],
+  previousStoveType:  ["previous_stove_type", "Previous Stove Type", "previousStoveType"],
+  previousStoveOther: ["previous_stove_other", "Previous Stove (other)",
+                       "Previous Stove Other", "previousStoveOther"],
+  mealsPerDay:        ["meals_per_day", "Meals Per Day", "mealsPerDay"],
+  cookingFuelSource:  ["cooking_fuel_source", "Fuel Source", "cookingFuelSource"],
+  cookingLocation:    ["cooking_location", "Cooking Location", "cookingLocation"],
+  termsAccepted:      ["terms_accepted", "All Terms Agreed", "Terms Agreed", "termsAccepted"],
 };
+
+/**
+ * A spreadsheet says Yes and No; the database wants true and false.
+ *
+ * The sheet offers a dropdown of exactly "Yes" and "No" because those are what
+ * a person reading a printed receipt writes, and TRUE in a cell is a formula
+ * in some locales. The translation belongs here, at the one place a sheet
+ * becomes a record.
+ */
+function yesNo(value: unknown): boolean | null {
+  if (value === true || value === false) return value;
+  const text = String(value ?? "").trim().toLowerCase();
+  if (["yes", "y", "true", "1", "included"].includes(text)) return true;
+  if (["no", "n", "false", "0", "none"].includes(text)) return false;
+  return null;
+}
+
+/**
+ * The sheet's own answers, turned into what create-sale expects.
+ *
+ * Applied before anything reads the row, so a workbook and a typed record
+ * arrive in the same shape. "All Terms Agreed = Yes" becomes the six consents
+ * the agreement carries; anything else leaves them alone, so a file that says
+ * nothing about them falls through to the paper assertion rather than
+ * asserting a No nobody wrote.
+ */
+export function fromSheetValues(row: Record<string, unknown>): Record<string, unknown> {
+  const out: Record<string, unknown> = { ...row };
+
+  const wonderbox = yesNo(out.heatRetentionDevice);
+  if (wonderbox !== null) out.heatRetentionDevice = wonderbox;
+
+  const terms = yesNo(out.termsAccepted);
+  if (terms === true) {
+    out.termsAccepted = Object.fromEntries(TERMS_KEYS.map((k) => [k, true]));
+  } else if (terms === false) {
+    out.termsAccepted = Object.fromEntries(TERMS_KEYS.map((k) => [k, false]));
+  }
+
+  // A dropdown gives the stored value already; a typed cell may not.
+  if (typeof out.previousStoveType === "string") {
+    const t = out.previousStoveType.trim().toLowerCase().replace(/[\s-]+/g, "_");
+    if (["charcoal", "wood_stove", "other"].includes(t)) out.previousStoveType = t;
+  }
+
+  return out;
+}
 
 /** Which fields must be present for a row to be usable at all. */
 export const REQUIRED_FIELDS = [
@@ -838,7 +908,7 @@ serve(async (req) => {
           for (const [header, field] of Object.entries(mapping)) {
             if (field && row[header] !== undefined) copy[field] = row[header];
           }
-          return autoMapRow(copy);
+          return fromSheetValues(autoMapRow(copy));
         });
 
         /**
@@ -1001,7 +1071,7 @@ serve(async (req) => {
         const rawRecord = body.record as Record<string, unknown> | undefined;
         if (!rawRecord || typeof rawRecord !== "object") throw new BadRequest("No record given");
         // Same auto-mapping a file gets. One validator, whatever the channel.
-        const record = autoMapRow(rawRecord);
+        const record = fromSheetValues(autoMapRow(rawRecord));
 
         /**
          * The serial names the partner here too.
@@ -1804,7 +1874,7 @@ serve(async (req) => {
         const complete = body.complete === true;
         if (!stoveId) throw new BadRequest("Which stove?");
 
-        const record = autoMapRow(fromSaleForm({ ...values, stoveSerialNo: stoveId }));
+        const record = fromSheetValues(autoMapRow(fromSaleForm({ ...values, stoveSerialNo: stoveId })));
 
         // Finishing means it has to hold together. Half-typed does not.
         const shape = complete ? normalizeRow(record) : null;

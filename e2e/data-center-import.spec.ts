@@ -624,16 +624,20 @@ test.describe("the digitalisation sheet is a workbook", () => {
     await page.locator('input[type="file"]').setInputFiles(path);
 
     /**
-     * The sheet is downloaded empty of buyers, so every row is refused for
-     * having no name. That is the correct outcome and it is what is being
-     * asserted: the workbook was opened, its rows were read, and each one was
-     * judged. A file that could not be opened says so instead, in a different
-     * sentence.
+     * It goes straight through without stopping to be mapped.
+     *
+     * That is the assertion that matters. A sheet whose own headings need
+     * mapping is not a template, and this one handed out eleven columns its
+     * own importer did not recognise until the alias table learned them.
      */
-    await expect(
-      page.getByText(/rows staged|could not be read|has headings and no rows/),
-    ).toBeVisible({ timeout: 40_000 });
+    await expect(page.getByText(/rows staged/)).toBeVisible({ timeout: 40_000 });
+    await expect(page.getByText(/None of these headers are recognised/)).toHaveCount(0);
     await expect(page.getByText(/cannot open .xlsx/)).toHaveCount(0);
+
+    // Downloaded empty of buyers, so every row is refused for having no name.
+    // That is the right outcome: the workbook was opened, its rows were read,
+    // and each one was judged.
+    await expect(page.getByText(/could not be read/)).toBeVisible({ timeout: 20_000 });
   });
 
   test("the sheet's columns come from settings, not from the code", async ({ page }) => {
