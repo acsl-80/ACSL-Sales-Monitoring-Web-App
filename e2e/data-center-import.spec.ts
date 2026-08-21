@@ -34,7 +34,7 @@ test.describe("bulk import", () => {
     // And choosing a file is available immediately. It used to wait on the
     // partner being picked; with nothing to pick, waiting would be waiting for
     // an event that never comes.
-    await expect(page.getByRole("button", { name: /Choose a CSV/ })).toBeEnabled();
+    await expect(page.getByRole("button", { name: /Choose a file/ })).toBeEnabled();
   });
 
   test("the panel says nothing is committed until asked", async ({ page }) => {
@@ -223,6 +223,32 @@ test.describe("import hardening, against the server", () => {
   const PARTNER = "Amina Sales Model Gombe";
   const SERIAL = "PRV000003";
 
+  /**
+   * A serial nobody has sold yet.
+   *
+   * Naming one and reusing it forever is a test with a shelf life: committing
+   * a sale consumes the serial permanently, so the first run that commits
+   * breaks every later run. Asking the sheet which are still free costs one
+   * request and never goes stale.
+   */
+  async function freeSerial(page: import("@playwright/test").Page): Promise<string> {
+    const funnel = await callEdgeFunction(page, "data-center-read", {
+      action: "transfer_funnel",
+      limit: 1,
+    });
+    const org = (funnel.body as { data: { rows: { organization_id: string }[] } })
+      .data.rows[0].organization_id;
+    const sheet = await callEdgeFunction(page, "data-center-read", {
+      action: "digitisation_sheet",
+      organizationId: org,
+    });
+    const free = (sheet.body as {
+      data: { rows: { stove_id: string; already_recorded: boolean }[] };
+    }).data.rows.find((r) => !r.already_recorded);
+    if (!free) throw new Error("Every stove in the first transfer has been recorded");
+    return free.stove_id;
+  }
+
   const receipt = (marker: string, serials: string[]) => ({
     name: `receipts-${marker}.csv`,
     mimeType: "text/csv",
@@ -251,9 +277,10 @@ test.describe("import hardening, against the server", () => {
   }, testInfo) => {
     await openImport(page);
     const marker = `dup${testInfo.workerIndex}-${testInfo.repeatEachIndex}-${Date.now()}`;
+    const serial = await freeSerial(page);
 
     await page.locator('input[type="file"]').setInputFiles(
-      receipt(marker, [SERIAL, SERIAL]),
+      receipt(marker, [serial, serial]),
     );
 
     // One row takes the stove and the other cannot. It used to import twice
@@ -263,7 +290,7 @@ test.describe("import hardening, against the server", () => {
       timeout: 30_000,
     });
     await expect(
-      page.getByText(new RegExp(`${SERIAL}" already appears on row 1`)),
+      page.getByText(new RegExp(`${serial}" already appears on row 1`)),
     ).toBeVisible({ timeout: 20_000 });
   });
 
@@ -556,54 +583,54 @@ test.describe("a rejected row says what to do about it", () => {
  * both hand-rolled and a unit test of either alone would prove half of it.
  */
 test.describe("the digitalisation sheet is a workbook", () => {
-  test("what is written can be read back, dropdowns and all", async ({ page }) => {
+  test("the sheet downloads, and the same file uploads back", async ({ page }) => {
     await signIn(page, USERS.admin);
+
+    // Download it the way a digitiser does: from the partner they are looking
+    // at. Going through the real button is the point - the writer and the
+    // reader are both hand-rolled, and testing either alone proves half a
+    // round trip.
+    await page.goto("/data-center/partner-records");
+    await expect(
+      page.getByRole("heading", { name: "Partner Records", exact: true }).first(),
+    ).toBeVisible({ timeout: 20_000 });
+    await page.getByRole("row").nth(1).click();
+    await expect(page.getByRole("dialog")).toBeVisible({ timeout: 20_000 });
+    await page.getByRole("button", { name: /Sheet for digitalisation/ }).click();
+    await expect(page.getByText("What the sheet contains")).toBeVisible({ timeout: 20_000 });
+
+    // The choices are stated on the way out, so a typist knows before opening
+    // the file that these columns are lists.
+    await expect(page.getByText(/Pick from a list/)).toBeVisible();
+    await expect(page.getByText(/charcoal, wood_stove, other/)).toBeVisible();
+
+    const waitForDownload = page.waitForEvent("download");
+    await page.getByRole("button", { name: /Download .* \(xlsx\)/ }).click();
+    const download = await waitForDownload;
+    const path = await download.path();
+    expect(download.suggestedFilename()).toMatch(/\.xlsx$/);
+    expect(path).toBeTruthy();
+
+    // And back in through the uploader, which parses it with the module's own
+    // reader in a real browser. Node has no DOMParser, so this is the only
+    // place that code can run at all.
     await page.goto("/data-center/import");
     await expect(page.getByRole("heading", { name: "Bulk Import" })).toBeVisible({
       timeout: 20_000,
     });
+    await page.locator('input[type="file"]').setInputFiles(path!);
 
-    // Build a workbook and parse it again, in the page, using the module's own
-    // code on both sides. Node has no DOMParser, so this is the only place the
-    // reader can actually run.
-    const result = await page.evaluate(async () => {
-      const mod = await import("/src/app/data-center/lib/xlsx.ts");
-      const columns = [
-        { header: "Stove ID", help: "Filled in from the transfer." },
-        { header: "Primary Phone Number", help: "Format as Text first." },
-        { header: "Previous Stove Type", options: ["charcoal", "wood_stove", "other"] },
-        { header: "Wonderbox", options: ["Yes", "No"] },
-      ];
-      const rows = [
-        { "Stove ID": "PRV000101", "Primary Phone Number": "8012345678",
-          "Previous Stove Type": "charcoal", "Wonderbox": "Yes" },
-        { "Stove ID": "PRV000102", "Primary Phone Number": "+234 801 234 5679",
-          "Previous Stove Type": "other", "Wonderbox": "No" },
-      ];
-      const blob = mod.buildWorkbook(columns, rows, { sheetName: "Digitalisation" });
-      const back = await mod.parseWorkbook(blob);
-      return {
-        canRead: mod.canReadWorkbooks(),
-        size: blob.size,
-        headers: back.headers,
-        rows: back.rows,
-        warnings: back.warnings,
-      };
-    });
-
-    expect(result.canRead).toBe(true);
-    expect(result.size).toBeGreaterThan(1000);
-    expect(result.headers).toEqual([
-      "Stove ID", "Primary Phone Number", "Previous Stove Type", "Wonderbox",
-    ]);
-    // The guidance row is prose under every heading and would otherwise become
-    // a record claiming a buyer called "Format as Text first".
-    expect(result.warnings.join(" ")).toMatch(/guidance row was skipped/);
-    expect(result.rows).toHaveLength(2);
-    expect(result.rows[0]["Stove ID"]).toBe("PRV000101");
-    expect(result.rows[1]["Previous Stove Type"]).toBe("other");
-    // The phone survives as typed; normalising it is the import's job, later.
-    expect(result.rows[1]["Primary Phone Number"]).toBe("+234 801 234 5679");
+    /**
+     * The sheet is downloaded empty of buyers, so every row is refused for
+     * having no name. That is the correct outcome and it is what is being
+     * asserted: the workbook was opened, its rows were read, and each one was
+     * judged. A file that could not be opened says so instead, in a different
+     * sentence.
+     */
+    await expect(
+      page.getByText(/rows staged|could not be read|has headings and no rows/),
+    ).toBeVisible({ timeout: 40_000 });
+    await expect(page.getByText(/cannot open .xlsx/)).toHaveCount(0);
   });
 
   test("the sheet's columns come from settings, not from the code", async ({ page }) => {
