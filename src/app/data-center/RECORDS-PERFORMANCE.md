@@ -131,3 +131,97 @@ proves nothing about the check.
   The table renders a window of roughly thirty rows regardless of how many are
   loaded (`useVirtualRows.ts`), but no frame timings were captured.
 - **Concurrency.** Every number above is a single query on an idle database.
+
+---
+
+## Filtering, once there is something to filter by
+
+Phase 17 opened the filters the server always accepted but only a dashboard
+drill could reach: partner, sales rep on the transfer, buyer's state and LGA,
+who recorded the sale, sales model, channel, archived.
+
+`idx_sales_sales_date_id` serves the paging keyset perfectly **while nothing is
+filtered**. Add a filter and the planner still drives the date index, throwing
+away every row that does not match until it has a page. For a partner holding
+2% of sales that is fifty times the work; for a state with a handful of buyers
+it is a table scan wearing a `LIMIT`.
+
+So the filter column goes first and the paging columns after it, which makes a
+filtered page the same indexed read an unfiltered one is:
+
+| Index | Serves |
+|---|---|
+| `idx_sales_org_date_id` | one partner, paged |
+| `idx_sales_state_lga_date_id` | one state (leading column), or state + LGA |
+| `idx_sales_created_by_date_id` | one sales agent |
+| `change_log_record_idx` | one record's edit history |
+
+Sales model and channel get no index on purpose. Four models and two channels
+means a filtered scan of the date index matches roughly one row in four, which
+the existing index already serves; an index per low-cardinality column costs
+write time on the sales app's own table and buys nothing.
+
+`CREATE INDEX CONCURRENTLY` forms are in
+`supabase/manual/20260822_records_filter_indexes_concurrently.sql`. Run those
+first on any database being written to; the migration's statements are
+`if not exists` and will then find them built.
+
+### The rep filter that could never have matched
+
+Worth recording because nothing about it looked wrong. The filter read:
+
+```sql
+s.transaction_id in (select h.transaction_id from stove_transfer_history h ...)
+```
+
+Both columns are called `transaction_id`. They are not the same reference. A
+sale's is the sale's own ("PRV001"); a transfer's is the consignment's
+("TR-PRV002"), and it reaches a sale through `stove_ids_base.sales_reference`,
+never directly. The two sets never intersect, so the sales-rep scorecard's
+drill-through opened an empty table every time and looked exactly like a rep
+with no sales.
+
+The chain is now the one CLAUDE.md names, and a test asserts that at least one
+rep reaches at least one sale — because "every rep matches nothing" is
+indistinguishable from "no results" at the UI.
+
+---
+
+## How many match, without counting half a million rows
+
+The header used to say "100 loaded, more available", which is a fact about the
+browser rather than about the filter. It now says how many match.
+
+A plain `count(*)` cannot stop early, so an unfiltered count at 500,000 rows
+would walk 500,000 index entries every time somebody opened the page. The count
+is instead the pick statement wrapped in a `LIMIT 10000` and counted:
+
+```sql
+select count(*) from (select 1 from public.sales s where ... limit 10000) capped
+```
+
+Bounded by the ceiling whatever the table holds. Above it the answer is
+`10,000+`, which is the answer somebody acts on anyway — nobody scrolls to row
+forty thousand, they narrow the filter.
+
+Asked once per filter, never per page. The count is built from the where clause
+**before** the cursor predicate is appended, so it answers "how many match"
+rather than "how many are left below where I am" — otherwise the total would
+count down as somebody scrolled, which reads as records disappearing.
+
+---
+
+## Why the table stops loading at 5,000 rows
+
+The list is virtualized, so the DOM was never the problem. The array behind it
+is: every page fetched is appended and kept, and an idle scroll-wheel at
+500,000 records walks a tab into holding half a million row objects.
+
+`MAX_RETAINED = 5,000` is about 5 MB of row objects and roughly a hundred pages
+of scrolling. Past it the table stops fetching and says so, with the match
+count beside it and two things to do about it: narrow the filters, or turn the
+sort round and read from the other end.
+
+Sort direction exists for that second option. The table pages forward only, so
+before it the oldest record in the register was reachable solely by scrolling
+past every newer one.

@@ -868,6 +868,57 @@ database cannot live with was refused, a dropdown naming no list was refused,
 and an invented setting key was refused. The change log attributed every one of
 them to the right person with the right changed fields.
 
+## Phase 17: a register you narrow, a history you page, a path you can follow
+
+Four surfaces, one theme: half a million records has to be navigable without
+scrolling through it, and a job with a step outside the app has to say so.
+
+| Surface | Was | Is |
+|---|---|---|
+| Stove record | every audit row it was handed, and it was handed fifty | the newest five with the total beside them, paged on a keyset cursor; calls and imports collapse the same way |
+| Call brief | five white blocks | five blocks each carrying the accent of the area its facts come from, solid headers rather than tints |
+| Stove Records | search, two statuses, two dates | eleven filters, every value picked from a list, every active one a chip that comes off on its own |
+| Bulk Import | opened at "choose a file" | three numbered steps, starting with the prepared sheet that used to live only in Partner Records |
+
+### Two defects found while proving it
+
+- **The sales-rep filter could never have matched.** It compared a sale's
+  `transaction_id` with a transfer's. Same column name, different reference, no
+  overlap - so the sales-rep scorecard's drill-through opened an empty table
+  every time, and an empty table is what "no results" looks like too.
+- **The "Sold by" list filtered on a hand-written list of roles.** Two of the
+  roles named do not exist, and the role that had recorded every sale on the
+  preview was not on it.
+
+### And two the fresh-eyes pass found in this phase's own work
+
+- **The change cursor lost its microseconds** to the driver's `Date`, which
+  would have skipped every audit row sharing a millisecond. See CLAUDE.md.
+- **A date typed into the panel half-overrode the period control**, keeping the
+  period's other bound and leaving the control displaying a range the table was
+  not on.
+
+### Before this merges
+
+Run `supabase/manual/20260822_records_filter_indexes_concurrently.sql` against
+production first, alongside the three earlier manual index files. The migration
+builds the same indexes without `CONCURRENTLY`, which takes a lock on
+`public.sales` - harmless at eleven live sales, not harmless later, and the
+statements are `if not exists` so the migration finds them already built.
+
+### Still open in this phase
+
+- **Neither big table exports.** `CLAUDE.md` requires that every table a
+  scorecard drills into exports CSV, and neither Stove Records nor the call
+  queue does. It is not a twenty-line addition: with a 5,000-row display
+  ceiling over a 12,000-row match, "export what is loaded" is a file that
+  quietly omits half the answer. The honest version streams the filter
+  server-side, and that is its own slice.
+- **`record_facets` costs about 2.5 s** on the preview against ~1.8 s for the
+  single-query dashboard. Six statements on one connection are serial, not
+  parallel. Acceptable for a once-per-mount call; worth folding into one
+  statement if it is ever asked for more often.
+
 ### Deliberately not done
 
 - **Promoting a question to a real column.** The registry supports it and

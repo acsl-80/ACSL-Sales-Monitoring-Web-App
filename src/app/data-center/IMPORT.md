@@ -50,11 +50,45 @@ exception naming the row it repeats. Before that it imported twice, and the
 second copy failed at commit as a stove-already-sold error, which reads as a
 stock problem rather than the typing one it is.
 
+## Where the file comes from
+
+For a long time this page opened at "choose a file" and never said. The sheet
+it wants - one row per transferred stove, with the stove ID and the transfer
+reference already filled in and dropdowns on the columns that have fixed
+answers - existed the whole time, but only inside **Partner Records**, on a
+page somebody visiting Import has no reason to open.
+
+So the two halves of one job lived on two pages, and the page named after the
+job held the second half only. People made blank spreadsheets of their own and
+typed every stove ID by hand - which is the one error the import cannot recover
+from, because a mistyped serial does not look like a typo, it looks like a
+stove that is not ours.
+
+The bulk tab now opens on the whole path:
+
+| Step | Where it happens |
+|---|---|
+| **1. Download the sheet for a partner** | here |
+| **2. Fill it in** | Excel, a shared drive, several people, days later |
+| **3. Upload it back** | here |
+
+Step two is named even though nothing about it is on screen. Somebody who has
+downloaded a sheet and gone quiet for two days has not got stuck; somebody who
+has never downloaded one should be able to see that they are missing a step
+rather than conclude the upload is broken.
+
+### Why a partner is chosen on the way out and not on the way back
+
+Because the sheet is built **from** that partner's transfers - it cannot exist
+without knowing whose stoves to list. Coming back the other way, the stove IDs
+in the file already say which partner it is, which is why the upload asks
+nothing. The asymmetry is deliberate and is stated on both sides of it.
+
 ## The two ways in
 
 | Path | When |
 |---|---|
-| **A CSV** | The normal case. A backlog of receipts cleared in one pass |
+| **A filled-in sheet** | The normal case. A backlog of receipts cleared in one pass |
 | **One typed record** | A receipt that turns up on its own, or a rejected row being re-keyed |
 
 Manual entry submits as a batch of one and goes through the same validator,

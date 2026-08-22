@@ -215,3 +215,45 @@ leftover. Two reasons it stays:
 It was flagged in review as a dead hybrid path and it is not one: `config_read`
 returns every key and `config_set` can change any of them, so it is switchable
 in Settings today.
+
+---
+
+## The three lists that grow, and what each one does about it
+
+The page is a record, and a record is read top to bottom. A stove that has been
+re-called, corrected, sent back to Sales and returned carries dozens of audit
+rows, and rendering all of them pushed the sale itself - the thing people
+opened the page for - far above the fold.
+
+All three long lists now show five, with the total beside them. They do not all
+shorten the same way, because they do not grow for the same reason:
+
+| List | Bounded by | How it pages |
+|---|---|---|
+| **Every call** | the callback policy | in the browser: the query already returned all of them |
+| **How it got here** | the query's own `limit 20` | in the browser, same reason |
+| **Everything that changed** | nothing at all | against the server, `stove_changes`, keyset |
+
+The first five edits and the total arrive with the record itself, so the common
+case - nobody clicks - costs nothing beyond a bounded count.
+
+### The cursor that had to keep its microseconds
+
+`stove_changes` is ordered by `(changed_at desc, id desc)`, and the `id` is not
+decoration: a batch commit writes several audit rows inside one transaction and
+they share a timestamp exactly, because `now()` is transaction start time.
+
+The first version built the cursor from the timestamp as it arrived in
+JavaScript. The Postgres driver returns `timestamptz` as a `Date`, which holds
+milliseconds where the column holds microseconds - so the cursor named an
+instant slightly *earlier* than the row it pointed at, and the next page asked
+for rows strictly older than that. Every row inside the same millisecond was
+excluded, id tiebreaker and all.
+
+Measured on the preview at one such boundary: **17 rows reachable with the true
+value, 2 after truncation.** It had not bitten yet only because the no-op-update
+filter happens to remove the colliding rows on today's data.
+
+The timestamp now travels as text from Postgres to the cursor and back, never
+through a `Date`. `records-query.ts` already carried this lesson for
+`sales_date`, in almost these words.

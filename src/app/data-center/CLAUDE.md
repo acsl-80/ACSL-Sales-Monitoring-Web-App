@@ -176,6 +176,21 @@ observable without seeding. Seed before claiming anything.
   React runs it. `e2e/data-center-pages-load.spec.ts` opens every page and
   fails on what it throws; run it after any change to a page component or the
   hook order inside one.
+- **A keyset cursor never travels through a JavaScript `Date`.** The Postgres
+  driver returns `timestamptz` as a `Date`, which holds milliseconds where the
+  column holds microseconds - so a cursor built from it names an instant
+  slightly EARLIER than the row it points at, and the next page skips every row
+  sharing that millisecond, id tiebreaker and all. Measured on the preview at
+  one such boundary: 17 rows reachable with the true value, 2 after truncation.
+  Those clusters are what a batch commit writes, because `now()` is transaction
+  start time. Cast the column to text in SQL, pass it back verbatim, cast it
+  with `::timestamptz`. `records-query.ts` carries the same rule for
+  `sales_date` and `stove_changes` had to learn it again.
+- **Label a control by what it is called, not by wrapping it.** A `<label>`
+  around a `<select>` does associate them, but the accessible name becomes the
+  label's whole text content - and the selected `<option>` is inside it. A
+  field labelled "Partner" answered to "PartnerAny partner", so no screen
+  reader and no test could name it. Use `htmlFor` with an explicit id.
 - Commit at every working state with a clear message.
 - Merge `main` into this branch weekly. `main` moves daily on its own via the
   sync cron and deploys straight to production.
