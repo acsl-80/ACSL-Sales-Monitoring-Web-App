@@ -4,6 +4,7 @@ import { usePaged } from "../../lib/usePaged";
 import Pagination from "../../components/Pagination";
 import ExportButton from "../../components/ExportButton";
 import SaleForm, { blankSale, saleProblems, withDefaults, TERMS } from "./SaleForm";
+import BenchRail from "./BenchRail";
 import { plural } from "../../lib/plural";
 import {
   Loader2, ChevronRight, ArrowLeft, Search, Save, CheckCircle2,
@@ -296,30 +297,27 @@ const STOVE_COLUMNS = [
   { key: "agent_name", label: "Assigned to", get: (r) => r.agent_name ?? "unassigned" },
 ];
 
-function StoveList({ batch, onPick }) {
-  const [stoves, setStoves] = useState(null);
-  const [error, setError] = useState(null);
+/*
+ * The consignment's stoves are fetched by the shell, not here.
+ *
+ * They are needed in two places now - this table, and the rail that sits
+ * beside the form - and fetching them in each meant a round trip every time
+ * somebody opened a stove and another every time they came back. Once per
+ * consignment is enough: nothing about which stoves are in it changes while
+ * one is being typed, and the one thing that does change (a stove becoming
+ * recorded) is applied locally on save.
+ */
+function StoveList({ batch, stoves, error, onPick }) {
   const [only, setOnly] = useState("todo");
-
-  useEffect(() => {
-    let live = true;
-    dataCenterClient
-      .batchStoves(batch.transfer_id)
-      .then((r) => live && setStoves(r.stoves))
-      .catch(
-        (err) =>
-          live &&
-          setError(err instanceof DataCenterError ? err.message : "Could not load stoves."),
-      );
-    return () => {
-      live = false;
-    };
-  }, [batch.transfer_id]);
 
   const shown = useMemo(() => {
     const all = stoves ?? [];
-    if (only === "todo") return all.filter((s) => !s.sale_id);
-    if (only === "done") return all.filter((s) => s.sale_id);
+    // `just_recorded` is the local mark set when a save returns, so a stove
+    // typed in this sitting leaves the "still to type" list immediately
+    // instead of on the next refetch.
+    const done = (s) => Boolean(s.sale_id || s.just_recorded);
+    if (only === "todo") return all.filter((s) => !done(s));
+    if (only === "done") return all.filter(done);
     return all;
   }, [stoves, only]);
 
@@ -335,8 +333,8 @@ function StoveList({ batch, onPick }) {
   }
 
   const counts = {
-    todo: stoves.filter((s) => !s.sale_id).length,
-    done: stoves.filter((s) => s.sale_id).length,
+    todo: stoves.filter((s) => !(s.sale_id || s.just_recorded)).length,
+    done: stoves.filter((s) => s.sale_id || s.just_recorded).length,
     all: stoves.length,
   };
 
@@ -473,7 +471,7 @@ function asSaleRecord(values, stove) {
 }
 
 
-function Bench({ stoveId, onSaved, onBack }) {
+function Bench({ stoveId, onSaved, onBack, onNext, nextLabel }) {
   const [state, setState] = useState(null);
   const [values, setValues] = useState({});
   const [error, setError] = useState(null);
@@ -487,6 +485,16 @@ function Bench({ stoveId, onSaved, onBack }) {
   const lastSaved = useRef("");
   const valuesRef = useRef(values);
   valuesRef.current = values;
+  /*
+   * The current save and the current problem count, held in refs.
+   *
+   * The keyboard handler is bound once per stove; reading these through state
+   * would capture the values as they were when it was bound, so Ctrl+Enter
+   * would save the form as it looked several keystrokes ago.
+   */
+  const saveRef = useRef(null);
+  const finishRef = useRef(null);
+  const problemsRef = useRef({ count: 0, termsMissing: false });
 
   useEffect(() => {
     let live = true;
@@ -520,6 +528,35 @@ function Bench({ stoveId, onSaved, onBack }) {
     };
   }, [stoveId]);
 
+  /**
+   * Everything a finished record has to pass before it is called finished.
+   *
+   * Lifted out of the button so the keyboard shortcut and "save and next" run
+   * exactly the same checks. Two copies of this is how one route ends up
+   * accepting a record the other refuses, which is the module's own rule.
+   */
+  const finish = useCallback(
+    async (thenNext) => {
+      setShowMissing(true);
+      if (problemsRef.current.count > 0 || problemsRef.current.termsMissing) {
+        setError(
+          problemsRef.current.count > 0
+            ? `${plural(problemsRef.current.count, "field")} still to sort out.`
+            : "The six terms all have to be ticked.",
+        );
+        setHint(
+          "What is wrong is written under each one. Save draft instead if you " +
+            "want to come back to it: nothing typed is lost either way.",
+        );
+        return false;
+      }
+      const ok = await saveRef.current(true);
+      if (ok && thenNext) onNext?.();
+      return ok;
+    },
+    [onNext],
+  );
+
   const save = useCallback(
     async (complete) => {
       setSaving(true);
@@ -548,6 +585,36 @@ function Bench({ stoveId, onSaved, onBack }) {
     },
     [stoveId, onSaved],
   );
+
+  /**
+   * The two shortcuts a typist actually uses.
+   *
+   * Somebody entering forty receipts has one hand on the keyboard and one on
+   * the paper. Reaching for the mouse to press a button at the bottom of a
+   * long form, forty times, is the difference between a morning and an
+   * afternoon.
+   *
+   *   Ctrl/Cmd + S       save a draft, stay here
+   *   Ctrl/Cmd + Enter   save as finished and open the next one
+   *
+   * Bound to the window rather than the form, because the shortcut has to work
+   * wherever the cursor is - including the last field they typed into.
+   */
+  useEffect(() => {
+    const onKey = (e) => {
+      if (!(e.ctrlKey || e.metaKey)) return;
+      const key = e.key.toLowerCase();
+      if (key === "s") {
+        e.preventDefault();
+        saveRef.current?.(false);
+      } else if (key === "enter") {
+        e.preventDefault();
+        finishRef.current?.(true);
+      }
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, []);
 
   /**
    * Save on a timer, and again on the way out.
@@ -600,6 +667,11 @@ function Bench({ stoveId, onSaved, onBack }) {
   const problems = saleProblems(values);
   const problemCount = Object.keys(problems).length;
   const termsMissing = !TERMS.every((t) => values.termsAccepted?.[t.key] === true);
+  // Kept current every render, because the keyboard handler below is bound
+  // once per stove and would otherwise judge a form several keystrokes stale.
+  problemsRef.current = { count: problemCount, termsMissing };
+  saveRef.current = save;
+  finishRef.current = finish;
   const dirty = JSON.stringify(values) !== lastSaved.current;
   const locked = Boolean(work?.confirmed_at);
 
@@ -725,33 +797,46 @@ function Bench({ stoveId, onSaved, onBack }) {
           <button
             type="button"
             disabled={locked || saving}
-            onClick={async () => {
-              setShowMissing(true);
-              if (problemCount > 0 || termsMissing) {
-                setError(
-                  problemCount > 0
-                    ? `${plural(problemCount, "field")} still to sort out.`
-                    : "The six terms all have to be ticked.",
-                );
-                setHint(
-                  "What is wrong is written under each one. Save draft instead if you " +
-                    "want to come back to it: nothing typed is lost either way.",
-                );
-                return;
-              }
-              await save(true);
-            }}
-            className="inline-flex items-center gap-1.5 rounded-md bg-(--dc-accent) px-4 py-1.5 text-sm font-medium text-white transition hover:bg-(--dc-accent-strong) disabled:opacity-40"
+            onClick={() => finish(false)}
+            title="Ctrl+S saves a draft without leaving"
+            className="inline-flex items-center gap-1.5 rounded-md border border-(--dc-accent) px-3 py-1.5 text-sm font-medium text-(--dc-accent) transition hover:bg-(--dc-accent-soft)/60 disabled:opacity-40"
           >
             <CheckCircle2 className="h-4 w-4" /> Save as finished
           </button>
+          {/*
+            The one that makes the run fast.
+
+            The job is the same eleven fields forty times over, and the thing
+            between two records used to be: back to the consignment, find your
+            place in a paginated table, click, wait. This is that whole
+            sequence as one button, and Ctrl+Enter as no button at all.
+          */}
+          {onNext && (
+            <button
+              type="button"
+              disabled={locked || saving}
+              onClick={() => finish(true)}
+              title="Ctrl+Enter"
+              className="inline-flex items-center gap-1.5 rounded-md bg-(--dc-accent) px-4 py-1.5 text-sm font-medium text-white transition hover:bg-(--dc-accent-strong) disabled:opacity-40"
+            >
+              {saving ? (
+                <Loader2 className="h-4 w-4 animate-spin" />
+              ) : (
+                <CheckCircle2 className="h-4 w-4" />
+              )}
+              {nextLabel ?? "Save and next"}
+            </button>
+          )}
         </div>
       </div>
 
       <p className="text-xs text-gray-600">
         Finished records wait for somebody to confirm them before they reach the
         sales app. Nothing typed here is lost by leaving: a draft saves every
-        twenty seconds and again on the way out.
+        twenty seconds and again on the way out.{" "}
+        <span className="whitespace-nowrap font-medium text-gray-700">
+          Ctrl+S saves a draft, Ctrl+Enter finishes and opens the next.
+        </span>
       </p>
     </div>
   );
@@ -764,6 +849,8 @@ export default function Workbench() {
   const [batch, setBatch] = useState(null);
   const [stove, setStove] = useState(null);
   const [queue, setQueue] = useState(null);
+  const [stoves, setStoves] = useState(null);
+  const [stovesError, setStovesError] = useState(null);
 
   const loadQueue = useCallback(() => {
     dataCenterImport
@@ -775,6 +862,95 @@ export default function Workbench() {
   useEffect(() => {
     loadQueue();
   }, [loadQueue]);
+
+  /*
+   * The consignment's stoves, fetched once when it is opened.
+   *
+   * They feed both the table and the rail beside the form, and neither should
+   * cost a round trip. Nothing about which stoves are in a consignment changes
+   * while one of them is being typed; the one thing that does - a stove
+   * becoming recorded - is applied locally by `markRecorded` below, so the
+   * rail turns green the moment the save returns rather than on a refetch.
+   */
+  useEffect(() => {
+    if (!batch) {
+      setStoves(null);
+      setStovesError(null);
+      return;
+    }
+    let live = true;
+    setStoves(null);
+    setStovesError(null);
+    dataCenterClient
+      .batchStoves(batch.transfer_id)
+      .then((r) => live && setStoves(r.stoves))
+      .catch(
+        (err) =>
+          live &&
+          setStovesError(
+            err instanceof DataCenterError ? err.message : "Could not load stoves.",
+          ),
+      );
+    return () => {
+      live = false;
+    };
+  }, [batch]);
+
+  /** Which stove IDs somebody has part-typed, for the rail's amber marks. */
+  const draftSerials = useMemo(
+    () =>
+      [...(queue?.mine ?? []), ...(queue?.abandoned ?? [])]
+        .filter((r) => r.status === "draft")
+        .map((r) => r.stove_serial_no),
+    [queue],
+  );
+
+  /*
+   * Turn one stove green without refetching the consignment.
+   *
+   * Its own flag rather than writing a made-up value into `sale_id`: that
+   * column holds a real id everywhere else, and a placeholder sitting in it is
+   * the kind of thing that is harmless until something starts reading it.
+   */
+  const markRecorded = useCallback((stoveId) => {
+    setStoves((list) =>
+      list
+        ? list.map((s) => (s.stove_id === stoveId ? { ...s, just_recorded: true } : s))
+        : list,
+    );
+  }, []);
+
+  /**
+   * The next stove worth opening, from where you are.
+   *
+   * Forward through the consignment first, then round to the top - because a
+   * typist who started in the middle of the stack still wants the ones above
+   * them, and stopping at the end would leave the run looking finished when it
+   * is not. Returns null only when there is genuinely nothing left to type.
+   */
+  const nextTodo = useCallback(
+    (fromId) => {
+      const list = stoves ?? [];
+      const drafts = new Set(draftSerials.map((d) => String(d).toUpperCase()));
+      const todo = (s) =>
+        !(s.sale_id || s.just_recorded) || drafts.has(String(s.stove_id).toUpperCase());
+      const at = list.findIndex((s) => s.stove_id === fromId);
+      for (let i = 1; i <= list.length; i++) {
+        const candidate = list[(at + i + list.length) % list.length];
+        if (candidate && candidate.stove_id !== fromId && todo(candidate)) return candidate;
+      }
+      return null;
+    },
+    [stoves, draftSerials],
+  );
+
+  const remaining = useMemo(() => {
+    const drafts = new Set(draftSerials.map((d) => String(d).toUpperCase()));
+    return (stoves ?? []).filter(
+      (s) =>
+        !(s.sale_id || s.just_recorded) || drafts.has(String(s.stove_id).toUpperCase()),
+    ).length;
+  }, [stoves, draftSerials]);
 
   const trail = [
     { label: "Partners", on: () => { setPartner(null); setBatch(null); setStove(null); } },
@@ -849,13 +1025,49 @@ export default function Workbench() {
       </nav>
 
       {stove ? (
-        <Bench
-          stoveId={stove.stove_id}
-          onSaved={loadQueue}
-          onBack={() => { setStove(null); loadQueue(); }}
-        />
+        /*
+         * The consignment beside the form, not behind it.
+         *
+         * Only when a consignment is open: arriving straight from "on your
+         * bench" there is no consignment to show, and inventing one by looking
+         * it up would be a round trip to draw a sidebar nobody asked for.
+         */
+        <div className="flex flex-col gap-4 lg:flex-row lg:items-start">
+          {batch && stoves && (
+            <BenchRail
+              stoves={stoves}
+              current={stove.stove_id}
+              drafts={draftSerials}
+              onPick={(s) => setStove(s)}
+            />
+          )}
+          <div className="min-w-0 flex-1">
+            <Bench
+              // Keyed by stove so switching gets a clean form rather than the
+              // previous receipt's values bleeding into the next one.
+              key={stove.stove_id}
+              stoveId={stove.stove_id}
+              onSaved={(out) => {
+                markRecorded(stove.stove_id);
+                loadQueue();
+                return out;
+              }}
+              onBack={() => { setStove(null); loadQueue(); }}
+              onNext={batch ? () => {
+                const next = nextTodo(stove.stove_id);
+                if (next) setStove(next);
+                // Nothing left is worth saying rather than silently doing
+                // nothing, so the run ends where it started.
+                else { setStove(null); loadQueue(); }
+              } : null}
+              nextLabel={
+                remaining > 1 ? `Save and next (${remaining - 1} left)` : "Save and finish the run"
+              }
+            />
+          </div>
+        </div>
       ) : batch ? (
-        <StoveList batch={batch} onPick={setStove} />
+        <StoveList batch={batch} stoves={stoves} error={stovesError} onPick={setStove} />
       ) : partner ? (
         <BatchList partner={partner} onPick={setBatch} />
       ) : (
