@@ -667,14 +667,69 @@ export type CallAttempt = {
  * queue is not automatically one that can change it, and so the two can be
  * granted apart.
  */
+/**
+ * A call form somebody stopped part way through.
+ *
+ * Keyed by the sale rather than by the agent, deliberately: records move
+ * between agents when a batch is reassigned or reclaimed, and a draft keyed to
+ * whoever typed it would be stranded every time that happened - which is
+ * exactly the work it exists to stop losing. `saved_by_name` is carried so
+ * whoever opens it next is told whose it is instead of quietly inheriting
+ * somebody else's half-answers.
+ */
+export type CallDraft = {
+  values: Record<string, unknown>;
+  /**
+   * The call_records.version this was typed against, null if the record did
+   * not exist yet. Compared on open, so a record that moved on in the meantime
+   * can be reported rather than silently overwritten.
+   */
+  base_version: number | null;
+  saved_at: string;
+  saved_by_name: string | null;
+  saved_by_me: boolean;
+};
+
 export const dataCenterWrite = {
   /** The questionnaire's definition. Fetched, never bundled. */
   formSchema: () => call<FormSchema>("data-center-write", "form_schema"),
 
   callRecord: (saleId: string) =>
-    call<{ record: Record<string, unknown>; attempts: CallAttempt[] }>(
+    call<{
+      record: Record<string, unknown>;
+      attempts: CallAttempt[];
+      /** What somebody left half-finished here, or null. */
+      draft: CallDraft | null;
+    }>("data-center-write", "call_record", { saleId }),
+
+  /**
+   * Keep a half-finished call form.
+   *
+   * Sent as the agent types, debounced, and again when they close deliberately.
+   * Nothing here is validated: a half-finished form fails validation by
+   * definition, and refusing to keep it would be refusing the only thing this
+   * is for. `saveCallRecord` is still the only door to the record itself, and
+   * it clears the draft as part of the same transaction.
+   *
+   * An empty `values` deletes the draft rather than storing an empty one, so
+   * clearing the last field takes the record off the unfinished list.
+   */
+  saveCallDraft: (
+    saleId: string,
+    values: Record<string, unknown>,
+    baseVersion: number | null,
+  ) =>
+    call<{ saleId: string; kept: boolean; savedAt?: string; cleared?: boolean }>(
       "data-center-write",
-      "call_record",
+      "save_call_draft",
+      { saleId, values, baseVersion },
+    ),
+
+  /** Throw a draft away and start the form again. */
+  discardCallDraft: (saleId: string) =>
+    call<{ saleId: string; discarded: boolean }>(
+      "data-center-write",
+      "discard_call_draft",
       { saleId },
     ),
 

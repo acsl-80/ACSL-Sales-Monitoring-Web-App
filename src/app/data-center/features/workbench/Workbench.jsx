@@ -707,7 +707,7 @@ function Bench({ stoveId, onSaved, onBack }) {
                 window.open(url, "_blank", "noopener");
               } catch {
                 setError("The agreement preview could not be built from this record yet.");
-                setHint("It needs at least a name, a date and the stove serial.");
+                setHint("It needs at least a name, a date and the stove ID.");
               }
             }}
             className="inline-flex items-center gap-1.5 rounded-md border border-gray-300 px-3 py-1.5 text-sm font-medium text-gray-700 transition hover:bg-gray-50 disabled:opacity-40"

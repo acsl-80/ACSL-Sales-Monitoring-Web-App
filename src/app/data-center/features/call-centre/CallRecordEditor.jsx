@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import AgentBrief from "./AgentBrief";
 import SerialRematch from "./SerialRematch";
 import Link from "@/compat/Link";
@@ -12,7 +12,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import {
-  Loader2, Phone, AlertTriangle, Check, RotateCcw, PhoneCall, Save,
+  Loader2, Phone, AlertTriangle, Check, RotateCcw, PhoneCall, Save, PenLine,
 } from "lucide-react";
 
 /**
@@ -82,6 +82,21 @@ export default function CallRecordEditor({ saleId, canEdit, onClose, onSaved }) 
   const [nextNote, setNextNote] = useState("");
   const [error, setError] = useState(null);
   const [notice, setNotice] = useState(null);
+  /*
+   * The half-finished form somebody left here, and whether it is still on
+   * screen. `draft` is what arrived with the record; `draftState` is what has
+   * happened to it since - restored, cleared, or saved again as they type.
+   */
+  const [draft, setDraft] = useState(null);
+  const [draftSavedAt, setDraftSavedAt] = useState(null);
+  const [draftBusy, setDraftBusy] = useState(false);
+  /*
+   * Whether this agent has typed anything since the record loaded.
+   *
+   * A ref rather than state: the autosave effect reads it, and making it state
+   * would re-run the effect on the very change it is meant to debounce.
+   */
+  const touched = useRef(false);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -93,10 +108,24 @@ export default function CallRecordEditor({ saleId, canEdit, onClose, onSaved }) 
       setSchema(form);
       setRecord(data.record);
       setAttempts(data.attempts);
-      // Registry answers live in a jsonb blob; record columns live beside it.
-      // The editor flattens both into one map so a promoted question needs no
-      // change here either.
-      setValues({ ...(data.record.answers ?? {}) });
+      /*
+       * Registry answers live in a jsonb blob; record columns live beside it.
+       * The editor flattens both into one map so a promoted question needs no
+       * change here either.
+       *
+       * A draft goes on top. It is what somebody typed and did not finish, so
+       * it is newer than the answers already stored - and it is applied rather
+       * than offered because an agent who saved half a form and comes back
+       * expects to find it, not to be asked whether they meant it. The banner
+       * above the form says whose it is and gives them one click to throw it
+       * away.
+       */
+      setDraft(data.draft ?? null);
+      setDraftSavedAt(data.draft?.saved_at ?? null);
+      setValues({
+        ...(data.record.answers ?? {}),
+        ...(data.draft?.values ?? {}),
+      });
       setError(null);
     } catch (err) {
       setError(err instanceof DataCenterError ? err.message : "Could not load this record.");
@@ -106,10 +135,81 @@ export default function CallRecordEditor({ saleId, canEdit, onClose, onSaved }) 
   }, [saleId]);
 
   useEffect(() => {
+    touched.current = false;
     load();
   }, [load]);
 
-  const setValue = (key, value) => setValues((v) => ({ ...v, [key]: value }));
+  const setValue = (key, value) => {
+    // Marks the form as the agent's rather than the server's, which is what
+    // decides whether the autosave below has anything worth keeping.
+    touched.current = true;
+    setValues((v) => ({ ...v, [key]: value }));
+  };
+
+  /**
+   * Keep what has been typed, without anybody pressing anything.
+   *
+   * The case this is for is a call that cuts off: the line drops, the laptop
+   * closes, the tab crashes. None of those press Save, so a draft that waited
+   * for a button would be a draft that never existed when it was needed.
+   *
+   * Two seconds after typing stops, not per keystroke. And only when the agent
+   * has actually touched the form - without that guard, merely opening a
+   * record would write a draft for it and put it on their unfinished list.
+   */
+  useEffect(() => {
+    if (!canEdit || !touched.current || loading) return;
+    const timer = setTimeout(() => {
+      setDraftBusy(true);
+      dataCenterWrite
+        .saveCallDraft(saleId, values, record?.call_record_version ?? null)
+        .then((r) => {
+          setDraftSavedAt(r.kept ? (r.savedAt ?? new Date().toISOString()) : null);
+          // Cleared to empty: it is no longer anybody's unfinished work, so
+          // the banner naming who left it should go too.
+          if (!r.kept) setDraft(null);
+        })
+        // Deliberately silent. A failed autosave is not something to interrupt
+        // a live call with; the marker simply stops saying "saved", and the
+        // real save still reports its own failures loudly.
+        .catch(() => setDraftSavedAt(null))
+        .finally(() => setDraftBusy(false));
+    }, 2000);
+    return () => clearTimeout(timer);
+  }, [values, canEdit, loading, saleId, record?.call_record_version]);
+
+  /** Keep it now rather than in two seconds, for a deliberate close. */
+  const keepAndClose = async () => {
+    if (canEdit && touched.current) {
+      try {
+        await dataCenterWrite.saveCallDraft(
+          saleId,
+          values,
+          record?.call_record_version ?? null,
+        );
+      } catch {
+        // Same reasoning as the autosave: closing must not be blocked by a
+        // draft that could not be written.
+      }
+    }
+    onClose?.();
+  };
+
+  const discardDraft = async () => {
+    setDraftBusy(true);
+    try {
+      await dataCenterWrite.discardCallDraft(saleId);
+      touched.current = false;
+      setDraft(null);
+      setDraftSavedAt(null);
+      await load();
+      setNotice("Started again from the saved record.");
+    } catch (err) {
+      setError(err instanceof DataCenterError ? err.message : "Could not clear that draft.");
+    } finally {
+      setDraftBusy(false);
+    }
+  };
 
   // Conditions read the record as it will be after this save, so setting an
   // outcome and answering the question it reveals works in one pass.
@@ -137,6 +237,12 @@ export default function CallRecordEditor({ saleId, canEdit, onClose, onSaved }) 
       );
       setNotice("Saved.");
       setError(null);
+      // The server clears the draft in the same transaction as the save. This
+      // is the local half of that, so the banner goes without waiting for the
+      // reload to come back.
+      touched.current = false;
+      setDraft(null);
+      setDraftSavedAt(null);
       await load();
       onSaved?.(result);
     } catch (err) {
@@ -229,6 +335,63 @@ export default function CallRecordEditor({ saleId, canEdit, onClose, onSaved }) 
             )}
           </DialogDescription>
         </DialogHeader>
+
+        {/*
+          What somebody left half-finished here.
+
+          Applied to the form already rather than offered, because an agent who
+          typed four answers and lost the call expects to find them, not to be
+          asked whether they meant it. What the banner is for is the two things
+          they cannot see from the fields themselves: whose answers these are,
+          and how to get rid of them.
+
+          Amber rather than green: this is not a saved record. Nothing here has
+          reached the call record, and the scorecards do not count it.
+        */}
+        {draft && !loading && (
+          <div className="flex shrink-0 flex-wrap items-start gap-2 border-b border-amber-300 bg-amber-50 px-5 py-2.5">
+            <PenLine className="mt-0.5 h-4 w-4 shrink-0 text-amber-600" />
+            <p className="min-w-0 flex-1 text-sm text-amber-900">
+              <span className="font-semibold">
+                {draft.saved_by_me
+                  ? "You started this and did not finish."
+                  : `${draft.saved_by_name ?? "Somebody"} started this and did not finish.`}
+              </span>{" "}
+              Their answers are in the form below, from{" "}
+              {new Date(draft.saved_at).toLocaleString()}. Nothing has been saved
+              to the record yet.
+              {/*
+                The version the draft was typed against, checked out loud. A
+                draft written over a record that has since moved on would
+                otherwise quietly reapply older answers over newer ones.
+              */}
+              {draft.base_version != null &&
+                record?.call_record_version != null &&
+                draft.base_version !== record.call_record_version && (
+                  <span className="mt-1 block font-semibold">
+                    The record has been saved by somebody else since this was
+                    typed. Check each answer against what they entered before you
+                    save.
+                  </span>
+                )}
+            </p>
+            {canEdit && (
+              <button
+                type="button"
+                onClick={discardDraft}
+                disabled={draftBusy}
+                className="inline-flex shrink-0 items-center gap-1 rounded-md border border-amber-400 bg-white px-2.5 py-1 text-xs font-medium text-amber-900 transition hover:bg-amber-100 disabled:opacity-50"
+              >
+                {draftBusy ? (
+                  <Loader2 className="h-3 w-3 animate-spin" />
+                ) : (
+                  <RotateCcw className="h-3 w-3" />
+                )}
+                Clear it and start again
+              </button>
+            )}
+          </div>
+        )}
 
         {loading ? (
           <div className="flex flex-1 items-center justify-center gap-2 p-6 text-sm text-gray-500">
@@ -491,21 +654,54 @@ export default function CallRecordEditor({ saleId, canEdit, onClose, onSaved }) 
         )}
 
         <div className="flex shrink-0 flex-wrap items-center justify-between gap-3 border-t border-gray-200 bg-(--dc-surface-muted) px-5 py-3">
-          <p className="text-xs text-gray-500">
+          <p className="flex items-center gap-1.5 text-xs text-gray-500">
             {canEdit
               ? "Every change is recorded against your name."
               : "You have view access, so this record is read only."}
+            {/*
+              The autosave, said quietly.
+
+              An agent needs to know their typing is being kept, or they will
+              not trust the form enough to leave it half-finished - which is
+              the whole point. Quiet, because it must not compete for attention
+              during a live call.
+            */}
+            {canEdit && draftBusy && (
+              <span className="inline-flex items-center gap-1 text-gray-400">
+                <Loader2 className="h-3 w-3 animate-spin" /> keeping...
+              </span>
+            )}
+            {canEdit && !draftBusy && draftSavedAt && (
+              <span className="inline-flex items-center gap-1 text-amber-700">
+                <PenLine className="h-3 w-3" /> kept, not saved
+              </span>
+            )}
           </p>
           {canEdit && (
-            <button
-              type="button"
-              disabled={saving || loading}
-              onClick={save}
-              className="inline-flex items-center gap-1.5 rounded-md bg-(--dc-accent) px-4 py-1.5 text-sm font-medium text-white transition hover:bg-(--dc-accent-strong) disabled:opacity-50"
-            >
-              {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
-              Save
-            </button>
+            <div className="flex flex-wrap items-center gap-2">
+              {/*
+                Closing deliberately writes the draft now rather than in two
+                seconds' time, so "I will come back to this" and "the line just
+                dropped" both end the same way.
+              */}
+              <button
+                type="button"
+                disabled={saving || loading}
+                onClick={keepAndClose}
+                className="inline-flex items-center gap-1.5 rounded-md border border-gray-300 px-3 py-1.5 text-sm font-medium text-gray-700 transition hover:bg-gray-50 disabled:opacity-50"
+              >
+                <PenLine className="h-4 w-4" /> Finish later
+              </button>
+              <button
+                type="button"
+                disabled={saving || loading}
+                onClick={save}
+                className="inline-flex items-center gap-1.5 rounded-md bg-(--dc-accent) px-4 py-1.5 text-sm font-medium text-white transition hover:bg-(--dc-accent-strong) disabled:opacity-50"
+              >
+                {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
+                Save
+              </button>
+            </div>
           )}
         </div>
       </DialogContent>

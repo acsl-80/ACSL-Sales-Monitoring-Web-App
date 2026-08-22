@@ -360,6 +360,23 @@ serve(async (req) => {
       /** One record, with its attempts, for the editor. */
       case "call_record": {
         const saleId = String(body.saleId ?? "");
+
+        /*
+         * The draft comes back with the record, not after it.
+         *
+         * A second round trip would mean the form renders empty, then fills
+         * in - and an agent who starts typing in that gap has their first
+         * keystrokes overwritten by their own draft arriving late.
+         */
+        const draft = await conn.queryObject({
+          text: `select d.values, d.base_version, d.saved_at,
+                        p.full_name as saved_by_name,
+                        (d.saved_by = $2) as saved_by_me
+                   from data_center.call_drafts d
+                   left join public.profiles p on p.id = d.saved_by
+                  where d.sale_id = $1`,
+          args: [saleId, userId],
+        });
         // Named columns, not SELECT *, so a column added to the view cannot
         // silently widen what this returns. Dates are cast to text for the same
         // reason the queue casts them: the driver would hand back a JavaScript
@@ -455,7 +472,16 @@ serve(async (req) => {
           args: [saleId],
         });
         return json(
-          { data: { record: record.rows[0], attempts: attempts.rows } },
+          {
+            data: {
+              record: record.rows[0],
+              attempts: attempts.rows,
+              // Null when nothing was left half-finished, which is the
+              // ordinary case. The editor merges it over the record and says
+              // whose it is rather than applying it silently.
+              draft: draft.rows[0] ?? null,
+            },
+          },
           200,
           cors,
         );
@@ -537,12 +563,128 @@ serve(async (req) => {
             args,
           });
 
+          /*
+           * The draft is finished with, and goes in the same transaction.
+           *
+           * Cleared here rather than by the client after a successful save,
+           * because a client that saves and then loses its connection would
+           * leave a draft describing a record that has already moved past it -
+           * and the agent would reopen it to be told their own saved work is
+           * an unfinished draft over a newer record.
+           */
+          await conn!.queryObject({
+            text: `delete from data_center.call_drafts where sale_id = $1`,
+            args: [saleId],
+          });
+
           await conn!.queryObject("commit");
           return json({ data: { saleId, version: updated.rows[0]?.version } }, 200, cors);
         } catch (err) {
           await conn!.queryObject("rollback");
           throw err;
         }
+      }
+
+      /**
+       * Keep a half-finished call form.
+       *
+       * The case this exists for: the line drops after four answers out of
+       * eleven, or the buyer says ring me back this evening. Every one of
+       * those used to end with the form closing and the work going with it, so
+       * the same buyer was asked the same four questions twice.
+       *
+       * NOTHING IS VALIDATED HERE, ON PURPOSE
+       *
+       * A half-finished form fails validation by definition - that is what
+       * half-finished means. Refusing to store it for rules the agent has not
+       * reached yet would teach people that saving does not work, which is the
+       * one outcome worse than losing the work. `save_call_record` validates,
+       * and it is still the only door to the record itself.
+       *
+       * The size cap is the only rule. It is not about correctness, it is
+       * about a client bug turning autosave into an append loop.
+       */
+      case "save_call_draft": {
+        const saleId = String(body.saleId ?? "");
+        if (!saleId) throw new BadRequest("saleId is required");
+
+        const values = (body.values ?? {}) as Record<string, unknown>;
+        const encoded = JSON.stringify(values);
+        // 256 KB. A form of eleven questions is a couple of kilobytes; anything
+        // near this ceiling is a loop, not an agent typing.
+        if (encoded.length > 256_000) {
+          throw new BadRequest("That draft is too large to keep. Save the record instead.");
+        }
+
+        const baseVersion = body.baseVersion === undefined || body.baseVersion === null
+          ? null
+          : Number(body.baseVersion);
+
+        /*
+         * An empty draft is a deletion, not an empty row.
+         *
+         * The editor autosaves on change, and "cleared the last field" arrives
+         * here as {}. Storing that would put the record on the agent's
+         * unfinished list for ever with nothing in it to finish.
+         */
+        if (Object.keys(values).length === 0) {
+          const gone = await conn.queryObject({
+            text: `delete from data_center.call_drafts where sale_id = $1`,
+            args: [saleId],
+          });
+          return json(
+            { data: { saleId, kept: false, cleared: Number(gone.rowCount ?? 0) > 0 } },
+            200,
+            cors,
+          );
+        }
+
+        const saved = await conn.queryObject<{ saved_at: string }>({
+          /*
+           * Replace rather than merge. The editor sends the whole form every
+           * time, so a merge would make a field the agent deliberately cleared
+           * come back from the previous draft - the one edit a draft must not
+           * undo.
+           */
+          text: `insert into data_center.call_drafts
+                        (sale_id, values, base_version, saved_at, saved_by)
+                 values ($1, $2::jsonb, $3, now(), $4)
+                 on conflict (sale_id) do update
+                    set values = excluded.values,
+                        base_version = excluded.base_version,
+                        saved_at = now(),
+                        saved_by = excluded.saved_by
+                 returning saved_at`,
+          args: [saleId, encoded, baseVersion, userId],
+        });
+
+        return json(
+          { data: { saleId, kept: true, savedAt: saved.rows[0]?.saved_at } },
+          200,
+          cors,
+        );
+      }
+
+      /**
+       * Throw a draft away.
+       *
+       * Its own action rather than an empty save, because the two are
+       * different intentions and the audit trail should be able to tell them
+       * apart: one is an agent clearing the last field, the other is an agent
+       * deciding the half-finished answers are wrong and starting again.
+       */
+      case "discard_call_draft": {
+        const saleId = String(body.saleId ?? "");
+        if (!saleId) throw new BadRequest("saleId is required");
+        const gone = await conn.queryObject({
+          text: `delete from data_center.call_drafts where sale_id = $1`,
+          args: [saleId],
+        });
+        return json(
+          { data: { saleId, discarded: Number(gone.rowCount ?? 0) > 0 } },
+          200,
+          cors,
+        );
       }
 
       /**

@@ -263,10 +263,26 @@ serve(async (req) => {
                           v.resolved_state as user_state,
                           v.resolved_lga as user_lga,
                           v.correction_state,
-                          cr.serial_unconfirmed_at
+                          cr.serial_unconfirmed_at,
+                          /*
+                           * Whether somebody stopped part way through this one.
+                           *
+                           * The agent's first question at the start of a shift
+                           * is what to ring next, and a form they already got
+                           * four answers into outranks a stove nobody has
+                           * touched: the buyer has already given their time
+                           * once. So it comes back with the queue rather than
+                           * being a second request the dashboard makes.
+                           */
+                          (d.sale_id is not null) as has_draft,
+                          d.saved_at as draft_saved_at,
+                          dp.full_name as draft_saved_by_name,
+                          (d.saved_by = $1) as draft_is_mine
                      from data_center.v_assignment_log l
                      left join data_center.v_call_center_resolved v on v.sale_id = l.sale_id
                      left join data_center.call_records cr on cr.sale_id = l.sale_id
+                     left join data_center.call_drafts d on d.sale_id = l.sale_id
+                     left join public.profiles dp on dp.id = d.saved_by
                     where l.agent_id = $1 and l.batch_state = 'open' and l.is_active
                     order by l.assigned_at desc, l.position
                     limit 200`,

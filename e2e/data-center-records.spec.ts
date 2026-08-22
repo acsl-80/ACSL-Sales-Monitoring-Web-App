@@ -48,7 +48,7 @@ test.describe("sold stove records", () => {
     });
 
     const before = calls.length;
-    await page.getByPlaceholder(/Name, phone, stove serial/).fill("0803");
+    await page.getByPlaceholder(/Name, phone, stove ID/).fill("0803");
 
     // Debounced, so one request follows rather than one per keystroke.
     await expect.poll(() => calls.length, { timeout: 10_000 }).toBeGreaterThan(before);

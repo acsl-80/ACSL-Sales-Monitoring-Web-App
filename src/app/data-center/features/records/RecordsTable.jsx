@@ -29,7 +29,7 @@ const ROW_HEIGHT_PHONE = 104;
 
 const COLUMNS = [
   { key: "sales_date", label: "Sale Date", width: "104px" },
-  { key: "stove_serial_no", label: "Stove Serial", width: "128px" },
+  { key: "stove_serial_no", label: "Stove ID", width: "128px" },
   { key: "end_user_name", label: "End User", width: "180px" },
   { key: "primary_phone", label: "Phone", width: "124px" },
   { key: "partner_name", label: "Partner", width: "160px" },

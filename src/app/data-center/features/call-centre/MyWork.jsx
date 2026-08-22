@@ -5,7 +5,7 @@ import CallRecordEditor from "./CallRecordEditor";
 import { plural } from "../../lib/plural";
 import {
   Headphones, Loader2, AlertTriangle, PhoneCall, ChevronRight, ShieldAlert,
-  Check, CircleDashed,
+  Check, CircleDashed, PenLine,
 } from "lucide-react";
 
 /**
@@ -34,20 +34,37 @@ function standing(item) {
   if (item.serial_unconfirmed_at) {
     return { rank: 0, label: "Stove ID unconfirmed", tone: "bg-red-100 text-red-800", icon: ShieldAlert };
   }
+  /*
+   * A half-finished form outranks a stove nobody has touched.
+   *
+   * The buyer has already given their time once and answered some of it; the
+   * quickest complete record on the list is the one that is already part
+   * done. It sits below an unconfirmed stove ID because that one is a record
+   * naming a stove its owner has never heard of, which is wrong rather than
+   * merely unfinished.
+   */
+  if (item.has_draft) {
+    return {
+      rank: 1,
+      label: item.draft_is_mine ? "You left this unfinished" : "Left unfinished",
+      tone: "bg-amber-100 text-amber-900",
+      icon: PenLine,
+    };
+  }
   if (!item.attempt_count) {
-    return { rank: 1, label: "Not called yet", tone: "bg-blue-100 text-blue-800", icon: CircleDashed };
+    return { rank: 2, label: "Not called yet", tone: "bg-blue-100 text-blue-800", icon: CircleDashed };
   }
   if (item.verification_outcome === "fully_verified") {
-    return { rank: 4, label: "Verified", tone: "bg-(--dc-accent-soft) text-(--dc-accent-strong)", icon: Check };
+    return { rank: 5, label: "Verified", tone: "bg-(--dc-accent-soft) text-(--dc-accent-strong)", icon: Check };
   }
   if (item.verification_outcome === "partially_verified") {
-    return { rank: 3, label: "Partly verified", tone: "bg-amber-100 text-amber-800", icon: Check };
+    return { rank: 4, label: "Partly verified", tone: "bg-amber-100 text-amber-800", icon: Check };
   }
   if (item.verification_outcome === "unreachable") {
-    return { rank: 2, label: "Unreachable", tone: "bg-orange-100 text-orange-800", icon: PhoneCall };
+    return { rank: 3, label: "Unreachable", tone: "bg-orange-100 text-orange-800", icon: PhoneCall };
   }
   return {
-    rank: 2,
+    rank: 3,
     label: `${plural(item.attempt_count, "call")} made`,
     tone: "bg-gray-100 text-gray-700",
     icon: PhoneCall,
@@ -96,6 +113,7 @@ export default function MyWork({ canEdit, hideWhenEmpty = false }) {
     return {
       all: list.length,
       todo: list.filter((i) => !i.attempt_count).length,
+      unfinished: list.filter((i) => i.has_draft).length,
       urgent: list.filter((i) => i.serial_unconfirmed_at).length,
       done: list.filter((i) =>
         ["fully_verified", "partially_verified"].includes(i.verification_outcome),
@@ -142,6 +160,17 @@ export default function MyWork({ canEdit, hideWhenEmpty = false }) {
             {totals.urgent > 0 && (
               <span className="rounded-full bg-red-100 px-2.5 py-0.5 text-xs font-semibold text-red-800">
                 {totals.urgent} need the stove ID confirmed
+              </span>
+            )}
+            {/*
+              Counted separately from "not called", because they are different
+              jobs. One is a conversation to start; the other is a conversation
+              already half had, with a buyer who has given their time once and
+              is owed the shortest possible second call.
+            */}
+            {totals.unfinished > 0 && (
+              <span className="rounded-full bg-amber-100 px-2.5 py-0.5 text-xs font-semibold text-amber-900">
+                {totals.unfinished} left unfinished
               </span>
             )}
             <span className="rounded-full bg-blue-100 px-2.5 py-0.5 text-xs font-medium text-blue-800">
@@ -196,6 +225,13 @@ export default function MyWork({ canEdit, hideWhenEmpty = false }) {
                           <span className="text-sm text-gray-700">
                             {item.end_user_name ?? "no name on the record"}
                           </span>
+                          {/* Whose unfinished work it is, where the agent is
+                              deciding whether to pick it up. */}
+                          {item.has_draft && !item.draft_is_mine && (
+                            <span className="text-xs text-amber-800">
+                              started by {item.draft_saved_by_name ?? "somebody"}
+                            </span>
+                          )}
                           <span className="text-sm font-medium text-(--dc-accent-strong)">
                             {item.phone ?? "no number"}
                           </span>
