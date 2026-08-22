@@ -24,10 +24,20 @@ import {
  * COLOUR MEANS SOMETHING HERE
  *
  * Red is stop and read: the record is not what it looks like. Amber is take
- * care: something needs saying on this call. The accent marks the two facts
- * the agent reads aloud - the name and the number - which are the only ones
- * they need at arm's length. Everything else is plain, because a card where
- * everything is highlighted is a card where nothing is.
+ * care: something needs saying on this call.
+ *
+ * Below the bands, each block carries the hue of the AREA its facts come from
+ * - slate for the stove, olive for the money, ochre for the place, plum for
+ * the history, teal for the person, which is the call centre's own. So the
+ * colour is wayfinding rather than paint: an agent who has used Stove Records
+ * already knows what slate means before reading the heading.
+ *
+ * The header of each block is solid colour with white text, not a tint. A
+ * tinted header on a white card is a suggestion; at a glance, mid-call, with
+ * the customer talking, the agent needs the block boundary to be unmissable.
+ * Inside the block everything is plain, because a card where everything is
+ * highlighted is a card where nothing is - the two exceptions are the name and
+ * the number, which are the only facts read out loud.
  */
 
 const money = (v) =>
@@ -35,24 +45,30 @@ const money = (v) =>
 const date = (v) => (v ? new Date(v).toLocaleDateString() : null);
 const words = (v) => (v ? String(v).replace(/_/g, " ") : null);
 
-/** A label and its value. Bold where the agent has to say it out loud. */
-function Fact({ label, value, loud = false, hint }) {
+/**
+ * A label and its value. Bold where the agent has to say it out loud.
+ *
+ * A missing value reads "not recorded" in grey italic rather than as a blank.
+ * A blank looks like a rendering fault, and an agent who thinks the card is
+ * broken stops trusting the parts that are filled in.
+ */
+function Fact({ label, value, loud = false, hint, tone }) {
   const empty = value == null || value === "";
   return (
     <div className="min-w-0">
-      <p className="text-[11px] font-medium uppercase tracking-wide text-gray-500">{label}</p>
+      <p className="text-[11px] font-semibold uppercase tracking-wide text-gray-500">{label}</p>
       <p
         className={
           empty
             ? "mt-0.5 text-sm italic text-gray-400"
             : loud
-              ? "mt-0.5 break-words text-base font-semibold text-(--dc-accent-strong)"
+              ? `mt-0.5 break-words text-base font-bold ${tone ?? "text-gray-900"}`
               : "mt-0.5 break-words text-sm font-medium text-gray-900"
         }
       >
         {empty ? "not recorded" : value}
       </p>
-      {hint && !empty && <p className="text-[11px] text-gray-500">{hint}</p>}
+      {hint && !empty && <p className="text-[11px] text-gray-600">{hint}</p>}
     </div>
   );
 }
@@ -71,13 +87,62 @@ function Band({ tone, icon: Icon, title, children }) {
   );
 }
 
-function Group({ icon: Icon, title, children }) {
+/**
+ * The five hues, written out rather than built from the tone name.
+ *
+ * Tailwind reads class names as literal strings out of the source; a template
+ * like `bg-(--dc-brief-${tone})` produces a class at runtime that was never
+ * generated at build time, so the block renders with no background at all.
+ * That failure is invisible in a typecheck and in a build, which is why this
+ * is a lookup rather than a clever string.
+ */
+const TONES = {
+  who: {
+    head: "bg-(--dc-brief-who)",
+    edge: "border-(--dc-brief-who)",
+    wash: "bg-(--dc-brief-who-soft)/40",
+    loud: "text-(--dc-brief-who)",
+  },
+  stove: {
+    head: "bg-(--dc-brief-stove)",
+    edge: "border-(--dc-brief-stove)",
+    wash: "bg-(--dc-brief-stove-soft)/40",
+    loud: "text-(--dc-brief-stove)",
+  },
+  money: {
+    head: "bg-(--dc-brief-money)",
+    edge: "border-(--dc-brief-money)",
+    wash: "bg-(--dc-brief-money-soft)/40",
+    loud: "text-(--dc-brief-money)",
+  },
+  place: {
+    head: "bg-(--dc-brief-place)",
+    edge: "border-(--dc-brief-place)",
+    wash: "bg-(--dc-brief-place-soft)/40",
+    loud: "text-(--dc-brief-place)",
+  },
+  history: {
+    head: "bg-(--dc-brief-history)",
+    edge: "border-(--dc-brief-history)",
+    wash: "bg-(--dc-brief-history-soft)/40",
+    loud: "text-(--dc-brief-history)",
+  },
+};
+
+function Group({ icon: Icon, title, tone = "who", right, children }) {
+  const skin = TONES[tone] ?? TONES.who;
   return (
-    <section className="rounded-lg border border-gray-200 bg-white">
-      <p className="flex items-center gap-1.5 border-b border-gray-100 bg-gray-50/80 px-3 py-1.5 text-[11px] font-semibold uppercase tracking-wide text-gray-600">
-        <Icon className="h-3.5 w-3.5 text-(--dc-accent)" /> {title}
+    <section className={`overflow-hidden rounded-xl border-2 ${skin.edge} bg-white shadow-sm`}>
+      <p
+        className={`flex items-center gap-2 px-3 py-2 text-xs font-bold uppercase tracking-wide text-white ${skin.head}`}
+      >
+        <Icon className="h-4 w-4 shrink-0" />
+        {title}
+        {right && <span className="ml-auto font-medium normal-case">{right}</span>}
       </p>
-      <div className="grid grid-cols-2 gap-x-4 gap-y-2.5 p-3 sm:grid-cols-3 lg:grid-cols-4">
+      <div
+        className={`grid grid-cols-1 gap-x-4 gap-y-3 p-3 sm:grid-cols-2 lg:grid-cols-4 ${skin.wash}`}
+      >
         {children}
       </div>
     </section>
@@ -152,11 +217,12 @@ export default function AgentBrief({ record }) {
       )}
 
       {/* --------------------------------------------------------- who to ring */}
-      <Group icon={Phone} title="Who you are ringing">
+      <Group icon={Phone} title="Who you are ringing" tone="who">
         <Fact
           label="Buyer"
           value={r.resolved_end_user_name ?? r.end_user_name}
           loud
+          tone={TONES.who.loud}
           hint={r.was_corrected && r.corrected_end_user_name
             ? `receipt said ${r.end_user_name}`
             : null}
@@ -165,6 +231,7 @@ export default function AgentBrief({ record }) {
           label="Phone"
           value={r.resolved_phone ?? r.primary_phone}
           loud
+          tone={TONES.who.loud}
           hint={r.corrected_phone ? `receipt said ${r.primary_phone}` : null}
         />
         <Fact label="Other phone" value={r.resolved_alt_phone ?? r.alternative_phone} />
@@ -174,8 +241,13 @@ export default function AgentBrief({ record }) {
       </Group>
 
       {/* ------------------------------------------------------ what they have */}
-      <Group icon={Package} title="The stove they have">
-        <Fact label="Stove ID" value={<span className="font-mono">{r.stove_serial_no}</span>} loud />
+      <Group icon={Package} title="The stove they have" tone="stove">
+        <Fact
+          label="Stove ID"
+          value={<span className="font-mono">{r.stove_serial_no}</span>}
+          loud
+          tone={TONES.stove.loud}
+        />
         <Fact label="Stock status" value={words(r.stove_stock_status)} />
         <Fact label="Factory" value={r.factory} />
         <Fact label="Pots" value={r.pot_quantity} />
@@ -187,7 +259,7 @@ export default function AgentBrief({ record }) {
       </Group>
 
       {/* ------------------------------------------------------ the purchase */}
-      <Group icon={Wallet} title="What they paid, and to whom">
+      <Group icon={Wallet} title="What they paid, and to whom" tone="money">
         <Fact label="Sold on" value={date(r.sales_date)} />
         <Fact label="Amount" value={money(r.amount)} />
         <Fact label="Paid" value={money(r.total_paid)} />
@@ -206,7 +278,7 @@ export default function AgentBrief({ record }) {
       </Group>
 
       {/* ------------------------------------------------------- where they are */}
-      <Group icon={MapPin} title="Where they live">
+      <Group icon={MapPin} title="Where they live" tone="place">
         <Fact
           label="Address"
           value={r.resolved_address ?? r.user_residential_address}
@@ -227,7 +299,19 @@ export default function AgentBrief({ record }) {
       </Group>
 
       {/* -------------------------------------------------------- call history */}
-      <Group icon={PhoneCall} title="What has happened so far">
+      <Group
+        icon={PhoneCall}
+        title="What has happened so far"
+        tone="history"
+        // Three chases is the point at which the process stops calling and
+        // writes the record off, so it belongs in the heading rather than
+        // four fields down among the dates.
+        right={
+          Number(r.attempt_count ?? 0) >= 3
+            ? "chased three times"
+            : `${Number(r.attempt_count ?? 0)} so far`
+        }
+      >
         <Fact
           label="Calls made"
           value={r.attempt_count ?? 0}
@@ -243,11 +327,13 @@ export default function AgentBrief({ record }) {
       </Group>
 
       {r.other_comments && (
-        <section className="rounded-lg border border-gray-200 bg-white p-3">
-          <p className="flex items-center gap-1.5 text-[11px] font-semibold uppercase tracking-wide text-gray-600">
-            <Flame className="h-3.5 w-3.5 text-(--dc-accent)" /> Notes from earlier calls
+        <section className="overflow-hidden rounded-xl border-2 border-(--dc-brief-history) bg-white shadow-sm">
+          <p className="flex items-center gap-2 bg-(--dc-brief-history) px-3 py-2 text-xs font-bold uppercase tracking-wide text-white">
+            <Flame className="h-4 w-4 shrink-0" /> Notes from earlier calls
           </p>
-          <p className="mt-1 text-sm text-gray-800">{r.other_comments}</p>
+          <p className="bg-(--dc-brief-history-soft)/40 px-3 py-2.5 text-sm text-gray-900">
+            {r.other_comments}
+          </p>
         </section>
       )}
 

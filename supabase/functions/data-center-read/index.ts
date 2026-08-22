@@ -22,8 +22,59 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2.39.3";
 import { resolveAssignedOrgIds } from "../_shared/resolveAssignedOrgIds.ts";
 import { withReadConnection } from "../_shared/data-center-db.ts";
 import { featuresFor } from "../_shared/data-center-roles.ts";
-import { BadRequest, buildRecordsQuery, toPage } from "./records-query.ts";
+import {
+  BadRequest,
+  buildRecordsQuery,
+  toPage,
+  COUNT_CEILING,
+} from "./records-query.ts";
 import { buildScopeSql, buildTransferScopeSql, type ScopeInput } from "./scope.ts";
+
+/**
+ * One stove's audit history, as SQL three places agree on.
+ *
+ * The stove page shows the newest few and the "show more" endpoint pages the
+ * rest. Written twice they would drift: a change the page counted as
+ * meaningful and the pager did not would make the total say 128 while the list
+ * could only ever reach 126, and nobody would be able to say which was lying.
+ */
+const CHANGES_SELECT = `select cl.id::text as id, cl.table_name, cl.action,
+                               cl.changed_at, p.full_name as changed_by_name,
+                               p.email as changed_by_email,
+                               case when cl.action = 'UPDATE' then (
+                                 select coalesce(array_agg(k order by k), '{}')
+                                   from jsonb_object_keys(coalesce(cl.new_values, '{}'::jsonb)) k
+                                  where coalesce(cl.new_values -> k, 'null'::jsonb)
+                                        is distinct from coalesce(cl.old_values -> k, 'null'::jsonb)
+                                    and k not in ('updated_at','updated_by','created_at','created_by')
+                               ) else '{}'::text[] end as changed_fields
+                          from data_center.change_log cl
+                          left join public.profiles p on p.id = cl.changed_by`;
+
+/** $1 is the sale, $2 the assignment batch. Either may be an empty string. */
+const CHANGES_WHERE = `((cl.table_name = 'call_records' and cl.record_pk = $1)
+                     or (cl.table_name = 'assignment_batches' and cl.record_pk = $2))`;
+
+/*
+ * An update that changed nothing is not history.
+ *
+ * Two triggers touch a batch's updated_at whenever a call is logged against
+ * it, and each of those writes an audit row whose only difference is a
+ * timestamp the diff already excludes. Left in, they outnumber the real edits
+ * and bury them - and they would inflate the total the page prints beside the
+ * list it can actually show.
+ */
+const CHANGES_MEANINGFUL = `(cl.action <> 'UPDATE' or exists (
+                              select 1 from jsonb_object_keys(
+                                       coalesce(cl.new_values, '{}'::jsonb)) k
+                               where coalesce(cl.new_values -> k, 'null'::jsonb)
+                                     is distinct from coalesce(cl.old_values -> k, 'null'::jsonb)
+                                 and k not in ('updated_at','updated_by','created_at','created_by')
+                            ))`;
+
+/** How many edits the stove page shows before somebody asks for more. */
+const STOVE_CHANGES_FIRST_PAGE = 5;
+
 
 // Explicit origin allowlist rather than `*`. The rest of this repo uses `*`;
 // this module does not, because these responses are gated on a bearer token and
@@ -299,6 +350,31 @@ serve(async (req) => {
             rows = result.rows;
           }
 
+          /*
+           * How many match, on the first page of a filter only.
+           *
+           * "1,247 records" and "100 loaded, more available" are different
+           * facts, and only the first one tells somebody whether their filter
+           * worked. It is asked once per filter rather than once per page
+           * because the answer does not change as you scroll, and a third
+           * statement on every page would undo the point of the two-statement
+           * split above.
+           *
+           * Capped at COUNT_CEILING, so an unfiltered table answers "10,000+"
+           * in bounded time rather than counting half a million index entries
+           * to tell somebody something they cannot use.
+           */
+          let total: number | null = null;
+          let totalIsCapped = false;
+          if (!body.cursor) {
+            const counted = await connection.queryObject<{ total: number }>({
+              text: built.count.text,
+              args: built.count.args,
+            });
+            total = Number(counted.rows[0]?.total ?? 0);
+            totalIsCapped = total >= COUNT_CEILING;
+          }
+
           return json(
             {
               data: {
@@ -306,6 +382,10 @@ serve(async (req) => {
                 nextCursor: page.nextCursor,
                 hasMore: page.hasMore,
                 pageSize: built.pageSize,
+                /** Null on continuation pages: it was answered on page one. */
+                total,
+                /** True means "at least this many", not "exactly". */
+                totalIsCapped,
                 // What the caller is looking at, so the table can say so rather
                 // than leaving a partner wondering why the count seems low.
                 scope: built.scopeDescription,
@@ -915,7 +995,8 @@ serve(async (req) => {
           const batchId = (stove.batch_id as string | null) ?? "";
 
           const [
-            sale, enrichment, provenance, changes, consignment, phoneTwins, siblings,
+            sale, enrichment, provenance, changes, changeCount, consignment,
+            phoneTwins, siblings,
           ] = await Promise.all([
               // The sale exactly as the sales app holds it, every field the
               // Sell Stove form collects. Anything less and this page would be
@@ -1042,38 +1123,29 @@ serve(async (req) => {
                * it, so the two read alike.
                */
               connection.queryObject({
-                text: `select cl.id::text as id, cl.table_name, cl.action,
-                              cl.changed_at, p.full_name as changed_by_name,
-                              p.email as changed_by_email,
-                              case when cl.action = 'UPDATE' then (
-                                select coalesce(array_agg(k order by k), '{}')
-                                  from jsonb_object_keys(coalesce(cl.new_values, '{}'::jsonb)) k
-                                 where coalesce(cl.new_values -> k, 'null'::jsonb)
-                                       is distinct from coalesce(cl.old_values -> k, 'null'::jsonb)
-                                   and k not in ('updated_at','updated_by','created_at','created_by')
-                              ) else '{}'::text[] end as changed_fields
+                text: `${CHANGES_SELECT}
+                        where ${CHANGES_WHERE}
+                          and ${CHANGES_MEANINGFUL}
+                        order by cl.changed_at desc, cl.id desc
+                        limit ${STOVE_CHANGES_FIRST_PAGE + 1}`,
+                args: [saleId ?? "", batchId],
+              }),
+
+              /*
+               * How many edits there are altogether, so the page can say
+               * "5 of 128" instead of "5" and leave the reader to guess
+               * whether that is all of them.
+               *
+               * A separate statement rather than count(*) over (), which would
+               * make Postgres materialise every matching row to number five of
+               * them. Filtered on record_pk, which change_log_record_idx leads
+               * with, so it stays an index-only count at any table size.
+               */
+              connection.queryObject({
+                text: `select count(*)::int as total
                          from data_center.change_log cl
-                         left join public.profiles p on p.id = cl.changed_by
-                        where ((cl.table_name = 'call_records' and cl.record_pk = $1)
-                            or (cl.table_name = 'assignment_batches' and cl.record_pk = $2))
-                          /*
-                           * An update that changed nothing is not history.
-                           *
-                           * Two triggers touch a batch's updated_at whenever a
-                           * call is logged against it, and each of those writes
-                           * an audit row whose only difference is a timestamp
-                           * the diff already excludes. Left in, they outnumber
-                           * the real edits and bury them.
-                           */
-                          and (cl.action <> 'UPDATE' or exists (
-                                select 1 from jsonb_object_keys(
-                                         coalesce(cl.new_values, '{}'::jsonb)) k
-                                 where coalesce(cl.new_values -> k, 'null'::jsonb)
-                                       is distinct from coalesce(cl.old_values -> k, 'null'::jsonb)
-                                   and k not in ('updated_at','updated_by','created_at','created_by')
-                              ))
-                        order by cl.changed_at desc
-                        limit 50`,
+                        where ${CHANGES_WHERE}
+                          and ${CHANGES_MEANINGFUL}`,
                 args: [saleId ?? "", batchId],
               }),
 
@@ -1151,7 +1223,16 @@ serve(async (req) => {
                 sale: sale.rows[0] ?? null,
                 enrichment: enrichment.rows[0] ?? null,
                 provenance: provenance.rows,
-                changes: changes.rows,
+                /*
+                 * The newest five, not all of them. One more than five was
+                 * asked for so `changesHasMore` is an answer rather than an
+                 * inference from the count, which lags behind an edit made in
+                 * another tab.
+                 */
+                changes: changes.rows.slice(0, STOVE_CHANGES_FIRST_PAGE),
+                changesHasMore: changes.rows.length > STOVE_CHANGES_FIRST_PAGE,
+                changesTotal:
+                  Number((changeCount.rows[0] as { total?: number } | undefined)?.total ?? 0),
                 consignment: consignment.rows,
                 phoneTwins: phoneTwins.rows,
                 siblings: siblings.rows[0] ?? null,
@@ -1183,6 +1264,232 @@ serve(async (req) => {
        * trading". One cheap read, cached by the caller for the session, rather
        * than a guessed start year baked into the front end.
        */
+      /**
+       * The lists behind the Stove Records filter panel.
+       *
+       * A filter is only usable if you can see what there is to filter by.
+       * Typing a partner's name from memory is how somebody searches for
+       * "Gombe Enterprises" and finds nothing, because the record says "Gombe
+       * Enterprise Ltd".
+       *
+       * WHERE EACH LIST COMES FROM, AND WHY NEVER FROM public.sales
+       *
+       * Every list is read from a small table. `select distinct state_backup
+       * from sales` is a sequential scan of half a million rows to return
+       * thirty-seven strings, and it would run every time the panel opened.
+       *
+       *   partners     data_center.transfer_funnel, one row per transfer
+       *   reps         transfer_funnel again, which is indexed on sales_rep
+       *   states/LGAs  public.nigeria_states / nigeria_lgas, reference data
+       *   models       public.payment_models, a handful of rows
+       *   agents       public.profiles, narrowed to who can record a sale
+       *
+       * The consequence worth naming: partners and reps here are the ones who
+       * have had a TRANSFER, not the ones who have had a sale. That is the
+       * wider set and the more useful one - a partner holding stoves with no
+       * sales recorded yet is exactly who somebody goes looking for.
+       *
+       * Scoped like every other read. A partner user sees their own partner in
+       * the list and nobody else's, because the predicate that limits the rows
+       * limits the choices too.
+       */
+      case "record_facets": {
+        const superAdmin = isSuperAdmin(profile.role);
+        const resolved = superAdmin
+          ? { accessRole: null, features: [] as string[] }
+          : await resolveAccess(userId);
+        if (!superAdmin && resolved.accessRole === null) {
+          return json({ error: "No Data Center access", code: "no_access" }, 403, cors);
+        }
+        if (!superAdmin && !resolved.features.includes("records.view")) {
+          return json({ error: "Not permitted", code: "no_feature" }, 403, cors);
+        }
+
+        const scopeInput = await resolveScope(
+          supabase,
+          userId,
+          profile.role,
+          profile.organization_id ?? null,
+        );
+        const scope = buildTransferScopeSql({ ...scopeInput, requestedOrgId: null }, 1, "f");
+
+        return await withReadConnection(async (connection) => {
+          const [partners, reps, states, lgas, models, agents] = await Promise.all([
+            connection.queryObject({
+              text: `select f.organization_id::text as id,
+                            max(f.partner_name) as name,
+                            count(*)::int as transfers
+                       from data_center.transfer_funnel f
+                      where f.organization_id is not null and ${scope.sql}
+                      group by f.organization_id
+                      order by max(f.partner_name)
+                      limit 500`,
+              args: scope.args,
+            }),
+            connection.queryObject({
+              text: `select f.sales_rep as name, count(*)::int as transfers
+                       from data_center.transfer_funnel f
+                      where f.sales_rep is not null and f.sales_rep <> ''
+                        and ${scope.sql}
+                      group by f.sales_rep
+                      order by f.sales_rep
+                      limit 500`,
+              args: scope.args,
+            }),
+            // Reference data, so the list holds every state whether or not
+            // anybody has sold there. Choosing an empty one is a real answer.
+            connection.queryObject({
+              text: `select name from public.nigeria_states order by name`,
+            }),
+            connection.queryObject({
+              text: `select state_name, name from public.nigeria_lgas
+                      order by state_name, name`,
+            }),
+            connection.queryObject({
+              text: `select id::text as id, name from public.payment_models
+                      order by name limit 100`,
+            }),
+            /*
+             * Everybody with a name, not a guess at who sells.
+             *
+             * This filtered on a hand-written list of roles, and the list was
+             * wrong: the profile that had recorded every sale on the preview
+             * was a `partner_agent`, which was not on it, so the one person
+             * who had sold anything was the one person "Sold by" would not
+             * offer. Two of the roles on the list did not exist at all.
+             *
+             * The honest alternative - only profiles that have actually
+             * recorded a sale - is `select distinct created_by from sales`,
+             * which is a scan of half a million rows to build a dropdown.
+             * Between a list that is slightly too long and a list that is
+             * silently missing the person you are looking for, too long is the
+             * one somebody can work with: picking a name that has sold nothing
+             * answers "none", which is true.
+             *
+             * profiles is a small table and this is ordered and capped.
+             */
+            connection.queryObject({
+              text: `select p.id::text as id, p.full_name as name
+                       from public.profiles p
+                      where p.full_name is not null and p.full_name <> ''
+                      order by p.full_name
+                      limit 1000`,
+            }),
+          ]);
+
+          // The LGAs arrive flat and are grouped here rather than in
+          // thirty-seven round trips: the panel needs "the LGAs of whichever
+          // state is chosen", which is a lookup, not a query.
+          const byState: Record<string, string[]> = {};
+          for (const row of lgas.rows as { state_name: string; name: string }[]) {
+            (byState[row.state_name] ??= []).push(row.name);
+          }
+
+          return json(
+            {
+              data: {
+                partners: partners.rows,
+                salesReps: reps.rows,
+                states: (states.rows as { name: string }[]).map((r) => r.name),
+                lgasByState: byState,
+                salesModels: models.rows,
+                salesAgents: agents.rows,
+                scope: scope.description,
+              },
+            },
+            200,
+            cors,
+          );
+        });
+      }
+
+      /**
+       * One stove's edit history, a page at a time.
+       *
+       * The stove page used to render every change it was handed, and it was
+       * handed fifty. A record worked hard - re-called, corrected, sent back
+       * to Sales and returned - carries more than fifty, and the page then
+       * ended in a wall of them with the sale itself scrolled far above.
+       *
+       * So the page shows the newest five and asks for the rest only when
+       * somebody wants them. Keyset paged on (changed_at, id) like every other
+       * list in this module. `id` is the tiebreaker rather than decoration: a
+       * batch commit writes several audit rows inside one transaction, and
+       * those share a timestamp down to the microsecond.
+       */
+      case "stove_changes": {
+        const superAdmin = isSuperAdmin(profile.role);
+        const resolved = superAdmin
+          ? { accessRole: null, features: [] as string[] }
+          : await resolveAccess(userId);
+        if (!superAdmin && resolved.accessRole === null) {
+          return json({ error: "No Data Center access", code: "no_access" }, 403, cors);
+        }
+        if (!superAdmin && !resolved.features.includes("records.view")) {
+          return json({ error: "Not permitted", code: "no_feature" }, 403, cors);
+        }
+
+        const b = body as {
+          saleId?: string;
+          batchId?: string;
+          limit?: number;
+          cursor?: { changedAt?: string; id?: string } | null;
+        };
+        const saleId = typeof b.saleId === "string" && UUID_RE.test(b.saleId) ? b.saleId : "";
+        const batchId = typeof b.batchId === "string" && UUID_RE.test(b.batchId) ? b.batchId : "";
+        if (!saleId && !batchId) {
+          return json(
+            { error: "Say which record's history to read", code: "bad_input" },
+            400,
+            cors,
+          );
+        }
+        const limit = Math.min(Math.max(Number(b.limit) || 10, 1), 100);
+
+        const args: unknown[] = [saleId, batchId];
+        let cursorSql = "";
+        if (b.cursor?.changedAt && b.cursor?.id) {
+          const at = new Date(String(b.cursor.changedAt));
+          if (Number.isNaN(at.getTime()) || !/^\d+$/.test(String(b.cursor.id))) {
+            return json({ error: "Malformed cursor", code: "bad_input" }, 400, cors);
+          }
+          // Newest first, so "past the cursor" means strictly older.
+          args.push(at.toISOString(), String(b.cursor.id));
+          cursorSql = " and (cl.changed_at, cl.id) < ($3::timestamptz, $4::bigint)";
+        }
+
+        return await withReadConnection(async (connection) => {
+          const page = await connection.queryObject({
+            text: `${CHANGES_SELECT}
+                    where ${CHANGES_WHERE}${cursorSql}
+                      and ${CHANGES_MEANINGFUL}
+                    order by cl.changed_at desc, cl.id desc
+                    limit ${limit + 1}`,
+            args,
+          });
+          const rows = page.rows as Record<string, unknown>[];
+          const hasMore = rows.length > limit;
+          const slice = hasMore ? rows.slice(0, limit) : rows;
+          const last = slice[slice.length - 1];
+          return json(
+            {
+              data: {
+                rows: slice,
+                hasMore,
+                nextCursor: hasMore && last
+                  ? {
+                    changedAt: new Date(last.changed_at as string).toISOString(),
+                    id: String(last.id),
+                  }
+                  : null,
+              },
+            },
+            200,
+            cors,
+          );
+        });
+      }
+
       case "period_bounds": {
         const superAdmin = isSuperAdmin(profile.role);
         const resolved = superAdmin

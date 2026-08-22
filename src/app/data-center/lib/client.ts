@@ -192,6 +192,16 @@ export type RecordsFilters = {
   search?: string;
   organizationId?: string | null;
   userState?: string;
+  /** Only offered once a state is chosen: the index leads with the state. */
+  userLga?: string;
+  /** public.payment_models.id, which the table displays as Model. */
+  salesModel?: string;
+  /** The profile that recorded the sale, shown as Sold by. */
+  saleAgent?: string;
+  /** The partner's own state, not the buyer's. Different question. */
+  partnerState?: string;
+  /** The rep on the parent transfer, resolved through the transaction. */
+  transferSalesRep?: string;
   saleStatus?: string;
   paymentStatus?: string;
   platform?: string;
@@ -199,6 +209,30 @@ export type RecordsFilters = {
   dateTo?: string;
   includeArchived?: boolean;
 };
+
+/** The lists the filter panel offers. Small tables only - never a DISTINCT. */
+export type RecordFacets = {
+  partners: { id: string; name: string | null; transfers: number }[];
+  salesReps: { name: string; transfers: number }[];
+  states: string[];
+  lgasByState: Record<string, string[]>;
+  salesModels: { id: string; name: string }[];
+  salesAgents: { id: string; name: string }[];
+  scope: string;
+};
+
+/** One row of a record's audit history. */
+export type ChangeRow = {
+  id: string;
+  table_name: string;
+  action: "INSERT" | "UPDATE" | "DELETE";
+  changed_at: string;
+  changed_by_name: string | null;
+  changed_by_email: string | null;
+  changed_fields: string[];
+};
+
+export type ChangeCursor = { changedAt: string; id: string };
 
 export type SoldStoveRow = {
   sale_id: string;
@@ -242,6 +276,14 @@ export type RecordsPage = {
   nextCursor: RecordsCursor | null;
   hasMore: boolean;
   pageSize: number;
+  /**
+   * How many records match, answered on the first page of a filter only.
+   * Null on continuation pages, because the answer has not changed and a third
+   * statement per page would undo the point of the two-statement read.
+   */
+  total: number | null;
+  /** True means the total is a floor - "10,000+" rather than exactly 10,000. */
+  totalIsCapped: boolean;
   /** Plain-language description of what this caller is allowed to see. */
   scope: string;
 };
@@ -310,6 +352,34 @@ export const dataCenterClient = {
    * the query cost flat at 500,000 rows. Filtering, sorting and searching all
    * happen in Postgres; nothing here narrows a set it already received.
    */
+  /**
+   * The lists behind the Stove Records filter panel.
+   *
+   * Fetched once when the panel mounts and held for the session. Every list
+   * comes from a small table server-side, so this is cheap - but it is still
+   * one request, not one per control.
+   */
+  recordFacets: () => call<RecordFacets>("data-center-read", "record_facets"),
+
+  /**
+   * More of one record's edit history.
+   *
+   * The stove page arrives with the newest five from `stove_detail`; this is
+   * what "show more" calls. Keyset paged, so it stays flat however long the
+   * history is.
+   */
+  stoveChanges: (params: {
+    saleId?: string | null;
+    batchId?: string | null;
+    limit?: number;
+    cursor?: ChangeCursor | null;
+  }) =>
+    call<{ rows: ChangeRow[]; hasMore: boolean; nextCursor: ChangeCursor | null }>(
+      "data-center-read",
+      "stove_changes",
+      params,
+    ),
+
   getRecords: (params: {
     cursor?: RecordsCursor | null;
     limit?: number;
@@ -471,15 +541,10 @@ export type StoveRecord = {
   sale: Record<string, unknown> | null;
   enrichment: Record<string, unknown> | null;
   provenance: Record<string, unknown>[];
-  changes: {
-    id: string;
-    table_name: string;
-    action: string;
-    changed_at: string;
-    changed_by_name: string | null;
-    changed_by_email: string | null;
-    changed_fields: string[];
-  }[];
+  /** The newest few only. `stoveChanges` fetches the rest on request. */
+  changes: ChangeRow[];
+  changesHasMore: boolean;
+  changesTotal: number;
   consignment: Record<string, unknown>[];
   /**
    * Any other live sale carrying this buyer's phone number.

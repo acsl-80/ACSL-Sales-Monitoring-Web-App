@@ -1,11 +1,13 @@
 import { useEffect, useMemo, useState } from "react";
 import Link from "@/compat/Link";
-import { useRecords, PAGE_SIZE } from "../../lib/useRecords";
+import { useRecords, PAGE_SIZE, MAX_RETAINED } from "../../lib/useRecords";
+import { useRecordFacets } from "../../lib/useRecordFacets";
+import RecordsFilters from "./RecordsFilters";
 import PeriodFilter from "../../components/PeriodFilter";
 import { usePeriod } from "../../lib/usePeriod";
 import { useVirtualRows } from "../../lib/useVirtualRows";
 import { useIsPhone } from "../../lib/useMediaQuery";
-import { Loader2, AlertTriangle, Search, X, Database, Filter } from "lucide-react";
+import { Loader2, AlertTriangle, X, Database, Filter } from "lucide-react";
 
 /**
  * Table 1: sold stove records.
@@ -102,9 +104,6 @@ function Cell({ row, column }) {
   return <span className="truncate">{value}</span>;
 }
 
-const SALE_STATUSES = ["incomplete", "completed", "pending", "assigned"];
-const PAYMENT_STATUSES = ["not_applicable", "partially_paid", "fully_paid"];
-
 /**
  * One record as a card, for a screen too narrow to hold eleven columns.
  *
@@ -136,76 +135,23 @@ function PhoneRow({ row }) {
   );
 }
 
-function FilterBar({ draft, setDraft, onClear, active }) {
-  return (
-    <div className="flex flex-wrap items-center gap-2 border-b border-gray-100 bg-white px-4 py-3">
-      <div className="relative w-full min-w-0 sm:w-auto sm:min-w-[240px] sm:flex-1">
-        <Search className="pointer-events-none absolute left-2.5 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-400" />
-        <input
-          type="text"
-          value={draft.search ?? ""}
-          onChange={(e) => setDraft({ ...draft, search: e.target.value })}
-          placeholder="Name, phone, stove serial or transaction ID"
-          className="w-full rounded-md border border-gray-300 py-1.5 pl-8 pr-3 text-sm focus:border-(--dc-accent) focus:outline-none"
-        />
-      </div>
-
-      <select
-        value={draft.saleStatus ?? ""}
-        onChange={(e) => setDraft({ ...draft, saleStatus: e.target.value || undefined })}
-        className="rounded-md border border-gray-300 px-2 py-1.5 text-sm focus:border-(--dc-accent) focus:outline-none"
-      >
-        <option value="">Any status</option>
-        {SALE_STATUSES.map((s) => (
-          <option key={s} value={s}>{s.replace(/_/g, " ")}</option>
-        ))}
-      </select>
-
-      <select
-        value={draft.paymentStatus ?? ""}
-        onChange={(e) => setDraft({ ...draft, paymentStatus: e.target.value || undefined })}
-        className="rounded-md border border-gray-300 px-2 py-1.5 text-sm focus:border-(--dc-accent) focus:outline-none"
-      >
-        <option value="">Any payment</option>
-        {PAYMENT_STATUSES.map((s) => (
-          <option key={s} value={s}>{s.replace(/_/g, " ")}</option>
-        ))}
-      </select>
-
-      <input
-        type="date"
-        value={draft.dateFrom ?? ""}
-        onChange={(e) => setDraft({ ...draft, dateFrom: e.target.value || undefined })}
-        className="rounded-md border border-gray-300 px-2 py-1.5 text-sm focus:border-(--dc-accent) focus:outline-none"
-        aria-label="Sold from"
-      />
-      <input
-        type="date"
-        value={draft.dateTo ?? ""}
-        onChange={(e) => setDraft({ ...draft, dateTo: e.target.value || undefined })}
-        className="rounded-md border border-gray-300 px-2 py-1.5 text-sm focus:border-(--dc-accent) focus:outline-none"
-        aria-label="Sold to"
-      />
-
-      {active && (
-        <button
-          type="button"
-          onClick={onClear}
-          className="inline-flex items-center gap-1 rounded-md px-2 py-1.5 text-sm text-gray-500 hover:bg-gray-100 hover:text-gray-800"
-        >
-          <X className="h-3.5 w-3.5" /> Clear
-        </button>
-      )}
-    </div>
-  );
-}
-
 export default function RecordsTable({ drill = null, routeId = "/data-center/stove-records" }) {
   // Two states, deliberately. `draft` is what the user is typing; `applied` is
   // what has been asked of the server. Debouncing between them is what stops a
   // request per keystroke.
   const [draft, setDraft] = useState({});
   const [applied, setApplied] = useState({});
+  /*
+   * Which end of the register to read from.
+   *
+   * Held here rather than in the filter panel because it is not a filter: it
+   * changes the order the server pages in, so flipping it starts a new first
+   * page rather than re-sorting what is loaded. Without it the oldest record
+   * in a register of half a million is unreachable except by scrolling past
+   * every newer one.
+   */
+  const [direction, setDirection] = useState("desc");
+  const { facets } = useRecordFacets();
 
   useEffect(() => {
     const timer = setTimeout(() => setApplied(draft), 350);
@@ -246,8 +192,10 @@ export default function RecordsTable({ drill = null, routeId = "/data-center/sto
     [drill, applied, drillSetsDates, resolved.dateFrom, resolved.dateTo],
   );
 
-  const { rows, loading, loadingMore, error, hasMore, scope, loadMore } =
-    useRecords(filters);
+  const {
+    rows, loading, loadingMore, error, hasMore, scope, loadMore,
+    total, totalIsCapped, atCeiling,
+  } = useRecords(filters, "records", direction);
 
   const phone = useIsPhone();
   const rowHeight = phone ? ROW_HEIGHT_PHONE : ROW_HEIGHT;
@@ -270,17 +218,30 @@ export default function RecordsTable({ drill = null, routeId = "/data-center/sto
     [rows, win.start, win.end],
   );
 
-  const active = Object.values(draft).some((v) => v !== undefined && v !== "");
+  const active = Object.values(draft).some(
+    (v) => v !== undefined && v !== "" && v !== false,
+  );
 
   return (
     <div className="overflow-hidden rounded-xl border border-gray-200 border-t-[3px] border-t-(--dc-accent) bg-white shadow-sm">
       <div className="flex items-center gap-2 border-b border-gray-100 bg-(--dc-accent-soft)/30 px-4 py-3">
         <Database className="h-4 w-4 text-(--dc-accent)" />
         <span className="text-sm font-semibold text-gray-900">Sold Stove Records</span>
+        {/*
+          "1,247 records" and "100 loaded" answer different questions, and only
+          the first tells somebody whether the filter they just set worked. The
+          count is bounded server-side, so an unfiltered register says
+          "10,000+" rather than spending the time to count half a million rows
+          nobody was going to scroll through.
+        */}
         <span className="text-sm text-gray-500">
           {loading
             ? "loading..."
-            : `${rows.length.toLocaleString()} loaded${hasMore ? ", more available" : ""}`}
+            : total == null
+              ? `${rows.length.toLocaleString()} loaded${hasMore ? ", more available" : ""}`
+              : `${total.toLocaleString()}${totalIsCapped ? "+" : ""} ${
+                  total === 1 && !totalIsCapped ? "record" : "records"
+                } · ${rows.length.toLocaleString()} loaded`}
         </span>
         {scope && (
           <span className="ml-auto rounded-full bg-gray-100 px-2.5 py-0.5 text-xs text-gray-600">
@@ -323,11 +284,13 @@ export default function RecordsTable({ drill = null, routeId = "/data-center/sto
         )}
       </div>
 
-      <FilterBar
+      <RecordsFilters
         draft={draft}
         setDraft={setDraft}
         onClear={() => setDraft({})}
-        active={active}
+        facets={facets}
+        direction={direction}
+        onDirection={setDirection}
       />
 
       {error && (
@@ -409,11 +372,38 @@ export default function RecordsTable({ drill = null, routeId = "/data-center/sto
         </div>
       </div>
 
+      {/*
+        The ceiling, said out loud.
+
+        Paging forward for ever would eventually hold half a million row objects
+        in the tab, which is a browser that stops responding rather than one
+        that is slow. Stopping is the right behaviour; stopping without saying
+        why would look like the register ending early, so this names the limit,
+        the number that matched, and the thing to do about it.
+      */}
+      {atCeiling && hasMore && (
+        <div className="flex flex-wrap items-start gap-2 border-t border-(--dc-accent)/25 bg-(--dc-accent-soft)/50 px-4 py-2.5">
+          <Filter className="mt-0.5 h-3.5 w-3.5 shrink-0 text-(--dc-accent)" />
+          <p className="text-xs text-(--dc-accent-strong)">
+            <span className="font-semibold">
+              {MAX_RETAINED.toLocaleString()} records loaded, the most this table
+              holds at once.
+            </span>{" "}
+            {total != null && (total > MAX_RETAINED || totalIsCapped)
+              ? `${total.toLocaleString()}${totalIsCapped ? "+" : ""} match, so there are more below this. `
+              : ""}
+            Narrow the filters, or turn the sort round to read from the other end.
+          </p>
+        </div>
+      )}
+
       <div className="flex items-center gap-2 border-t border-gray-100 px-4 py-2 text-xs text-gray-500">
         {loadingMore ? (
           <>
             <Loader2 className="h-3 w-3 animate-spin" /> Loading more...
           </>
+        ) : atCeiling && hasMore ? (
+          "Paused at the display limit"
         ) : hasMore ? (
           "Scroll for more"
         ) : rows.length > 0 ? (

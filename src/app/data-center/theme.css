@@ -34,6 +34,39 @@
 }
 
 /*
+ * The call brief's five blocks, one hue each.
+ *
+ * NOT decoration, and not the area accent either. A call agent reading this
+ * card is holding a live phone call, and the five blocks answer five different
+ * questions - who am I ringing, which stove, what did they pay, where are
+ * they, what happened before. On a single white card those five run together
+ * and the agent hunts. Coloured, the eye goes to the block before it reads a
+ * word.
+ *
+ * Each hue is the accent of the AREA those facts come from, so the colour is
+ * still wayfinding: the stove block is Stove Records' slate, the money block
+ * is the olive the module shares with the host, the place block is Partner
+ * Records' ochre, the history block is Import's plum. Only the first is new -
+ * teal is the call centre's own accent, and the block about the person being
+ * called is the call centre's own fact.
+ *
+ * On :root rather than .dc-root because this card renders inside a dialog that
+ * Radix portals to <body>. Every value clears 4.5:1 for white text.
+ */
+:root {
+  --dc-brief-who: #0e5a56;
+  --dc-brief-who-soft: #d9efec;
+  --dc-brief-stove: #33527b;
+  --dc-brief-stove-soft: #e0e9f4;
+  --dc-brief-money: #4a5d0f;
+  --dc-brief-money-soft: #eef3c4;
+  --dc-brief-place: #8a5a08;
+  --dc-brief-place-soft: #f7ecd2;
+  --dc-brief-history: #6b3a6e;
+  --dc-brief-history-soft: #f1e2f2;
+}
+
+/*
  * One accent per area: wayfinding, carried from the Explore card through to
  * the page it opens. Each triple is (text/fill on white, hover/pressed, tint).
  * All accent values hold >= 4.5:1 against white and --dc-surface-muted, so an

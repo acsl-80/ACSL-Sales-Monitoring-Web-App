@@ -1,6 +1,7 @@
-import { useState } from "react";
+import { useRef, useState } from "react";
 import DataCentreShell from "../components/DataCentreShell";
 import ImportPanel from "../features/import/ImportPanel";
+import GetTheSheet from "../features/import/GetTheSheet";
 import ConfirmationQueue from "../features/import/ConfirmationQueue";
 import Workbench from "../features/workbench/Workbench";
 import { useFeature } from "../lib/access";
@@ -27,14 +28,20 @@ const TABS = [
     key: "bulk",
     label: "Bulk import",
     icon: Upload,
-    blurb: "Upload a spreadsheet somebody has already filled in.",
+    // The blurb names the whole path, not the last step of it. It used to say
+    // "upload a spreadsheet somebody has already filled in", which describes
+    // the half that happens here and leaves the half that produces the
+    // spreadsheet to be guessed at.
+    blurb:
+      "Many receipts at once: download a sheet the system has already filled with stove IDs, type the buyers into it, upload it back.",
     needs: DATA_CENTER_FEATURES.IMPORT_UPLOAD,
   },
   {
     key: "bench",
-    label: "Digitalisation workbench",
+    label: "One receipt at a time",
     icon: PenLine,
-    blurb: "Work through a partner's stoves one receipt at a time.",
+    blurb:
+      "The digitalisation workbench: a partner's stoves worked through in the app, one receipt per stove. No spreadsheet involved.",
     needs: DATA_CENTER_FEATURES.DIGITISATION_WORK,
   },
   {
@@ -50,6 +57,7 @@ function Inner() {
   const { can } = useFeature();
   const available = TABS.filter((t) => can(t.needs));
   const [tab, setTab] = useState(available[0]?.key ?? "bulk");
+  const uploadRef = useRef(null);
   const current = available.find((t) => t.key === tab) ?? available[0];
 
   return (
@@ -80,11 +88,31 @@ function Inner() {
       </div>
 
       {current?.key === "bulk" && (
-        <ImportPanel
-          canUpload={can(DATA_CENTER_FEATURES.IMPORT_UPLOAD)}
-          canCommit={can(DATA_CENTER_FEATURES.IMPORT_COMMIT)}
-          canResolve={can(DATA_CENTER_FEATURES.IMPORT_EXCEPTIONS)}
-        />
+        <>
+          {/*
+            The path first, the panel second.
+
+            The panel is where the work is done and it is still the bigger
+            surface - but it starts at "choose a file", and a file only exists
+            because somebody did step one. Putting the three steps above it
+            means the page reads in the order the job happens rather than
+            starting in the middle of it.
+          */}
+          {can(DATA_CENTER_FEATURES.IMPORT_UPLOAD) && (
+            <GetTheSheet
+              onGoToUpload={() =>
+                uploadRef.current?.scrollIntoView({ behavior: "smooth", block: "start" })
+              }
+            />
+          )}
+          <div ref={uploadRef}>
+            <ImportPanel
+              canUpload={can(DATA_CENTER_FEATURES.IMPORT_UPLOAD)}
+              canCommit={can(DATA_CENTER_FEATURES.IMPORT_COMMIT)}
+              canResolve={can(DATA_CENTER_FEATURES.IMPORT_EXCEPTIONS)}
+            />
+          </div>
+        </>
       )}
       {current?.key === "bench" && <Workbench />}
       {current?.key === "confirm" && (
@@ -98,7 +126,7 @@ export default function ImportPage() {
   return (
     <DataCentreShell
       title="Bulk Import"
-      description="Paper receipts into records: uploaded in bulk, typed at the bench, released on confirmation."
+      description="Paper receipts into records: a prepared sheet filled in and uploaded in bulk, or typed one at a time at the bench, then released on confirmation."
       breadcrumb="Bulk Import"
       area="import"
       // Either way in opens it. The tabs then narrow to what the person

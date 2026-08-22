@@ -57,6 +57,12 @@ export interface RecordsFilters {
   search?: string;
   organizationId?: string | null;
   userState?: string;
+  /** Where the buyer lives, narrower than userState. Only meaningful with it. */
+  userLga?: string;
+  /** public.payment_models.id - what the view surfaces as sales_model. */
+  salesModel?: string;
+  /** The profile that recorded the sale, which the view names sale_agent_name. */
+  saleAgent?: string;
   /** The partner's own state: the location scorecard's axis, not the buyer's. */
   partnerState?: string;
   /** The rep on the parent TRANSFER, resolved through transaction_id. */
@@ -252,11 +258,28 @@ const SEARCH_EXPRESSION = `(
 
 export class BadRequest extends Error {}
 
+/**
+ * How far a match count will look before it gives up and says "more than this".
+ *
+ * A plain count(*) cannot stop early: asking how many records match an empty
+ * filter at 500,000 rows means counting 500,000 index entries every time
+ * somebody opens the page. Wrapping the pick in a LIMIT and counting the
+ * result caps the work at ten thousand entries whatever the table holds, and
+ * the answer above that ceiling - "10,000+" - is the one a person acts on
+ * anyway. Nobody scrolls to row forty thousand; they narrow the filter.
+ */
+export const COUNT_CEILING = 10_000;
+
 export interface BuiltQuery {
   /** Step one: find this page's sale ids. Runs against the base tables. */
   pick: { text: string; args: unknown[] };
   /** Step two: fetch those rows through the view. Takes the ids from step one. */
   hydrate: (ids: string[]) => { text: string; args: unknown[] };
+  /**
+   * How many records match, up to COUNT_CEILING. Only worth running on the
+   * first page of a filter - the answer does not change as you page through.
+   */
+  count: { text: string; args: unknown[] };
   pageSize: number;
   scopeDescription: string;
 }
@@ -308,6 +331,32 @@ export function buildRecordsQuery(
 
   if (f.userState) where.push(`s.state_backup = ${p(String(f.userState))}`);
 
+  /*
+   * The LGA without the state is deliberately allowed.
+   *
+   * idx_sales_state_lga_date_id leads with the state, so an LGA on its own
+   * cannot use it and walks the date index instead. That is a slower page, not
+   * a wrong one, and refusing it would mean somebody who knows the LGA and not
+   * which state it is in gets an error instead of an answer. The UI offers LGA
+   * only after a state precisely so the fast path is the ordinary one.
+   */
+  if (f.userLga) where.push(`s.lga_backup = ${p(String(f.userLga))}`);
+
+  // The model is a row in public.payment_models, matched by id rather than by
+  // the name the view displays: names are edited, ids are not.
+  if (f.salesModel) {
+    if (!UUID.test(String(f.salesModel))) throw new BadRequest("salesModel must be a UUID");
+    where.push(`s.payment_model_id = ${p(String(f.salesModel))}`);
+  }
+
+  // Who recorded the sale. `created_by`, which is what the view resolves into
+  // sale_agent_name - not sold_on_behalf_of, which is attribution rather than
+  // authorship and would answer a different question under the same label.
+  if (f.saleAgent) {
+    if (!UUID.test(String(f.saleAgent))) throw new BadRequest("saleAgent must be a UUID");
+    where.push(`s.created_by = ${p(String(f.saleAgent))}`);
+  }
+
   // The location scorecard groups by the state ON THE TRANSFER, which is the
   // partner's state. partner_state comes from the same ERP data, so it is the
   // matching axis; user_state is where the buyer lives, a different question.
@@ -318,12 +367,31 @@ export function buildRecordsQuery(
       select org.id from public.organizations org where org.state = ${p(String(f.partnerState))})`);
   }
 
-  // The rep on the transfer, not on the sale. The sales rep scorecard counts
-  // transfers, so its drill-through resolves the same chain backwards: which
-  // sales sit under transfers this rep made.
+  /*
+   * The rep on the TRANSFER, not on the sale.
+   *
+   * This compared `sales.transaction_id` with
+   * `stove_transfer_history.transaction_id`, which are two different
+   * references that happen to share a column name. A sale's transaction_id is
+   * the sale's own reference ("PRV001"); the transfer's is the consignment's
+   * ("TR-PRV002"), and it reaches the sale through the stock row, not
+   * directly. The two sets never intersect, so this filter matched nothing -
+   * and the sales-rep scorecard's drill-through has always opened an empty
+   * table without ever saying it had failed to find anything.
+   *
+   * The chain here is the one CLAUDE.md names and the rest of the module
+   * already uses: serial -> stove_ids_base.sales_reference ->
+   * stove_transfer_history.transaction_id. Written against stove_ids_base
+   * rather than data_center.v_transfer_stoves, which is the same chain but
+   * expands every transfer's jsonb array of serials to get there; the stock
+   * table already holds one row per stove and idx_stove_ids_sales_reference
+   * indexes the join.
+   */
   if (f.transferSalesRep) {
-    where.push(`s.transaction_id in (
-      select h.transaction_id from public.stove_transfer_history h
+    where.push(`s.stove_serial_no in (
+      select b.stove_id
+        from public.stove_ids_base b
+        join public.stove_transfer_history h on h.transaction_id = b.sales_reference
        where h.sales_rep = ${p(String(f.transferSalesRep))})`);
   }
 
@@ -492,6 +560,21 @@ export function buildRecordsQuery(
     }
   }
 
+  /*
+   * The count is built here, BEFORE the cursor predicate is appended.
+   *
+   * "How many records match" and "how many are left below where I am" are
+   * different questions, and only the first one belongs beside a filter.
+   * Building it after the cursor would make the total shrink as somebody
+   * scrolled, which reads as records disappearing.
+   *
+   * The args array is copied for the same reason: the cursor's parameters are
+   * pushed onto it a few lines below, and a shared reference would hand the
+   * count two parameters its text never mentions.
+   */
+  const countArgs = [...args];
+  const countWhere = where.join("\n        and ");
+
   // --- The cursor -----------------------------------------------------------
   const cursor = request.cursor;
   if (cursor) {
@@ -560,8 +643,26 @@ export function buildRecordsQuery(
     : "data_center.v_sold_stoves";
   const selected = table === "call_center" ? CALL_CENTER_COLUMNS : COLUMNS;
 
+  const count = {
+    // The limit is inside the subquery on purpose: Postgres stops picking rows
+    // once it has the ceiling, so the cost is bounded by the ceiling and not by
+    // how many rows actually match.
+    text: `
+      select count(*)::int as total
+        from (
+          select 1
+          from public.sales s
+          ${join}
+          where ${countWhere}
+          limit ${COUNT_CEILING}
+        ) capped
+    `,
+    args: countArgs,
+  };
+
   return {
     pick,
+    count,
     pageSize,
     scopeDescription: scope.description,
     hydrate: (ids: string[]) => ({

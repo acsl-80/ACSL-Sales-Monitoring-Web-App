@@ -21,6 +21,21 @@ import {
 
 export const PAGE_SIZE = 100;
 
+/**
+ * How many rows this hook will hold in memory before it stops fetching.
+ *
+ * The list is virtualized, so the DOM is never the problem - but the array
+ * behind it is. Every page fetched is appended and kept, and at 500,000 records
+ * an idle scroll-wheel would walk a user into holding half a million objects,
+ * which is a browser tab that stops responding rather than a slow one.
+ *
+ * Five thousand is about 5 MB of row objects and roughly a hundred pages of
+ * scrolling. Past it the table stops loading and says so, with the match count
+ * beside it: at that point narrowing the filter is the answer, and it is a
+ * better answer than scrolling would have been.
+ */
+export const MAX_RETAINED = 5_000;
+
 export interface RecordsState {
   rows: SoldStoveRow[];
   loading: boolean;
@@ -28,6 +43,12 @@ export interface RecordsState {
   error: string | null;
   hasMore: boolean;
   scope: string | null;
+  /** How many match the filter, up to the server's ceiling. */
+  total: number | null;
+  /** True means the total is a floor: "at least this many". */
+  totalIsCapped: boolean;
+  /** True once MAX_RETAINED is reached and paging has deliberately stopped. */
+  atCeiling: boolean;
   loadMore: () => void;
   reload: () => void;
 }
@@ -35,6 +56,7 @@ export interface RecordsState {
 export function useRecords(
   filters: RecordsFilters,
   table: "records" | "call_center" = "records",
+  direction: "asc" | "desc" = "desc",
 ): RecordsState {
   const [rows, setRows] = useState<SoldStoveRow[]>([]);
   const [cursor, setCursor] = useState<RecordsCursor | null>(null);
@@ -43,6 +65,8 @@ export function useRecords(
   const [loadingMore, setLoadingMore] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [scope, setScope] = useState<string | null>(null);
+  const [total, setTotal] = useState<number | null>(null);
+  const [totalIsCapped, setTotalIsCapped] = useState(false);
 
   // Every fetch carries the generation it was started in. A response from an
   // older generation is discarded, so a slow first page cannot overwrite the
@@ -73,6 +97,7 @@ export function useRecords(
         const page = await fetcher({
           cursor: from,
           limit: PAGE_SIZE,
+          direction,
           filters: JSON.parse(serialized) as RecordsFilters,
         });
         if (gen !== generation.current) return;
@@ -80,6 +105,12 @@ export function useRecords(
         setCursor(page.nextCursor);
         setHasMore(page.hasMore);
         setScope(page.scope);
+        // Answered on the first page of a filter only, so a continuation page
+        // carrying null must not wipe what page one established.
+        if (page.total != null) {
+          setTotal(page.total);
+          setTotalIsCapped(Boolean(page.totalIsCapped));
+        }
         setError(null);
       } catch (err) {
         if (gen !== generation.current) return;
@@ -101,7 +132,7 @@ export function useRecords(
         }
       }
     },
-    [serialized, table],
+    [serialized, table, direction],
   );
 
   useEffect(() => {
@@ -109,8 +140,12 @@ export function useRecords(
     setRows([]);
     setCursor(null);
     setHasMore(false);
+    setTotal(null);
+    setTotalIsCapped(false);
     fetchPage(null, gen);
   }, [fetchPage]);
+
+  const atCeiling = rows.length >= MAX_RETAINED;
 
   return {
     rows,
@@ -119,7 +154,13 @@ export function useRecords(
     error,
     hasMore,
     scope,
+    total,
+    totalIsCapped,
+    atCeiling,
     loadMore: () => {
+      // The ceiling is enforced here rather than in the component, because the
+      // component asks for more by scrolling and would keep asking.
+      if (atCeiling) return;
       if (cursor && hasMore && !inFlight.current) {
         fetchPage(cursor, generation.current);
       }

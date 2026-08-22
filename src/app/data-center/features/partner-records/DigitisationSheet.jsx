@@ -48,7 +48,20 @@ const CARRIED = {
   transferDate: (r) => r.sales_date ?? "",
 };
 
-export default function DigitisationSheet({ organizationId, partnerName, onClose }) {
+/*
+ * `area` decides the accent, because this dialog now opens from two places.
+ *
+ * Radix portals the dialog to <body>, outside whatever page opened it, so the
+ * area has to be carried rather than inherited. Opened from Partner Records it
+ * stays ochre; opened as step one of a bulk import it is Import's plum, and
+ * the colour is one more thing telling the user which job they are in.
+ */
+export default function DigitisationSheet({
+  organizationId,
+  partnerName,
+  onClose,
+  area = "partner-records",
+}) {
   const [data, setData] = useState(null);
   const [error, setError] = useState(null);
   const [month, setMonth] = useState("");
@@ -121,7 +134,7 @@ export default function DigitisationSheet({ organizationId, partnerName, onClose
     <Dialog open onOpenChange={(o) => !o && onClose()}>
       <DialogContent
         className="dc-root flex max-h-[90dvh] w-[90vw] max-w-[90vw] flex-col gap-0 overflow-hidden border-0 p-0 sm:max-w-[90vw]"
-        data-area="partner-records"
+        data-area={area}
       >
         <DialogHeader className="border-b border-gray-100 bg-(--dc-accent-soft)/40 px-5 py-4 text-left">
           <DialogTitle className="text-base">

@@ -8,6 +8,7 @@ import {
   Loader2, Package, Truck, UserRound, PhoneCall, FileSpreadsheet, History,
   ChevronRight, ChevronDown, Copy, Check, ExternalLink, Flame, PenLine,
   TriangleAlert, CircleDashed, CircleCheck, CircleAlert,
+  ChevronUp,
 } from "lucide-react";
 
 /**
@@ -166,6 +167,197 @@ function CopyId({ value }) {
 }
 
 /** The rest of the consignment, fetched only if somebody asks for it. */
+/**
+ * How many of a long list this page shows before somebody asks for more.
+ *
+ * Five, everywhere. The stove page is a record, and a record is meant to be
+ * read top to bottom: a stove that has been re-called, corrected, sent back to
+ * Sales and returned carries dozens of audit rows, and rendering all of them
+ * pushed the sale itself so far up the page that the thing people opened the
+ * page for was the hardest part to find.
+ *
+ * The three lists this applies to grow for different reasons - calls by the
+ * callback policy, imports by how many times a serial was typed, edits without
+ * any ceiling at all - so only the last of them pages against the server. The
+ * other two are already bounded by the query that fetched them, and collapsing
+ * those in the browser is honest because the browser has all of them.
+ */
+const FEW = 5;
+
+/**
+ * The row that ends a shortened list.
+ *
+ * It always says the total, because "Show more" on its own does not tell you
+ * whether more means two or two hundred, and that changes whether you click.
+ */
+function More({ shown, total, onMore, onCollapse, busy, noun = "entries" }) {
+  const rest = Math.max(0, total - shown);
+  const canCollapse = shown > FEW;
+  if (rest === 0 && !canCollapse && !busy) return null;
+  return (
+    <div className="flex flex-wrap items-center gap-2 border-t border-gray-100 bg-gray-50/70 px-3 py-2">
+      <span className="text-xs text-gray-500">
+        Showing {shown.toLocaleString()} of {total.toLocaleString()} {noun}
+      </span>
+      {rest > 0 && (
+        <button
+          type="button"
+          /*
+            Wrapped rather than passed straight through. React hands the click
+            event to the handler, and both callers take an argument that means
+            "collapse instead" - so `onClick={onMore}` expanded nothing and
+            collapsed the list on every press.
+          */
+          onClick={() => onMore()}
+          disabled={busy}
+          className="ml-auto inline-flex items-center gap-1 rounded-md border border-(--dc-accent)/40 px-2 py-1 text-xs font-medium text-(--dc-accent) transition hover:bg-(--dc-accent-soft) disabled:opacity-50"
+        >
+          {busy ? (
+            <Loader2 className="h-3 w-3 animate-spin" />
+          ) : (
+            <ChevronDown className="h-3 w-3" />
+          )}
+          Show {Math.min(rest, 20).toLocaleString()} more
+        </button>
+      )}
+      {canCollapse && !busy && (
+        <button
+          type="button"
+          onClick={() => onCollapse()}
+          className={`inline-flex items-center gap-1 rounded-md px-2 py-1 text-xs text-gray-500 transition hover:bg-gray-100 hover:text-gray-800 ${rest > 0 ? "" : "ml-auto"}`}
+        >
+          <ChevronUp className="h-3 w-3" /> Collapse
+        </button>
+      )}
+    </div>
+  );
+}
+
+/**
+ * Everything that changed, newest first, five at a time.
+ *
+ * Paged against the server rather than sliced in the browser, because this is
+ * the one list on the page with no ceiling: the audit trigger writes a row for
+ * every edit anybody ever makes to the call record or its assignment batch.
+ * Fetching all of them to show five would be reading a history to hide it.
+ *
+ * The first five and the total arrive with the record itself, so the common
+ * case - nobody clicks - costs nothing extra.
+ */
+function Changes({ saleId, batchId, first, total, hasMore: initialHasMore }) {
+  const [rows, setRows] = useState(first);
+  const [cursor, setCursor] = useState(null);
+  const [hasMore, setHasMore] = useState(initialHasMore);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState(null);
+
+  // A different stove is a different history. Without this the page kept the
+  // previous stove's rows when navigating between two stove records.
+  useEffect(() => {
+    setRows(first);
+    setCursor(null);
+    setHasMore(initialHasMore);
+    setError(null);
+  }, [first, initialHasMore]);
+
+  const collapse = useCallback(() => {
+    setRows(first);
+    setCursor(null);
+    setHasMore(initialHasMore);
+  }, [first, initialHasMore]);
+
+  const showMore = useCallback(
+    async () => {
+      if (busy) return;
+      setBusy(true);
+      try {
+        const page = await dataCenterClient.stoveChanges({
+          saleId: saleId || null,
+          batchId: batchId || null,
+          limit: 20,
+          // The first call has no cursor of its own, so it is built from the
+          // last row already on screen. That is what makes the five delivered
+          // with the record continuous with the twenty fetched after it.
+          cursor:
+            cursor ??
+            (rows.length > 0
+              ? {
+                changedAt: new Date(rows[rows.length - 1].changed_at).toISOString(),
+                id: String(rows[rows.length - 1].id),
+              }
+              : null),
+        });
+        setRows((previous) => [...previous, ...page.rows]);
+        setCursor(page.nextCursor);
+        setHasMore(page.hasMore);
+        setError(null);
+      } catch (err) {
+        setError(
+          err instanceof DataCenterError ? err.message : "Could not load more edits.",
+        );
+      } finally {
+        setBusy(false);
+      }
+    },
+    [busy, cursor, rows, saleId, batchId],
+  );
+
+  if (rows.length === 0) {
+    return <Empty>Nobody has edited this record since it was created.</Empty>;
+  }
+
+  return (
+    <div className="overflow-hidden rounded-lg border border-gray-200">
+      <ul className="divide-y divide-gray-100">
+        {rows.map((c) => (
+          <li key={c.id} className="px-3 py-2 text-sm">
+            <p className="text-gray-900">
+              {/*
+                A null actor on an assignment batch is the engine, not an
+                unknown person: every human path sets the actor, and the
+                scheduled run has nobody to set. Saying "somebody" there
+                invites a hunt for a person who does not exist.
+              */}
+              <span className="font-medium">
+                {c.changed_by_name ??
+                  c.changed_by_email ??
+                  (c.table_name === "assignment_batches"
+                    ? "The assignment run"
+                    : "Somebody")}
+              </span>{" "}
+              {c.action === "INSERT"
+                ? "created it"
+                : c.action === "DELETE"
+                  ? "deleted it"
+                  : c.changed_fields.length > 0
+                    ? `changed ${c.changed_fields.map((f) => f.replace(/_/g, " ")).join(", ")}`
+                    : "saved it with nothing changed"}
+            </p>
+            <p className="text-xs text-gray-500">
+              {stamp(c.changed_at)} · {c.table_name.replace(/_/g, " ")}
+            </p>
+          </li>
+        ))}
+      </ul>
+      {error && (
+        <p className="border-t border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-900">
+          {error}
+        </p>
+      )}
+      {(hasMore || rows.length > FEW) && (
+        <More
+          shown={rows.length}
+          total={Math.max(total, rows.length)}
+          onMore={showMore}
+          onCollapse={collapse}
+          busy={busy}
+          noun="edits"
+        />
+      )}
+    </div>
+  );
+}
+
 function Siblings({ transferId, stoveId, transactionId }) {
   const [open, setOpen] = useState(false);
   const [rows, setRows] = useState(null);
@@ -249,6 +441,10 @@ function Siblings({ transferId, stoveId, transactionId }) {
 export default function StoveRecord({ stoveId }) {
   const [data, setData] = useState(null);
   const [error, setError] = useState(null);
+  // How much of the two bounded lists is on screen. Reset whenever the stove
+  // changes, so opening a second record does not inherit the first's state.
+  const [callsShown, setCallsShown] = useState(FEW);
+  const [provenanceShown, setProvenanceShown] = useState(FEW);
 
   const load = useCallback(() => {
     setData(null);
@@ -269,9 +465,23 @@ export default function StoveRecord({ stoveId }) {
 
   useEffect(load, [load]);
 
+  useEffect(() => {
+    setCallsShown(FEW);
+    setProvenanceShown(FEW);
+  }, [stoveId]);
+
   const stages = useMemo(
     () => (data ? journeyOf(data) : []),
     [data],
+  );
+
+  const shownAttempts = useMemo(
+    () => (data?.attempts ?? []).slice(0, callsShown),
+    [data, callsShown],
+  );
+  const shownProvenance = useMemo(
+    () => (data?.provenance ?? []).slice(0, provenanceShown),
+    [data, provenanceShown],
   );
 
   /**
@@ -817,7 +1027,7 @@ export default function StoveRecord({ stoveId }) {
           </Empty>
         ) : (
           <ol className="divide-y divide-gray-100 rounded-lg border border-gray-200">
-            {data.attempts.map((a) => (
+            {shownAttempts.map((a) => (
               <li key={a.attempt_no} className="flex flex-wrap items-baseline gap-x-2 gap-y-1 px-3 py-2 text-sm">
                 <span className="w-6 shrink-0 text-xs font-semibold tabular-nums text-gray-400">
                   {a.attempt_no}
@@ -835,6 +1045,15 @@ export default function StoveRecord({ stoveId }) {
                 {a.note && <p className="w-full pl-8 text-xs text-gray-600">{a.note}</p>}
               </li>
             ))}
+            {/* Bounded by the callback policy, so every attempt is already in
+                hand: this only decides how many are on screen. */}
+            <More
+              shown={shownAttempts.length}
+              total={data.attempts.length}
+              onMore={() => setCallsShown(data.attempts.length)}
+              onCollapse={() => setCallsShown(FEW)}
+              noun="calls"
+            />
           </ol>
         )}
       </Section>
@@ -853,7 +1072,7 @@ export default function StoveRecord({ stoveId }) {
           </Empty>
         ) : (
           <ul className="space-y-2">
-            {data.provenance.map((p) => (
+            {shownProvenance.map((p) => (
               <li
                 key={`${p.batch_id}-${p.row_number}`}
                 className="rounded-lg border border-gray-200 p-3"
@@ -893,6 +1112,17 @@ export default function StoveRecord({ stoveId }) {
                 )}
               </li>
             ))}
+            {/* The server caps this at twenty, so the total here is the total
+                on screen once expanded - never a promise it cannot keep. */}
+            <li className="overflow-hidden rounded-lg border border-gray-200">
+              <More
+                shown={shownProvenance.length}
+                total={data.provenance.length}
+                onMore={() => setProvenanceShown(data.provenance.length)}
+                onCollapse={() => setProvenanceShown(FEW)}
+                noun="imports"
+              />
+            </li>
           </ul>
         )}
       </Section>
@@ -901,43 +1131,19 @@ export default function StoveRecord({ stoveId }) {
       <Section
         icon={History}
         title="Everything that changed"
-        note="Edits to this record, newest first."
+        note={
+          data.changesTotal > FEW
+            ? `The newest ${FEW} of ${data.changesTotal.toLocaleString()}. Newest first.`
+            : "Edits to this record, newest first."
+        }
       >
-        {data.changes.length === 0 ? (
-          <Empty>Nobody has edited this record since it was created.</Empty>
-        ) : (
-          <ul className="divide-y divide-gray-100 rounded-lg border border-gray-200">
-            {data.changes.map((c) => (
-              <li key={c.id} className="px-3 py-2 text-sm">
-                <p className="text-gray-900">
-                  {/*
-                    A null actor on an assignment batch is the engine, not an
-                    unknown person: every human path sets the actor, and the
-                    scheduled run has nobody to set. Saying "somebody" there
-                    invites a hunt for a person who does not exist.
-                  */}
-                  <span className="font-medium">
-                    {c.changed_by_name ??
-                      c.changed_by_email ??
-                      (c.table_name === "assignment_batches"
-                        ? "The assignment run"
-                        : "Somebody")}
-                  </span>{" "}
-                  {c.action === "INSERT"
-                    ? "created it"
-                    : c.action === "DELETE"
-                      ? "deleted it"
-                      : c.changed_fields.length > 0
-                        ? `changed ${c.changed_fields.map((f) => f.replace(/_/g, " ")).join(", ")}`
-                        : "saved it with nothing changed"}
-                </p>
-                <p className="text-xs text-gray-500">
-                  {stamp(c.changed_at)} · {c.table_name.replace(/_/g, " ")}
-                </p>
-              </li>
-            ))}
-          </ul>
-        )}
+        <Changes
+          saleId={s.sale_id ?? null}
+          batchId={s.batch_id ?? null}
+          first={data.changes}
+          total={data.changesTotal}
+          hasMore={data.changesHasMore}
+        />
       </Section>
     </div>
   );
