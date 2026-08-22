@@ -174,13 +174,28 @@ export default function RecordsTable({ drill = null, routeId = "/data-center/sto
   const drillSetsDates = Boolean(drill?.filters?.dateFrom || drill?.filters?.dateTo);
 
   /**
+   * A date typed into the panel outranks the period, the same way a drill does.
+   *
+   * The panel now offers "sold on or after" and "sold on or before", and the
+   * period control sets exactly those two filters. Merged naively the user's
+   * value won for the bound they set and the period kept the other one - so
+   * typing a single start date produced "from the date I chose, to the end of
+   * whatever period the control still says", which is a range nobody asked
+   * for. Worse, the control went on displaying a period the table was not on.
+   *
+   * So either the period owns the dates or the panel does, never half each.
+   */
+  const userSetsDates = Boolean(applied.dateFrom || applied.dateTo);
+  const periodStandsAside = drillSetsDates || userSetsDates;
+
+  /**
    * Precedence, widest first: the period, then the drill, then what the user
    * typed. Their own filters come last so they always win, which is the rule
    * this table has always followed.
    */
   const filters = useMemo(
     () => ({
-      ...(drillSetsDates
+      ...(periodStandsAside
         ? {}
         : {
             ...(resolved.dateFrom ? { dateFrom: resolved.dateFrom } : {}),
@@ -189,7 +204,7 @@ export default function RecordsTable({ drill = null, routeId = "/data-center/sto
       ...(drill?.filters ?? {}),
       ...applied,
     }),
-    [drill, applied, drillSetsDates, resolved.dateFrom, resolved.dateTo],
+    [drill, applied, periodStandsAside, resolved.dateFrom, resolved.dateTo],
   );
 
   const {
@@ -273,6 +288,14 @@ export default function RecordsTable({ drill = null, routeId = "/data-center/sto
           <p className="text-xs text-gray-600">
             The dates come from the dashboard figure you followed. Clear the
             narrowing above to choose a period yourself.
+          </p>
+        ) : userSetsDates ? (
+          // Said out loud rather than left to be noticed. A period control
+          // still showing "This year" beside a table filtered to one week is
+          // the kind of quiet disagreement people plan around.
+          <p className="text-xs text-gray-600">
+            The dates below are yours, so the period is not being applied.
+            Clear them to go back to choosing a period.
           </p>
         ) : (
           <PeriodFilter

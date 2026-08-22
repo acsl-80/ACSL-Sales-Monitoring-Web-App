@@ -275,14 +275,22 @@ function Changes({ saleId, batchId, first, total, hasMore: initialHasMore }) {
           saleId: saleId || null,
           batchId: batchId || null,
           limit: 20,
-          // The first call has no cursor of its own, so it is built from the
-          // last row already on screen. That is what makes the five delivered
-          // with the record continuous with the twenty fetched after it.
+          /*
+           * The first call has no cursor of its own, so it is built from the
+           * last row already on screen - which is what makes the five
+           * delivered with the record continuous with the twenty fetched
+           * after it.
+           *
+           * From `cursor_at`, never from `changed_at`. The second has already
+           * been through a JavaScript Date and lost its microseconds, and a
+           * cursor a fraction earlier than the row it names skips everything
+           * that shares its millisecond.
+           */
           cursor:
             cursor ??
             (rows.length > 0
               ? {
-                changedAt: new Date(rows[rows.length - 1].changed_at).toISOString(),
+                changedAt: rows[rows.length - 1].cursor_at,
                 id: String(rows[rows.length - 1].id),
               }
               : null),

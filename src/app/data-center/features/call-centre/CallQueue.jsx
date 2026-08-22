@@ -202,8 +202,10 @@ export default function CallQueue({ canEdit, drill = null }) {
     };
   }, [preset, appliedSearch, drill, drillSetsDates, resolved.dateFrom, resolved.dateTo]);
 
-  const { rows, loading, loadingMore, error, hasMore, scope, loadMore, reload } =
-    useRecords(filters, "call_center");
+  const {
+    rows, loading, loadingMore, error, hasMore, scope, loadMore, reload,
+    total, totalIsCapped, atCeiling,
+  } = useRecords(filters, "call_center");
 
   const phone = useIsPhone();
   const rowHeight = phone ? ROW_HEIGHT_PHONE : ROW_HEIGHT;
@@ -221,8 +223,22 @@ export default function CallQueue({ canEdit, drill = null }) {
       <div className="flex items-center gap-2 border-b border-gray-100 bg-(--dc-accent-soft)/30 px-4 py-3">
         <PhoneCall className="h-4 w-4 text-(--dc-accent)" />
         <span className="text-sm font-semibold text-gray-900">Call Centre</span>
+        {/*
+          How many are in the queue, not how many have scrolled past.
+
+          The server answers this on the first page of every filter and the
+          queue was already paying for it and throwing it away. "83 records"
+          is what an agent picking up a preset needs to know before they start;
+          "100 loaded" tells them about the browser.
+        */}
         <span className="text-sm text-gray-500">
-          {loading ? "loading..." : `${rows.length.toLocaleString()} loaded${hasMore ? ", more available" : ""}`}
+          {loading
+            ? "loading..."
+            : total == null
+              ? `${rows.length.toLocaleString()} loaded${hasMore ? ", more available" : ""}`
+              : `${total.toLocaleString()}${totalIsCapped ? "+" : ""} ${
+                  total === 1 && !totalIsCapped ? "record" : "records"
+                } · ${rows.length.toLocaleString()} loaded`}
         </span>
         {scope && (
           <span className="ml-auto rounded-full bg-gray-100 px-2.5 py-0.5 text-xs text-gray-600">
@@ -379,6 +395,11 @@ export default function CallQueue({ canEdit, drill = null }) {
           </>
         ) : hasMore ? (
           "Scroll for more"
+        ) : atCeiling && hasMore ? (
+          // Paging stops rather than walking the tab into holding half a
+          // million row objects. Named, so it does not read as the queue
+          // ending early.
+          "Paused at the display limit - narrow the queue to see the rest"
         ) : rows.length > 0 ? (
           "End of queue"
         ) : null}

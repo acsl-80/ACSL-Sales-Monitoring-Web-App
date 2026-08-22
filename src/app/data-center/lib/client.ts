@@ -226,7 +226,17 @@ export type ChangeRow = {
   id: string;
   table_name: string;
   action: "INSERT" | "UPDATE" | "DELETE";
+  /** For display. Millisecond precision, because the driver returns a Date. */
   changed_at: string;
+  /**
+   * The same instant with its microseconds intact, as Postgres wrote it.
+   *
+   * The only value a cursor may be built from. `changed_at` has already lost
+   * precision by the time it reaches here, and a cursor built from it skips
+   * every row sharing its millisecond - which is every row a batch commit
+   * wrote, since they all share a timestamp exactly.
+   */
+  cursor_at?: string;
   changed_by_name: string | null;
   changed_by_email: string | null;
   changed_fields: string[];

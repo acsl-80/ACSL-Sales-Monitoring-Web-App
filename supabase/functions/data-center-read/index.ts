@@ -39,7 +39,35 @@ import { buildScopeSql, buildTransferScopeSql, type ScopeInput } from "./scope.t
  * could only ever reach 126, and nobody would be able to say which was lying.
  */
 const CHANGES_SELECT = `select cl.id::text as id, cl.table_name, cl.action,
-                               cl.changed_at, p.full_name as changed_by_name,
+                               cl.changed_at,
+                               /*
+                                * The same value again, as text, and it is the
+                                * one the cursor is built from.
+                                *
+                                * The Postgres driver hands timestamptz back as
+                                * a JavaScript Date, and a Date holds
+                                * milliseconds while the column holds
+                                * microseconds. Round-tripped through JS,
+                                * 05:00:19.435587 becomes 05:00:19.435 - which
+                                * is EARLIER than the row it names. The next
+                                * page then asks for rows strictly older than
+                                * that, and every row inside the same
+                                * millisecond is excluded, id tiebreaker and
+                                * all.
+                                *
+                                * Not theoretical: measured on this database at
+                                * one such boundary, a full-precision cursor
+                                * reaches 17 rows and the truncated one reaches
+                                * 2. Those clusters are what a batch commit
+                                * writes - now() is transaction start time, so
+                                * every audit row in one transaction shares a
+                                * timestamp exactly.
+                                *
+                                * records-query.ts already carries this lesson
+                                * for sales_date, in almost these words.
+                                */
+                               cl.changed_at::text as cursor_at,
+                               p.full_name as changed_by_name,
                                p.email as changed_by_email,
                                case when cl.action = 'UPDATE' then (
                                  select coalesce(array_agg(k order by k), '{}')
@@ -1350,30 +1378,48 @@ serve(async (req) => {
                       order by name limit 100`,
             }),
             /*
-             * Everybody with a name, not a guess at who sells.
+             * Everybody with a name, not a guess at who sells - and only the
+             * people this caller is already entitled to see.
              *
-             * This filtered on a hand-written list of roles, and the list was
-             * wrong: the profile that had recorded every sale on the preview
-             * was a `partner_agent`, which was not on it, so the one person
-             * who had sold anything was the one person "Sold by" would not
-             * offer. Two of the roles on the list did not exist at all.
+             * TWO THINGS WENT WRONG HERE, IN ORDER
              *
-             * The honest alternative - only profiles that have actually
-             * recorded a sale - is `select distinct created_by from sales`,
-             * which is a scan of half a million rows to build a dropdown.
-             * Between a list that is slightly too long and a list that is
-             * silently missing the person you are looking for, too long is the
-             * one somebody can work with: picking a name that has sold nothing
-             * answers "none", which is true.
+             * First it filtered on a hand-written list of roles, and the list
+             * was wrong: the profile that had recorded every sale on the
+             * preview was a `partner_agent`, which was not on it, so the one
+             * person who had sold anything was the one person "Sold by" would
+             * not offer. Two of the roles named did not exist at all.
              *
-             * profiles is a small table and this is ordered and capped.
+             * Dropping the role filter fixed that and introduced a quieter
+             * problem: every other list in this response is scoped, and this
+             * one was not - so a partner login would have been handed the
+             * names of every ACSL member of staff to populate a dropdown.
+             * That is not a permissions hole, since nothing else opens from a
+             * name, but a filter list is a poor reason to disclose a staff
+             * directory.
+             *
+             * So: scoped to the caller's own organization unless they are
+             * entitled to more. The honest alternative - only profiles that
+             * have actually recorded a sale - is `select distinct created_by
+             * from sales`, a scan of half a million rows to build a dropdown.
+             * Between a list slightly too long and one silently missing the
+             * person you are looking for, too long is the one somebody can
+             * work with: picking a name that has sold nothing answers "none",
+             * which is true.
              */
             connection.queryObject({
               text: `select p.id::text as id, p.full_name as name
                        from public.profiles p
                       where p.full_name is not null and p.full_name <> ''
+                        and ($1::boolean
+                             or p.organization_id is not distinct from $2::uuid)
                       order by p.full_name
                       limit 1000`,
+              args: [
+                // Anyone whose reach is wider than a single partner sees the
+                // whole list, which is the same test the rows themselves use.
+                superAdmin || scopeInput.role !== "partner",
+                profile.organization_id ?? null,
+              ],
             }),
           ]);
 
@@ -1449,12 +1495,20 @@ serve(async (req) => {
         const args: unknown[] = [saleId, batchId];
         let cursorSql = "";
         if (b.cursor?.changedAt && b.cursor?.id) {
-          const at = new Date(String(b.cursor.changedAt));
-          if (Number.isNaN(at.getTime()) || !/^\d+$/.test(String(b.cursor.id))) {
+          /*
+           * Validated as a shape, then handed to Postgres as the text it
+           * already is. Parsing it into a Date to "check" it would throw away
+           * the microseconds that make it a correct cursor, which is the whole
+           * failure cursor_at exists to avoid.
+           */
+          const at = String(b.cursor.changedAt);
+          const looksLikeATimestamp =
+            /^\d{4}-\d{2}-\d{2}[ T]\d{2}:\d{2}:\d{2}(\.\d{1,6})?([+-]\d{2}(:?\d{2})?|Z)?$/;
+          if (!looksLikeATimestamp.test(at) || !/^\d+$/.test(String(b.cursor.id))) {
             return json({ error: "Malformed cursor", code: "bad_input" }, 400, cors);
           }
           // Newest first, so "past the cursor" means strictly older.
-          args.push(at.toISOString(), String(b.cursor.id));
+          args.push(at, String(b.cursor.id));
           cursorSql = " and (cl.changed_at, cl.id) < ($3::timestamptz, $4::bigint)";
         }
 
@@ -1477,10 +1531,9 @@ serve(async (req) => {
                 rows: slice,
                 hasMore,
                 nextCursor: hasMore && last
-                  ? {
-                    changedAt: new Date(last.changed_at as string).toISOString(),
-                    id: String(last.id),
-                  }
+                  // Passed through as Postgres wrote it. Never reconstructed
+                  // from the Date beside it - see cursor_at above.
+                  ? { changedAt: String(last.cursor_at), id: String(last.id) }
                   : null,
               },
             },
