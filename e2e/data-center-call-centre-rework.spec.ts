@@ -28,7 +28,16 @@ test.describe("the brief an agent reads while the phone rings", () => {
       timeout: 30_000,
     });
 
-    await page.getByRole("row").nth(1).click();
+    /**
+     * Every queue row is a button named for the person it belongs to.
+     *
+     * getByRole("row") cannot reach the queue at all - it is virtualized divs,
+     * with no row roles - so an unscoped nth(1) lands on the agents console
+     * table further down the page and clicks an expander. This spec had that
+     * bug and passed by luck; data-center-call-centre.spec.ts already carried
+     * the right selector and a comment saying why, which I did not look for.
+     */
+    await page.getByRole("button", { name: /^Open call record for/ }).first().click();
     await expect(page.getByRole("dialog")).toBeVisible({ timeout: 20_000 });
 
     /**
