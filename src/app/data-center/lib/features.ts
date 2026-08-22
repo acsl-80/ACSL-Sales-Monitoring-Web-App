@@ -42,6 +42,10 @@ export const DATA_CENTER_FEATURES = {
   DIGITISATION_WORK: "digitisation.work",
   /** Hand work to call agents, and take it back. */
   ASSIGNMENT_MANAGE: "assignment.manage",
+  /** See the records sent back to you, and close them. */
+  CORRECTIONS_FIX: "corrections.fix",
+  /** Decide who send-backs reach, and which account a rep name means. */
+  CORRECTIONS_ROUTE: "corrections.route",
 } as const;
 
 export type DataCenterFeature =
@@ -64,4 +68,6 @@ export const FEATURE_LABELS: Record<DataCenterFeature, string> = {
   [DATA_CENTER_FEATURES.GRANTS_MANAGE]: "Manage feature access",
   [DATA_CENTER_FEATURES.DIGITISATION_WORK]: "Use the digitalisation workbench",
   [DATA_CENTER_FEATURES.ASSIGNMENT_MANAGE]: "Assign and reassign call work",
+  [DATA_CENTER_FEATURES.CORRECTIONS_FIX]: "Treat records sent back to Sales",
+  [DATA_CENTER_FEATURES.CORRECTIONS_ROUTE]: "Decide who receives send-backs",
 };

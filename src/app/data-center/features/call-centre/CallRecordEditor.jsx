@@ -646,6 +646,47 @@ export default function CallRecordEditor({ saleId, canEdit, onClose, onSaved }) 
                       Send back
                     </button>
                   )}
+                  {/*
+                    Where it goes, before it goes.
+
+                    An agent pressing this used to have no idea whether anybody
+                    was on the other end - and until now nobody was: the record
+                    changed state and nothing told a soul. Naming the rep and
+                    the standing list is what makes this a hand-off rather than
+                    a filing action.
+                  */}
+                  <p className="w-full text-xs text-amber-800">
+                    {/*
+                      The honest version of who is on the other end.
+
+                      Three different sentences because there are three
+                      different situations, and the one that matters is the
+                      third: nobody set up to receive these, and a rep the
+                      system cannot notify. Saying "sent back to Sales" there
+                      would be describing a hand-off that does not happen.
+                    */}
+                    {record?.standing_recipients > 0 ? (
+                      <>
+                        Goes to the{" "}
+                        <span className="font-semibold">
+                          {record.standing_recipients} set up to treat send-backs
+                        </span>
+                        {record?.sales_rep_has_account
+                          ? `, and to ${record.sales_rep_account_name ?? record.sales_rep}, the rep on this consignment`
+                          : record?.sales_rep
+                            ? `. ${record.sales_rep} is the rep on this consignment but has no account linked, so they will not see it`
+                            : ""}
+                        .
+                      </>
+                    ) : (
+                      <span className="font-semibold">
+                        Nobody is set up to receive send-backs yet
+                        {record?.sales_rep_has_account
+                          ? `, so only ${record.sales_rep_account_name} will see this.`
+                          : ", so this record will change state and reach no one. Ask an administrator to set the list under Settings."}
+                      </span>
+                    )}
+                  </p>
                 </div>
               )}
               </div>

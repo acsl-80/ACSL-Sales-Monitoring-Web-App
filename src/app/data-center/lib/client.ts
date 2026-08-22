@@ -210,6 +210,29 @@ export type RecordsFilters = {
   includeArchived?: boolean;
 };
 
+/** One record the call centre sent back, with everything needed to act on it. */
+export type SendBackRow = {
+  sale_id: string;
+  stove_serial_no: string | null;
+  transaction_id: string | null;
+  correction_requested_at: string;
+  correction_note: string | null;
+  correction_reason: string | null;
+  requested_by_name: string | null;
+  organization_id: string | null;
+  partner_name: string | null;
+  transfer_reference: string | null;
+  /** The rep as the ERP names them, which may be nobody's account. */
+  sales_rep: string | null;
+  sales_rep_user_id: string | null;
+  sales_rep_marked_no_account: boolean | null;
+  sales_rep_account_name: string | null;
+  end_user_name: string | null;
+  phone: string | null;
+  sales_date: string | null;
+  is_my_consignment: boolean;
+};
+
 /** The lists the filter panel offers. Small tables only - never a DISTINCT. */
 export type RecordFacets = {
   partners: { id: string; name: string | null; transfers: number }[];
@@ -370,6 +393,23 @@ export const dataCenterClient = {
    * one request, not one per control.
    */
   recordFacets: () => call<RecordFacets>("data-center-read", "record_facets"),
+
+  /**
+   * The records sent back to Sales that this person is responsible for.
+   *
+   * Routing is worked out server-side from the standing recipient list and the
+   * rep mapping as they stand now, so this is always current: linking a rep to
+   * their account fixes every send-back already open, not just the next one.
+   */
+  sendBacks: (limit?: number) =>
+    call<{
+      rows: SendBackRow[];
+      waiting: number;
+      /** True for a data manager or a standing recipient: they see all of it. */
+      seesEverything: boolean;
+      /** Rep names with work waiting and no account to send it to. */
+      unrouted: { sales_rep: string; waiting: number }[];
+    }>("data-center-read", "send_backs", { limit }),
 
   /**
    * More of one record's edit history.
@@ -886,8 +926,82 @@ export const dataCenterCall = {
     ),
 };
 
+export type SendBackConfig = {
+  recipients: {
+    user_id: string;
+    is_enabled: boolean;
+    note: string | null;
+    added_at: string;
+    full_name: string | null;
+    email: string | null;
+    role: string | null;
+    added_by_name: string | null;
+  }[];
+  /** Every rep name the ERP has written, heaviest first. */
+  reps: {
+    rep_key: string;
+    rep_name: string;
+    transfers: number;
+    user_id: string | null;
+    no_account: boolean | null;
+    linked_at: string | null;
+    account_name: string | null;
+    account_email: string | null;
+    /**
+     * Whether that account can actually open a send-back.
+     *
+     * Linking grants nothing on purpose - a routing screen that handed out
+     * module access would be a door into the module that does not look like
+     * one - so "linked" and "can see it" are reported apart.
+     */
+    account_can_see: boolean;
+    account_access_role: string | null;
+    linked_by_name: string | null;
+    waiting: number;
+  }[];
+  candidates: { id: string; full_name: string; email: string | null; role: string }[];
+};
+
 export const dataCenterAdmin = {
   listAccess: () => call<AccessListEntry[]>("data-center-admin", "access_list"),
+
+  /**
+   * Everything the send-back settings screen needs, in one answer.
+   *
+   * Three lists that are only useful together: who receives send-backs today,
+   * every rep name the ERP has written with the weight of work behind it, and
+   * the accounts a rep could be linked to.
+   */
+  sendBackConfig: () => call<SendBackConfig>("data-center-admin", "send_back_config"),
+
+  /**
+   * Put somebody on the standing list, or take them off it.
+   *
+   * `enabled: null` removes them outright; `false` disables, which is what
+   * somebody on leave needs - they stop receiving without anybody having to
+   * remember who was on the list before they left.
+   */
+  sendBackRecipientSet: (userId: string, enabled: boolean | null, note?: string) =>
+    call<{ userId: string; removed?: boolean; is_enabled?: boolean }>(
+      "data-center-admin",
+      "send_back_recipient_set",
+      { userId, enabled, note },
+    ),
+
+  /**
+   * Say which account a rep name means, or that it means nobody.
+   *
+   * `noAccount` is not a failure state: the ERP has written values into this
+   * field - a town, a state, two system logins - that no account will ever
+   * correspond to, and marking them is what stops them being re-examined
+   * every time somebody opens the screen.
+   */
+  salesRepLink: (repKey: string, userId: string | null, noAccount = false) =>
+    call<{ rep_key: string; user_id: string | null; no_account: boolean }>(
+      "data-center-admin",
+      "sales_rep_link",
+      { repKey, userId, noAccount },
+    ),
   searchUsers: (query: string) =>
     call<UserSearchResult[]>("data-center-admin", "user_search", { query }),
   grantAccess: (userId: string, accessRole: AccessRole) =>

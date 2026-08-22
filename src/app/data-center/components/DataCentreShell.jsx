@@ -12,6 +12,7 @@ import {
   BreadcrumbPage,
   BreadcrumbSeparator,
 } from "@/components/ui/breadcrumb";
+import SendBackBanner from "../features/corrections/SendBackBanner";
 import { ArrowLeft, Loader2, AlertTriangle, ShieldOff, Eye, Pencil } from "lucide-react";
 
 /**
@@ -138,7 +139,19 @@ function Shell({ title, description, breadcrumb, feature, children }) {
         </div>
       )}
 
-      <div className="mb-6 flex flex-wrap items-center gap-3 border-b-2 border-(--dc-accent)/20 pb-4">
+      {/*
+        Records sent back, above whatever this page is for.
+
+        It renders on every page in the module rather than only on the one that
+        lists them, because the person who has to answer a send-back did not
+        come here to look for send-backs - they came to do something else, and
+        the record has been waiting since Tuesday. It draws nothing at all when
+        there is nothing waiting, and nothing for the people it does not
+        concern, which is most of them.
+      */}
+      <SendBackBanner />
+
+      <div className="mb-6 mt-4 flex flex-wrap items-center gap-3 border-b-2 border-(--dc-accent)/20 pb-4">
         <div className="min-w-0 flex-1">
           <h1 className="text-xl font-semibold leading-tight text-gray-900 sm:text-2xl">
             {title}

@@ -456,10 +456,45 @@ serve(async (req) => {
                             from public.sales s where s.id = $1)`,
           args: [saleId],
         });
+        /*
+         * Who a send-back would reach, resolved before it is sent.
+         *
+         * The agent pressing "send back" needs to know somebody is on the
+         * other end - and for half the rep names in production nobody is,
+         * because the ERP writes a name rather than an account. Named here so
+         * the editor can say it rather than implying a hand-off that may not
+         * happen.
+         *
+         * Through v_transfer_stoves and transfer_funnel, which is the chain
+         * the whole module uses to get from a stove to its consignment.
+         */
+        const routing = await conn.queryObject({
+          text: `select f.sales_rep,
+                        ra.user_id is not null as sales_rep_has_account,
+                        rp.full_name as sales_rep_account_name,
+                        (select count(*)::int from data_center.send_back_recipients
+                          where is_enabled) as standing_recipients
+                   from public.sales s
+                   left join data_center.v_transfer_stoves b
+                          on b.stove_id = upper(trim(s.stove_serial_no))
+                   left join data_center.transfer_funnel f on f.transfer_id = b.transfer_id
+                   left join data_center.sales_rep_accounts ra
+                          on ra.rep_key = lower(trim(f.sales_rep))
+                   left join public.profiles rp on rp.id = ra.user_id
+                  where s.id = $1
+                  limit 1`,
+          args: [saleId],
+        });
+        const route = (routing.rows[0] ?? {}) as Record<string, unknown>;
+
         Object.assign(record.rows[0] as Record<string, unknown>, {
           serial_unconfirmed_at: extra.serial_unconfirmed_at ?? null,
           serial_unconfirmed_reason: extra.serial_unconfirmed_reason ?? null,
           shares_phone_with: (shares.rows[0] as { list: unknown } | undefined)?.list ?? [],
+          sales_rep: route.sales_rep ?? null,
+          sales_rep_has_account: route.sales_rep_has_account ?? false,
+          sales_rep_account_name: route.sales_rep_account_name ?? null,
+          standing_recipients: Number(route.standing_recipients ?? 0),
         });
         const attempts = await conn.queryObject({
           text: `select a.id::text, a.attempt_no, a.attempted_at, a.note,

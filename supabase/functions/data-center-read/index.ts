@@ -1543,6 +1543,116 @@ serve(async (req) => {
         });
       }
 
+      /**
+       * The records sent back to Sales, for whoever is asking.
+       *
+       * WHO SEES WHAT, AND WHY IT IS COMPUTED RATHER THAN STORED
+       *
+       * Three answers, in order of reach:
+       *
+       *   a data manager or super admin   everything open
+       *   a standing recipient            everything open
+       *   a mapped sales rep              the send-backs from their own
+       *                                   consignments, and nothing else
+       *
+       * A standing recipient sees everything on purpose. They are the people
+       * named in Settings precisely so that a record whose rep has no account
+       * still reaches somebody, and a recipient who could only see the ones
+       * nobody else could see would be the last line of defence with a blind
+       * spot in the middle of it.
+       *
+       * Nothing about this routing is stored per record. It is worked out from
+       * the recipient list and the rep mapping as they stand right now, so
+       * linking a rep to their account this afternoon fixes every send-back
+       * already open rather than only the ones raised afterwards.
+       */
+      case "send_backs": {
+        const superAdmin = isSuperAdmin(profile.role);
+        const resolved = superAdmin
+          ? { accessRole: null, features: [] as string[] }
+          : await resolveAccess(userId);
+        if (!superAdmin && resolved.accessRole === null) {
+          return json({ error: "No Data Center access", code: "no_access" }, 403, cors);
+        }
+        if (!superAdmin && !resolved.features.includes("corrections.fix")) {
+          return json({ error: "Not permitted", code: "no_feature" }, 403, cors);
+        }
+
+        const limit = Math.min(
+          Math.max(Number((body as { limit?: number }).limit) || 200, 1),
+          500,
+        );
+
+        return await withReadConnection(async (connection) => {
+          const standing = superAdmin
+            ? { rows: [{ ok: true }] }
+            : await connection.queryObject<{ ok: boolean }>({
+              text: `select true as ok
+                       from data_center.send_back_recipients
+                      where user_id = $1 and is_enabled`,
+              args: [userId],
+            });
+
+          const seesEverything =
+            superAdmin ||
+            standing.rows.length > 0 ||
+            resolved.features.includes("corrections.route");
+
+          const rows = await connection.queryObject({
+            text: `select v.sale_id::text, v.stove_serial_no, v.transaction_id,
+                          v.correction_requested_at, v.correction_note,
+                          v.correction_reason, v.requested_by_name,
+                          v.organization_id::text, v.partner_name,
+                          v.transfer_reference, v.sales_rep,
+                          v.sales_rep_user_id::text,
+                          v.sales_rep_marked_no_account,
+                          v.sales_rep_account_name,
+                          v.end_user_name, v.phone, v.sales_date::text as sales_date,
+                          (v.sales_rep_user_id = $1) as is_my_consignment
+                     from data_center.v_send_backs v
+                    where $2::boolean or v.sales_rep_user_id = $1
+                    order by v.correction_requested_at desc
+                    limit ${limit}`,
+            args: [userId, seesEverything],
+          });
+
+          /*
+           * The reps with nobody to send to, named.
+           *
+           * Only shown to somebody who can do something about it. It is the
+           * one number on this screen that is about the system rather than
+           * about the records: a send-back sitting against an unmapped rep is
+           * reaching the standing recipients and nobody else, which is
+           * survivable but not what anyone intended.
+           */
+          const unrouted = seesEverything
+            ? await connection.queryObject({
+              text: `select coalesce(v.sales_rep, '(no rep on the transfer)') as sales_rep,
+                            count(*)::int as waiting
+                       from data_center.v_send_backs v
+                      where v.sales_rep_user_id is null
+                      group by 1 order by 2 desc limit 50`,
+            })
+            : { rows: [] };
+
+          return json(
+            {
+              data: {
+                rows: rows.rows,
+                // What the banner counts. Deliberately the number of records
+                // rather than the number of partners or reps: it is the size
+                // of the pile, which is the thing somebody acts on.
+                waiting: rows.rows.length,
+                seesEverything,
+                unrouted: unrouted.rows,
+              },
+            },
+            200,
+            cors,
+          );
+        });
+      }
+
       case "period_bounds": {
         const superAdmin = isSuperAdmin(profile.role);
         const resolved = superAdmin

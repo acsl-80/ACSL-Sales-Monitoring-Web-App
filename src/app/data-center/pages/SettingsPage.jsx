@@ -3,6 +3,7 @@ import AccessManager from "../features/access/AccessManager";
 import ChangeLog from "../features/access/ChangeLog";
 import CallFormEditor from "../features/settings/CallFormEditor";
 import Variables from "../features/settings/Variables";
+import SendBackRouting from "../features/settings/SendBackRouting";
 import { DATA_CENTER_FEATURES } from "../lib/features";
 
 /**
@@ -28,6 +29,13 @@ export default function SettingsPage() {
     >
       <div className="space-y-4">
         <AccessManager />
+        {/*
+          Above the call form on purpose. Who receives a send-back is a
+          question somebody asks the day the call centre starts sending them,
+          and it decides whether anybody sees the answer at all - where the
+          call form's wording is something they tune afterwards.
+        */}
+        <SendBackRouting canEdit />
         <CallFormEditor />
         <Variables />
         <ChangeLog />

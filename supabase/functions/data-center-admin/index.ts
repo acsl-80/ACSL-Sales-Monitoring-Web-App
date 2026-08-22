@@ -68,6 +68,15 @@ function isSuperAdmin(role: string | null): boolean {
  */
 const VALID_ROLES = new Set(Object.keys(ROLE_FEATURES));
 
+/*
+ * Shape-checked before it reaches Postgres.
+ *
+ * The older actions in this file hand a bad id straight to the driver and let
+ * the cast fail, which answers 500 for what is a caller's mistake. The
+ * send-back actions below check first so the answer says what is wrong.
+ */
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
 /**
  * Which part of the module a tracked table belongs to.
  *
@@ -234,6 +243,37 @@ serve(async (req) => {
             cors,
           );
 
+    /**
+     * Who may change where send-backs land.
+     *
+     * Three shoulders, named rather than implied: a super admin, a data
+     * manager (through `corrections.route`, which their level carries), and an
+     * ACSL agent manager - who runs the people this routing is about and is
+     * the one likely to know that Femi Isaac has left and Nkechi now covers
+     * his consignments.
+     *
+     * The app role is checked directly rather than by handing every manager a
+     * module grant, because a manager who has never opened the Data Center
+     * should still not be the reason a send-back reaches nobody.
+     */
+    const canRoute =
+      superAdmin ||
+      holds("corrections.route") ||
+      profile.role === "acsl_agent_manager";
+    const requireRouting = () =>
+      canRoute
+        ? null
+        : json(
+            {
+              error:
+                "Changing who receives send-backs needs corrections.route, and is " +
+                "held by super admins, data managers and ACSL agent managers.",
+              code: "no_feature",
+            },
+            403,
+            cors,
+          );
+
     let body: {
       action?: string;
       userId?: string;
@@ -247,6 +287,10 @@ serve(async (req) => {
       value?: Record<string, unknown>;
       field?: Record<string, unknown>;
       config?: { key?: string; value?: unknown };
+      enabled?: boolean;
+      note?: string;
+      repKey?: string;
+      noAccount?: boolean;
     } = {};
     try {
       body = await req.json();
@@ -587,6 +631,217 @@ serve(async (req) => {
         }
 
         /** The runtime numbers: batch size, callback limit, staleness, caps. */
+        /**
+         * Everything the send-back settings screen needs, in one answer.
+         *
+         * Three lists that are only useful together: who currently receives
+         * send-backs, every rep name the ERP has ever written with how much
+         * work sits behind it, and the accounts a rep could be linked to.
+         * Fetching them separately would mean three round trips to render one
+         * screen where every part explains the others.
+         */
+        case "send_back_config": {
+          const refused = requireRouting();
+          if (refused) return refused;
+
+          const recipients = await conn.queryObject({
+            text: `select r.user_id::text, r.is_enabled, r.note, r.added_at,
+                          p.full_name, p.email, p.role,
+                          a.full_name as added_by_name
+                     from data_center.send_back_recipients r
+                     left join public.profiles p on p.id = r.user_id
+                     left join public.profiles a on a.id = r.added_by
+                    order by p.full_name`,
+          });
+
+          /*
+           * Every rep the ERP has named, with the weight behind them.
+           *
+           * The transfer count is the whole reason this screen is worth
+           * opening: an unlinked rep with 145 consignments and an unlinked rep
+           * with one are the same row without it, and only one of them is
+           * worth chasing down an account for.
+           */
+          const reps = await conn.queryObject({
+            text: `with reps as (
+                     select lower(trim(h.sales_rep)) as rep_key,
+                            min(trim(h.sales_rep))   as rep_name,
+                            count(*)::int            as transfers
+                       from public.stove_transfer_history h
+                      where h.sales_rep is not null and trim(h.sales_rep) <> ''
+                      group by lower(trim(h.sales_rep))
+                   )
+                   select r.rep_key, coalesce(a.rep_name, r.rep_name) as rep_name,
+                          r.transfers,
+                          a.user_id::text, a.no_account, a.linked_at,
+                          p.full_name as account_name, p.email as account_email,
+                          /*
+                           * The raw ingredients of "can this account actually
+                           * open a send-back", resolved in TypeScript below.
+                           *
+                           * Not decided here: what a level implies lives in
+                           * _shared/data-center-roles.ts, and writing that map
+                           * into SQL would be a second copy of it - which is
+                           * the exact duplication that file exists to end.
+                           */
+                          p.role as account_app_role,
+                          dc.access_role as account_access_role,
+                          coalesce(dc.grant_keys, '{}') as account_grant_keys,
+                          lb.full_name as linked_by_name,
+                          (select count(*)::int from data_center.v_send_backs v
+                            where lower(trim(coalesce(v.sales_rep,''))) = r.rep_key)
+                            as waiting
+                     from reps r
+                     left join data_center.sales_rep_accounts a on a.rep_key = r.rep_key
+                     left join public.profiles p on p.id = a.user_id
+                     left join lateral (
+                       select m.access_role,
+                              coalesce(array_agg(g.feature_key)
+                                       filter (where g.feature_key is not null), '{}') as grant_keys
+                         from data_center.module_access m
+                         left join data_center.feature_grants g on g.user_id = m.user_id
+                        where m.user_id = a.user_id
+                        group by m.access_role
+                     ) dc on true
+                     left join public.profiles lb on lb.id = a.linked_by
+                    order by r.transfers desc
+                    limit 500`,
+          });
+
+          const candidates = await conn.queryObject({
+            text: `select id::text, full_name, email, role
+                     from public.profiles
+                    where full_name is not null and full_name <> ''
+                    order by full_name limit 1000`,
+          });
+
+          /**
+           * Linked is not the same as able to see it.
+           *
+           * Linking a rep here grants them nothing, deliberately: a routing
+           * screen that could hand out module access would be a door into the
+           * module that does not look like one. But an administrator who links
+           * Femi Isaac and walks away believing he is now notified would be
+           * wrong, and until this nothing on screen said so.
+           *
+           * Resolved through `featuresFor`, the same function every endpoint
+           * uses, so a level gaining `corrections.fix` later shows up here
+           * without anybody remembering to update a second copy.
+           */
+          const withAccess = (reps.rows as Record<string, unknown>[]).map((rep) => {
+            const appRole = rep.account_app_role as string | null;
+            const accessRole = rep.account_access_role as string | null;
+            const grantKeys = (rep.account_grant_keys as string[] | null) ?? [];
+            const canSee =
+              appRole === "super_admin" ||
+              featuresFor(accessRole, grantKeys).includes("corrections.fix");
+            return { ...rep, account_can_see: Boolean(rep.user_id) && canSee };
+          });
+
+          return json(
+            {
+              data: {
+                recipients: recipients.rows,
+                reps: withAccess,
+                candidates: candidates.rows,
+              },
+            },
+            200,
+            cors,
+          );
+        }
+
+        /**
+         * Add somebody to the standing list, or take them off it.
+         *
+         * `enabled: false` disables rather than deletes, because somebody on
+         * leave should stop receiving without anybody having to remember who
+         * was on the list before they left. Removal is a separate, explicit
+         * act.
+         */
+        case "send_back_recipient_set": {
+          const refused = requireRouting();
+          if (refused) return refused;
+
+          const target = String(body.userId ?? "");
+          if (!UUID_RE.test(target)) {
+            return json({ error: "Which user?", code: "bad_input" }, 400, cors);
+          }
+
+          if (body.enabled === null) {
+            await conn.queryObject({
+              text: `delete from data_center.send_back_recipients where user_id = $1`,
+              args: [target],
+            });
+            return json({ data: { userId: target, removed: true } }, 200, cors);
+          }
+
+          const saved = await conn.queryObject({
+            text: `insert into data_center.send_back_recipients
+                          (user_id, is_enabled, note, added_by)
+                   values ($1, coalesce($2, true), $3, $4)
+                   on conflict (user_id) do update
+                      set is_enabled = coalesce($2, data_center.send_back_recipients.is_enabled),
+                          note = coalesce($3, data_center.send_back_recipients.note)
+                   returning user_id::text, is_enabled`,
+            args: [target, body.enabled ?? null, body.note ?? null, callerId],
+          });
+          return json({ data: saved.rows[0] }, 200, cors);
+        }
+
+        /**
+         * Say which account a rep name means, or that it means nobody.
+         *
+         * `no_account` is not a failure state. `ACSL Admin`, `Administrator`,
+         * `Keffi` and `Gombe` are values the ERP has written into this field
+         * that no account will ever correspond to, and marking them is what
+         * stops them being re-examined by everybody who opens this screen.
+         */
+        case "sales_rep_link": {
+          const refused = requireRouting();
+          if (refused) return refused;
+
+          const repKey = String(body.repKey ?? "").trim().toLowerCase();
+          if (!repKey) {
+            return json({ error: "Which sales rep?", code: "bad_input" }, 400, cors);
+          }
+          const target = body.userId ? String(body.userId) : null;
+          if (target && !UUID_RE.test(target)) {
+            return json({ error: "That is not a user", code: "bad_input" }, 400, cors);
+          }
+          const noAccount = body.noAccount === true;
+          if (target && noAccount) {
+            return json(
+              {
+                error: "A rep is either linked to an account or marked as having none.",
+                code: "bad_input",
+              },
+              400,
+              cors,
+            );
+          }
+
+          const saved = await conn.queryObject({
+            // The display name comes from the transfers rather than the
+            // caller, so it stays whatever the ERP most recently wrote.
+            text: `insert into data_center.sales_rep_accounts
+                          (rep_key, rep_name, user_id, no_account, linked_at, linked_by)
+                   values ($1,
+                           coalesce((select min(trim(h.sales_rep))
+                                       from public.stove_transfer_history h
+                                      where lower(trim(h.sales_rep)) = $1), $1),
+                           $2, $3, now(), $4)
+                   on conflict (rep_key) do update
+                      set user_id = excluded.user_id,
+                          no_account = excluded.no_account,
+                          linked_at = now(),
+                          linked_by = excluded.linked_by
+                   returning rep_key, rep_name, user_id::text, no_account`,
+            args: [repKey, target, noAccount, callerId],
+          });
+          return json({ data: saved.rows[0] }, 200, cors);
+        }
+
         case "config_read": {
           const rows = await conn.queryObject({
             text: `select key, value, description
