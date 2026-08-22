@@ -147,3 +147,71 @@ the day fewest people are looking.
 - **The stove record itself.** Its timelines are one record's own history.
   Filtering them would hide calls somebody made, which is the opposite of what
   a complete record is for.
+
+## The spreadsheet, and why it is hand-rolled
+
+`lib/xlsx.ts` writes and reads xlsx without a library. That looks like a
+default-to-custom decision and it was reviewed as one, so the reasoning is
+recorded here rather than left to be re-litigated or "fixed" by adding a
+dependency.
+
+**The requirement is dropdowns.** The sheet exists so a digitiser picks
+`charcoal` from a list instead of typing "Charcoal stove" and having the row
+refused for a value nobody told them about. A CSV cannot carry a dropdown; an
+xlsx carries it as `dataValidation`.
+
+**The obvious package does not do the one thing that matters.** SheetJS is the
+default choice for xlsx in a browser, and its community build drops data
+validation — a limitation with issues open on it for years
+([#293](https://github.com/SheetJS/sheetjs/issues/293),
+[#387](https://github.com/SheetJS/sheetjs/issues/387)). `exceljs` does support
+it and is large and Node-oriented; `write-excel-file` supports it and cannot
+read.
+
+**And `pako` being installed is not the shortcut it looks like.** It arrives
+transitively through `fast-png`. Importing a transitive dependency directly is
+a hazard, not a saving: it disappears the day its parent changes.
+
+So: written by hand. An xlsx is a ZIP of XML, a ZIP of *stored* entries needs
+only CRC-32 and headers, and reading needs inflate, which the browser already
+has as `DecompressionStream`. No dependency, no bundle cost, and the dropdowns
+work.
+
+**What it costs.** The reader uses `DOMParser`, so it runs in a browser and not
+in Node. That is deliberate — `DOMParser` is the right tool for XML a user's
+spreadsheet program wrote, and swapping it for string-scanning to gain
+testability would trade correctness for convenience. The reader is covered by a
+real download-and-upload through the UI instead, which exercises the file
+Excel actually produces.
+
+### Two defects this reasoning surfaced
+
+Both were found by reading the parser, and neither could be caught by the
+round-trip test, because that test re-uploads an untouched download:
+
+- **The first sheet was found by filename.** `xl/worksheets/sheet1.xml` is what
+  this module writes; it is not what Excel, LibreOffice or Google Sheets
+  necessarily write back. The reader now resolves the first sheet through
+  `xl/workbook.xml` and its relationships, falling back to the old name and
+  then to any worksheet.
+- **A date typed into Excel came back as a number.** Every cell is written as
+  text, so an untouched file round-trips as text — but Excel stores a typed
+  date as a serial, and `46234` was refused as "not a date we recognise". The
+  refusal even told the operator to reformat the column, which was our problem
+  handed to them. The importer converts it, bounded to 2015–2100 so a stray
+  number in the wrong column is still refused.
+
+## Why the sheet can still be a CSV
+
+`digitisation.sheet_format` is a setting, and `csv` is a real option, not a
+leftover. Two reasons it stays:
+
+- It is the documented fallback. A browser without `DecompressionStream`
+  cannot read xlsx, and the uploader tells that person to save the sheet as CSV
+  and upload that — advice that only works because the CSV sheet exists.
+- The importer accepts both, so a CSV sheet still round-trips. What it loses is
+  the dropdowns, which is a trade an operator can make knowingly.
+
+It was flagged in review as a dead hybrid path and it is not one: `config_read`
+returns every key and `config_set` can change any of them, so it is switchable
+in Settings today.

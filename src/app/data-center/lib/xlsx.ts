@@ -315,7 +315,7 @@ export async function parseWorkbook(
 
   const buffer = new Uint8Array(await file.arrayBuffer()) as Bytes;
   const parts = await unzip(buffer);
-  const sheet = parts.get("xl/worksheets/sheet1.xml");
+  const sheet = firstSheet(parts);
   if (!sheet) {
     throw new Error(
       "That workbook has no first sheet where one is expected. Re-download the " +
@@ -388,6 +388,58 @@ export async function parseWorkbook(
 }
 
 /** Row two of a sheet this module wrote: prose, and never a stove ID. */
+/**
+ * The first worksheet, found the way the format says to find it.
+ *
+ * This used to open `xl/worksheets/sheet1.xml` by name, which is what THIS
+ * module writes - and the whole point of the sheet is that somebody opens it
+ * in a spreadsheet program and saves it again. Google Sheets, LibreOffice and
+ * Excel all rewrite the package on save, and a workbook whose first sheet is
+ * not literally sheet1.xml was refused with "no first sheet where one is
+ * expected": a confusing rejection of a perfectly good file.
+ *
+ * So: read the workbook part for the first sheet in tab order, resolve its
+ * relationship id to a path, and only then fall back - first to the old
+ * filename, then to any worksheet in the package. Three ways to be right,
+ * because failing here means the digitiser's whole morning bounces.
+ */
+function firstSheet(parts: Map<string, Bytes>): Bytes | undefined {
+  const text = (name: string) => {
+    const part = parts.get(name);
+    return part ? new TextDecoder().decode(part) : null;
+  };
+
+  const workbook = text("xl/workbook.xml");
+  const rels = text("xl/_rels/workbook.xml.rels");
+  if (workbook && rels) {
+    // Tab order is document order in <sheets>, so the first match is the one
+    // a person sees first when they open the file.
+    const sheetTag = workbook.match(/<sheet\b[^>]*\/?>/i)?.[0] ?? "";
+    const relId = sheetTag.match(/r:id\s*=\s*"([^"]+)"/i)?.[1];
+    if (relId) {
+      const rel = rels.match(
+        new RegExp(`<Relationship\\b[^>]*Id\\s*=\\s*"${relId}"[^>]*>`, "i"),
+      )?.[0];
+      const target = rel?.match(/Target\s*=\s*"([^"]+)"/i)?.[1];
+      if (target) {
+        // Targets are relative to xl/ and may or may not be written with a
+        // leading slash or a ./ prefix, depending on which program saved it.
+        const path = target.replace(/^\/?(xl\/)?\.?\/?/, "");
+        const found = parts.get(`xl/${path}`) ?? parts.get(path);
+        if (found) return found;
+      }
+    }
+  }
+
+  const byName = parts.get("xl/worksheets/sheet1.xml");
+  if (byName) return byName;
+
+  for (const [name, bytes] of parts) {
+    if (/^xl\/worksheets\/[^/]+\.xml$/i.test(name)) return bytes;
+  }
+  return undefined;
+}
+
 function looksLikeGuidance(row: Record<string, string>): boolean {
   const serial = row["Stove ID"] ?? row["Stove Serial Number"] ?? "";
   if (serial) return false;

@@ -85,6 +85,38 @@ class BadRequest extends Error {}
 const ISO_DATE = /^\d{4}-\d{2}-\d{2}$/;
 
 /**
+ * A date typed into Excel, as Excel actually stores it.
+ *
+ * The sheet this module hands out writes every cell as text, so a freshly
+ * downloaded file reads back as text and a round-trip test passes. The moment
+ * a digitiser types a date into the Sales Date column, Excel stores a serial
+ * number instead - 2026-07-31 becomes 46234 - and the file comes back with a
+ * number where the date was.
+ *
+ * The refusal even anticipated this: it told the operator to "format that
+ * column as Date and save again". That is our problem handed to them. The
+ * conversion is four lines and exact.
+ *
+ * The epoch is 1899-12-30 rather than 1900-01-01 because Excel believes 1900
+ * was a leap year. Serials above 59 are all shifted by that phantom day, and
+ * every date this system will ever see is far above 59.
+ *
+ * Bounded to 2015-2100 on purpose. An unbounded reading would turn any stray
+ * number typed into the wrong column into a confident, wrong date; outside the
+ * window the row is still refused, and the operator still gets told why.
+ */
+const EXCEL_EPOCH_MS = Date.UTC(1899, 11, 30);
+const EXCEL_MIN = 42005; // 2015-01-01
+const EXCEL_MAX = 73051; // 2100-01-01
+
+function excelSerialToIso(value: string): string | null {
+  if (!/^\d{4,5}(\.0+)?$/.test(value.trim())) return null;
+  const serial = Math.trunc(Number(value));
+  if (!Number.isFinite(serial) || serial < EXCEL_MIN || serial > EXCEL_MAX) return null;
+  return new Date(EXCEL_EPOCH_MS + serial * 86_400_000).toISOString().slice(0, 10);
+}
+
+/**
  * A transaction ID, in create-sale's own format.
  *
  * The Sell Stove form generates this in the browser: six characters from A-Z
@@ -542,13 +574,18 @@ export function normalizeRow(
   // Accept both ISO and the DD/MM/YYYY a spreadsheet usually produces.
   let salesDate = salesDateRaw;
   if (!ISO_DATE.test(salesDate)) {
+    const serial = excelSerialToIso(salesDate);
+    if (serial) salesDate = serial;
+  }
+  if (!ISO_DATE.test(salesDate)) {
     const m = salesDate.match(/^(\d{1,2})[/-](\d{1,2})[/-](\d{4})$/);
     if (!m) {
       return {
         ok: false,
         reason: `Sale date "${salesDateRaw}" is not a date we recognise`,
         hint:
-          "Write it as 2026-07-14 or 14/07/2026. If the spreadsheet shows a number like 45871, format that column as Date and save again.",
+          "Write it as 2026-07-14 or 14/07/2026. A date typed in Excel is understood " +
+          "even when the spreadsheet shows it as a number.",
       };
     }
     salesDate = `${m[3]}-${m[2].padStart(2, "0")}-${m[1].padStart(2, "0")}`;

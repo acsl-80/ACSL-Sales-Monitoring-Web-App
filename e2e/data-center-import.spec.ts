@@ -14,6 +14,43 @@ import { signIn, USERS, callEdgeFunction } from "./helpers";
  * nothing offers to move stock to someone who may not.
  */
 
+/**
+ * Serials nobody has sold yet.
+ *
+ * Naming one and reusing it forever is a test with a shelf life: committing a
+ * sale consumes the serial permanently, so the first run that commits breaks
+ * every later run. Asking the sheet which are still free costs one request and
+ * never goes stale.
+ *
+ * At module scope because two describes need it, and the second one grew its
+ * own copy before this was lifted.
+ */
+async function freeSerials(
+  page: import("@playwright/test").Page,
+  count = 1,
+): Promise<string[]> {
+  const funnel = await callEdgeFunction(page, "data-center-read", {
+    action: "transfer_funnel",
+    limit: 1,
+  });
+  const org = (funnel.body as { data: { rows: { organization_id: string }[] } })
+    .data.rows[0].organization_id;
+  const sheet = await callEdgeFunction(page, "data-center-read", {
+    action: "digitisation_sheet",
+    organizationId: org,
+  });
+  const free = (sheet.body as {
+    data: { rows: { stove_id: string; already_recorded: boolean }[] };
+  }).data.rows.filter((r) => !r.already_recorded).slice(0, count);
+  if (free.length < count) {
+    throw new Error(`Only ${free.length} unsold stoves in the first transfer, needed ${count}`);
+  }
+  return free.map((r) => r.stove_id);
+}
+
+const freeSerial = async (page: import("@playwright/test").Page) =>
+  (await freeSerials(page, 1))[0];
+
 test.describe("bulk import", () => {
   test("super admin sees the panel, and no partner to pick", async ({ page }) => {
     await signIn(page, USERS.admin);
@@ -222,32 +259,6 @@ test.describe("import hardening, against the server", () => {
   // different serials, this is the line to change.
   const PARTNER = "Amina Sales Model Gombe";
   const SERIAL = "PRV000003";
-
-  /**
-   * A serial nobody has sold yet.
-   *
-   * Naming one and reusing it forever is a test with a shelf life: committing
-   * a sale consumes the serial permanently, so the first run that commits
-   * breaks every later run. Asking the sheet which are still free costs one
-   * request and never goes stale.
-   */
-  async function freeSerial(page: import("@playwright/test").Page): Promise<string> {
-    const funnel = await callEdgeFunction(page, "data-center-read", {
-      action: "transfer_funnel",
-      limit: 1,
-    });
-    const org = (funnel.body as { data: { rows: { organization_id: string }[] } })
-      .data.rows[0].organization_id;
-    const sheet = await callEdgeFunction(page, "data-center-read", {
-      action: "digitisation_sheet",
-      organizationId: org,
-    });
-    const free = (sheet.body as {
-      data: { rows: { stove_id: string; already_recorded: boolean }[] };
-    }).data.rows.find((r) => !r.already_recorded);
-    if (!free) throw new Error("Every stove in the first transfer has been recorded");
-    return free.stove_id;
-  }
 
   const receipt = (marker: string, serials: string[]) => ({
     name: `receipts-${marker}.csv`,
@@ -583,6 +594,67 @@ test.describe("a rejected row says what to do about it", () => {
  * both hand-rolled and a unit test of either alone would prove half of it.
  */
 test.describe("the digitalisation sheet is a workbook", () => {
+  test("a date typed into Excel arrives as a date, not as a number", async ({ page }) => {
+    await signIn(page, USERS.admin);
+
+    /**
+     * The defect the round trip structurally cannot find.
+     *
+     * The sheet writes every cell as text, so a file downloaded and re-uploaded
+     * untouched reads back as text and that test passes. The moment a digitiser
+     * types a date into Excel, Excel stores a serial number instead - and every
+     * row came back rejected for a date they had typed correctly.
+     *
+     * The refusal even told them to reformat the column, which was our problem
+     * handed to them. 46234 is 2026-07-31 in Excel's 1900 system.
+     */
+    const marker = `xlsdate-${Date.now()}`;
+    const free = await freeSerials(page, 3);
+    const rows = free.map((serial, i) => ({
+      "Stove ID": serial,
+      "User First Name": "Excel",
+      "User Last Name": `Date${i}`,
+      "Primary Phone Number": `080${String(Date.now()).slice(-7)}${i}`,
+      "Sales Date": ["46234", "46234.0", "2026-07-31"][i],
+      "Sale Amount": "25000",
+      "State": "Gombe",
+      "LGA": "Gombe",
+      "User Residential Address": "1 Road",
+    }));
+
+    const staged = await callEdgeFunction(page, "data-center-import", {
+      action: "stage",
+      filename: `${marker}.csv`,
+      rows,
+      confirmDuplicate: true,
+    });
+    expect(staged.status).toBe(200);
+    const batchId = (staged.body as { data: { batchId: string } }).data.batchId;
+
+    const validated = await callEdgeFunction(page, "data-center-import", {
+      action: "validate",
+      batchId,
+    });
+    expect(validated.status).toBe(200);
+
+    const back = await callEdgeFunction(page, "data-center-import", {
+      action: "rows",
+      batchId,
+    });
+    const staged3 = (back.body as {
+      data: { row_number: number; status: string; normalized: { salesDate?: string } | null }[];
+    }).data;
+
+    // All three shapes land on the same day: the serial, the serial with the
+    // trailing .0 a CSV export adds, and the date written out in full.
+    for (const row of staged3) {
+      expect(row.status, `row ${row.row_number} was ${row.status}`).toBe("valid");
+      expect(row.normalized?.salesDate).toBe("2026-07-31");
+    }
+
+    await callEdgeFunction(page, "data-center-import", { action: "rollback", batchId });
+  });
+
   test("the sheet downloads, and the same file uploads back", async ({ page }, testInfo) => {
     await signIn(page, USERS.admin);
 
