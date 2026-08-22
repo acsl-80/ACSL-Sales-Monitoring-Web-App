@@ -957,6 +957,37 @@ selector, raced the render, and returned false - so all four tests skipped.
 Four green skips proving nothing, while the feature went unchecked. The helper
 now waits on something that exists at exactly one depth.
 
+## Phase 19: a send-back that reaches somebody
+
+The correction loop existed and told nobody. It now routes, notifies and
+closes, and the routing is configuration rather than code.
+
+| | |
+|---|---|
+| **Settings** | choose the standing recipients; link each ERP rep name to an account |
+| **Routing** | recipients always; the mapped rep as well, when there is one |
+| **Banner** | above every page in the module, summary only, opens the list |
+| **List** | rep → partner → stove ID, each ID a link into the record |
+| **Closing** | a note first, which the call centre reads before ringing again |
+| **Level** | new `sales_rep` access role, one key, nothing else reachable |
+
+### The finding that shaped it
+
+`stove_transfer_history.sales_rep` is free text. In production, 11 of 23 names
+match an app profile and the three largest by volume do not. Four values are
+not people. Name-matching would have routed most of the volume to nobody in
+silence, so the link is made by hand and the gap is a visible row.
+
+### Still open
+
+- **No email.** In-app only, by decision. A real send needs a service, a
+  from-address, bounce handling and a digest rule so twenty send-backs are not
+  twenty emails — its own slice, worth doing after the in-app path is proven.
+- **A rep must still be granted the `sales_rep` level by hand** after being
+  linked. Deliberate: a routing screen that granted module access would be a
+  door that does not look like one. Settings reports the gap rather than
+  closing it silently.
+
 ### Deliberately not done
 
 - **Promoting a question to a real column.** The registry supports it and

@@ -231,3 +231,77 @@ overwritten by older answers.
 and above a stove nobody has called. That buyer has already given their time
 once and is owed the shortest possible second call, and it is the quickest
 complete record on the list.
+
+---
+
+# Sending a record back, to somebody who will see it
+
+The call centre could always send a record back. `correction_requested_at`
+opened it, a reason said why, `correction_resolved_at` closed it. What never
+existed was anybody being told, so the record moved into a state nothing was
+watching and the loop closed only if somebody happened to open the right
+filter.
+
+## The rep is not a foreign key
+
+"Send it back to the rep responsible for that consignment" sounds like a join.
+`stove_transfer_history.sales_rep` is free text written by the ERP. Measured
+against production:
+
+| | |
+|---|---|
+| Distinct rep names | 23 |
+| Matching an app profile by name | 11 |
+| Not matching | 12 |
+
+and the twelve include the three largest by volume — Femi Isaac (145
+consignments), ELIZABETH TIMOTHY (68), Lucky Sunday (36). Four of the values
+are not people at all: `ACSL Admin`, `Administrator`, `Keffi` (a town) and
+`Gombe` (a state).
+
+Auto-matching on name would therefore have routed most of the volume to
+nobody, silently — which is worse than not offering it. So `sales_rep_accounts`
+holds the link, seeded from the unambiguous matches only, and the Settings
+screen is sorted by transfer count: an unlinked rep with 145 consignments and
+an unlinked rep with one look identical without that number.
+
+## Who receives it
+
+**The recipients chosen in Settings are the authority and always receive
+every send-back.** The mapped rep receives it as well, when there is one. That
+order is the point: where a rep has no account the designated recipients still
+treat the record, so nothing is routed into a void.
+
+Nothing is stored per record. Routing is computed when the queue is read, from
+the recipient list and the mapping as they stand now — so linking a rep this
+afternoon fixes every send-back already open, not only the ones raised
+afterwards.
+
+## Linked is not the same as able to see it
+
+Linking a rep in Settings grants them nothing, deliberately: a routing screen
+that could hand out module access would be a door into the module that does not
+look like one. But an administrator who links somebody and walks away believing
+they are notified would be wrong, so the row says
+*"linked, but this account cannot open send-backs yet"* and names the level to
+give them.
+
+That level is `sales_rep`, and it carries exactly one key. Proved on the
+preview: a rep on it sees their own consignment's send-back and not another
+rep's, and is refused `records`, `call_queue` and `dashboard` outright.
+
+## What people see
+
+A banner above every page in the module, because the person who owes an answer
+did not come looking for one. It opens a list grouped by **rep, then partner,
+then stove ID** — the order paperwork is filed in, not the order records were
+created. Every stove ID links into the record. Closing one takes a note first,
+which the call centre reads before ringing again.
+
+## The reasons were always data
+
+`correction_reason` is an option list like any other, edited under **Settings →
+Call form → Option lists**. Adding, renaming, reordering or retiring a reason is
+data entry, not a release — which is how "Name is wrong" and "Address is wrong"
+were retired without a deploy, and why the settings panel points at that editor
+rather than building a second one.
