@@ -795,7 +795,7 @@ serve(async (req) => {
                      from data_center.v_transfer_stoves b
                      join data_center.transfer_funnel f on f.transfer_id = b.transfer_id
                      left join public.stove_ids_base sb on sb.stove_id = b.stove_id
-                     left join data_center.v_call_center c on c.sale_id = sb.sale_id
+                     left join data_center.v_call_center_resolved c on c.sale_id = sb.sale_id
                      left join data_center.assignment_items ai
                             on ai.sale_id = sb.sale_id and ai.is_active
                      left join data_center.assignment_batches ba on ba.id = ai.batch_id
@@ -864,7 +864,7 @@ serve(async (req) => {
                      from public.stove_ids_base sb
                      left join data_center.v_transfer_stoves b on b.stove_id = sb.stove_id
                      left join data_center.transfer_funnel f on f.transfer_id = b.transfer_id
-                     left join data_center.v_call_center c on c.sale_id = sb.sale_id
+                     left join data_center.v_call_center_resolved c on c.sale_id = sb.sale_id
                      left join data_center.assignment_items ai
                             on ai.sale_id = sb.sale_id and ai.is_active
                      left join data_center.assignment_batches ba on ba.id = ai.batch_id

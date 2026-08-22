@@ -361,13 +361,43 @@ test.describe("one stove, one owner, one phone", () => {
       if (tail.length === 10) phones.set(tail, (phones.get(tail) ?? 0) + 1);
     }
 
+    /**
+     * One stove to one owner still holds absolutely, and it is the invariant
+     * the stove-ID rematch can break: that code moves stock rows, and an
+     * unguarded write there put two sales on one stove until each claim was
+     * made conditional on the row still looking the way it was read.
+     */
     const serialClashes = [...serials.entries()].filter(([, n]) => n > 1);
-    const phoneClashes = [...phones.entries()].filter(([, n]) => n > 1);
-
     expect(serialClashes, `serials on more than one sale: ${JSON.stringify(serialClashes)}`)
       .toHaveLength(0);
-    expect(phoneClashes, `phones on more than one sale: ${JSON.stringify(phoneClashes)}`)
-      .toHaveLength(0);
+
+    /**
+     * One phone to one stove does NOT hold any more, and this test used to
+     * assert it did. A household buys two stoves on one number, so a repeat is
+     * allowed - what is not allowed is a repeat nobody recorded.
+     *
+     * It passed for a while after the rule changed, because the preview held
+     * no shared numbers and the assertion was vacuous. The first legitimate
+     * one would have failed it, which is the worst moment to discover a test
+     * is asserting a rule the business retired.
+     */
+    const phoneClashes = [...phones.entries()].filter(([, n]) => n > 1);
+    if (phoneClashes.length > 0) {
+      const register = await callEdgeFunction(page, "data-center-read", {
+        action: "shared_phones",
+        limit: 500,
+      });
+      const known = new Set(
+        (register.body as { data: { rows: { phone_tail: string }[] } }).data.rows.map(
+          (r) => r.phone_tail,
+        ),
+      );
+      const unregistered = phoneClashes.map(([tail]) => tail).filter((t) => !known.has(t));
+      expect(
+        unregistered,
+        `numbers on several stoves that the register does not know about: ${JSON.stringify(unregistered)}`,
+      ).toHaveLength(0);
+    }
   });
 
   test("the record carries the check, so a violation would be visible", async ({ page }) => {

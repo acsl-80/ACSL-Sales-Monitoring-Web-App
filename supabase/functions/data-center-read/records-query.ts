@@ -167,6 +167,16 @@ const COLUMNS = [
  */
 const CALL_CENTER_COLUMNS = [
   ...COLUMNS,
+  /*
+    Only Table 2 has these. v_sold_stoves carries no corrections at all, so
+    naming them in the shared list above asked the sold-stove view for columns
+    it has never had - which is a 500, not a compile error, and is what putting
+    them there cost.
+  */
+  "resolved_end_user_name",
+  "resolved_phone",
+  "resolved_address",
+  "was_corrected",
   "verification_outcome",
   "call_outcome",
   "call_agent",
@@ -533,8 +543,20 @@ export function buildRecordsQuery(
     args,
   };
 
+  /**
+   * One view, so one answer to "what is this buyer called".
+   *
+   * The resolved view applies the call centre's corrections; the plain one
+   * leaves them in a column beside the original. Reading the plain one here
+   * while the open record and the agent's own queue read the resolved one gave
+   * two answers to the same question - the queue listing the name off the
+   * receipt while the record showed the name the buyer gave on the phone.
+   *
+   * That is the split the resolved view was written to end, and it survived
+   * because only some consumers were moved.
+   */
   const view = table === "call_center"
-    ? "data_center.v_call_center"
+    ? "data_center.v_call_center_resolved"
     : "data_center.v_sold_stoves";
   const selected = table === "call_center" ? CALL_CENTER_COLUMNS : COLUMNS;
 

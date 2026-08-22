@@ -793,6 +793,49 @@ serve(async (req) => {
           const otherSaleId = stove.sale_id;
           const kind = otherSaleId ? "swapped" : "claimed_available";
 
+          /**
+           * Every stock write is a claim, not an announcement.
+           *
+           * The rematch reads a stove, decides, and then writes - and between
+           * the read and the write, create-sale can claim that same stove for
+           * a bulk import or a sale on the phone. This function's advisory lock
+           * does not exclude those: they take no advisory lock at all, because
+           * they are protected by exactly this pattern instead.
+           *
+           * So each write carries the state it expects to overwrite. If the
+           * row no longer looks the way it looked a moment ago, zero rows match
+           * and this throws - which rolls back the whole transaction, including
+           * the sale rows already moved above. Without it the update matched
+           * anyway and overwrote a claim somebody else had just won, leaving
+           * one stove with two sales. Proved against the preview: the
+           * unguarded statement matches 1 row where the guarded one matches 0.
+           *
+           * This is the same fix, in the same shape, that create-sale carries
+           * for the same reason.
+           */
+          const claim = async (
+            stoveId: string,
+            expected: string | null,
+            next: string | null,
+            what: string,
+          ) => {
+            const done = await conn.queryObject({
+              text: `update public.stove_ids_base
+                        set sale_id = $3::uuid,
+                            status = case when $3::uuid is null then 'available' else 'sold' end
+                      where upper(stove_id) = upper($1)
+                        and sale_id is not distinct from $2::uuid`,
+              args: [stoveId, expected, next],
+            });
+            if (Number(done.rowCount ?? 0) === 0) {
+              throw new Conflict(
+                `${stoveId} changed hands while this was being saved, so nothing was ` +
+                  `moved. ${what} Open the record again and read the number back to the ` +
+                  `buyer before trying once more.`,
+              );
+            }
+          };
+
           // The sale takes the confirmed stove.
           await conn.queryObject({
             text: `update public.sales set stove_serial_no = $2, updated_at = now(), updated_by = $3
@@ -808,11 +851,13 @@ serve(async (req) => {
                       where id = $1`,
               args: [otherSaleId, current, userId],
             });
-            await conn.queryObject({
-              text: `update public.stove_ids_base set sale_id = $2, status = 'sold'
-                      where upper(stove_id) = upper($1)`,
-              args: [current, otherSaleId],
-            });
+            // We held `current` a moment ago; hand it over only if we still do.
+            await claim(
+              current,
+              saleId,
+              otherSaleId,
+              "Somebody else took the stove this record was on.",
+            );
 
             /**
              * The displaced buyer is flagged, not quietly moved.
@@ -842,19 +887,29 @@ serve(async (req) => {
               ],
             });
           } else {
-            // Case (b): the old stove goes back on the shelf.
-            await conn.queryObject({
-              text: `update public.stove_ids_base set sale_id = null, status = 'available'
-                      where upper(stove_id) = upper($1)`,
-              args: [current],
-            });
+            // Case (b): the old stove goes back on the shelf - but only if it
+            // is still ours to put there.
+            await claim(
+              current,
+              saleId,
+              null,
+              "Somebody else took the stove this record was on.",
+            );
           }
 
-          await conn.queryObject({
-            text: `update public.stove_ids_base set sale_id = $2, status = 'sold'
-                    where upper(stove_id) = upper($1)`,
-            args: [stove.stove_id, saleId],
-          });
+          /*
+            The one that matters most: take the confirmed stove only if it is
+            still exactly as it was read - free in the claim case, held by the
+            other sale in the swap case. `is not distinct from` rather than `=`
+            because in the claim case the expected value is NULL, and NULL = NULL
+            is not true.
+          */
+          await claim(
+            stove.stove_id,
+            otherSaleId,
+            saleId,
+            `${stove.stove_id} was sold to somebody else while this was being saved.`,
+          );
 
           // This record is settled: it carries the number its buyer read out.
           await conn.queryObject({
