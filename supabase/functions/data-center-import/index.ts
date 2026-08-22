@@ -2386,12 +2386,29 @@ serve(async (req) => {
         if (!batchId) throw new BadRequest("batchId is required");
         return await withReadConnection(async (conn) => {
           const r = await conn.queryObject({
+            /**
+             * `normalized` is returned beside `raw` because the two answer
+             * different questions: what the operator typed, and what we
+             * understood it to say. That gap is the whole of a rejected row,
+             * and it matters more now that a date typed in Excel arrives as a
+             * serial and is converted - "you typed 46234, we read 2026-07-31"
+             * is what makes the conversion trustworthy instead of spooky.
+             *
+             * `sharedOnly` selects the rows that share a phone number with
+             * another stove. They are valid rows, so they never appear in the
+             * exceptions queue, and until this filter existed the amber flag
+             * was written to the database and shown to nobody.
+             */
             text: `select id, row_number, status, rejection_reason, rejection_hint,
-                          exception_reason, stove_serial_no, corrected_serial, sale_id, raw
+                          exception_reason, stove_serial_no, corrected_serial, sale_id,
+                          raw, normalized, shared_phone_with
                    from data_center.import_rows
                    where batch_id = $1 and ($2 = '' or status = $2)
+                     and ($3::boolean is not true
+                          or (shared_phone_with is not null
+                              and array_length(shared_phone_with, 1) > 0))
                    order by row_number limit 300`,
-            args: [batchId, status],
+            args: [batchId, status, body.sharedOnly === true],
           });
           return json({ data: r.rows }, 200, cors);
         });

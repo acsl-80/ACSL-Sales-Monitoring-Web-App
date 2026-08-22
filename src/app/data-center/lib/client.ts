@@ -831,6 +831,10 @@ export type ImportBatch = {
 };
 
 export type ImportRow = {
+  /** What we understood the row to say, beside `raw` which is what was typed. */
+  normalized?: Record<string, unknown> | null;
+  /** Stoves already on this row's phone number. Amber, never a block. */
+  shared_phone_with?: string[] | null;
   id: string;
   row_number: number;
   status: "pending" | "valid" | "rejected" | "committed" | "exception";
@@ -1041,6 +1045,10 @@ export const dataCenterImport = {
   /** The history, narrowed by the shared period control on upload date. */
   batches: (range: { dateFrom?: string; dateTo?: string } = {}) =>
     call<ImportBatch[]>("data-center-import", "batches", range),
+
+  /** Every stove in this batch that shares a phone number with another. */
+  sharedPhoneRows: (batchId: string) =>
+    call<ImportRow[]>("data-center-import", "rows", { batchId, sharedOnly: true }),
 
   rows: (batchId: string, status = "") =>
     call<ImportRow[]>("data-center-import", "rows", { batchId, status }),

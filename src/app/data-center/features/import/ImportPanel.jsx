@@ -59,6 +59,70 @@ function Stat({ label, value, tone }) {
   );
 }
 
+/**
+ * Stoves in this batch sharing a phone number with another stove.
+ *
+ * One household, one number, two stoves is ordinary and allowed - so these
+ * rows are valid and never reach the exceptions queue. A mistyped digit
+ * repeated across a batch is also valid, and looks identical, so the only
+ * useful thing the system can do is put the two in front of the person who
+ * can tell them apart before anything commits.
+ *
+ * Amber rather than red on purpose: nothing here is wrong yet.
+ */
+function SharedPhoneRows({ batchId }) {
+  const [rows, setRows] = useState(null);
+
+  useEffect(() => {
+    let live = true;
+    dataCenterImport
+      .sharedPhoneRows(batchId)
+      .then((r) => live && setRows(r))
+      // A flag that could not be loaded must not take the batch down with it.
+      .catch(() => live && setRows([]));
+    return () => {
+      live = false;
+    };
+  }, [batchId]);
+
+  if (!rows || rows.length === 0) return null;
+
+  return (
+    <div className="border-t border-amber-200 bg-amber-50 px-4 py-3">
+      <p className="flex items-center gap-1.5 text-sm font-semibold text-amber-900">
+        <AlertTriangle className="h-4 w-4" />
+        {rows.length === 1
+          ? "One stove here shares a phone number with another"
+          : `${rows.length} stoves here share a phone number with another`}
+      </p>
+      <p className="mt-0.5 text-xs text-amber-800">
+        Allowed: a household can buy more than one. Check these are a family and
+        not the same number typed twice. Nothing is blocked either way.
+      </p>
+      <ul className="mt-2 space-y-1">
+        {rows.map((r) => (
+          <li key={r.id} className="flex flex-wrap items-baseline gap-x-2 text-sm text-amber-900">
+            <span className="text-xs text-amber-700">row {r.row_number}</span>
+            <span className="font-mono font-medium">{r.stove_serial_no ?? "-"}</span>
+            <span className="text-xs">shares with</span>
+            {(r.shared_phone_with ?? []).map((other) => (
+              <span
+                key={other}
+                className="rounded border border-amber-400 bg-white px-1.5 py-0.5 font-mono text-xs"
+              >
+                {other}
+              </span>
+            ))}
+            {r.normalized?.phone ? (
+              <span className="text-xs text-amber-700">on {String(r.normalized.phone)}</span>
+            ) : null}
+          </li>
+        ))}
+      </ul>
+    </div>
+  );
+}
+
 function ExceptionsQueue({ batchId, canResolve, onChanged }) {
   const [rows, setRows] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -739,6 +803,7 @@ export default function ImportPanel({ canUpload, canCommit, canResolve }) {
                         canResolve={canResolve}
                         onChanged={refresh}
                       />
+                      <SharedPhoneRows batchId={b.id} />
                     </div>
                   )}
 
