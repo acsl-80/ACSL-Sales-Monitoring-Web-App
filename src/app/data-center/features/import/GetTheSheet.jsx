@@ -116,11 +116,22 @@ export default function GetTheSheet({ onGoToUpload }) {
           </p>
 
           <div className="mt-3 space-y-2">
-            <label className="block">
-              <span className="mb-1 block text-[11px] font-semibold uppercase tracking-wide text-gray-600">
-                Whose stoves
-              </span>
+            {/*
+              Explicitly associated, for the same reason as the records filter
+              panel: wrapping folds every <option> into the accessible name, so
+              a partner called "... Partner" would make this control answer to
+              "Partner" - which the import spec asserts nothing on this page
+              does, precisely because the upload asks no such question.
+            */}
+            <label
+              htmlFor="dc-sheet-partner"
+              className="mb-1 block text-[11px] font-semibold uppercase tracking-wide text-gray-600"
+            >
+              Whose stoves
+            </label>
+            <div>
               <select
+                id="dc-sheet-partner"
                 value={chosen}
                 onChange={(e) => setChosen(e.target.value)}
                 disabled={partners === null}
@@ -135,7 +146,7 @@ export default function GetTheSheet({ onGoToUpload }) {
                   </option>
                 ))}
               </select>
-            </label>
+            </div>
 
             <button
               type="button"

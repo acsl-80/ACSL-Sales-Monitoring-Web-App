@@ -137,7 +137,13 @@ function Group({ icon: Icon, title, tone = "who", right, children }) {
         className={`flex items-center gap-2 px-3 py-2 text-xs font-bold uppercase tracking-wide text-white ${skin.head}`}
       >
         <Icon className="h-4 w-4 shrink-0" />
-        {title}
+        {/*
+          The title is its own element, not loose text beside the count.
+          Sharing the paragraph made the block's text "What has happened so
+          far2 so far", so nothing on the page had the title as its exact
+          text - which is how two specs address these blocks.
+        */}
+        <span>{title}</span>
         {right && <span className="ml-auto font-medium normal-case">{right}</span>}
       </p>
       <div

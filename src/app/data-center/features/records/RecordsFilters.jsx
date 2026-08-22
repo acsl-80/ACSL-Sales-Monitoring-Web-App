@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { cloneElement, useId, useMemo, useState } from "react";
 import { Search, X, SlidersHorizontal, ArrowDownWideNarrow, ArrowUpWideNarrow } from "lucide-react";
 
 /**
@@ -55,14 +55,31 @@ const ADVANCED = [
   "includeArchived",
 ];
 
+/**
+ * A labelled control, associated explicitly rather than by wrapping.
+ *
+ * A <label> wrapping a <select> does associate the two - but the accessible
+ * name is then the label's whole text content, and the selected <option> sits
+ * inside it. "Partner" came out as "PartnerAny partner", so nothing on the
+ * page was addressable by what the control is actually called: not by a screen
+ * reader, not by a test, not by anything that names a field.
+ *
+ * cloneElement rather than a render prop, so the eleven call sites below stay
+ * readable as markup. The id comes from useId, so two of these panels on one
+ * page still associate correctly.
+ */
 function Field({ label, children }) {
+  const id = useId();
   return (
-    <label className="flex min-w-0 flex-col gap-1">
-      <span className="text-[11px] font-semibold uppercase tracking-wide text-gray-500">
+    <div className="flex min-w-0 flex-col gap-1">
+      <label
+        htmlFor={id}
+        className="text-[11px] font-semibold uppercase tracking-wide text-gray-500"
+      >
         {label}
-      </span>
-      {children}
-    </label>
+      </label>
+      {cloneElement(children, { id })}
+    </div>
   );
 }
 
