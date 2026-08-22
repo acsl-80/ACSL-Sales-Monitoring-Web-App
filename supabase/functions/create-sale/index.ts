@@ -415,7 +415,7 @@ Deno.serve(async (req) => {
     // Amount received is what the customer actually pays. It cannot be negative
     // and cannot exceed the sales amount. For outright (non-installment) sales
     // this is the ONLY record of what was collected — it is persisted below as
-    // `total_paid`, so an outright sale can legitimately be partially paid.
+    // `total_paid`.
     let outrightPaid = 0;
     if (amountReceived !== null && amountReceived !== undefined && String(amountReceived).trim() !== "") {
       const parsedReceived = Number(amountReceived);
@@ -429,6 +429,20 @@ Deno.serve(async (req) => {
         return jsonError("Amount received cannot be greater than the sales amount", 400);
       }
       outrightPaid = parsedReceived;
+    }
+
+    // A non-installment sale IS a full payment by definition — the customer
+    // settles the whole amount up front. The clients collect a single figure
+    // and send it as both `amount` and `amountReceived`, so the two already
+    // agree. We coerce rather than reject so that older app builds, and sales
+    // queued offline before the clients were updated, still sync instead of
+    // failing forever. Anything genuinely part-paid belongs on a payment model.
+    if (!installmentData && outrightPaid !== saleAmount) {
+      console.warn(
+        `⚠️ Outright sale received ${outrightPaid} against amount ${saleAmount} — ` +
+          `coercing to full payment (non-installment sales are paid in full).`,
+      );
+      outrightPaid = saleAmount;
     }
 
     // Stove image is now OPTIONAL (previously rejected when missing). The sale
@@ -523,11 +537,9 @@ Deno.serve(async (req) => {
           // total_paid always reflects what was actually collected, for both
           // installment and outright sales — never the sale price.
           total_paid: installmentData ? installmentData.totalPaid : outrightPaid,
-          payment_status: installmentData
-            ? installmentData.paymentStatus
-            : outrightPaid >= saleAmount
-              ? "fully_paid"
-              : "partially_paid",
+          // Outright sales are always fully paid (coerced above); only
+          // installments can land here partially paid.
+          payment_status: installmentData ? installmentData.paymentStatus : "fully_paid",
           pot_quantity: potQuantity ?? null,
           heat_retention_device: heatRetentionDevice ?? false,
           previous_stove_type: previousStoveType || null,
@@ -549,16 +561,67 @@ Deno.serve(async (req) => {
     const saleId = saleInsertData.id;
     console.log("✅ Sale inserted:", saleId);
 
-    // ── Update stove_ids ──────────────────────────────────────────────────────
-    const { error: stoveUpdateError } = await supabase
+    // ── Claim the stove ───────────────────────────────────────────────────────
+    //
+    // The `status <> sold` filter is what makes this a claim rather than an
+    // announcement, and it is the whole fix.
+    //
+    // Without it the sequence was: read the stove's status, insert the sale,
+    // then mark the stove sold unconditionally. Two people selling the same
+    // stove at the same moment both read `available`, both inserted a sale, and
+    // the second overwrote the first's sale_id. One stove, two sales, and
+    // stock remembering only one of them. Reproduced with two concurrent
+    // requests before this change.
+    //
+    // Now the filter is evaluated by Postgres as part of the UPDATE, so exactly
+    // one of the two can match. The other gets zero rows back and undoes its
+    // own sale below.
+    //
+    // `neq("sold")` rather than `eq("available")` on purpose: it mirrors the
+    // precondition already checked above, so a stove in some future status
+    // that is not `sold` keeps behaving exactly as it does today.
+    const { data: claimedStoves, error: stoveUpdateError } = await supabase
       .from("stove_ids")
       .update({ status: "sold", sale_id: saleId })
       .eq("stove_id", stoveSerialNo)
-      .eq("organization_id", organizationId);
+      .eq("organization_id", organizationId)
+      .neq("status", "sold")
+      .select("stove_id");
 
     if (stoveUpdateError) {
       console.error("❌ Failed to update stove_ids:", stoveUpdateError);
       return jsonError("Failed to update stove_ids", 500);
+    }
+
+    if (!claimedStoves || claimedStoves.length === 0) {
+      // Somebody claimed this stove between the check above and here. The sale
+      // that was just inserted has no stove, so it is removed rather than left
+      // behind as a second sale for a stove that already has one.
+      //
+      // Nothing references it yet: the stove was never linked, and installment
+      // payments are recorded after this point. sales_history records both the
+      // insert and the delete, which is the honest account of what happened.
+      console.warn(
+        `⚠️ Stove ${stoveSerialNo} was claimed by another sale first. Rolling back sale ${saleId}.`
+      );
+      const { error: rollbackError } = await supabase
+        .from("sales")
+        .delete()
+        .eq("id", saleId);
+      if (rollbackError) {
+        // Worth shouting about: a sale with no stove is now sitting in the
+        // table. The caller still gets told their sale did not go through,
+        // which is the true answer.
+        console.error(
+          "❌ Could not roll back the orphaned sale:",
+          saleId,
+          rollbackError.message
+        );
+      }
+      return jsonError(
+        `Stove serial number "${stoveSerialNo}" was sold by someone else moments ago. Please choose another stove.`,
+        409
+      );
     }
 
     console.log("✅ Sales saved and stove_ids updated with sale_id:", saleId);
