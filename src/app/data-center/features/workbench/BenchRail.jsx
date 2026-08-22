@@ -81,16 +81,26 @@ export default function BenchRail({ stoves, current, drafts = [], onPick }) {
     const term = query.trim().toUpperCase();
     return decorated.filter((s) => {
       /*
-       * The one being typed always stays visible.
+       * The search applies to everything; the status filter does not apply to
+       * the one being typed.
        *
-       * Otherwise finishing a record makes it "done", the "still to type"
-       * filter drops it, and the rail scrolls out from under the form the
-       * typist is still looking at.
+       * Those are different kinds of narrowing and they need different rules.
+       * The status filter changes under the typist's feet - finishing a record
+       * makes it "done", "still to type" drops it, and the rail scrolls out
+       * from under the form they are still looking at - so the open one is
+       * pinned against it.
+       *
+       * A search is a deliberate act with a different question behind it: "is
+       * PRV000123 in this consignment". Pinning the open row through a search
+       * too meant a term matching nothing still showed one row, so the rail
+       * could never answer "no". Which is the wrong answer to give somebody
+       * holding a receipt for a stove that turns out to be in another
+       * consignment entirely.
        */
+      if (term) return String(s.stove_id).toUpperCase().includes(term);
       if (s.stove_id === current) return true;
       if (only === "todo" && s.state === "done") return false;
       if (only === "done" && s.state !== "done") return false;
-      if (term && !String(s.stove_id).toUpperCase().includes(term)) return false;
       return true;
     });
   }, [decorated, only, query, current]);
