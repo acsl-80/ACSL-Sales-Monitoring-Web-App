@@ -155,3 +155,79 @@ existing type never is.
 `FieldRenderer.jsx` knows about input **types** and never about specific
 questions. If you find yourself adding an `if (field.key === ...)` there, the
 thing you want is probably a new input type or a `visible_when`.
+
+---
+
+# A call that cut off
+
+An agent gets four answers out of eleven and the line goes dead. Until Phase 18
+every one of those ended the same way: the form closed and everything typed
+into it went with it, so the next agent - usually the same agent - started from
+a blank sheet and asked the buyer the same four questions again.
+
+## The form keeps itself
+
+Two seconds after typing stops, and again when the agent closes deliberately
+with **Finish later**. Autosave rather than a button, because the case this
+exists for is the one where no button gets pressed: a dropped call, a closed
+laptop, a crashed tab.
+
+It only saves once the agent has actually typed something. Without that guard,
+merely opening a record would leave a draft on it and put it on their
+unfinished list.
+
+Nothing in a draft is validated. A half-finished form fails validation by
+definition, and refusing to keep it for rules the agent has not reached yet is
+the fastest way to teach people that saving does not work. `save_call_record`
+still validates and is still the only door to the record.
+
+## Why `call_drafts` is its own table
+
+The obvious build is `alter table call_records add column draft_values`, the way
+the digitalisation workbench holds a half-typed receipt on the import row it
+belongs to. It does not work here.
+
+A workbench row already exists before anybody types into it - staging created
+it. A call record does not: `call_records` gets its row on the first real save,
+and `has_call_record` in the view is literally `(cr.sale_id is not null)`.
+
+Creating that row to hold a draft would make every half-typed form read as a
+record the call centre had worked:
+
+| | Would have happened |
+|---|---|
+| The "never called" queue | loses the record |
+| `hasCallRecord` filter | returns it |
+| The scorecards | count a call nobody made |
+
+So the draft sits beside the record. Nothing existing reads `call_drafts`, so
+nothing existing changes. Proved on the preview: a draft on an untouched record
+leaves `has_call_record` false and the record stays in the never-called queue.
+
+## One draft per sale, not one per agent
+
+Records move between agents - the console reassigns them and the engine
+reclaims stale batches. A draft keyed by `(sale, agent)` would be stranded
+every time that happened, which is exactly the work this exists to stop losing.
+
+Keyed by the sale, the draft travels with the record. `saved_by` is carried so
+whoever opens it next is told whose it is:
+
+> **Musa Danladi started this and did not finish.** Their answers are in the
+> form below, from 20 Aug 14:32. Nothing has been saved to the record yet.
+
+Applied to the form rather than offered, because an agent who typed four
+answers and lost the call expects to find them. What the banner is for is the
+two things the fields cannot say: whose these are, and that nothing has reached
+the record. One button clears them.
+
+`base_version` carries the `call_records.version` the draft was typed against,
+so a record that has moved on since is reported rather than silently
+overwritten by older answers.
+
+## On the agent's own dashboard
+
+**My calls** ranks unfinished work second, below a stove ID somebody else took
+and above a stove nobody has called. That buyer has already given their time
+once and is owed the shortest possible second call, and it is the quickest
+complete record on the list.

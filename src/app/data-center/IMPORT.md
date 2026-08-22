@@ -235,3 +235,52 @@ stops being true, turning it off is an update rather than a release.
   has sent the same odd headers twice.
 - **No partial-batch commit by selection.** A batch commits every valid row.
   Excluding some means fixing the file or resolving them as exceptions.
+
+---
+
+# The bench, for somebody typing forty of them
+
+The bulk path is for a backlog already in a spreadsheet. The bench is for the
+other half of the same job - receipts as they come in - and the person doing it
+is holding a stack of paper and typing the same eleven fields over and over.
+
+## What sat between two records
+
+Opening a stove replaced the whole navigator with the form. So finishing one
+receipt and starting the next was: back to the consignment, find your place in
+a paginated table of stove IDs, click the next one, wait for it to load. Three
+actions and a page change between every two records.
+
+## What sits there now
+
+**The consignment is beside the form, not behind it.** Every stove ID in it, at
+a glance, with what has been done to each and one click to switch. The list is
+fetched once when the consignment opens and handed to both the table and the
+rail, so switching stoves costs no round trip at all.
+
+| | |
+|---|---|
+| **Progress** | "12 of 40 recorded", with a bar. Typing forty receipts with no sense of how many are left is the part people describe as endless |
+| **Search** | matches anywhere in the ID, because the stack of paper is not in the system's order and nobody reads a serial from the front |
+| **Save and next** | the whole back-find-click-wait sequence as one button, labelled with how many are left |
+| **Ctrl+S** | save a draft, stay here |
+| **Ctrl+Enter** | save as finished, open the next one |
+
+The validation behind the button, the shortcut and "save and next" is one
+function. Two copies is how one route ends up accepting a record the other
+refuses, which is this module's own rule.
+
+A stove turns green in the rail the moment its save returns, via a local flag -
+not a placeholder written into `sale_id`, which holds a real id everywhere else.
+
+## Two rules that look alike and are not
+
+The open record is pinned in the rail so that finishing it - which makes it
+"recorded", which the "to type" filter drops - does not scroll the list out
+from under the form.
+
+That pin does **not** apply to the search. A search is a deliberate act with a
+different question behind it: "is PRV000123 in this consignment". Pinning the
+open row through a search meant a term matching nothing still showed one row,
+so the rail could never answer no - which is the wrong answer for somebody
+holding a receipt for a stove that turns out to be in a different consignment.

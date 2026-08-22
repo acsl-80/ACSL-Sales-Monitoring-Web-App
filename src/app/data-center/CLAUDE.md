@@ -191,6 +191,19 @@ observable without seeding. Seed before claiming anything.
   label's whole text content - and the selected `<option>` is inside it. A
   field labelled "Partner" answered to "PartnerAny partner", so no screen
   reader and no test could name it. Use `htmlFor` with an explicit id.
+- **A skipped test is not a passing test.** A spec whose setup helper gives up
+  and calls `test.skip` reports green while proving nothing. The bench spec did
+  exactly that - its helper clicked `tbody tr` through three tables that share
+  that selector, raced the render, returned false, and skipped all four tests
+  over a feature nobody had checked. When a helper can fail, make it wait on
+  something that exists at exactly one depth, and read the skip count in a run
+  as carefully as the fail count.
+- **Reuse the gate that is already there.** Two draft actions were written with
+  their own `can("call_records.edit")` check next to the switch that already
+  requires it for every non-read action - and `can` does not exist in that
+  function, so every draft save answered 500. The generic error handler is
+  correct to say nothing useful; that is why the check belongs where the other
+  checks are rather than beside the new code.
 - Commit at every working state with a clear message.
 - Merge `main` into this branch weekly. `main` moves daily on its own via the
   sync cron and deploys straight to production.

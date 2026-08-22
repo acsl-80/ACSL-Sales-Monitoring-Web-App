@@ -919,6 +919,44 @@ statements are `if not exists` so the migration finds them already built.
   parallel. Acceptable for a once-per-mount call; worth folding into one
   statement if it is ever asked for more often.
 
+## Phase 18: work that survives being interrupted
+
+Two surfaces, one observation: the people using this module are interrupted
+constantly, and both of the places they type into lost work when they were.
+
+### A call that cuts off
+
+The call form keeps itself as the agent types - two seconds after typing stops,
+and again on a deliberate close. Reopening puts the answers back with a banner
+saying whose they are and that nothing has reached the record. The agent's own
+dashboard ranks unfinished calls above stoves nobody has rung.
+
+`data_center.call_drafts` is its own table rather than a column on
+`call_records`, and the reason is load-bearing: `has_call_record` is literally
+`(cr.sale_id is not null)`, so creating that row to hold a draft would have made
+every half-typed form read as a record the call centre had worked. Full
+reasoning in CHANGING-THE-CALL-TABLE.md.
+
+Keyed by the sale, not the agent, because records move between agents and a
+draft keyed to whoever typed it would be stranded on every reassignment.
+
+### A bench somebody types forty receipts at
+
+The consignment now sits beside the form: every stove ID at a glance, a search
+that matches anywhere in the ID, a progress bar, one click to switch, and
+**Save and next** - which is the old back-find-click-wait sequence as one
+button. Ctrl+S saves a draft, Ctrl+Enter finishes and opens the next.
+
+The consignment's stoves are fetched once when it opens and shared by the table
+and the rail, so moving between records costs no round trip.
+
+### What the tests nearly missed
+
+The bench spec's helper clicked `tbody tr` through three tables that share that
+selector, raced the render, and returned false - so all four tests skipped.
+Four green skips proving nothing, while the feature went unchecked. The helper
+now waits on something that exists at exactly one depth.
+
 ### Deliberately not done
 
 - **Promoting a question to a real column.** The registry supports it and
