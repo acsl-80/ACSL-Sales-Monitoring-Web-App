@@ -137,6 +137,30 @@ observable without seeding. Seed before claiming anything.
   runs inside a request.
 - Index the columns queries filter or join on, and check the plan for
   sequential scans.
+- **A precomputed measure must be summable, or it cannot carry a period.**
+  Analysis files every metric at month grain so any range is a sum of months,
+  which is what makes a quarter, a year and year-on-year one mechanism instead
+  of five precomputed period sets. The price is absolute: a sum of monthly
+  counts is the range's count, and a sum of monthly medians is nothing at all.
+  So velocity stores a days-to-sell histogram rather than a median, and
+  absorption stores eligible and within-window as two counts rather than a
+  percentage. A stored rate carries no denominator and cannot be
+  re-aggregated; the client divides.
+- **Never stack nested subsets.** A funnel's stages each contain the next, so
+  stacking them counts one record once per stage and the top edge of the chart
+  becomes a number that describes nothing. Bands of one population (age,
+  days-to-sell) are parts of a whole and stack correctly. Ask which one it is
+  before choosing the mark.
+- **A table's margins add up the rows it actually drew.** A footer summing
+  every row above a body capped at the first twenty prints a total that
+  contradicts the column beneath it. Cap the body, sum the cap, and say how
+  many rows are only in the export.
+- **A threshold and its severity both come from `workflow_config`.** Charts
+  colour a band from the `severity` the server sent beside the number, never
+  from a hex the component holds. Re-grading a limit in Settings has to move
+  the chart, or it is a default rather than configuration. Band floors are
+  derived with `lag()` from the top edge above them so an edit cannot open a
+  gap, and compute raises rather than starting if the top band is not open.
 
 ## Reliability
 
@@ -204,6 +228,21 @@ observable without seeding. Seed before claiming anything.
   function, so every draft save answered 500. The generic error handler is
   correct to say nothing useful; that is why the check belongs where the other
   checks are rather than beside the new code.
+- **A placeholder helper that loses its `$` fails only on the filtered path.**
+  `p()` returned `${args.length}` where it meant `$${args.length}`, so every
+  predicate it built read `= 1` instead of `= $1`. The unfiltered list answered
+  200 and so did `organizationId`, because that parameter is built by
+  `buildTransferScopeSql` rather than by the helper - which made a one-character
+  typo look like a filter-specific bug for half an hour. When one code path
+  through a query builder 500s and another does not, probe them one filter at a
+  time against the deployed function before theorising about SQL.
+- **`sr-only` is visible to a selector and unclickable by a user.** ChartFrame
+  renders a hidden list of the same drill links so every chart is reachable by
+  keyboard, and those anchors sit earlier in the DOM than the visible cells. A
+  loose `a[href*="..."]` resolves to one of them, reports it visible, and then
+  times out because the page is on top of it. Scope drill assertions to the
+  element the user would actually click, and assert the keyboard route
+  separately.
 - Commit at every working state with a clear message.
 - Merge `main` into this branch weekly. `main` moves daily on its own via the
   sync cron and deploys straight to production.

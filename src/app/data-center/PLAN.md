@@ -53,6 +53,22 @@ Import is in the MVP because of what the data showed. See Evidence below.
 Computation and dashboards, then widening the route grant past `super_admin`,
 then whatever further tools the dashboards prove necessary.
 
+### Analysis: the seventh area (Phase 20, slice 1 built)
+
+The six areas collect. Analysis says what the collection means, which is the
+"further tools the dashboards prove necessary" above, now named.
+
+Built: stock ageing at partners against a configured threshold, absorption,
+velocity as a distribution, and the creditable-yield funnel with its leak
+decomposition. Every metric carries a month, so any range - a quarter, a
+year, one year against another - is a sum of months rather than a
+precomputed period set. See `ANALYSIS.md`.
+
+Designed and not built: data integrity by partner and rep, fuel and baseline
+displacement (the carbon core, and the fields have been collected since
+Phase 4 without ever being aggregated), sales-model performance, call centre
+throughput, and audit exposure.
+
 ## Non-goals
 
 Recorded so this work does not quietly absorb them:
@@ -112,7 +128,7 @@ from the caller's JWT before doing anything else.
 
 | Function | Job |
 |---|---|
-| `data-center-read` | Serves Table 1, Table 2 and dashboards. Read only |
+| `data-center-read` | Serves Table 1, Table 2, dashboards, Analysis and unsold stock. Read only |
 | `data-center-write` | Direct entry against `call_records` |
 | `data-center-import` | Upload, validate, dry run, commit, rollback |
 | `data-center-compute` | Aggregates into `metric_snapshots`. Scheduled, never on page load |

@@ -1078,6 +1078,186 @@ to run against production before trusting any page that reports on this.
   date filter there is not a filter, it is a recompute per range, and offering
   a control that silently did nothing would be worse than not offering one.
   Ranged metrics are a compute change, not a UI one.
+
+  **Partly overturned by Phase 20**, and worth reading as a correction rather
+  than a reversal. The reasoning holds exactly: it IS a compute change, and
+  Phase 20 made it. Every Analysis metric is filed at month grain, so any range
+  is a sum of months and the control narrows something real. What the entry got
+  right and Phase 20 kept is the refusal to offer a control that does nothing -
+  which is why the month grain went into compute rather than a date picker into
+  the UI. The Dashboard scorecards themselves are still unranged and still
+  offer no period, for the original reason.
 - **A period control on the stove record.** The timelines on that page are one
   record's own history. A filter there would hide calls somebody made, which is
   the opposite of what a complete record is for.
+
+## Phase 20: Analysis, the seventh area
+
+Six areas collect. None of them said what the collection meant. The Dashboard
+counts states - 40% unverified - and says nothing about why, who, or where.
+Meanwhile `baseline_stove` and `current_stove` had been collected on every call
+since Phase 4 and had never once been aggregated.
+
+Analysis is the area that turns the data into decisions. Slice 1 is the two
+questions the owner named: which partner is sitting on stock, and how much of
+what was sold is actually usable.
+
+### What it computes
+
+`data_center.compute_analysis(p_run_id)`, a third function beside
+`compute_metrics` and `compute_scorecards`, called inside the same run id, the
+same connection and the same advisory lock, so Analysis and the Dashboard can
+never disagree about as-of-when.
+
+| Metric | Shape | Answers |
+|---|---|---|
+| `analysis.stock_age` | partner or state x age band | Which stock is past the line, and who holds it |
+| `analysis.absorption` | partner x (eligible, within window) | Whether a partner is slow by habit rather than by circumstance |
+| `analysis.velocity` | partner x days-to-sell band | How long stock takes to move, as a distribution |
+| `analysis.yield_funnel` | partner x gate | How much of what was sold survives every gate |
+| `analysis.yield_leak` | partner x reason | What stops the rest, one reason per record |
+
+**Creditable** is the point of the second half. Verified is not the finish
+line: a record also has to be complete on the module's own definition (never
+`sales.status`), have its stove ID confirmed, not be flagged as a second Save80
+in a household already counted, not be waiting on a correction, and not share a
+phone number with another sale nobody has confirmed.
+
+### Every metric carries a month, and that decided the rest
+
+Analysis has to answer a month, a quarter, six months, one year, and one year
+against another. Precomputing each named period multiplies both the rows and
+the passes over `sales` by the number of periods offered, and still cannot
+answer a range nobody thought to list.
+
+So every metric is filed by month and every range is a sum of months. Quarters,
+halves, years, rolling windows and year-on-year all fall out for free with no
+compute change, and "year on year" needed no feature of its own: count the
+months in the range and step back that many.
+
+The price is that **every stored measure must be summable**. A sum of monthly
+counts is the range's count; a sum of monthly medians is nothing at all. That is
+why `velocity` stores a histogram rather than a median and p90, and why
+`absorption` stores two counts rather than a percentage - a stored rate carries
+no denominator and cannot be re-aggregated, so the client divides.
+
+### The reconciliation the whole area rests on
+
+Three properties, proved against the preview before any durable test was
+written and now asserted by `e2e/data-center-analysis.spec.ts`:
+
+- The stock bands sum to the unsold count, and the partner cut equals the
+  location cut. They would not if a band had a gap, which is why band floors
+  are derived with `lag()` from the top edge above them rather than stated, and
+  why the run raises rather than starting without an open top band.
+- The yield funnel never widens as it goes down, because each stage's filter
+  contains the one before it.
+- The leak reasons sum to sold minus creditable, because every non-creditable
+  sale is charged to exactly one reason - the first gate it failed. Overlapping
+  tags would turn a decomposition into a word cloud that adds to more than the
+  problem.
+
+Measured on the preview: 425 unsold stoves, bands summing exactly, 148 in the
+15-29 band, 199 in 30-59 and 78 in 60-89.
+
+### One ordering that is load-bearing
+
+`never_called` is tested before `not_verified`. `not_verified` is the column's
+DEFAULT, so a record created the moment an agent opened it carries that value
+having never been dialled; only `attempt_count` separates "we rang and got
+nowhere" from "we have not rung". The preview surfaced this directly - three
+call records, all `not_verified`, none with a single attempt. Reversed, the
+chart would report the call centre as having failed on work it has not been
+given.
+
+### The frame, and why it is a component rather than a habit
+
+`ChartFrame` makes render, drill and export one contract. This ROADMAP has
+carried "no drill-down from a chart" as a standing gap since the dashboard bars
+shipped twice without one, and CLAUDE.md already requires that every scorecard
+exports and that drill-through is a URL. A chart showing a number nobody can
+open and nobody can take away is a picture of an answer.
+
+It throws in development when a chart has neither, and the e2e spec checks the
+contract from the outside so it also holds for charts nobody has written yet.
+
+It also renders an `sr-only` list of the same cells as real links, because an
+SVG `<Bar onClick>` is neither focusable nor nameable. That makes every mouse
+drill reachable by keyboard, and it lets specs assert by role instead of
+clicking SVG paths.
+
+### Charts: recharts for axes, DOM for grids
+
+recharts was already a dependency at `^2.15.4` with a wrapper at
+`src/components/ui/chart.tsx` that nothing imported, so the standing
+hand-rolled-visuals policy - which exists to avoid `package.json` and
+`bun.lock` churn in the daily contractor merge - does not bite here.
+
+The heatmap is a real `<table>` regardless. recharts has no heatmap mark, and
+the scatter-of-squares workaround gives cells that do not tile and fragile
+hit-testing. As a table it is keyboard navigable, readable by a screen reader,
+its cells are already anchors so drill-through needs no click handler, it
+prints, and a test can sum it - which is how the margin reconciliation above is
+actually checked rather than asserted in a comment.
+
+### A new surface, because the drill had nowhere to go
+
+`/data-center/stock`, over `public.stove_ids_base`. No filter could ever have
+reached this population: `records`, `call_queue` and every other list is built
+on `v_sold_stoves`, which begins `from public.sales`, and a stove that has not
+been sold has no row in any of them. A different set, not a narrower one.
+
+Its band filter is a **code**, resolved server-side against the same
+`data_center.age_bands` function compute bucketed with, so the list cannot come
+to mean something the chart did not, and re-grading a band in Settings moves
+both together.
+
+### Permission
+
+A new key, `analysis.view`, held by `data_manager` and nobody else. Not
+`dashboard.view`, which every level in the module holds: Analysis crosses what
+a buyer told an agent on the phone with the partner and the place they bought
+in, and the module already keeps Table 1 and Table 2 as separate grants for
+exactly that reason.
+
+The same commit reconciled a drift it would otherwise have deepened. The server
+`FeatureKey` typed `access.manage`, which no level granted and no UI could
+offer, while the admin function's own gate, the Settings page, the Explore
+card, two specs and the `data_manager` comment all used `grants.manage`, which
+was not in the type at all. There was only ever one permission there.
+
+### Three defects found while building, all real
+
+- **The funnel time series was stacked.** Its stages are nested subsets, so
+  stacking counted the same record up to five times and the top edge of the
+  chart was a number describing nothing.
+- **The heatmap footer summed every row while the body drew the first twenty.**
+  The visible table did not add up to its own total, which would have failed
+  the margin test against correct data.
+- **`p()` returned `1` where it meant `$1`.** Every filter it built landed in
+  the SQL as a bare integer. The unfiltered list worked and so did
+  `organizationId`, because that parameter comes from `buildTransferScopeSql`
+  rather than from the helper - which made a typo look like a filter problem.
+  Found by probing one filter at a time against the deployed function.
+
+### Still open
+
+- **Boards 3 to 7 are designed and not built:** data integrity by partner and
+  rep, fuel and baseline displacement, sales-model performance, call centre
+  throughput, and audit exposure. Slice 1 was the owner's two stated priorities
+  plus the machinery the rest will reuse.
+- **`baseline_stove` and `current_stove` are still jsonb.** They graduate to
+  real columns when Board 4 lands, per the module's own rule. Note the
+  transition trap: `splitPayload` routes new writes to the column while old
+  rows keep the value only in `answers`, so compute must coalesce until the
+  backfill lands or the chart shows a cliff on the flip date.
+- **No index yet supports the ageing scan.** `stove_ids_base` indexes
+  `factory`, `is_archived` and `sales_reference` only. A
+  `CREATE INDEX CONCURRENTLY` file is needed in `supabase/manual/` before this
+  meets production volume.
+- **`call_records` has no `verified_at`**, so "verified in month M" is a cohort
+  (sold in M, now verified), not an event. Stated wherever it is drawn.
+- **Not measurable, because not collected:** fuel spend, household size,
+  cooking time, and usage over time. The highest-value additions to the call
+  form are household size, fuel spend or collection time, and a `verified_at`
+  timestamp.
