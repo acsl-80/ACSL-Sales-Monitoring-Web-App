@@ -1746,9 +1746,26 @@ serve(async (req) => {
                          where id = $1`,
                   args: [row.id, saleId, userId],
                 });
+                /*
+                 * Release the claim now the sale exists.
+                 *
+                 * The claim is a lock held WHILE a batch commits, which is
+                 * what its own table comment says, and the lock's job is done
+                 * the moment public.sales has the row. From here the real
+                 * guard is stock: create-sale refuses a stove already marked
+                 * sold, so nothing depends on this row surviving.
+                 *
+                 * It used to be updated with the sale id and left behind, and
+                 * that quietly made an import once-ever. Delete the sale
+                 * through the sales app later and the stove returns to
+                 * available, but the claim stayed - so re-importing that
+                 * receipt was refused with "Another import is already
+                 * committing this stove", which by then was neither true nor
+                 * something anybody could act on.
+                 */
                 await conn.queryObject({
-                  text: "update data_center.import_claims set sale_id = $2 where row_id = $1",
-                  args: [row.id, saleId],
+                  text: "delete from data_center.import_claims where row_id = $1",
+                  args: [row.id],
                 });
 
                 /**
@@ -1846,6 +1863,80 @@ serve(async (req) => {
         requireFeature("import.commit");
         const batchId = String(body.batchId ?? "");
         if (!batchId) throw new BadRequest("batchId is required");
+
+        /*
+         * Refuse if the call centre has already worked these records.
+         *
+         * Rollback deletes each sale through `delete-sale`, which is a hard
+         * delete on public.sales - and six data_center tables cascade off
+         * that: call_records, call_attempts, call_drafts, assignment_items,
+         * shared_phones and serial_rematches. So rolling back a batch after
+         * agents have started calling does not just undo the import, it
+         * destroys the calls, and there is no way back.
+         *
+         * IMPORT.md said rollback "cannot undo anything that happened to
+         * those sales in between", which reads as a limitation and is
+         * actually a deletion. Nothing checked, and rollback is exactly the
+         * button somebody reaches for when an import went in wrong.
+         *
+         * Refused rather than warned, and the count is named, because the
+         * person pressing this cannot see the call records from here. If the
+         * batch genuinely has to go, the calls come off first, deliberately.
+         */
+        const attached = await withReadConnection(async (conn) => {
+          const r = await conn.queryObject<{
+            with_record: number;
+            attempts: number;
+            with_draft: number;
+          }>({
+            // call_records and call_drafts are both keyed by sale_id as their
+            // primary key, so neither join can fan a row out.
+            text: `select
+                     count(*) filter (where cr.sale_id is not null)::int as with_record,
+                     coalesce(sum(cr.attempt_count), 0)::int             as attempts,
+                     count(*) filter (where cd.sale_id is not null)::int as with_draft
+                   from data_center.import_rows r
+                   left join data_center.call_records cr on cr.sale_id = r.sale_id
+                   left join data_center.call_drafts  cd on cd.sale_id = r.sale_id
+                   where r.batch_id = $1
+                     and r.status = 'committed'
+                     and r.sale_id is not null`,
+            args: [batchId],
+          });
+          return r.rows[0] ?? { with_record: 0, attempts: 0, with_draft: 0 };
+        });
+
+        const touched = Number(attached.with_record) + Number(attached.with_draft);
+        if (touched > 0) {
+          const say = (n: number, one: string, many: string) =>
+            `${n} ${n === 1 ? one : many}`;
+          const parts = [
+            say(Number(attached.with_record), "sale carries a call record", "sales carry call records"),
+          ];
+          if (Number(attached.attempts) > 0) {
+            parts.push(say(Number(attached.attempts), "logged call attempt", "logged call attempts"));
+          }
+          if (Number(attached.with_draft) > 0) {
+            parts.push(say(Number(attached.with_draft), "has an unsaved draft", "have unsaved drafts"));
+          }
+          return json(
+            {
+              error:
+                `This batch cannot be rolled back: ${parts.join(", ")}. ` +
+                "Rolling back deletes the sales, and the call centre's work on them " +
+                "goes with it and cannot be recovered. Clear those records first if " +
+                "the batch really has to be reversed.",
+              code: "call_work_attached",
+              details: {
+                withRecord: Number(attached.with_record),
+                attempts: Number(attached.attempts),
+                withDraft: Number(attached.with_draft),
+              },
+            },
+            409,
+            cors,
+          );
+        }
 
         const sliceSize = Number(
           await withReadConnection((c) => readConfig(c, "import.slice_size", 25)),
