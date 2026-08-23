@@ -29,13 +29,30 @@ export function palette() {
   if (cache) return cache;
   if (typeof window === "undefined" || !document?.documentElement) return FALLBACK;
 
-  const style = getComputedStyle(document.documentElement);
+  /*
+   * Read from the AREA element, not from :root.
+   *
+   * `--dc-accent` is redefined per area on `.dc-root[data-area="..."]`, so
+   * documentElement only ever carries the module's olive default. Reading
+   * there gave the leak chart olive bars on a rust page - and it was invisible
+   * in review precisely because olive is a real module colour rather than an
+   * obvious mistake. The heatmap was right the whole time because it uses
+   * `color-mix(... var(--dc-accent) ...)` in CSS, which resolves inside the
+   * subtree; only the values pulled into JS for recharts were wrong.
+   *
+   * The severity tokens live on :root and are inherited, so reading them from
+   * the area element gets the same answer.
+   */
+  const area = document.querySelector(".dc-root[data-area]");
+  const style = getComputedStyle(area ?? document.documentElement);
   const read = (name, fallback) => {
     const value = style.getPropertyValue(name);
     return typeof value === "string" && value.trim() ? value.trim() : fallback;
   };
 
-  cache = {
+  // Only cached once the area element exists. Before it mounts we would be
+  // caching the olive default forever, which is the bug above wearing a hat.
+  const resolved = {
     ok: read("--dc-sev-ok", FALLBACK.ok),
     okSoft: read("--dc-sev-ok-soft", FALLBACK.okSoft),
     warning: read("--dc-sev-warning", FALLBACK.warning),
@@ -46,7 +63,8 @@ export function palette() {
     accentSoft: read("--dc-accent-soft", FALLBACK.accentSoft),
     muted: FALLBACK.muted,
   };
-  return cache;
+  if (area) cache = resolved;
+  return resolved;
 }
 
 /**
