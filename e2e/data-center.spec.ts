@@ -151,12 +151,19 @@ test.describe("access and the log live on Settings, not on the hub", () => {
     await expect(page.getByRole("heading", { name: "Recent changes" })).toBeVisible();
 
     // The seeded grants are listed with their levels.
-    await expect(page.getByText("callcentre@preview.acsl.test")).toBeVisible();
     /**
-     * Anchored, because "manager@" is a substring of "datamanager@" and a
-     * loose match started resolving to two people the day that account was
-     * seeded.
+     * Both anchored, for two different reasons that arrived a day apart.
+     *
+     * "manager@" is a substring of "datamanager@", so a loose match started
+     * resolving to two people the day that account was seeded. And Settings
+     * has since grown a send-back routing panel whose "Add somebody" select
+     * lists every candidate as "Name - email", so every address on this page
+     * now appears twice.
+     *
+     * Anchoring pins both to the grants list, where the row starts with the
+     * address and the select option starts with the person name.
      */
+    await expect(page.getByText(/^callcentre@preview\.acsl\.test/)).toBeVisible();
     await expect(page.getByText(/^manager@preview\.acsl\.test/)).toBeVisible();
   });
 
