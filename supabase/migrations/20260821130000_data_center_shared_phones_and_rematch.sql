@@ -68,6 +68,12 @@ create index if not exists shared_phones_sale_idx on data_center.shared_phones (
 comment on table data_center.shared_phones is
   'Every stove that shares a phone number with another stove. One phone can hold several stoves - one household, one number - but two people cannot own one stove, so this is a register of the legitimate case and a place to catch the mistyped one.';
 
+-- Guarded like every other trigger in this schema since 20260821030000.
+-- Postgres has no `create trigger if not exists`, so a bare create makes the
+-- whole migration fail on a second run - and that is what stalled the preview
+-- branch's migration runner here for two days while hand-applied schema made
+-- everything look fine.
+drop trigger if exists audit_shared_phones on data_center.shared_phones;
 create trigger audit_shared_phones
   after insert or update or delete on data_center.shared_phones
   for each row execute function data_center.log_change('id');
