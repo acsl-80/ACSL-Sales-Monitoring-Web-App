@@ -1,5 +1,5 @@
 import { test, expect } from "@playwright/test";
-import { signIn, USERS } from "./helpers";
+import { signIn, USERS, callEdgeFunction } from "./helpers";
 
 /**
  * The standing requirement for this whole module: the sales monitoring web app
@@ -79,5 +79,87 @@ test.describe("the sales app is unaffected", () => {
     await page.waitForLoadState("domcontentloaded");
 
     expect(errors, `page errors: ${errors.join(" | ")}`).toEqual([]);
+  });
+
+  /**
+   * create-sale still refuses a duplicate phone for everyone who did not ask.
+   *
+   * This module added `allowSharedPhone` to `create-sale`, the one pre-existing
+   * edge function it touches and the one the Sell Stove form and the Flutter
+   * app both call on their main path. The rule it relaxes - one live sale per
+   * phone number - is a real guard against an agent mistyping a number in front
+   * of a customer, and only the digitalisation path is allowed to say it means
+   * a shared number.
+   *
+   * The opt-in is `body.allowSharedPhone === true`, deliberately strict, so the
+   * third case below matters as much as the first: a caller that sends a
+   * truthy string must NOT get through. Reasoning about the diff says all three
+   * refuse; this asserts it, and it is the only test in the suite that touches
+   * the write path of a function real users hit today.
+   */
+  test("create-sale still refuses a duplicate phone unless asked in so many words", async ({
+    page,
+  }) => {
+    await signIn(page, USERS.admin);
+
+    const existing = await callEdgeFunction(page, "data-center-read", {
+      action: "records",
+      limit: 1,
+    });
+    const sale = (
+      existing.body as {
+        data?: {
+          rows?: {
+            primary_phone?: string;
+            partner_name?: string;
+            organization_id?: string;
+          }[];
+        };
+      }
+    ).data?.rows?.[0];
+    /*
+     * Asserted, not skipped. The seed guarantees sales with phone numbers, so
+     * "no sale to collide with" means the read broke, not that the fixture is
+     * thin - and a skip here would report green over the one write path in
+     * this file. `v_sold_stoves` renames sales.phone to primary_phone, which
+     * is what made this skip on its first run.
+     */
+    expect(
+      sale?.primary_phone,
+      "no seeded sale with a phone: the records read is broken, not the fixture",
+    ).toBeTruthy();
+
+    const attempt = (allowSharedPhone?: unknown) =>
+      callEdgeFunction(page, "create-sale", {
+        stoveSerialNo: "NON-EXISTENT-FOR-THIS-TEST",
+        endUserName: "Non-interference probe",
+        phone: sale!.primary_phone,
+        contactPerson: "Probe",
+        contactPhone: "08030000999",
+        partnerName: sale!.partner_name ?? "Probe partner",
+        salesDate: "2026-08-23",
+        amount: 1000,
+        transactionId: `NI-${Date.now()}-${Math.floor(Math.random() * 1e6)}`,
+        // An admin belongs to no partner, so the org has to be named or the
+        // function refuses at 400 long before it reaches the phone rule - and
+        // a 400 here would look like a pass turning into a fail for the wrong
+        // reason.
+        organizationId: sale!.organization_id,
+        ...(allowSharedPhone === undefined ? {} : { allowSharedPhone }),
+      });
+
+    // Exactly the request the Sell Stove form and the Flutter app make.
+    const asTheFormSends = await attempt(undefined);
+    expect(
+      asTheFormSends.status,
+      `expected the duplicate-phone refusal, got ${JSON.stringify(asTheFormSends.body)}`,
+    ).toBe(409);
+    expect(JSON.stringify(asTheFormSends.body)).toMatch(/already used on sale/i);
+    // And the response gains nothing it did not have before.
+    expect(asTheFormSends.body).not.toHaveProperty("shares_phone_with");
+
+    expect((await attempt(false)).status).toBe(409);
+    // Truthy, but not `true`. Strictness is the whole guard.
+    expect((await attempt("yes")).status).toBe(409);
   });
 });
