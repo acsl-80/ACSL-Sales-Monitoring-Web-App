@@ -67,6 +67,31 @@
 }
 
 /*
+ * Severity, for the Analysis charts.
+ *
+ * These are state colours, not an area accent, so they keep their meanings
+ * everywhere: a critical band is the same red whichever chart it appears in.
+ * Which BAND is critical is not decided here - that comes from `severity` in
+ * workflow_config, alongside the threshold itself, so re-grading a limit in
+ * Settings recolours the chart without a deploy.
+ *
+ * On :root and as raw colours because recharts needs a resolved colour string
+ * rather than a Tailwind class or a var reference; lib/palette.js reads them
+ * back once. That is also why these are the only chart colours in the module
+ * and no chart component holds a hex of its own.
+ *
+ * Each clears 4.5:1 on white, so a severity label is readable text.
+ */
+:root {
+  --dc-sev-ok: #3f7d3f;
+  --dc-sev-ok-soft: #e4f1e4;
+  --dc-sev-warning: #9a5b0d;
+  --dc-sev-warning-soft: #fbeedb;
+  --dc-sev-critical: #a32626;
+  --dc-sev-critical-soft: #fbe3e3;
+}
+
+/*
  * One accent per area: wayfinding, carried from the Explore card through to
  * the page it opens. Each triple is (text/fill on white, hover/pressed, tint).
  * All accent values hold >= 4.5:1 against white and --dc-surface-muted, so an
@@ -113,6 +138,23 @@
   --dc-accent: #414750;
   --dc-accent-strong: #2f343b;
   --dc-accent-soft: #e7e9ed;
+}
+
+/*
+ * Analysis. Rust: the last hue on the wheel that is not already carrying an
+ * area and is not a semantic state. It reads as its own place beside the teal
+ * of the call centre and the ochre of partner records, and at 7.7:1 on white
+ * it clears AA with room to spare.
+ *
+ * The severity colours the charts use are NOT here. Whether a band is fine,
+ * a warning or critical comes from `workflow_config` with the data, because a
+ * threshold re-graded in Settings has to move the chart. Only the area's own
+ * identity is a token.
+ */
+.dc-root[data-area="analysis"] {
+  --dc-accent: #8c3a3a;
+  --dc-accent-strong: #6f2d2d;
+  --dc-accent-soft: #f6e2e2;
 }
 
 /*

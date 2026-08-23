@@ -1536,3 +1536,130 @@ export const dataCenterDashboard = {
       "run",
     ),
 };
+
+/**
+ * The Analysis area.
+ *
+ * `totals` is the requested range collapsed, with `period` stripped from the
+ * dimension: what the cross-tabs and the funnel draw. `series` keeps the month
+ * but drops the first axis: what the trend lines draw. Two shapes because two
+ * things are being drawn, and keeping partner AND month AND bucket in one
+ * payload would be the full cross product for the sake of a twelve-point line.
+ *
+ * The bands travel with the data. A chart colours a bar from `severity` in
+ * `workflow_config`, never from a threshold it holds itself, because a limit
+ * re-graded in Settings has to move the chart or it is not configuration.
+ */
+export type AnalysisDimension = {
+  by?: string;
+  key?: string;
+  label?: string;
+  ord?: number | null;
+  by2?: string;
+  key2?: string;
+  label2?: string;
+  ord2?: number | null;
+  period?: string;
+};
+
+export type AnalysisRow = {
+  metric_key: string;
+  dimension: AnalysisDimension;
+  value_num: number | null;
+};
+
+export type AnalysisSeriesRow = {
+  metric_key: string;
+  by: string | null;
+  by2: string | null;
+  key2: string | null;
+  label2: string | null;
+  ord2: number | null;
+  period: string;
+  value_num: number | null;
+};
+
+/** A configured band. `min_days` is derived server-side from the band below. */
+export type AnalysisBand = {
+  ord: number;
+  code: string;
+  label: string;
+  severity: "ok" | "warning" | "critical";
+  min_days: number;
+  max_days: number | null;
+};
+
+export type AnalysisData = {
+  totals: AnalysisRow[];
+  series: AnalysisSeriesRow[];
+  /** Every month the current run holds, oldest first. Drives the range picker. */
+  months: string[];
+  stockBands: AnalysisBand[];
+  velocityBands: AnalysisBand[];
+  from: string | null;
+  to: string | null;
+  computedAt: string | null;
+  isStale: boolean;
+  staleAfterHours: number;
+  lastRun: {
+    finished_at: string | null;
+    status: string;
+    duration_ms: number | null;
+  } | null;
+};
+
+export const dataCenterAnalysis = {
+  /**
+   * Bounds are months (`2026-08`), not dates, and both are optional: with
+   * neither, the answer covers everything the run holds.
+   */
+  get: (from?: string | null, to?: string | null) =>
+    call<AnalysisData>("data-center-read", "analysis", {
+      from: from ?? null,
+      to: to ?? null,
+    }),
+};
+
+
+/**
+ * Unsold stock sitting at a partner: what the ageing chart drills into.
+ *
+ * A separate population from `records`, not a narrower one. Every records view
+ * begins `from public.sales`, and a stove that has not been sold has no row
+ * there, so no filter could ever have reached these.
+ */
+export type StockRow = {
+  stove_id: string;
+  organization_id: string;
+  partner_name: string;
+  transaction_id: string | null;
+  factory: string | null;
+  status: string;
+  state: string | null;
+  /** The date the consignment went out, as text. Never through a JS Date. */
+  transferred_on: string | null;
+  days: number;
+};
+
+export type StockCursor = { transferredOn: string | null; stoveId: string };
+
+export type StockFilters = {
+  organizationId?: string;
+  /** A band CODE from workflow_config, resolved server-side against the same
+   *  function compute bucketed with, so the list cannot mean something the
+   *  chart did not. */
+  ageBucket?: string;
+  state?: string;
+  search?: string;
+};
+
+export const dataCenterStock = {
+  list: (filters: StockFilters, cursor: StockCursor | null = null, limit = 100) =>
+    call<{
+      rows: StockRow[];
+      hasMore: boolean;
+      pageSize: number;
+      nextCursor: StockCursor | null;
+      scope: string;
+    }>("data-center-read", "stock", { filters, cursor, limit }),
+};

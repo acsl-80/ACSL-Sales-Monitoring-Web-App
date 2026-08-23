@@ -4,6 +4,7 @@ import StoveFinder from "./features/stove-record/StoveFinder";
 import { DATA_CENTER_FEATURES } from "./lib/features";
 import {
   BarChart3, PhoneCall, Handshake, Database, Upload, Settings2, Lock, ArrowRight,
+  TrendingUp,
 } from "lucide-react";
 
 /**
@@ -69,6 +70,14 @@ const AREAS = [
     name: "Bulk Import",
     blurb: "Receipts typed at the bench or uploaded in bulk, released on confirmation.",
     icon: Upload,
+  },
+  {
+    key: DATA_CENTER_FEATURES.ANALYSIS_VIEW,
+    href: "/data-center/analysis",
+    area: "analysis",
+    name: "Analysis",
+    icon: TrendingUp,
+    blurb: "Which partner is sitting on stock, and how much of what was sold is usable.",
   },
   {
     key: DATA_CENTER_FEATURES.GRANTS_MANAGE,

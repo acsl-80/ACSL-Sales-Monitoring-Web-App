@@ -672,6 +672,158 @@ serve(async (req) => {
         });
       }
 
+      /**
+       * Unsold stock sitting at a partner: the records behind the ageing chart.
+       *
+       * WHY THIS IS A NEW ACTION AND NOT A FILTER
+       *
+       * `records` and `call_queue` are built on `v_sold_stoves`, which begins
+       * `from public.sales`. A stove that has not been sold has no row there
+       * and never will, so no filter added to `RecordsFilters` could ever
+       * reach this population. It is a different set, not a narrower one.
+       *
+       * WHY THE BAND FILTER READS THE CONFIG
+       *
+       * `ageBucket` is resolved against `data_center.age_bands`, the same
+       * function `compute_analysis` bucketed with. So the drill cannot mean
+       * something different from the bar that was clicked, and re-grading a
+       * band in Settings moves the chart and this list together. Repeating the
+       * numbers here would be two definitions of "critical" that agree until
+       * somebody edits one.
+       *
+       * Keyset on (transfer_sales_date, stove_id). The date is a `date`, so
+       * the microsecond truncation that bites timestamptz cursors does not
+       * apply - but if this is ever re-cut on transfer_date, it does.
+       */
+      case "stock": {
+        const superAdmin = isSuperAdmin(profile.role);
+        const resolved = superAdmin
+          ? { accessRole: null, features: [] as string[] }
+          : await resolveAccess(userId);
+
+        if (!superAdmin && resolved.accessRole === null) {
+          return json({ error: "No Data Center access", code: "no_access" }, 403, cors);
+        }
+        if (!superAdmin && !resolved.features.includes("records.view")) {
+          return json({ error: "Not permitted", code: "no_feature" }, 403, cors);
+        }
+
+        const scopeInput = await resolveScope(
+          supabase,
+          userId,
+          profile.role,
+          profile.organization_id ?? null,
+        );
+        const filters = (body.filters ?? {}) as {
+          organizationId?: string;
+          ageBucket?: string;
+          state?: string;
+          search?: string;
+        };
+
+        const scope = buildTransferScopeSql(
+          { ...scopeInput, requestedOrgId: filters.organizationId ?? null },
+          1,
+          "b",
+        );
+        const args: unknown[] = [...scope.args];
+        const p = (v: unknown) => {
+          args.push(v);
+          return `${args.length}`;
+        };
+
+        // The age expression appears in the select, the band filter and the
+        // sort, so it is written once here rather than three times.
+        const TZ =
+          `(select coalesce(value #>> '{}', 'Africa/Lagos') from data_center.workflow_config where key = 'analysis.timezone')`;
+        const TRANSFERRED = `coalesce(b.transfer_sales_date, (h.transfer_date at time zone ${TZ})::date)`;
+        const DAYS = `greatest(current_date - ${TRANSFERRED}, 0)`;
+
+        const where: string[] = [
+          scope.sql,
+          "b.is_archived is not true",
+          "b.status <> 'sold'",
+          "b.sale_id is null",
+          `${TRANSFERRED} is not null`,
+        ];
+
+        if (filters.ageBucket) {
+          where.push(`exists (
+            select 1 from data_center.age_bands('analysis.stock_age_buckets') k
+             where k.code = ${p(String(filters.ageBucket))}
+               and ${DAYS} >= k.min_days
+               and (k.max_days is null or ${DAYS} <= k.max_days))`);
+        }
+        if (filters.state) {
+          where.push(`coalesce(h.state, o.state) = ${p(String(filters.state))}`);
+        }
+        if (filters.search) {
+          const term = `%${String(filters.search).trim().toUpperCase()}%`;
+          where.push(`(upper(b.stove_id) like ${p(term)} or upper(coalesce(b.sales_reference, '')) like ${p(term)})`);
+        }
+
+        // Keyset, never OFFSET. The tiebreaker is the stove id, which is
+        // unique, so a page boundary inside one day's transfers is stable.
+        const cursor = (body.cursor ?? null) as
+          | { transferredOn: string | null; stoveId: string }
+          | null;
+        if (cursor?.stoveId) {
+          where.push(
+            `(${TRANSFERRED}, b.stove_id) < (${p(cursor.transferredOn)}::date, ${p(cursor.stoveId)})`,
+          );
+        }
+
+        const requested = Number(body.limit ?? 50);
+        const pageSize = Math.min(
+          200,
+          Math.max(1, Number.isFinite(requested) ? requested : 50),
+        );
+
+        return await withReadConnection(async (connection) => {
+          const result = await connection.queryObject<Record<string, unknown>>({
+            text: `select b.stove_id,
+                          b.organization_id::text as organization_id,
+                          coalesce(o.partner_name, 'Unknown') as partner_name,
+                          b.sales_reference as transaction_id,
+                          b.factory,
+                          b.status,
+                          coalesce(h.state, o.state) as state,
+                          ${TRANSFERRED}::text as transferred_on,
+                          ${DAYS} as days
+                     from public.stove_ids_base b
+                     left join public.stove_transfer_history h on h.transaction_id = b.sales_reference
+                     left join public.organizations o on o.id = b.organization_id
+                    where ${where.join(" and ")}
+                    order by ${TRANSFERRED} desc, b.stove_id desc
+                    limit ${pageSize + 1}`,
+            args,
+          });
+
+          const rows = result.rows.slice(0, pageSize);
+          const hasMore = result.rows.length > pageSize;
+          const last = rows[rows.length - 1];
+
+          return json(
+            {
+              data: {
+                rows,
+                hasMore,
+                pageSize,
+                nextCursor: hasMore && last
+                  ? {
+                      transferredOn: (last.transferred_on as string) ?? null,
+                      stoveId: last.stove_id as string,
+                    }
+                  : null,
+                scope: scope.description,
+              },
+            },
+            200,
+            cors,
+          );
+        });
+      }
+
       case "transfer_funnel": {
         const superAdmin = isSuperAdmin(profile.role);
         const resolved = superAdmin

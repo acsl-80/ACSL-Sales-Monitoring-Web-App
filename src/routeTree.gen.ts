@@ -39,12 +39,14 @@ import { Route as AdminIndexRouteImport } from './routes/admin/index'
 import { Route as SalesCreateRouteImport } from './routes/sales/create'
 import { Route as PartnersProfilesRouteImport } from './routes/partners/profiles'
 import { Route as DataCenterStoveRecordsRouteImport } from './routes/data-center/stove-records'
+import { Route as DataCenterStockRouteImport } from './routes/data-center/stock'
 import { Route as DataCenterSettingsRouteImport } from './routes/data-center/settings'
 import { Route as DataCenterPartnerRecordsRouteImport } from './routes/data-center/partner-records'
 import { Route as DataCenterImportRouteImport } from './routes/data-center/import'
 import { Route as DataCenterDashboardRouteImport } from './routes/data-center/dashboard'
 import { Route as DataCenterCorrectionsRouteImport } from './routes/data-center/corrections'
 import { Route as DataCenterCallCentreRouteImport } from './routes/data-center/call-centre'
+import { Route as DataCenterAnalysisRouteImport } from './routes/data-center/analysis'
 import { Route as AgentsProfilesRouteImport } from './routes/agents/profiles'
 import { Route as AgentsPartnerAgentsProfilesRouteImport } from './routes/agents/partner-agents-profiles'
 import { Route as UserManagementUsersIndexRouteImport } from './routes/user-management/users/index'
@@ -233,6 +235,11 @@ const DataCenterStoveRecordsRoute = DataCenterStoveRecordsRouteImport.update({
   path: '/data-center/stove-records',
   getParentRoute: () => rootRouteImport,
 } as any)
+const DataCenterStockRoute = DataCenterStockRouteImport.update({
+  id: '/data-center/stock',
+  path: '/data-center/stock',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const DataCenterSettingsRoute = DataCenterSettingsRouteImport.update({
   id: '/data-center/settings',
   path: '/data-center/settings',
@@ -262,6 +269,11 @@ const DataCenterCorrectionsRoute = DataCenterCorrectionsRouteImport.update({
 const DataCenterCallCentreRoute = DataCenterCallCentreRouteImport.update({
   id: '/data-center/call-centre',
   path: '/data-center/call-centre',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const DataCenterAnalysisRoute = DataCenterAnalysisRouteImport.update({
+  id: '/data-center/analysis',
+  path: '/data-center/analysis',
   getParentRoute: () => rootRouteImport,
 } as any)
 const AgentsProfilesRoute = AgentsProfilesRouteImport.update({
@@ -460,12 +472,14 @@ export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
   '/agents/partner-agents-profiles': typeof AgentsPartnerAgentsProfilesRoute
   '/agents/profiles': typeof AgentsProfilesRoute
+  '/data-center/analysis': typeof DataCenterAnalysisRoute
   '/data-center/call-centre': typeof DataCenterCallCentreRoute
   '/data-center/corrections': typeof DataCenterCorrectionsRoute
   '/data-center/dashboard': typeof DataCenterDashboardRoute
   '/data-center/import': typeof DataCenterImportRoute
   '/data-center/partner-records': typeof DataCenterPartnerRecordsRoute
   '/data-center/settings': typeof DataCenterSettingsRoute
+  '/data-center/stock': typeof DataCenterStockRoute
   '/data-center/stove-records': typeof DataCenterStoveRecordsRoute
   '/partners/profiles': typeof PartnersProfilesRoute
   '/sales/create': typeof SalesCreateRoute
@@ -533,12 +547,14 @@ export interface FileRoutesByTo {
   '/': typeof IndexRoute
   '/agents/partner-agents-profiles': typeof AgentsPartnerAgentsProfilesRoute
   '/agents/profiles': typeof AgentsProfilesRoute
+  '/data-center/analysis': typeof DataCenterAnalysisRoute
   '/data-center/call-centre': typeof DataCenterCallCentreRoute
   '/data-center/corrections': typeof DataCenterCorrectionsRoute
   '/data-center/dashboard': typeof DataCenterDashboardRoute
   '/data-center/import': typeof DataCenterImportRoute
   '/data-center/partner-records': typeof DataCenterPartnerRecordsRoute
   '/data-center/settings': typeof DataCenterSettingsRoute
+  '/data-center/stock': typeof DataCenterStockRoute
   '/data-center/stove-records': typeof DataCenterStoveRecordsRoute
   '/partners/profiles': typeof PartnersProfilesRoute
   '/sales/create': typeof SalesCreateRoute
@@ -607,12 +623,14 @@ export interface FileRoutesById {
   '/': typeof IndexRoute
   '/agents/partner-agents-profiles': typeof AgentsPartnerAgentsProfilesRoute
   '/agents/profiles': typeof AgentsProfilesRoute
+  '/data-center/analysis': typeof DataCenterAnalysisRoute
   '/data-center/call-centre': typeof DataCenterCallCentreRoute
   '/data-center/corrections': typeof DataCenterCorrectionsRoute
   '/data-center/dashboard': typeof DataCenterDashboardRoute
   '/data-center/import': typeof DataCenterImportRoute
   '/data-center/partner-records': typeof DataCenterPartnerRecordsRoute
   '/data-center/settings': typeof DataCenterSettingsRoute
+  '/data-center/stock': typeof DataCenterStockRoute
   '/data-center/stove-records': typeof DataCenterStoveRecordsRoute
   '/partners/profiles': typeof PartnersProfilesRoute
   '/sales/create': typeof SalesCreateRoute
@@ -682,12 +700,14 @@ export interface FileRouteTypes {
     | '/'
     | '/agents/partner-agents-profiles'
     | '/agents/profiles'
+    | '/data-center/analysis'
     | '/data-center/call-centre'
     | '/data-center/corrections'
     | '/data-center/dashboard'
     | '/data-center/import'
     | '/data-center/partner-records'
     | '/data-center/settings'
+    | '/data-center/stock'
     | '/data-center/stove-records'
     | '/partners/profiles'
     | '/sales/create'
@@ -755,12 +775,14 @@ export interface FileRouteTypes {
     | '/'
     | '/agents/partner-agents-profiles'
     | '/agents/profiles'
+    | '/data-center/analysis'
     | '/data-center/call-centre'
     | '/data-center/corrections'
     | '/data-center/dashboard'
     | '/data-center/import'
     | '/data-center/partner-records'
     | '/data-center/settings'
+    | '/data-center/stock'
     | '/data-center/stove-records'
     | '/partners/profiles'
     | '/sales/create'
@@ -828,12 +850,14 @@ export interface FileRouteTypes {
     | '/'
     | '/agents/partner-agents-profiles'
     | '/agents/profiles'
+    | '/data-center/analysis'
     | '/data-center/call-centre'
     | '/data-center/corrections'
     | '/data-center/dashboard'
     | '/data-center/import'
     | '/data-center/partner-records'
     | '/data-center/settings'
+    | '/data-center/stock'
     | '/data-center/stove-records'
     | '/partners/profiles'
     | '/sales/create'
@@ -902,12 +926,14 @@ export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
   AgentsPartnerAgentsProfilesRoute: typeof AgentsPartnerAgentsProfilesRoute
   AgentsProfilesRoute: typeof AgentsProfilesRoute
+  DataCenterAnalysisRoute: typeof DataCenterAnalysisRoute
   DataCenterCallCentreRoute: typeof DataCenterCallCentreRoute
   DataCenterCorrectionsRoute: typeof DataCenterCorrectionsRoute
   DataCenterDashboardRoute: typeof DataCenterDashboardRoute
   DataCenterImportRoute: typeof DataCenterImportRoute
   DataCenterPartnerRecordsRoute: typeof DataCenterPartnerRecordsRoute
   DataCenterSettingsRoute: typeof DataCenterSettingsRoute
+  DataCenterStockRoute: typeof DataCenterStockRoute
   DataCenterStoveRecordsRoute: typeof DataCenterStoveRecordsRoute
   PartnersProfilesRoute: typeof PartnersProfilesRoute
   SalesCreateRoute: typeof SalesCreateRoute
@@ -1184,6 +1210,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof DataCenterStoveRecordsRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/data-center/stock': {
+      id: '/data-center/stock'
+      path: '/data-center/stock'
+      fullPath: '/data-center/stock'
+      preLoaderRoute: typeof DataCenterStockRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/data-center/settings': {
       id: '/data-center/settings'
       path: '/data-center/settings'
@@ -1224,6 +1257,13 @@ declare module '@tanstack/react-router' {
       path: '/data-center/call-centre'
       fullPath: '/data-center/call-centre'
       preLoaderRoute: typeof DataCenterCallCentreRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/data-center/analysis': {
+      id: '/data-center/analysis'
+      path: '/data-center/analysis'
+      fullPath: '/data-center/analysis'
+      preLoaderRoute: typeof DataCenterAnalysisRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/agents/profiles': {
@@ -1478,12 +1518,14 @@ const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
   AgentsPartnerAgentsProfilesRoute: AgentsPartnerAgentsProfilesRoute,
   AgentsProfilesRoute: AgentsProfilesRoute,
+  DataCenterAnalysisRoute: DataCenterAnalysisRoute,
   DataCenterCallCentreRoute: DataCenterCallCentreRoute,
   DataCenterCorrectionsRoute: DataCenterCorrectionsRoute,
   DataCenterDashboardRoute: DataCenterDashboardRoute,
   DataCenterImportRoute: DataCenterImportRoute,
   DataCenterPartnerRecordsRoute: DataCenterPartnerRecordsRoute,
   DataCenterSettingsRoute: DataCenterSettingsRoute,
+  DataCenterStockRoute: DataCenterStockRoute,
   DataCenterStoveRecordsRoute: DataCenterStoveRecordsRoute,
   PartnersProfilesRoute: PartnersProfilesRoute,
   SalesCreateRoute: SalesCreateRoute,
