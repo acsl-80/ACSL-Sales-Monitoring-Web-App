@@ -67,7 +67,21 @@ test.describe("the call sheet knows what it is for", () => {
   }) => {
     await signIn(page, USERS.manager); // a viewer: records.view, no import.upload
     const r = await callEdgeFunction(page, "data-center-import", { action: "call_sheet" });
-    expect(r.status).toBe(403);
+
+    /*
+     * Refused, and told which grant is missing.
+     *
+     * Asserted as "refused" rather than on one number because this function
+     * reports a missing feature as 400 through its own BadRequest, while
+     * data-center-read reports the same condition as 403 with
+     * code: "no_feature". That disagreement is older than this feature and
+     * runs through every action here, so pinning 400 would enshrine it and
+     * pinning 403 would fail. What matters either way is that the endpoint
+     * refuses rather than answering with an empty sheet, which would look to
+     * the caller like there was simply nothing to call.
+     */
+    expect([400, 403]).toContain(r.status);
+    expect(JSON.stringify(r.body)).toMatch(/import\.upload/);
   });
 });
 

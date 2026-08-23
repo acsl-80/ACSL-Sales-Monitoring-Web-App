@@ -172,22 +172,25 @@ B: 1 committed, 0 failed
 That works because the claim is taken in `data_center.import_claims`, whose
 primary key is the lock, **before** `create-sale` is called at all.
 
-**It does not cover import against the Sell Stove form.** `create-sale` reads a
-stove's status, inserts a sale, then marks the stove sold with no guard on the
-update:
+**Import against the Sell Stove form is covered too, and not by this module.**
+This section used to say that `create-sale` read a stove's status and then
+marked it sold with an unguarded update, so two callers could both read
+`available` and both insert. That was true when it was written and is not true
+now: commit `d466f2f` claims the stove atomically instead of announcing it,
+with `.neq("status", "sold")` on the update and a row-count check that deletes
+the sale and answers 409 if the claim was lost. That commit is on `main`.
 
-```sql
-select status from stove_ids where stove_id = $1     -- 'available'
-insert into sales ...
-update stove_ids set status = 'sold', sale_id = $2   -- unconditional
-```
+Two locks, then, at different levels, and both are needed.
+`data_center.import_claims` serialises import against import before
+`create-sale` is reached at all. `create-sale`'s own conditional update
+serialises everything against everything, the mobile app included. Neither
+makes the other redundant.
 
-Two callers can both read `available` and both insert. That is a pre-existing
-defect in the sales app, not something this module introduced, and `create-sale`
-is a shared function this module does not edit. Closing it properly means adding
-`.eq("status", "available")` to that update and checking the affected row count,
-which is a small change to a live function and therefore a decision rather than
-a cleanup.
+The claim is released when the sale exists. It is a lock held WHILE a batch
+commits, so leaving it behind used to make an import once-ever: delete the sale
+through the sales app and the stove returns to available, but the claim stayed,
+and re-importing that receipt was refused with "Another import is already
+committing this stove" - by then neither true nor actionable.
 
 ## Rolling back
 
@@ -195,10 +198,61 @@ Rollback deletes each sale through `delete-sale`, which releases the stove to
 available as part of its own job. Deleting rows directly would leave stock
 believing the stoves were still sold.
 
-**What rollback cannot undo:** anything that happened to those sales in between.
-If the call centre has already worked a record, or a partner has seen the
-figures, putting the sale back does not unwind that. Rollback is for "this
-import was wrong", soon after, not for reversing a month of activity.
+**Rollback is refused once the call centre has worked the batch.** This used to
+read as a limitation - "what rollback cannot undo" - and it was a deletion.
+`delete-sale` hard-deletes the row, and six `data_center` tables cascade off it:
+`call_records`, `call_attempts`, `call_drafts`, `assignment_items`,
+`shared_phones`, `serial_rematches`. So rolling back after agents have started
+calling did not undo an import, it destroyed the calls, silently.
+
+It now counts first and refuses with the number named, because the person
+pressing the button cannot see the call records from that screen. A batch with
+nothing attached still rolls back exactly as before. If a worked batch genuinely
+has to go, the calls come off first, deliberately.
+
+## The other sheet: calls already made
+
+Agents kept their own spreadsheets long before this module existed. One week of
+the workbook holds 359 stove IDs, and until Phase 21 the only way in was the
+call form, one record at a time. That is not a backlog strategy; it is a reason
+the backlog stays where it is.
+
+**It goes the other way from the digitalisation sheet.** That one creates
+sales. This one matches them, because a phone call cannot bring a stove into
+existence. A row whose stove ID finds no sale is an exception for a person, and
+the usual cause is simply that the receipt has not been digitalised yet, which
+is why the two imports have an order and this one is second.
+
+| Row lands as | When |
+|---|---|
+| valid | Its stove ID matches exactly one live sale that has no call record |
+| exception | No sale yet, more than one sale, a record already exists, or an option label the registry does not know |
+| rejected | No stove ID at all |
+
+Four things it shares with the receipt import and one it does not. Same
+`import_batches` and `import_rows`, same staged/validated/committed lifecycle,
+same exceptions queue, same slicing. What differs is the write: commit posts to
+`data-center-write`, the same `save_call_record` and `log_attempt` the call form
+uses, so field visibility, the answers-versus-column routing in `splitPayload`,
+the writable-column allowlist and the audit trigger all stay in one place. A
+question promoted from jsonb to a real column later needs no change in the
+importer.
+
+**The call dates are the reason this could not be thinner.** `call_date_1/2/3`
+become `call_attempts` rows. Import a record without them and `attempt_count`
+reads 0, which Analysis reports as `never_called` - charging the whole backlog
+to a call centre that had in fact rung three times. `log_attempt` already
+accepted an explicit `attemptedAt`, so the dates come across, and the outcome
+attaches to the last attempt only rather than rewriting the headline three
+times and describing the first call as having ended the way the third did.
+
+**Undo removes the call records and nothing else.** It is not the receipt
+rollback. Deleting a sale because somebody mis-typed an outcome would be a
+worse cure than the disease.
+
+Columns live in `workflow_config` under `call_centre.sheet_columns`; the 13
+questions are appended from `field_defs`, so retiring one in Settings takes it
+off the sheet with no release.
 
 ## Things that are settings, not code
 

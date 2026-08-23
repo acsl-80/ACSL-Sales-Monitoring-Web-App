@@ -1261,3 +1261,64 @@ was not in the type at all. There was only ever one permission there.
   cooking time, and usage over time. The highest-value additions to the call
   form are household size, fuel spend or collection time, and a `verified_at`
   timestamp.
+
+## Phase 21: getting the call centre's own backlog in, and merge preparation
+
+Two pieces of work that both came out of asking what has to be true before this
+branch merges.
+
+### The call sheet
+
+`import_batches.source` has permitted `call_center` since the first migration
+and nothing ever wrote it. Agents kept their own spreadsheets, one week of the
+workbook holding 359 stove IDs, and the only way in was the call form one
+record at a time.
+
+Built on the existing batch machinery rather than beside it, but with its own
+actions rather than by branching the receipt path: entangling the two would
+have put the thing that already works and is tested at risk for a feature that
+shares nothing with it but the table it stages into. The write goes out through
+`data-center-write`, which is the receipt import's own rule (never touch
+`public.sales` directly, always go through `create-sale`) applied on this side.
+
+The detail that decided the shape: the call dates have to become
+`call_attempts`, or every imported record reads `attempt_count = 0` and
+Analysis reports the backlog as `never_called`. Phase 20 had already found that
+`not_verified` is the column's default and means nothing on its own; this is
+the same trap arriving from the other end.
+
+Proved on the preview with a six-row sheet covering every case. 2 valid, 3
+exceptions, 1 rejected. Excel serial 46234 read as 2026-07-31, `05/07/2026` as
+day-first. Attempts landed as 3 and 1. Rollback removed both call records and
+left both sales standing.
+
+### The rollback guard
+
+Rolling back a receipt import deletes each sale through `delete-sale`, and six
+`data_center` tables cascade off that. `IMPORT.md` described this as something
+rollback "cannot undo", which reads as a limitation and was a deletion: a
+rollback after agents had started calling destroyed their work with no warning.
+
+It now counts first and refuses with the number named. A clean batch still
+rolls back exactly as before, which is asserted alongside the refusal, because
+a guard that turned every rollback into a refusal would be its own defect.
+
+Also released the import claim on successful commit. It is a lock held while a
+batch commits, and leaving it behind quietly made an import once-ever. Preview
+still carries two such claims from 21 August, both on committed batches, which
+is the condition this prevents.
+
+### Deliberately not done
+
+- **A bulk exception fix.** Resolving an exception is still one corrected
+  serial at a time. On a 359-row week that is roughly 30 rows, which is an
+  afternoon rather than a project, and every one of them is a judgement about a
+  specific receipt.
+- **Reconciling the refusal status.** `data-center-import` reports a missing
+  feature grant as 400 through its own `BadRequest`; `data-center-read` reports
+  the same condition as 403 with `code: "no_feature"`. The import one is wrong
+  - the caller's request was not malformed, they were not allowed - but it runs
+  through every action in that function, and changing it during merge
+  preparation would be a wide blast radius for a cosmetic gain. The call-import
+  spec asserts "refused, and names the grant" rather than pinning either
+  number, so reconciling it later will not break a test.
