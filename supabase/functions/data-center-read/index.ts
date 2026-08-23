@@ -729,7 +729,7 @@ serve(async (req) => {
         const args: unknown[] = [...scope.args];
         const p = (v: unknown) => {
           args.push(v);
-          return `${args.length}`;
+          return `$${args.length}`;
         };
 
         // The age expression appears in the select, the band filter and the

@@ -23,6 +23,8 @@ const PAGES = [
   { path: "/data-center/partner-records", heading: "Partner Records" },
   { path: "/data-center/stove-records", heading: "Stove Records" },
   { path: "/data-center/import", heading: "Bulk Import" },
+  { path: "/data-center/analysis", heading: "Analysis" },
+  { path: "/data-center/stock", heading: "Stock at partners" },
   { path: "/data-center/settings", heading: "Settings" },
 ];
 
