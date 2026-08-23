@@ -46,6 +46,8 @@ export const DATA_CENTER_FEATURES = {
   CORRECTIONS_FIX: "corrections.fix",
   /** Decide who send-backs reach, and which account a rep name means. */
   CORRECTIONS_ROUTE: "corrections.route",
+  /** Read the Analysis area: stock ageing, creditable yield, and the cross-tabs. */
+  ANALYSIS_VIEW: "analysis.view",
 } as const;
 
 export type DataCenterFeature =
@@ -70,4 +72,5 @@ export const FEATURE_LABELS: Record<DataCenterFeature, string> = {
   [DATA_CENTER_FEATURES.ASSIGNMENT_MANAGE]: "Assign and reassign call work",
   [DATA_CENTER_FEATURES.CORRECTIONS_FIX]: "Treat records sent back to Sales",
   [DATA_CENTER_FEATURES.CORRECTIONS_ROUTE]: "Decide who receives send-backs",
+  [DATA_CENTER_FEATURES.ANALYSIS_VIEW]: "View analysis",
 };

@@ -186,15 +186,26 @@ serve(async (req) => {
             });
             const scorecardRows = Number(sc.rows[0]?.n ?? 0);
 
+            // Analysis last, in the same run and under the same lock. It reads
+            // sales and stock directly rather than the funnel, so it does not
+            // depend on the step above - but it must share the run id, or the
+            // Analysis page and the Dashboard would be able to disagree about
+            // which afternoon they are describing.
+            const an = await conn.queryObject<{ n: number }>({
+              text: "select data_center.compute_analysis($1) as n",
+              args: [runId],
+            });
+            const analysisRows = Number(an.rows[0]?.n ?? 0);
+
             const duration = Date.now() - started;
             await conn.queryObject({
               text: `update data_center.metric_runs
                      set status = 'ok', finished_at = now(),
                          metrics_written = $2, duration_ms = $3
                      where id = $1`,
-              args: [runId, written + scorecardRows, duration],
+              args: [runId, written + scorecardRows + analysisRows, duration],
             });
-            return { busy: false as const, runId, written: written + scorecardRows, duration };
+            return { busy: false as const, runId, written: written + scorecardRows + analysisRows, duration };
           } catch (err) {
             // A failed run is recorded as failed rather than left `running`.
             // v_current_metrics only ever reads a run whose status is ok, so a

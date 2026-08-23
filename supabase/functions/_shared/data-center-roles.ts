@@ -24,7 +24,17 @@ export type FeatureKey =
   | "import.exceptions"
   | "import.commit"
   | "registry.manage"
-  | "access.manage"
+  /**
+   * Grant and revoke tier-2 features for other users.
+   *
+   * This was typed as `access.manage` while every other file - the admin edge
+   * function's own gate, the Settings page, the Explore card, two e2e specs
+   * and the data_manager comment thirty lines below - used `grants.manage`.
+   * So the typed key was granted by no level and offerable by no UI, and the
+   * key doing the actual work was not in the type at all. Renamed rather than
+   * a second key added: there was only ever one permission here.
+   */
+  | "grants.manage"
   /** Work the digitalisation workbench: open a stove and type its sale. */
   | "digitisation.work"
   /**
@@ -53,7 +63,19 @@ export type FeatureKey =
    * deciding who receives them are different jobs, and the second one changes
    * where everybody else's work lands.
    */
-  | "corrections.route";
+  | "corrections.route"
+  /**
+   * Read the Analysis area.
+   *
+   * Its own key rather than `dashboard.view`, which every level holds. The
+   * Dashboard counts states. Analysis crosses what a buyer told an agent on
+   * the phone with the partner and the place they bought in, and the module
+   * already keeps Table 1 and Table 2 as separate grants for exactly that
+   * reason: seeing sold stove records does not imply seeing what the call
+   * centre wrote about the people who bought them, and it implies aggregating
+   * it even less.
+   */
+  | "analysis.view";
 
 export type AccessRole =
   | "viewer"
@@ -135,6 +157,11 @@ export const ROLE_FEATURES: Record<string, FeatureKey[]> = {
     "registry.manage",
     "corrections.fix",
     "corrections.route",
+    // The person who runs the module is the person the findings are for.
+    // Nobody else's level implies it, so everybody else needs it granted by
+    // hand - which keeps the blast radius of a new area at zero until
+    // somebody decides otherwise.
+    "analysis.view",
   ],
 };
 

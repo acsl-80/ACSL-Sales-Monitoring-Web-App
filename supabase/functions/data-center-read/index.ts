@@ -466,7 +466,17 @@ serve(async (req) => {
             text: `select
                      (select coalesce(jsonb_agg(t order by t.metric_key, t.value_num desc nulls last), '[]'::jsonb)
                         from (select metric_key, dimension, value_num, value_text, run_finished_at
-                                from data_center.v_current_metrics) t) as metrics,
+                                from data_center.v_current_metrics
+                               -- The Analysis area writes its own families into
+                               -- the same run, at month grain, which is tens of
+                               -- thousands of rows. This page renders none of
+                               -- them, so without this filter the Dashboard
+                               -- silently pays for a payload it never reads.
+                               -- The e2e spec asserts no 'analysis.' key
+                               -- reaches here, because the day somebody adds a
+                               -- family and forgets is the day this gets slow
+                               -- for no visible reason.
+                               where metric_key not like 'analysis.%') t) as metrics,
                      (select coalesce(value::text::int, 24) from data_center.workflow_config
                        where key = 'metrics.stale_after_hours') as stale_after_hours,
                      (select to_jsonb(r) from (
@@ -512,6 +522,156 @@ serve(async (req) => {
        * of 20260821010000_data_center_transfers.sql for what it cost to learn
        * that the hard way.
        */
+      /**
+       * The Analysis area: cross-tabs, buckets and gate chains.
+       *
+       * WHY THIS AGGREGATES, WHEN THE READ PATH IS NOT ALLOWED TO
+       *
+       * The rule is that `count`/`sum`/`group by` over **public.sales** belongs
+       * in compute. This sums `metric_snapshots`, which compute already wrote -
+       * thousands of rows, indexed on (run_id, metric_key, period). Summing
+       * precomputed months is the entire reason for storing months.
+       *
+       * WHY MONTHS AT ALL
+       *
+       * Every analysis metric is filed under a month, so a quarter, a half, a
+       * year, a rolling window and one year against another are all the same
+       * query with different bounds. Precomputing each named period instead
+       * would multiply both the rows and the passes over sales by the number
+       * of periods offered, and still could not answer a range nobody thought
+       * to list.
+       *
+       * Two shapes come back because two things are being drawn:
+       *
+       *   totals   the range collapsed, `period` stripped from the dimension.
+       *            What the cross-tabs and the funnel render.
+       *   series   per month, with the first axis collapsed away. What the
+       *            trend lines render. Small on purpose: keeping partner AND
+       *            month AND bucket would be the full cross product, which is
+       *            tens of thousands of rows for a chart with twelve points.
+       *
+       * The band definitions travel with the data so the client colours a bar
+       * from `severity` in workflow_config rather than from a hex it holds. A
+       * threshold re-graded in Settings has to move the chart, or it is not
+       * configuration.
+       */
+      case "analysis": {
+        const superAdmin = isSuperAdmin(profile.role);
+        const resolved = superAdmin
+          ? { accessRole: null, features: [] as string[] }
+          : await resolveAccess(userId);
+
+        if (!superAdmin && resolved.accessRole === null) {
+          return json({ error: "No Data Center access", code: "no_access" }, 403, cors);
+        }
+        if (!superAdmin && !resolved.features.includes("analysis.view")) {
+          return json({ error: "Not permitted", code: "no_feature" }, 403, cors);
+        }
+
+        // Bounds are months, not dates. Validated here rather than trusted,
+        // because they are interpolated as text comparisons against a jsonb
+        // field and "2026-08" sorting correctly is the whole mechanism.
+        const MONTH = /^\d{4}-(0[1-9]|1[0-2])$/;
+        const from = typeof body.from === "string" && body.from ? body.from : null;
+        const to = typeof body.to === "string" && body.to ? body.to : null;
+        if ((from && !MONTH.test(from)) || (to && !MONTH.test(to))) {
+          return json(
+            { error: "from and to must look like 2026-08", code: "bad_period" },
+            400,
+            cors,
+          );
+        }
+        if (from && to && from > to) {
+          return json({ error: "from is after to", code: "bad_period" }, 400, cors);
+        }
+
+        return await withReadConnection(async (connection) => {
+          const result = await connection.queryObject<{
+            totals: unknown[] | null;
+            series: unknown[] | null;
+            months: unknown[] | null;
+            stock_bands: unknown[] | null;
+            velocity_bands: unknown[] | null;
+            stale_after_hours: number;
+            last_run: unknown | null;
+            computed_at: string | null;
+          }>({
+            text: `select
+                     (select coalesce(jsonb_agg(t), '[]'::jsonb) from (
+                        select metric_key,
+                               (dimension - 'period') as dimension,
+                               sum(value_num) as value_num
+                          from data_center.v_current_metrics
+                         where metric_key like 'analysis.%'
+                           and ($1::text is null or dimension ->> 'period' >= $1)
+                           and ($2::text is null or dimension ->> 'period' <= $2)
+                         group by 1, 2) t) as totals,
+                     (select coalesce(jsonb_agg(t), '[]'::jsonb) from (
+                        select metric_key,
+                               dimension ->> 'by'          as by,
+                               dimension ->> 'by2'         as by2,
+                               dimension ->> 'key2'        as key2,
+                               dimension ->> 'label2'      as label2,
+                               (dimension ->> 'ord2')::int as ord2,
+                               dimension ->> 'period'      as period,
+                               sum(value_num) as value_num
+                          from data_center.v_current_metrics
+                         where metric_key like 'analysis.%'
+                           and ($1::text is null or dimension ->> 'period' >= $1)
+                           and ($2::text is null or dimension ->> 'period' <= $2)
+                         group by 1, 2, 3, 4, 5, 6, 7) t) as series,
+                     (select coalesce(jsonb_agg(z.m order by z.m), '[]'::jsonb) from (
+                        select distinct dimension ->> 'period' as m
+                          from data_center.v_current_metrics
+                         where metric_key like 'analysis.%'
+                           and dimension ->> 'period' is not null) z) as months,
+                     (select coalesce(jsonb_agg(to_jsonb(b) order by b.ord), '[]'::jsonb)
+                        from data_center.age_bands('analysis.stock_age_buckets') b) as stock_bands,
+                     (select coalesce(jsonb_agg(b2.j order by b2.ord), '[]'::jsonb) from (
+                        select to_jsonb(b) as j, b.ord
+                          from data_center.age_bands('analysis.velocity_buckets') b) b2) as velocity_bands,
+                     (select coalesce(value::text::int, 24) from data_center.workflow_config
+                       where key = 'metrics.stale_after_hours') as stale_after_hours,
+                     (select to_jsonb(r) from (
+                        select finished_at, status, duration_ms
+                          from data_center.metric_runs order by started_at desc limit 1) r) as last_run,
+                     (select max(run_finished_at) from data_center.v_current_metrics) as computed_at`,
+            args: [from, to],
+          });
+
+          const row = result.rows[0];
+          const finishedAt = row?.computed_at ?? null;
+          const hours = Number(row?.stale_after_hours ?? 24);
+
+          // Analysis keeps the Dashboard's freshness contract rather than
+          // inventing a second one. Nothing here is live; it is as of the last
+          // computation, and the page says so above the first chart.
+          const isStale = finishedAt
+            ? Date.now() - new Date(finishedAt).getTime() > hours * 3_600_000
+            : true;
+
+          return json(
+            {
+              data: {
+                totals: row?.totals ?? [],
+                series: row?.series ?? [],
+                months: row?.months ?? [],
+                stockBands: row?.stock_bands ?? [],
+                velocityBands: row?.velocity_bands ?? [],
+                from,
+                to,
+                computedAt: finishedAt,
+                isStale,
+                staleAfterHours: hours,
+                lastRun: row?.last_run ?? null,
+              },
+            },
+            200,
+            cors,
+          );
+        });
+      }
+
       case "transfer_funnel": {
         const superAdmin = isSuperAdmin(profile.role);
         const resolved = superAdmin
