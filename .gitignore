@@ -50,3 +50,4 @@ test-results/
 /playwright-report/
 /blob-report/
 review/
+shot-*.png
