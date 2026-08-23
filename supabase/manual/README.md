@@ -6,16 +6,36 @@ inside a transaction, and the runner wraps every migration in one.
 Run these by hand against production, in the SQL editor or via psql, and record
 that you did.
 
-## Order, and why it matters less than it reads
+## Order, and two things that make it less simple than it reads
 
-Run all five **before** deploying the Data Center migrations. Afterwards the
-migration counterparts become no-ops, because every one is guarded with
-`IF NOT EXISTS`.
+The intent is to run these **before** the Data Center migrations, so the
+migration counterparts become no-ops via `IF NOT EXISTS`. Two corrections to
+that, both found running it against production for the first time:
+
+**One statement here cannot run first.** `20260822_records_filter_indexes_concurrently.sql`
+ends with an index on `data_center.change_log`, and that table does not exist
+until the migrations create it. Run the three `public.sales` indexes in that
+file before, and the `change_log` one after. It has a migration counterpart, so
+skipping it entirely is also fine.
+
+**These cannot be run through the Management API.** `CREATE INDEX CONCURRENTLY`
+cannot run inside a transaction block, and the `/database/query` endpoint wraps
+every call in one. They need a direct session connection: `psql`, the Supabase
+SQL editor, or a client that does not open a transaction. Attempting it through
+the API returns `25001` and nothing is created.
 
 The usual reason given is that a non-concurrent `CREATE INDEX` takes a SHARE
 lock and blocks writes to `public.sales`, taking the Sell Stove path down for
 the length of the build. That is true, and today it is nearly free: production
 holds 44 sales, so every one of these builds in milliseconds.
+
+**Which is why, for the first deploy, the honest answer is to skip them.**
+Seven of the eight indexes below have a migration counterpart, so `db push`
+creates them non-concurrently in a moment on a table this size, and the lock
+these scripts exist to avoid never happens. Only `idx_stove_ids_unsold_age`
+has no counterpart and must be created some other way. Reach for this
+directory when `public.sales` is large, which is the situation it was written
+for and not the situation it first met.
 
 **The real rule is the one that outlives that number.** These indexes have to
 exist before the receipt backlog is imported, not after. Import fifty thousand
