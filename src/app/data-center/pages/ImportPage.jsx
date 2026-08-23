@@ -3,10 +3,11 @@ import DataCentreShell from "../components/DataCentreShell";
 import ImportPanel from "../features/import/ImportPanel";
 import GetTheSheet from "../features/import/GetTheSheet";
 import ConfirmationQueue from "../features/import/ConfirmationQueue";
+import CallSheet from "../features/import/CallSheet";
 import Workbench from "../features/workbench/Workbench";
 import { useFeature } from "../lib/access";
 import { DATA_CENTER_FEATURES } from "../lib/features";
-import { Upload, PenLine, ShieldCheck } from "lucide-react";
+import { Upload, PenLine, ShieldCheck, PhoneCall } from "lucide-react";
 
 /**
  * Getting paper into the system, three ways of looking at one job.
@@ -43,6 +44,14 @@ const TABS = [
     blurb:
       "The digitalisation workbench: a partner's stoves worked through in the app, one receipt per stove. No spreadsheet involved.",
     needs: DATA_CENTER_FEATURES.DIGITISATION_WORK,
+  },
+  {
+    key: "calls",
+    label: "Calls already made",
+    icon: PhoneCall,
+    blurb:
+      "Call-centre work an agent already did on their own spreadsheet: download the records waiting to be called, fill in what the calls found, upload it back. It attaches to sales that exist and never creates one.",
+    needs: DATA_CENTER_FEATURES.IMPORT_UPLOAD,
   },
   {
     key: "confirm",
@@ -113,6 +122,9 @@ function Inner() {
             />
           </div>
         </>
+      )}
+      {current?.key === "calls" && (
+        <CallSheet canCommit={can(DATA_CENTER_FEATURES.IMPORT_COMMIT)} />
       )}
       {current?.key === "bench" && <Workbench />}
       {current?.key === "confirm" && (

@@ -1296,6 +1296,67 @@ export const dataCenterImport = {
 
   rows: (batchId: string, status = "") =>
     call<ImportRow[]>("data-center-import", "rows", { batchId, status }),
+
+  /*
+   * The call-centre sheet.
+   *
+   * Kept beside the receipt import because it is the same act - a spreadsheet
+   * filled in away from the app and brought back - even though what it writes
+   * is a call record rather than a sale. The four steps are separate for the
+   * same reason the receipt ones are: a person should be able to see what a
+   * commit would do before it does it.
+   */
+  callSheet: () => call<CallSheetSpec>("data-center-import", "call_sheet"),
+
+  callStage: (rows: Record<string, unknown>[], filename: string) =>
+    call<{ batchId: string; staged: number }>("data-center-import", "call_stage", {
+      rows,
+      filename,
+    }),
+
+  callValidate: (batchId: string) =>
+    call<{ total: number; valid: number; exceptions: number; rejected: number }>(
+      "data-center-import",
+      "call_validate",
+      { batchId },
+    ),
+
+  callCommit: (batchId: string) =>
+    call<{
+      committed: number;
+      failed: number;
+      remaining: number;
+      done: boolean;
+      failures: { rowId: string; reason: string }[];
+    }>("data-center-import", "call_commit", { batchId }),
+
+  callRollback: (batchId: string) =>
+    call<{ reversed: number; remaining: number; done: boolean }>(
+      "data-center-import",
+      "call_rollback",
+      { batchId },
+    ),
+};
+
+/** The call sheet's columns, plus the questions the registry currently asks. */
+export type CallSheetSpec = {
+  format: string;
+  columns: {
+    field: string;
+    header: string;
+    locked?: boolean;
+    required?: boolean;
+    type?: string;
+    optionList?: string;
+    choices?: { value: string; label: string }[];
+    help?: string;
+  }[];
+  questions: {
+    key: string;
+    label: string;
+    input_type: string;
+    option_list_key: string | null;
+  }[];
 };
 
 /** One row of the assignment log: a record, who was given it, what came of it. */
