@@ -1,5 +1,6 @@
 // Data Center: bulk import of digitalized paper receipts.
 import { normalizeNigerianPhone } from "../_shared/nigerian-phone.ts";
+import { excelSerialToIso } from "../_shared/data-center-dates.ts";
 //
 // THE SHAPE, AND WHY IT IS THIS SHAPE
 //
@@ -35,6 +36,13 @@ import {
   type PoolClient,
 } from "../_shared/data-center-db.ts";
 import { featuresFor } from "../_shared/data-center-roles.ts";
+import {
+  CALL_SOURCE,
+  callSheetSpec,
+  commitCallRows,
+  rollbackCallRows,
+  validateCallRows,
+} from "./call-import.ts";
 
 const DEFAULT_ORIGINS = [
   "https://sales.atmosfair.com.ng",
@@ -105,16 +113,9 @@ const ISO_DATE = /^\d{4}-\d{2}-\d{2}$/;
  * number typed into the wrong column into a confident, wrong date; outside the
  * window the row is still refused, and the operator still gets told why.
  */
-const EXCEL_EPOCH_MS = Date.UTC(1899, 11, 30);
-const EXCEL_MIN = 42005; // 2015-01-01
-const EXCEL_MAX = 73051; // 2100-01-01
-
-function excelSerialToIso(value: string): string | null {
-  if (!/^\d{4,5}(\.0+)?$/.test(value.trim())) return null;
-  const serial = Math.trunc(Number(value));
-  if (!Number.isFinite(serial) || serial < EXCEL_MIN || serial > EXCEL_MAX) return null;
-  return new Date(EXCEL_EPOCH_MS + serial * 86_400_000).toISOString().slice(0, 10);
-}
+// The parser itself lives in _shared/data-center-dates.ts, imported above:
+// the call-centre import reads dates out of the same spreadsheets, and two
+// copies is two answers to "what year is 46217" the first time one is fixed.
 
 /**
  * A transaction ID, in create-sale's own format.
@@ -2095,6 +2096,169 @@ serve(async (req) => {
             await conn.queryObject("rollback");
             throw err;
           }
+        });
+      }
+
+      /* =====================================================================
+       * The call-centre sheet.
+       *
+       * Same batch machinery as a receipt import, a different subject. These
+       * rows MATCH sales rather than making them, so they get their own
+       * actions instead of branching the receipt path: entangling the two
+       * would put the thing that already works and is tested at risk for a
+       * feature that shares nothing but the table it stages into.
+       *
+       * The work itself is in call-import.ts. What lives here is the gate,
+       * the slice size, and the door out to data-center-write.
+       * ===================================================================== */
+
+      /** The columns the sheet carries, registry questions included. */
+      case "call_sheet": {
+        requireFeature("import.upload");
+        return await withReadConnection(async (conn) => {
+          const spec = await callSheetSpec(conn);
+          return json({ data: spec }, 200, cors);
+        });
+      }
+
+      case "call_stage": {
+        requireFeature("import.upload");
+        const incoming = body.rows as Record<string, unknown>[] | undefined;
+        if (!Array.isArray(incoming) || incoming.length === 0) {
+          throw new BadRequest("No rows to import");
+        }
+        const maxRows = Number(
+          await withReadConnection((c) => readConfig(c, "import.max_rows", 20000)),
+        ) || 20000;
+        if (incoming.length > maxRows) {
+          throw new BadRequest(
+            `That sheet has ${incoming.length} rows and the limit is ${maxRows}. Split it.`,
+          );
+        }
+
+        const batchId = await withConnection(async (conn) => {
+          await conn.queryObject("begin");
+          try {
+            await conn.queryObject({
+              text: "select set_config('data_center.actor', $1, true)",
+              args: [userId],
+            });
+            const b = await conn.queryObject<{ id: string }>({
+              text: `insert into data_center.import_batches
+                       (source, filename, uploaded_by, state, total_rows)
+                     values ($1, $2, $3, 'staged', $4) returning id::text`,
+              args: [
+                CALL_SOURCE,
+                String(body.filename ?? "call-centre sheet"),
+                userId,
+                incoming.length,
+              ],
+            });
+            const id = b.rows[0].id;
+            /*
+             * organization_id is left null, deliberately. A receipt batch is
+             * one partner's paperwork; a call-centre week is whoever the
+             * agents happened to reach, and forcing a partner onto it would
+             * either be a lie or split a real day's work into twelve batches.
+             * Scope still holds at the row: every row resolves to a sale, and
+             * a sale carries its own organization.
+             */
+            for (let i = 0; i < incoming.length; i++) {
+              await conn.queryObject({
+                text: `insert into data_center.import_rows (batch_id, row_number, raw, status)
+                       values ($1, $2, $3::jsonb, 'pending')`,
+                args: [id, i + 1, JSON.stringify(incoming[i])],
+              });
+            }
+            await conn.queryObject("commit");
+            return id;
+          } catch (err) {
+            await conn.queryObject("rollback");
+            throw err;
+          }
+        });
+
+        return json({ data: { batchId, staged: incoming.length } }, 200, cors);
+      }
+
+      case "call_validate": {
+        requireFeature("import.upload");
+        const batchId = String(body.batchId ?? "");
+        if (!batchId) throw new BadRequest("batchId is required");
+        return await withConnection(async (conn) => {
+          await conn.queryObject({
+            text: "select set_config('data_center.actor', $1, true)",
+            args: [userId],
+          });
+          const summary = await validateCallRows(conn, batchId);
+          return json({ data: summary }, 200, cors);
+        });
+      }
+
+      case "call_commit": {
+        requireFeature("import.commit");
+        const batchId = String(body.batchId ?? "");
+        if (!batchId) throw new BadRequest("batchId is required");
+        const sliceSize = Number(
+          await withReadConnection((c) => readConfig(c, "import.slice_size", 25)),
+        ) || 25;
+
+        /*
+         * Out through data-center-write, not straight into the table.
+         *
+         * Exactly the rule the receipt import follows with create-sale, on
+         * this side of the module: field visibility, the answers-versus-column
+         * routing in splitPayload, the writable-column allowlist and the audit
+         * trigger all stay in one place. The caller's own bearer token goes
+         * with it, so a person cannot import past their own permissions.
+         */
+        const post = async (action: string, payload: Record<string, unknown>) => {
+          try {
+            const res = await fetch(
+              `${Deno.env.get("SUPABASE_URL")}/functions/v1/data-center-write`,
+              {
+                method: "POST",
+                headers: {
+                  "Content-Type": "application/json",
+                  Authorization: authHeader,
+                  apikey: Deno.env.get("SUPABASE_ANON_KEY") ?? "",
+                },
+                body: JSON.stringify({ action, ...payload }),
+              },
+            );
+            if (res.ok) return { ok: true, detail: "" };
+            const b = await res.json().catch(() => null);
+            return {
+              ok: false,
+              detail: String(
+                (b as { error?: string } | null)?.error ?? `write refused (${res.status})`,
+              ),
+            };
+          } catch (err) {
+            return {
+              ok: false,
+              detail: err instanceof Error ? err.message : "write failed",
+            };
+          }
+        };
+
+        return await withConnection(async (conn) => {
+          await conn.queryObject({
+            text: "select set_config('data_center.actor', $1, true)",
+            args: [userId],
+          });
+          const out = await commitCallRows(conn, batchId, userId, sliceSize, post);
+          return json({ data: out }, 200, cors);
+        });
+      }
+
+      case "call_rollback": {
+        requireFeature("import.commit");
+        const batchId = String(body.batchId ?? "");
+        if (!batchId) throw new BadRequest("batchId is required");
+        return await withConnection(async (conn) => {
+          const out = await rollbackCallRows(conn, batchId, userId);
+          return json({ data: out }, 200, cors);
         });
       }
 
