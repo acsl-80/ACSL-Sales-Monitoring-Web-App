@@ -76,7 +76,9 @@ test.describe("entry is per user, case by case", () => {
 });
 
 test.describe("viewer and editor are different animals", () => {
-  test("editor: every card on the hub is open", async ({ page }) => {
+  test("editor: every area of the data opens, and neither administrative one", async ({
+    page,
+  }) => {
     await signIn(page, USERS.callCentre);
     await page.goto("/data-center");
 
@@ -89,11 +91,26 @@ test.describe("viewer and editor are different animals", () => {
       });
     }
 
-    // Settings is the exception, and deliberately. Administration is not an
-    // editor's job: deciding who may enter the module and rewriting the
-    // questions every agent answers are two things an editor does not do.
+    /*
+     * Two cards stay shut, for two different reasons, and both are asserted
+     * rather than left to a count.
+     *
+     * Settings is administration. Deciding who may enter the module and
+     * rewriting the questions every agent answers are not an editor's job.
+     *
+     * Analysis crosses what a buyer told an agent on the phone with the
+     * partner and the place they bought in, so it is implied by no level
+     * except data_manager - a new area whose blast radius was zero on the day
+     * it shipped. This test used to read "every card on the hub is open",
+     * which was true until a seventh area existed; naming both locked cards is
+     * what stops the next one being absorbed without anybody deciding.
+     */
     await expect(page.getByRole("link", { name: "Open Settings" })).toHaveCount(0);
-    await expect(page.getByText(/^Needs /)).toHaveText("Needs grants.manage");
+    await expect(page.getByRole("link", { name: "Open Analysis" })).toHaveCount(0);
+    await expect(page.getByText(/^Needs /)).toHaveText([
+      "Needs analysis.view",
+      "Needs grants.manage",
+    ]);
   });
 
   test("viewer: the reading areas open, the writing one does not", async ({ page }) => {
@@ -115,6 +132,11 @@ test.describe("viewer and editor are different animals", () => {
     // card they do not hold.
     await expect(page.getByRole("link", { name: "Open Settings" })).toHaveCount(0);
     await expect(page.getByText("grants.manage")).toBeVisible();
+    // And Analysis, for a different reason: reading the records is not the
+    // same permission as reading an aggregate of what the call centre wrote
+    // about the people behind them.
+    await expect(page.getByRole("link", { name: "Open Analysis" })).toHaveCount(0);
+    await expect(page.getByText("analysis.view")).toBeVisible();
   });
 });
 
