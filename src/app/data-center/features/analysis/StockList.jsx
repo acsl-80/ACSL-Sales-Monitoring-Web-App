@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { Link } from "@tanstack/react-router";
 import { Loader2, ArrowLeft } from "lucide-react";
-import { dataCenterStock, dataCenterAnalysis, DataCenterError } from "../../lib/client";
+import { dataCenterStock, DataCenterError } from "../../lib/client";
 import ExportButton from "../../components/ExportButton";
 import { plural } from "../../lib/plural";
 
@@ -30,7 +30,6 @@ export default function StockList({ organizationId, ageBucket, state, label }) {
   const [hasMore, setHasMore] = useState(false);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
-  const [bands, setBands] = useState([]);
 
   const filters = { organizationId, ageBucket, state };
 
@@ -60,19 +59,16 @@ export default function StockList({ organizationId, ageBucket, state, label }) {
     load(null);
   }, [load]);
 
-  // Only to name the band in the heading. The filtering is entirely server-side.
-  useEffect(() => {
-    let live = true;
-    dataCenterAnalysis
-      .get(null, null)
-      .then((d) => live && setBands(d.stockBands ?? []))
-      .catch(() => {});
-    return () => {
-      live = false;
-    };
-  }, []);
-
-  const bandLabel = bands.find((b) => b.code === ageBucket)?.label ?? ageBucket;
+  /*
+   * The band is named by the URL, not by a second request.
+   *
+   * This page is gated on records.view - somebody chasing a consignment needs
+   * it whether or not they may read the analysis that sent them here - while
+   * the analysis endpoint needs analysis.view. Asking it for a label would
+   * have 403d for exactly the users this page is widest for, and the drill
+   * already carries the label it drew.
+   */
+  const narrowedTo = label ?? [state, ageBucket].filter(Boolean).join(", ");
 
   return (
     <div className="space-y-4">
@@ -88,7 +84,7 @@ export default function StockList({ organizationId, ageBucket, state, label }) {
           <span className="text-sm text-gray-800">
             Narrowed from Analysis to{" "}
             <span className="font-semibold">
-              {label ?? [state, bandLabel].filter(Boolean).join(", ")}
+              {narrowedTo}
             </span>
           </span>
           <Link
