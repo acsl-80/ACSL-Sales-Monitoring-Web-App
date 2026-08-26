@@ -591,6 +591,46 @@ export type StoveRecord = {
   sale: Record<string, unknown> | null;
   enrichment: Record<string, unknown> | null;
   provenance: Record<string, unknown>[];
+  /**
+   * The instalments behind `sale.total_paid`, newest first.
+   *
+   * Named rather than left loose because the page reconciles them against the
+   * sale's own total and has to be able to add them up. Empty for an outright
+   * sale, and empty is also a real answer for an instalment sale nobody has
+   * recorded a payment against - which production has two of.
+   */
+  payments: {
+    id: string;
+    amount: number | string | null;
+    payment_method: string | null;
+    payment_date: string | null;
+    notes: string | null;
+    created_at: string | null;
+    proof_url: string | null;
+    recorded_by_name: string | null;
+  }[];
+  /**
+   * Sales this stove used to have, newest first. Nearly always a cancellation.
+   *
+   * Found by serial rather than through `stove_ids_base.sale_id`, because
+   * cancelling a sale drops that link: the stove goes back to available and
+   * every other part of the record loses sight of what happened to it.
+   */
+  pastSales: {
+    id: string;
+    transaction_id: string | null;
+    sales_date: string | null;
+    end_user_name: string | null;
+    phone: string | null;
+    amount: number | string | null;
+    total_paid: number | string | null;
+    payment_status: string | null;
+    is_archived: boolean | null;
+    cancelled_at: string | null;
+    cancel_reason: string | null;
+    cancelled_by_name: string | null;
+    created_by_name: string | null;
+  }[];
   /** The newest few only. `stoveChanges` fetches the rest on request. */
   changes: ChangeRow[];
   changesHasMore: boolean;

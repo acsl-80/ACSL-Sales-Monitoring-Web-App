@@ -1336,7 +1336,7 @@ serve(async (req) => {
 
           const [
             sale, enrichment, provenance, changes, changeCount, consignment,
-            phoneTwins, siblings,
+            phoneTwins, siblings, payments, pastSales,
           ] = await Promise.all([
               // The sale exactly as the sales app holds it, every field the
               // Sell Stove form collects. Anything less and this page would be
@@ -1553,6 +1553,78 @@ serve(async (req) => {
                   args: [transferId],
                 })
                 : { rows: [] },
+
+              /*
+               * The instalments themselves, not just the running total.
+               *
+               * `sales.total_paid` and `sales.payment_status` were already on
+               * this page, which is a summary of a thing the page never
+               * showed: 32 of the 45 rows in production are instalment sales
+               * and `public.installment_payments` had never been opened by
+               * anything in this module.
+               *
+               * It matters because the two already disagree. Measured on
+               * production: 29 sales where the payments sum to `total_paid`,
+               * two flagged instalment and partially paid with no payment rows
+               * at all, one carrying payments while not flagged instalment,
+               * and one where the sum simply differs. Four in thirty-three.
+               *
+               * So the rows come back and the page reconciles them out loud
+               * rather than printing a list beside a total and leaving the
+               * reader to notice. Read-only, like everything else here: the
+               * sales app owns this table and this module owns no copy of it.
+               */
+              saleId
+                ? connection.queryObject({
+                  text: `select ip.id::text as id, ip.amount, ip.payment_method,
+                                ip.payment_date, ip.notes, ip.created_at,
+                                coalesce(up.url, ip.proof_image_url) as proof_url,
+                                rb.full_name as recorded_by_name
+                           from public.installment_payments ip
+                           left join public.profiles rb on rb.id = ip.recorded_by
+                           left join public.uploads up on up.id = ip.proof_image_id
+                          where ip.sale_id = $1
+                          order by ip.payment_date desc nulls last,
+                                   ip.created_at desc`,
+                  args: [saleId],
+                })
+                : { rows: [] },
+
+              /*
+               * Sales this stove used to have, which is nearly always a
+               * cancellation.
+               *
+               * Everything else on this page hangs off `stove_ids_base.sale_id`,
+               * and cancelling a sale RELEASES the stove: the sale keeps its
+               * serial, the stock row drops the link and goes back to
+               * available. Measured on production, zero stock rows point at a
+               * cancelled sale. So a stove that was sold and then cancelled
+               * read here as never sold, and the whole episode - who bought it,
+               * for how much, who cancelled it and why - was invisible from the
+               * one page whose promise is everything that ever happened to this
+               * stove.
+               *
+               * Found by serial rather than by the link, because the link is
+               * exactly what cancelling removes. Production has 28 cancelled
+               * sales across 25 serials, so a stove can carry more than one and
+               * this is a list rather than a row.
+               */
+              connection.queryObject({
+                text: `select s.id::text as id, s.transaction_id, s.sales_date,
+                              s.end_user_name, s.phone, s.amount, s.total_paid,
+                              s.payment_status, s.is_archived,
+                              s.cancelled_at, s.cancel_reason,
+                              cnb.full_name as cancelled_by_name,
+                              cb.full_name  as created_by_name
+                         from public.sales s
+                         left join public.profiles cnb on cnb.id = s.cancelled_by
+                         left join public.profiles cb  on cb.id  = s.created_by
+                        where upper(btrim(s.stove_serial_no)) = upper(btrim($1))
+                          and ($2::uuid is null or s.id <> $2::uuid)
+                        order by s.sales_date desc nulls last, s.created_at desc
+                        limit 20`,
+                args: [stoveId, saleId],
+              }),
             ]);
 
           return json(
@@ -1560,6 +1632,8 @@ serve(async (req) => {
               data: {
                 stove,
                 attempts: attempts.rows,
+                payments: payments.rows,
+                pastSales: pastSales.rows,
                 sale: sale.rows[0] ?? null,
                 enrichment: enrichment.rows[0] ?? null,
                 provenance: provenance.rows,

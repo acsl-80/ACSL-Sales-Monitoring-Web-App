@@ -1093,3 +1093,79 @@ on conflict do nothing;
 -- The funnel is a computed table, so it needs a first refresh. After this the
 -- compute run keeps it current.
 select data_center.refresh_transfer_funnel();
+-- ---------------------------------------------------------------------------
+-- Phase 23 fixtures: the money, and a cancellation.
+--
+-- Four states the stove record has to tell apart, and production has all four.
+-- Without them here the payment block and the cancelled pill can only be tested
+-- by reading the code, which is how the cancelled pill came to be unreachable
+-- for two phases without anybody noticing.
+--
+--   PRV003  instalment, payments that add up          -> reconciles quietly
+--   PRV004  instalment, partially paid, NO payments   -> "nothing recorded"
+--   PRV005  instalment, payments that do NOT add up   -> states the disagreement
+--   PRV006  a cancelled sale                          -> the red pill
+-- ---------------------------------------------------------------------------
+
+-- PRV003: agrees. 42,000 in two instalments of 21,000.
+update public.sales
+   set is_installment = true, payment_status = 'fully_paid', total_paid = 42000
+ where transaction_id = 'PRV003';
+
+-- PRV004: flagged and part-paid, with nothing recorded against it. This is the
+-- case an empty table would misreport as "nothing was paid".
+update public.sales
+   set is_installment = true, payment_status = 'partially_paid', total_paid = 15000
+ where transaction_id = 'PRV004';
+
+-- PRV005: the payments say 30,000, the sale says 25,000. Neither is shown as
+-- the answer.
+update public.sales
+   set is_installment = true, payment_status = 'partially_paid', total_paid = 25000
+ where transaction_id = 'PRV005';
+
+insert into public.installment_payments
+  (sale_id, amount, payment_method, payment_date, notes, recorded_by)
+select s.id, v.amount, v.method, current_date - v.days_ago, v.note, s.created_by
+  from public.sales s
+  join (values
+      ('PRV003', 21000, 'transfer', 30, 'First instalment'),
+      ('PRV003', 21000, 'cash',           2, 'Balance settled'),
+      ('PRV005', 20000, 'transfer', 20, 'Deposit'),
+      ('PRV005', 10000, 'cash',           4, 'Second instalment')
+    ) as v(txn, amount, method, days_ago, note) on v.txn = s.transaction_id
+ where not exists (
+   select 1 from public.installment_payments p where p.sale_id = s.id
+ );
+
+-- PRV006: sold, then cancelled. Archived with it, which is what makes the
+-- pill order matter: every cancelled sale on production carries both flags.
+insert into public.sales (
+  id, transaction_id, stove_serial_no, sales_date, end_user_name, phone,
+  contact_person, contact_phone, partner_name, state_backup, lga_backup,
+  amount, total_paid, organization_id, created_by, platform,
+  is_archived, cancelled_at, cancel_reason, cancelled_by
+)
+select
+  'd0000000-0000-4000-8000-000000000006'::uuid,
+  'PRV006',
+  'PRV000042',
+  current_date - 12,
+  'Fatima Cancelled',
+  '08010000006',
+  'Fatima Cancelled',
+  '08010000006',
+  o.partner_name,
+  'Gombe', 'Akko',
+  42000, 0,
+  o.id,
+  s.created_by,
+  'web',
+  true,
+  now() - interval '6 days',
+  'Buyer changed their mind before collection',
+  s.created_by
+  from public.organizations o
+  join public.sales s on s.transaction_id = 'PRV001'
+ where o.id = 'a0000000-0000-4000-8000-000000000001'::uuid
+on conflict (id) do nothing;

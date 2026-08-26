@@ -8,7 +8,7 @@ import {
   Loader2, Package, Truck, UserRound, PhoneCall, FileSpreadsheet, History,
   ChevronRight, ChevronDown, Copy, Check, ExternalLink, Flame, PenLine,
   TriangleAlert, CircleDashed, CircleCheck, CircleAlert,
-  ChevronUp,
+  ChevronUp, Wallet,
 } from "lucide-react";
 
 /**
@@ -107,6 +107,186 @@ function Empty({ children }) {
     <p className="rounded-lg border border-dashed border-(--dc-accent)/40 bg-(--dc-accent-soft)/15 px-4 py-6 text-center text-sm text-gray-600">
       {children}
     </p>
+  );
+}
+
+/**
+ * The instalments behind the running total.
+ *
+ * This page already showed `total_paid` and `payment_status`, which is a
+ * summary of something it never showed. 32 of the 45 rows in production are
+ * instalment sales, and `public.installment_payments` had never been read by
+ * anything in this module.
+ *
+ * WHY THE RECONCILIATION LINE IS THE POINT
+ *
+ * The two sources already disagree. Measured on production: 29 sales where the
+ * payments sum to `total_paid`, two flagged instalment and partially paid with
+ * no payment rows at all, one carrying payments while not flagged instalment,
+ * and one where the sum simply differs. Four in thirty-three.
+ *
+ * A list printed beside a total that contradicts it is worse than no list,
+ * because the reader has no way to know which number to believe and no reason
+ * to suspect there is a question. So the disagreement is stated in words, both
+ * figures are named, and each is attributed to where it came from.
+ *
+ * The empty case is stated too. A sale flagged instalment with no payment rows
+ * draws a sentence rather than an empty table, because an empty table reads as
+ * "nothing was paid" when what it means is "nothing was recorded".
+ */
+function Payments({ payments, sale }) {
+  const rows = payments ?? [];
+  const isInstalment = Boolean(sale?.is_installment) || rows.length > 0;
+  if (!isInstalment) return null;
+
+  const sum = rows.reduce((t, p) => t + Number(p.amount ?? 0), 0);
+  const stated = sale?.total_paid == null ? null : Number(sale.total_paid);
+  // Money, compared in whole kobo. Two numerics that are equal to the naira
+  // can differ in float, and a reconciliation that cries wolf gets ignored.
+  const agree = stated != null && Math.round(sum * 100) === Math.round(stated * 100);
+
+  return (
+    <div className="mt-4 rounded-lg border border-gray-200">
+      <div className="flex flex-wrap items-center gap-2 border-b border-gray-100 bg-gray-50 px-3 py-2">
+        <Wallet className="h-4 w-4 text-(--dc-accent)" />
+        <span className="text-sm font-semibold text-gray-900">Payments</span>
+        <span className="text-xs text-gray-500">
+          {rows.length === 0 ? "none recorded" : plural(rows.length, "payment")}
+        </span>
+      </div>
+
+      {rows.length === 0 ? (
+        <p className="px-3 py-3 text-sm text-amber-900">
+          This sale is marked as an instalment sale
+          {sale?.payment_status ? ` and ${words(sale.payment_status)}` : ""}, but no
+          payment has been recorded against it. The running total says{" "}
+          <span className="font-semibold">{money(sale?.total_paid) ?? "nothing"}</span>.
+        </p>
+      ) : (
+        <div className="overflow-x-auto">
+          <table className="w-full text-sm">
+            <thead>
+              <tr className="border-b border-gray-100 text-left text-xs uppercase tracking-wide text-gray-500">
+                <th scope="col" className="px-3 py-2 font-medium">Date</th>
+                <th scope="col" className="px-3 py-2 font-medium">Amount</th>
+                <th scope="col" className="px-3 py-2 font-medium">Method</th>
+                <th scope="col" className="px-3 py-2 font-medium">Recorded by</th>
+                <th scope="col" className="px-3 py-2 font-medium">Note</th>
+              </tr>
+            </thead>
+            <tbody>
+              {rows.map((p) => (
+                <tr key={p.id} className="border-b border-gray-50 last:border-0">
+                  <td className="px-3 py-2 whitespace-nowrap">
+                    {dateOf(p.payment_date) ?? dateOf(p.created_at) ?? "no date"}
+                  </td>
+                  <td className="px-3 py-2 font-medium whitespace-nowrap">{money(p.amount)}</td>
+                  <td className="px-3 py-2">{words(p.payment_method) ?? "-"}</td>
+                  <td className="px-3 py-2">{p.recorded_by_name ?? "-"}</td>
+                  <td className="px-3 py-2 text-gray-600">
+                    {p.notes ?? "-"}
+                    {p.proof_url && (
+                      <a
+                        href={p.proof_url}
+                        target="_blank"
+                        rel="noreferrer"
+                        className="ml-2 text-(--dc-accent) underline"
+                      >
+                        proof
+                      </a>
+                    )}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+
+      {rows.length > 0 && (
+        <p
+          className={`border-t px-3 py-2 text-sm ${
+            agree
+              ? "border-gray-100 text-gray-600"
+              : "border-amber-200 bg-amber-50 font-medium text-amber-900"
+          }`}
+        >
+          {agree ? (
+            <>
+              These payments come to {money(sum)}, which matches the total on the
+              sale.
+            </>
+          ) : (
+            <>
+              These payments come to <span className="font-semibold">{money(sum)}</span>,
+              but the sale records{" "}
+              <span className="font-semibold">{money(sale?.total_paid) ?? "nothing"}</span>{" "}
+              as paid. The two are kept in different places by the sales app and
+              they disagree here, so neither is shown as the answer.
+            </>
+          )}
+        </p>
+      )}
+    </div>
+  );
+}
+
+/**
+ * Sales this stove used to have.
+ *
+ * Cancelling a sale releases the stove: the sale keeps its serial, the stock
+ * row drops the link and goes back to available. Every other part of this page
+ * hangs off that link, so a stove sold and then cancelled read as never sold
+ * and the entire episode was invisible - on the one page whose promise is
+ * everything that ever happened to this stove.
+ *
+ * Production carries 28 cancelled sales across 25 serials, so more than one is
+ * a real case and this is a list.
+ */
+function PastSales({ sales }) {
+  const rows = sales ?? [];
+  if (rows.length === 0) return null;
+
+  return (
+    <div className="mt-4 rounded-lg border border-red-200">
+      <div className="flex flex-wrap items-center gap-2 border-b border-red-100 bg-red-50 px-3 py-2">
+        <History className="h-4 w-4 text-red-700" />
+        <span className="text-sm font-semibold text-red-900">Earlier sales of this stove</span>
+        <span className="text-xs text-red-800">{plural(rows.length, "record")}</span>
+      </div>
+      <ul className="divide-y divide-red-50">
+        {rows.map((p) => (
+          <li key={p.id} className="px-3 py-2.5 text-sm">
+            <div className="flex flex-wrap items-baseline gap-x-2">
+              <span className="font-mono font-medium text-gray-900">
+                {p.transaction_id ?? "no reference"}
+              </span>
+              <span className="text-gray-700">{p.end_user_name ?? "no name"}</span>
+              {p.sales_date && (
+                <span className="text-gray-500">sold {dateOf(p.sales_date)}</span>
+              )}
+              {money(p.amount) && <span className="text-gray-500">{money(p.amount)}</span>}
+              <span
+                className={`rounded-full px-2 py-0.5 text-xs font-medium ${
+                  p.cancelled_at
+                    ? "bg-red-100 text-red-800"
+                    : "bg-gray-200 text-gray-700"
+                }`}
+              >
+                {p.cancelled_at ? "cancelled" : "archived"}
+              </span>
+            </div>
+            {p.cancelled_at && (
+              <p className="mt-1 text-xs text-red-900">
+                Cancelled on {dateOf(p.cancelled_at)}
+                {p.cancelled_by_name ? ` by ${p.cancelled_by_name}` : ""}
+                {p.cancel_reason ? `: ${p.cancel_reason}` : "."}
+              </p>
+            )}
+          </li>
+        ))}
+      </ul>
+    </div>
   );
 }
 
@@ -750,22 +930,54 @@ export default function StoveRecord({ stoveId }) {
         title="The sale"
         note="Where it went, and to whom."
         right={
-          sale?.is_archived ? (
-            <span className="rounded-full bg-gray-200 px-2.5 py-1 text-xs font-medium text-gray-700">
-              archived
-            </span>
-          ) : sale?.cancelled_at ? (
+          /*
+           * Cancelled is tested first, and the order is the whole fix.
+           *
+           * Cancelling a sale also archives it, so on production all 28
+           * cancelled sales carry both flags and there is not one row that is
+           * archived without being cancelled. Testing `is_archived` first
+           * therefore made the red pill unreachable, and every cancelled sale
+           * read as the grey "archived" - the sales app saying cancelled while
+           * this said archived about the same stove.
+           *
+           * `is_archived` keeps its own branch rather than being deleted,
+           * because archived-without-cancellation is a state the column can
+           * express and would otherwise silently come back wearing the wrong
+           * word.
+           */
+          sale?.cancelled_at ? (
             <span className="rounded-full bg-red-100 px-2.5 py-1 text-xs font-medium text-red-800">
               cancelled
+            </span>
+          ) : sale?.is_archived ? (
+            <span className="rounded-full bg-gray-200 px-2.5 py-1 text-xs font-medium text-gray-700">
+              archived
             </span>
           ) : null
         }
       >
         {!sold ? (
-          <Empty>
-            Not sold yet. It is with {s.partner_name ?? "the partner"} as available
-            stock, so there is no buyer to record and nobody to call about it.
-          </Empty>
+          <>
+            {/*
+              "Not sold yet" is false for a stove whose sale was cancelled.
+              Cancelling releases the stove, so it returns here as available
+              stock and this branch is exactly where such a stove lands - while
+              the sentence told the reader nothing had ever happened to it.
+            */}
+            {(data.pastSales ?? []).length > 0 ? (
+              <Empty>
+                Not sold at the moment. It is back with{" "}
+                {s.partner_name ?? "the partner"} as available stock because an
+                earlier sale was cancelled, which released it. That sale is below.
+              </Empty>
+            ) : (
+              <Empty>
+                Not sold yet. It is with {s.partner_name ?? "the partner"} as available
+                stock, so there is no buyer to record and nobody to call about it.
+              </Empty>
+            )}
+            <PastSales sales={data.pastSales} />
+          </>
         ) : (
           <>
             <Grid>
@@ -878,6 +1090,10 @@ export default function StoveRecord({ stoveId }) {
                 </ul>
               </div>
             )}
+
+            <Payments payments={data.payments} sale={sale} />
+
+            <PastSales sales={data.pastSales} />
 
             {sale?.cancelled_at && (
               <p className="mt-3 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-900">
