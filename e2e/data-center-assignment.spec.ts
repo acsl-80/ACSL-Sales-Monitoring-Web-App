@@ -39,12 +39,34 @@ test.describe("the assignment log", () => {
       page.getByRole("button", { name: "Reclaim quiet batches" }),
     ).toBeVisible();
 
-    // Pressing assign against a drained pool must say so rather than fail:
-    // "nothing to hand out" is a result, not an error.
+    /*
+     * Pressing assign must ANSWER, and the assertion has to cover every way it
+     * can. Two faults were in the old one.
+     *
+     * It matched the literal "batch(es) assigned", which `plural()` never
+     * produces - the text is "0 batches assigned" or "1 batch assigned". So it
+     * was passing entirely on the "Nothing to hand out" half, which only holds
+     * while the callable pool is empty. The day preview has callable records it
+     * would have failed for a reason unrelated to the feature.
+     *
+     * And it waited only for the success notice. When the call errors the page
+     * renders an amber error block instead, so the test sat out its timeout and
+     * reported "element(s) not found" - which says nothing about what happened.
+     * It failed exactly that way once in a full-suite run and passed three times
+     * in isolation, and the page's own explanation was never captured.
+     *
+     * So: wait for either, then say which. An error now fails immediately, with
+     * its own text as the reason.
+     */
     await page.getByRole("button", { name: "Assign now" }).click();
+
+    const answered = page.getByText(/assigned\.|Nothing to hand out/i);
+    const failed = page.getByText(/Assignment failed|Reclaim failed/i);
+    await expect(answered.or(failed)).toBeVisible({ timeout: 20_000 });
     await expect(
-      page.getByText(/batch\(es\) assigned|Nothing to hand out/),
-    ).toBeVisible({ timeout: 20_000 });
+      failed,
+      "assignment answered with an error rather than a result",
+    ).toHaveCount(0);
   });
 
   test("an editor sees the log without the levers", async ({ page }) => {
