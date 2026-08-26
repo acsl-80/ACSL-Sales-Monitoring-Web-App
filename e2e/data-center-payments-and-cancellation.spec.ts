@@ -39,7 +39,9 @@ test.describe("payments are shown, and reconciled out loud", () => {
     await signIn(page, USERS.admin);
     await open(page, "PRV000021");
 
-    await expect(page.getByText("Payments")).toBeVisible();
+    // Exact: "Payments", "2 payments" and the reconciliation sentence all contain
+    // the word, so a loose match is a uniqueness claim this page disproves.
+    await expect(page.getByText("Payments", { exact: true })).toBeVisible();
     // Both instalments, by their amounts.
     await expect(page.getByText("₦21,000").first()).toBeVisible();
     await expect(page.getByText(/matches the total on the sale/i)).toBeVisible();
@@ -79,7 +81,7 @@ test.describe("payments are shown, and reconciled out loud", () => {
     await signIn(page, USERS.admin);
     await open(page, "PRV000007");
 
-    await expect(page.getByText("Payments")).toHaveCount(0);
+    await expect(page.getByText("Payments", { exact: true })).toHaveCount(0);
   });
 });
 
