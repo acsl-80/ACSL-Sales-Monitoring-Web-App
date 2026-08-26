@@ -243,6 +243,18 @@ observable without seeding. Seed before claiming anything.
   times out because the page is on top of it. Scope drill assertions to the
   element the user would actually click, and assert the keyboard route
   separately.
+- **Migrations reach a database through `supabase db push`, and nothing else.**
+  Two shortcuts look like they work and do not. The Management API's
+  `/database/query` cannot run `CREATE INDEX CONCURRENTLY` at all, because it
+  opens a transaction and that statement may not run inside one. And
+  `POST /database/migrations` **ignores the version you give it** and stamps its
+  own timestamp - so the recorded history stops matching the filenames, the
+  next `db push` believes nothing has been applied, and it re-runs every
+  migration including the seeds, which use `on conflict do update` and would
+  revert every dropdown label and workflow setting anybody had edited. Both
+  were tested on the preview branch and rejected. Reach for them when the
+  database password is awkward to get and you will corrupt the one record that
+  says what has already run.
 - Commit at every working state with a clear message.
 - Merge `main` into this branch weekly. `main` moves daily on its own via the
   sync cron and deploys straight to production.
