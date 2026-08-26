@@ -1,0 +1,1171 @@
+-- Preview seed for the ACSL sales web app.
+--
+-- Runs on Supabase preview branches and on `supabase db reset` locally. A
+-- preview branch is created data-less, so without this nobody can sign in and
+-- nothing can be verified. Making the preview genuinely usable is the point:
+-- Data Center work is checked on a preview before it is allowed near main.
+--
+-- TWO RULES THIS FILE KEEPS
+--
+-- 1. No production personal data. Production holds real end-user names, phone
+--    numbers and addresses. Only public reference data is mirrored; every
+--    person, sale and stove below is invented.
+-- 2. No secrets. public.app_settings is not seeded, because that row holds
+--    live Google Places, Google Maps and Brevo API keys.
+--
+-- NEVER RUN THIS AGAINST PRODUCTION.
+
+-- ============ reference data, mirrored from production ============
+-- Public geographic data and payment-model configuration. No personal data.
+-- app_settings is DELIBERATELY NOT seeded: that row holds live Google Places,
+-- Google Maps and Brevo API keys, which must never enter a committed file.
+
+insert into public.nigeria_states (name) values
+  ('Abia'),
+  ('Adamawa'),
+  ('Akwa Ibom'),
+  ('Anambra'),
+  ('Bauchi'),
+  ('Bayelsa'),
+  ('Benue'),
+  ('Borno'),
+  ('Cross River'),
+  ('Delta'),
+  ('Ebonyi'),
+  ('Edo'),
+  ('Ekiti'),
+  ('Enugu'),
+  ('FCT'),
+  ('Gombe'),
+  ('Imo'),
+  ('Jigawa'),
+  ('Kaduna'),
+  ('Kano'),
+  ('Katsina'),
+  ('Kebbi'),
+  ('Kogi'),
+  ('Kwara'),
+  ('Lagos'),
+  ('Nasarawa'),
+  ('Niger'),
+  ('Ogun'),
+  ('Ondo'),
+  ('Osun'),
+  ('Oyo'),
+  ('Plateau'),
+  ('Rivers'),
+  ('Sokoto'),
+  ('Taraba'),
+  ('Yobe'),
+  ('Zamfara')
+on conflict do nothing;
+
+insert into public.nigeria_lgas (state_name, name) values
+  ('Abia','Aba North'),
+  ('Abia','Aba South'),
+  ('Abia','Arochukwu'),
+  ('Abia','Bende'),
+  ('Abia','Ikwuano'),
+  ('Abia','Isiala Ngwa North'),
+  ('Abia','Isiala Ngwa South'),
+  ('Abia','Isuikwuato'),
+  ('Abia','Obi Ngwa'),
+  ('Abia','Ohafia'),
+  ('Abia','Osisioma'),
+  ('Abia','Ugwunagbo'),
+  ('Abia','Ukwa East'),
+  ('Abia','Ukwa West'),
+  ('Abia','Umu-Nneochi'),
+  ('Abia','Umuahia North'),
+  ('Abia','Umuahia South'),
+  ('Adamawa','Demsa'),
+  ('Adamawa','Fufore'),
+  ('Adamawa','Ganye'),
+  ('Adamawa','Girei'),
+  ('Adamawa','Gombi'),
+  ('Adamawa','Guyuk'),
+  ('Adamawa','Hong'),
+  ('Adamawa','Jada'),
+  ('Adamawa','Lamurde'),
+  ('Adamawa','Madagali'),
+  ('Adamawa','Maiha'),
+  ('Adamawa','Mayo Belwa'),
+  ('Adamawa','Michika'),
+  ('Adamawa','Mubi North'),
+  ('Adamawa','Mubi South'),
+  ('Adamawa','Numan'),
+  ('Adamawa','Shelleng'),
+  ('Adamawa','Song'),
+  ('Adamawa','Toungo'),
+  ('Adamawa','Yola North'),
+  ('Adamawa','Yola South'),
+  ('Akwa Ibom','Abak'),
+  ('Akwa Ibom','Eastern Obolo'),
+  ('Akwa Ibom','Eket'),
+  ('Akwa Ibom','Esit Eket'),
+  ('Akwa Ibom','Essien Udim'),
+  ('Akwa Ibom','Etim Ekpo'),
+  ('Akwa Ibom','Etinan'),
+  ('Akwa Ibom','Ibeno'),
+  ('Akwa Ibom','Ibesikpo Asutan'),
+  ('Akwa Ibom','Ibiono Ibom'),
+  ('Akwa Ibom','Ika'),
+  ('Akwa Ibom','Ikono'),
+  ('Akwa Ibom','Ikot Abasi'),
+  ('Akwa Ibom','Ikot Ekpene'),
+  ('Akwa Ibom','Ini'),
+  ('Akwa Ibom','Itu'),
+  ('Akwa Ibom','Mbo'),
+  ('Akwa Ibom','Mkpat Enin'),
+  ('Akwa Ibom','Nsit Atai'),
+  ('Akwa Ibom','Nsit Ibom'),
+  ('Akwa Ibom','Nsit Ubium'),
+  ('Akwa Ibom','Obot Akara'),
+  ('Akwa Ibom','Okobo'),
+  ('Akwa Ibom','Onna'),
+  ('Akwa Ibom','Oron'),
+  ('Akwa Ibom','Oruk Anam'),
+  ('Akwa Ibom','Udung Uko'),
+  ('Akwa Ibom','Ukanafun'),
+  ('Akwa Ibom','Uruan'),
+  ('Akwa Ibom','Urue Offong/Oruko'),
+  ('Akwa Ibom','Uyo'),
+  ('Anambra','Aguata'),
+  ('Anambra','Anambra East'),
+  ('Anambra','Anambra West'),
+  ('Anambra','Anaocha'),
+  ('Anambra','Awka North'),
+  ('Anambra','Awka South'),
+  ('Anambra','Ayamelum'),
+  ('Anambra','Dunukofia'),
+  ('Anambra','Ekwusigo'),
+  ('Anambra','Idemili North'),
+  ('Anambra','Idemili South'),
+  ('Anambra','Ihiala'),
+  ('Anambra','Njikoka'),
+  ('Anambra','Nnewi North'),
+  ('Anambra','Nnewi South'),
+  ('Anambra','Ogbaru'),
+  ('Anambra','Onitsha North'),
+  ('Anambra','Onitsha South'),
+  ('Anambra','Orumba North'),
+  ('Anambra','Orumba South'),
+  ('Anambra','Oyi'),
+  ('Bauchi','Alkaleri'),
+  ('Bauchi','Bauchi'),
+  ('Bauchi','Bogoro'),
+  ('Bauchi','Damban'),
+  ('Bauchi','Darazo'),
+  ('Bauchi','Dass'),
+  ('Bauchi','Gamawa'),
+  ('Bauchi','Ganjuwa'),
+  ('Bauchi','Giade'),
+  ('Bauchi','Itas/Gadau'),
+  ('Bauchi','Jama''are'),
+  ('Bauchi','Katagum'),
+  ('Bauchi','Kirfi'),
+  ('Bauchi','Misau'),
+  ('Bauchi','Ningi'),
+  ('Bauchi','Shira'),
+  ('Bauchi','Tafawa Balewa'),
+  ('Bauchi','Toro'),
+  ('Bauchi','Warji'),
+  ('Bauchi','Zaki'),
+  ('Bayelsa','Brass'),
+  ('Bayelsa','Ekeremor'),
+  ('Bayelsa','Kolokuma/Opokuma'),
+  ('Bayelsa','Nembe'),
+  ('Bayelsa','Ogbia'),
+  ('Bayelsa','Sagbama'),
+  ('Bayelsa','Southern Ijaw'),
+  ('Bayelsa','Yenagoa'),
+  ('Benue','Ado'),
+  ('Benue','Agatu'),
+  ('Benue','Apa'),
+  ('Benue','Buruku'),
+  ('Benue','Gboko'),
+  ('Benue','Guma'),
+  ('Benue','Gwer East'),
+  ('Benue','Gwer West'),
+  ('Benue','Katsina Ala'),
+  ('Benue','Konshisha'),
+  ('Benue','Kwande'),
+  ('Benue','Logo'),
+  ('Benue','Makurdi'),
+  ('Benue','Obi'),
+  ('Benue','Ogbadibo'),
+  ('Benue','Ohimini'),
+  ('Benue','Oju'),
+  ('Benue','Okpokwu'),
+  ('Benue','Otukpo'),
+  ('Benue','Tarka'),
+  ('Benue','Ukum'),
+  ('Benue','Ushongo'),
+  ('Benue','Vandeikya'),
+  ('Borno','Abadam'),
+  ('Borno','Askira/Uba'),
+  ('Borno','Bama'),
+  ('Borno','Bayo'),
+  ('Borno','Biu'),
+  ('Borno','Chibok'),
+  ('Borno','Damboa'),
+  ('Borno','Dikwa'),
+  ('Borno','Gubio'),
+  ('Borno','Guzamala'),
+  ('Borno','Gwoza'),
+  ('Borno','Hawul'),
+  ('Borno','Jere'),
+  ('Borno','Kaga'),
+  ('Borno','Kala/Balge'),
+  ('Borno','Konduga'),
+  ('Borno','Kukawa'),
+  ('Borno','Kwaya Kusar'),
+  ('Borno','Mafa'),
+  ('Borno','Magumeri'),
+  ('Borno','Maiduguri'),
+  ('Borno','Marte'),
+  ('Borno','Mobbar'),
+  ('Borno','Monguno'),
+  ('Borno','Ngala'),
+  ('Borno','Nganzai'),
+  ('Borno','Shani'),
+  ('Cross River','Abi'),
+  ('Cross River','Akamkpa'),
+  ('Cross River','Akpabuyo'),
+  ('Cross River','Bakassi'),
+  ('Cross River','Bekwarra'),
+  ('Cross River','Biase'),
+  ('Cross River','Boki'),
+  ('Cross River','Calabar Municipal'),
+  ('Cross River','Calabar South'),
+  ('Cross River','Etung'),
+  ('Cross River','Ikom'),
+  ('Cross River','Obanliku'),
+  ('Cross River','Obubra'),
+  ('Cross River','Obudu'),
+  ('Cross River','Odukpani'),
+  ('Cross River','Ogoja'),
+  ('Cross River','Yakurr'),
+  ('Cross River','Yala'),
+  ('Delta','Aniocha North'),
+  ('Delta','Aniocha South'),
+  ('Delta','Bomadi'),
+  ('Delta','Burutu'),
+  ('Delta','Ethiope East'),
+  ('Delta','Ethiope West'),
+  ('Delta','Ika North East'),
+  ('Delta','Ika South'),
+  ('Delta','Isoko North'),
+  ('Delta','Isoko South'),
+  ('Delta','Ndokwa East'),
+  ('Delta','Ndokwa West'),
+  ('Delta','Okpe'),
+  ('Delta','Oshimili North'),
+  ('Delta','Oshimili South'),
+  ('Delta','Patani'),
+  ('Delta','Sapele'),
+  ('Delta','Udu'),
+  ('Delta','Ughelli North'),
+  ('Delta','Ughelli South'),
+  ('Delta','Ukwuani'),
+  ('Delta','Uvwie'),
+  ('Delta','Warri North'),
+  ('Delta','Warri South'),
+  ('Delta','Warri South West'),
+  ('Ebonyi','Abakaliki'),
+  ('Ebonyi','Afikpo North'),
+  ('Ebonyi','Afikpo South'),
+  ('Ebonyi','Ebonyi'),
+  ('Ebonyi','Ezza North'),
+  ('Ebonyi','Ezza South'),
+  ('Ebonyi','Ikwo'),
+  ('Ebonyi','Ishielu'),
+  ('Ebonyi','Ivo'),
+  ('Ebonyi','Izzi'),
+  ('Ebonyi','Ohaozara'),
+  ('Ebonyi','Ohaukwu'),
+  ('Ebonyi','Onicha'),
+  ('Edo','Akoko Edo'),
+  ('Edo','Egor'),
+  ('Edo','Esan Central'),
+  ('Edo','Esan North East'),
+  ('Edo','Esan South East'),
+  ('Edo','Esan West'),
+  ('Edo','Etsako Central'),
+  ('Edo','Etsako East'),
+  ('Edo','Etsako West'),
+  ('Edo','Igueben'),
+  ('Edo','Ikpoba Okha'),
+  ('Edo','Oredo'),
+  ('Edo','Orhionmwon'),
+  ('Edo','Ovia North East'),
+  ('Edo','Ovia South West'),
+  ('Edo','Owan East'),
+  ('Edo','Owan West'),
+  ('Edo','Uhunmwonde'),
+  ('Ekiti','Ado-Ekiti'),
+  ('Ekiti','Efon'),
+  ('Ekiti','Ekiti East'),
+  ('Ekiti','Ekiti South West'),
+  ('Ekiti','Ekiti West'),
+  ('Ekiti','Emure'),
+  ('Ekiti','Gbonyin'),
+  ('Ekiti','Ido-Osi'),
+  ('Ekiti','Ijero'),
+  ('Ekiti','Ikere'),
+  ('Ekiti','Ikole'),
+  ('Ekiti','Ilejemeje'),
+  ('Ekiti','Irepodun/Ifelodun'),
+  ('Ekiti','Ise/Orun'),
+  ('Ekiti','Moba'),
+  ('Ekiti','Oye'),
+  ('Enugu','Aninri'),
+  ('Enugu','Awgu'),
+  ('Enugu','Enugu East'),
+  ('Enugu','Enugu North'),
+  ('Enugu','Enugu South'),
+  ('Enugu','Ezeagu'),
+  ('Enugu','Igbo Etiti'),
+  ('Enugu','Igbo Eze North'),
+  ('Enugu','Igbo Eze South'),
+  ('Enugu','Isi-Uzo'),
+  ('Enugu','Nkanu East'),
+  ('Enugu','Nkanu West'),
+  ('Enugu','Nsukka'),
+  ('Enugu','Oji-River'),
+  ('Enugu','Udenu'),
+  ('Enugu','Udi'),
+  ('Enugu','Uzo-Uwani'),
+  ('FCT','Abaji'),
+  ('FCT','Abuja'),
+  ('FCT','Bwari'),
+  ('FCT','Gwagwalada'),
+  ('FCT','Kuje'),
+  ('FCT','Kwali'),
+  ('Gombe','Akko'),
+  ('Gombe','Balanga'),
+  ('Gombe','Billiri'),
+  ('Gombe','Dukku'),
+  ('Gombe','Funakaye'),
+  ('Gombe','Gombe'),
+  ('Gombe','Kaltungo'),
+  ('Gombe','Kwami'),
+  ('Gombe','Nafada'),
+  ('Gombe','Shongom'),
+  ('Gombe','Yamaltu/Deba'),
+  ('Imo','Aboh Mbaise'),
+  ('Imo','Ahiazu Mbaise'),
+  ('Imo','Ehime Mbano'),
+  ('Imo','Ezinihitte Mbaise'),
+  ('Imo','Ideato North'),
+  ('Imo','Ideato South'),
+  ('Imo','Ihitte/Uboma'),
+  ('Imo','Ikeduru'),
+  ('Imo','Isiala Mbano'),
+  ('Imo','Isu'),
+  ('Imo','Mbaitoli'),
+  ('Imo','Ngor Okpala'),
+  ('Imo','Njaba'),
+  ('Imo','Nkwerre'),
+  ('Imo','Nwangele'),
+  ('Imo','Obowo'),
+  ('Imo','Oguta'),
+  ('Imo','Ohaji/Egbema'),
+  ('Imo','Okigwe'),
+  ('Imo','Onuimo'),
+  ('Imo','Orlu'),
+  ('Imo','Orsu'),
+  ('Imo','Oru East'),
+  ('Imo','Oru West'),
+  ('Imo','Owerri Municipal'),
+  ('Imo','Owerri North'),
+  ('Imo','Owerri West'),
+  ('Jigawa','Auyo'),
+  ('Jigawa','Babura'),
+  ('Jigawa','Biriniwa'),
+  ('Jigawa','Birnin Kudu'),
+  ('Jigawa','Buji'),
+  ('Jigawa','Dutse'),
+  ('Jigawa','Gagarawa'),
+  ('Jigawa','Garki'),
+  ('Jigawa','Gumel'),
+  ('Jigawa','Guri'),
+  ('Jigawa','Gwaram'),
+  ('Jigawa','Gwiwa'),
+  ('Jigawa','Hadejia'),
+  ('Jigawa','Jahun'),
+  ('Jigawa','Kafin Hausa'),
+  ('Jigawa','Kaugama'),
+  ('Jigawa','Kazaure'),
+  ('Jigawa','Kiri Kasama'),
+  ('Jigawa','Kiyawa'),
+  ('Jigawa','Maigatari'),
+  ('Jigawa','Malam Madori'),
+  ('Jigawa','Miga'),
+  ('Jigawa','Ringim'),
+  ('Jigawa','Roni'),
+  ('Jigawa','Sule Tankarkar'),
+  ('Jigawa','Taura'),
+  ('Jigawa','Yankwashi'),
+  ('Kaduna','Birnin Gwari'),
+  ('Kaduna','Chikun'),
+  ('Kaduna','Giwa'),
+  ('Kaduna','Igabi'),
+  ('Kaduna','Ikara'),
+  ('Kaduna','Jaba'),
+  ('Kaduna','Jema''a'),
+  ('Kaduna','Kachia'),
+  ('Kaduna','Kaduna North'),
+  ('Kaduna','Kaduna South'),
+  ('Kaduna','Kagarko'),
+  ('Kaduna','Kajuru'),
+  ('Kaduna','Kaura'),
+  ('Kaduna','Kauru'),
+  ('Kaduna','Kubau'),
+  ('Kaduna','Kudan'),
+  ('Kaduna','Lere'),
+  ('Kaduna','Makarfi'),
+  ('Kaduna','Sabon Gari'),
+  ('Kaduna','Sanga'),
+  ('Kaduna','Soba'),
+  ('Kaduna','Zangon Kataf'),
+  ('Kaduna','Zaria'),
+  ('Kano','Ajingi'),
+  ('Kano','Albasu'),
+  ('Kano','Bagwai'),
+  ('Kano','Bebeji'),
+  ('Kano','Bichi'),
+  ('Kano','Bunkure'),
+  ('Kano','Dala'),
+  ('Kano','Dambatta'),
+  ('Kano','Dawakin Kudu'),
+  ('Kano','Dawakin Tofa'),
+  ('Kano','Doguwa'),
+  ('Kano','Fagge'),
+  ('Kano','Gabasawa'),
+  ('Kano','Garko'),
+  ('Kano','Garun Malam'),
+  ('Kano','Gaya'),
+  ('Kano','Gezawa'),
+  ('Kano','Gwale'),
+  ('Kano','Gwarzo'),
+  ('Kano','Kabo'),
+  ('Kano','Kano Municipal'),
+  ('Kano','Karaye'),
+  ('Kano','Kibiya'),
+  ('Kano','Kiru'),
+  ('Kano','kumbotso'),
+  ('Kano','Kunchi'),
+  ('Kano','Kura'),
+  ('Kano','Madobi'),
+  ('Kano','Makoda'),
+  ('Kano','Minjibir'),
+  ('Kano','Nasarawa'),
+  ('Kano','Rano'),
+  ('Kano','Rimin Gado'),
+  ('Kano','Rogo'),
+  ('Kano','Shanono'),
+  ('Kano','Sumaila'),
+  ('Kano','Takai'),
+  ('Kano','Tarauni'),
+  ('Kano','Tofa'),
+  ('Kano','Tsanyawa'),
+  ('Kano','Tudun Wada'),
+  ('Kano','Ungogo'),
+  ('Kano','Warawa'),
+  ('Kano','Wudil'),
+  ('Katsina','Bakori'),
+  ('Katsina','Batagarawa'),
+  ('Katsina','Batsari'),
+  ('Katsina','Baure'),
+  ('Katsina','Bindawa'),
+  ('Katsina','Charanchi'),
+  ('Katsina','Dan Musa'),
+  ('Katsina','DanDume'),
+  ('Katsina','Danja'),
+  ('Katsina','Daura'),
+  ('Katsina','Dutsi'),
+  ('Katsina','Dutsin-Ma'),
+  ('Katsina','Faskari'),
+  ('Katsina','Funtua'),
+  ('Katsina','Ingawa'),
+  ('Katsina','Jibia'),
+  ('Katsina','Kafur'),
+  ('Katsina','Kaita'),
+  ('Katsina','Kankara'),
+  ('Katsina','Kankia'),
+  ('Katsina','Katsina'),
+  ('Katsina','Kurfi'),
+  ('Katsina','Kusada'),
+  ('Katsina','Mai''Adua'),
+  ('Katsina','Malumfashi'),
+  ('Katsina','Mani'),
+  ('Katsina','Mashi'),
+  ('Katsina','Matazu'),
+  ('Katsina','Musawa'),
+  ('Katsina','Rimi'),
+  ('Katsina','Sabuwa'),
+  ('Katsina','Safana'),
+  ('Katsina','Sandamu'),
+  ('Katsina','Zango'),
+  ('Kebbi','Aliero'),
+  ('Kebbi','Arewa Dandi'),
+  ('Kebbi','Argungu'),
+  ('Kebbi','Augie'),
+  ('Kebbi','Bagudo'),
+  ('Kebbi','Birnin Kebbi'),
+  ('Kebbi','Bunza'),
+  ('Kebbi','Dandi'),
+  ('Kebbi','Danko-Wasagu'),
+  ('Kebbi','Fakai'),
+  ('Kebbi','Gwandu'),
+  ('Kebbi','Jega'),
+  ('Kebbi','Kalgo'),
+  ('Kebbi','Koko/Besse'),
+  ('Kebbi','Maiyama'),
+  ('Kebbi','Ngaski'),
+  ('Kebbi','Sakaba'),
+  ('Kebbi','Shanga'),
+  ('Kebbi','Suru'),
+  ('Kebbi','Yauri'),
+  ('Kebbi','Zuru'),
+  ('Kogi','Adavi'),
+  ('Kogi','Ajaokuta'),
+  ('Kogi','Ankpa'),
+  ('Kogi','Bassa'),
+  ('Kogi','Dekina'),
+  ('Kogi','Ibaji'),
+  ('Kogi','Idah'),
+  ('Kogi','Igalamela Odolu'),
+  ('Kogi','Ijumu'),
+  ('Kogi','Kabba/Bunu'),
+  ('Kogi','Kogi'),
+  ('Kogi','Lokoja'),
+  ('Kogi','Mopa-Muro'),
+  ('Kogi','Ofu'),
+  ('Kogi','Ogori/Magongo'),
+  ('Kogi','Okehi'),
+  ('Kogi','Okene'),
+  ('Kogi','Olamaboro'),
+  ('Kogi','Omala'),
+  ('Kogi','Yagba East'),
+  ('Kogi','Yagba West'),
+  ('Kwara','Asa'),
+  ('Kwara','Baruten'),
+  ('Kwara','Edu'),
+  ('Kwara','Ekiti'),
+  ('Kwara','Ifelodun'),
+  ('Kwara','Ilorin East'),
+  ('Kwara','Ilorin South'),
+  ('Kwara','Ilorin West'),
+  ('Kwara','Irepodun'),
+  ('Kwara','Isin'),
+  ('Kwara','Kaiama'),
+  ('Kwara','Moro'),
+  ('Kwara','Offa'),
+  ('Kwara','Oke-Ero'),
+  ('Kwara','Oyun'),
+  ('Kwara','Pategi'),
+  ('Lagos','Agege'),
+  ('Lagos','Ajeromi-Ifelodun'),
+  ('Lagos','Alimosho'),
+  ('Lagos','Amuwo-Odofin'),
+  ('Lagos','Apapa'),
+  ('Lagos','Badagry'),
+  ('Lagos','Epe'),
+  ('Lagos','Eti-Osa'),
+  ('Lagos','Ibeju-Lekki'),
+  ('Lagos','Ifako-Ijaiye'),
+  ('Lagos','Ikeja'),
+  ('Lagos','Ikorodu'),
+  ('Lagos','Kosofe'),
+  ('Lagos','Lagos Island'),
+  ('Lagos','Lagos Mainland'),
+  ('Lagos','Mushin'),
+  ('Lagos','Ojo'),
+  ('Lagos','Oshodi-Isolo'),
+  ('Lagos','Somolu'),
+  ('Lagos','Surulere'),
+  ('Nasarawa','Akwanga'),
+  ('Nasarawa','Awe'),
+  ('Nasarawa','Doma'),
+  ('Nasarawa','Karu'),
+  ('Nasarawa','Keana'),
+  ('Nasarawa','Keffi'),
+  ('Nasarawa','Kokona'),
+  ('Nasarawa','Lafia'),
+  ('Nasarawa','Nasarawa'),
+  ('Nasarawa','Nasarawa Egon'),
+  ('Nasarawa','Obi'),
+  ('Nasarawa','Toto'),
+  ('Nasarawa','Wamba'),
+  ('Niger','Agaie'),
+  ('Niger','Agwara'),
+  ('Niger','Bida'),
+  ('Niger','Borgu'),
+  ('Niger','Bosso'),
+  ('Niger','Chanchaga'),
+  ('Niger','Edati'),
+  ('Niger','Gbako'),
+  ('Niger','Gurara'),
+  ('Niger','Katcha'),
+  ('Niger','Kontagora'),
+  ('Niger','Lapai'),
+  ('Niger','Lavun'),
+  ('Niger','Magama'),
+  ('Niger','Mariga'),
+  ('Niger','Mashegu'),
+  ('Niger','Mokwa'),
+  ('Niger','Munya'),
+  ('Niger','Paikoro'),
+  ('Niger','Rafi'),
+  ('Niger','Rijau'),
+  ('Niger','Shiroro'),
+  ('Niger','Suleja'),
+  ('Niger','Tafa'),
+  ('Niger','Wushishi'),
+  ('Ogun','Abeokuta North'),
+  ('Ogun','Abeokuta South'),
+  ('Ogun','Ado-Odo/Ota'),
+  ('Ogun','Ewekoro'),
+  ('Ogun','Ifo'),
+  ('Ogun','Ijebu East'),
+  ('Ogun','Ijebu North'),
+  ('Ogun','Ijebu North East'),
+  ('Ogun','Ijebu Ode'),
+  ('Ogun','Ikenne'),
+  ('Ogun','Imeko Afon'),
+  ('Ogun','Ipokia'),
+  ('Ogun','Obafemi Owode'),
+  ('Ogun','Odeda'),
+  ('Ogun','Odogbolu'),
+  ('Ogun','Ogun Waterside'),
+  ('Ogun','Remo North'),
+  ('Ogun','Shagamu'),
+  ('Ogun','Yewa North'),
+  ('Ogun','Yewa South'),
+  ('Ondo','Akoko North East'),
+  ('Ondo','Akoko North West'),
+  ('Ondo','Akoko South East'),
+  ('Ondo','Akoko South West'),
+  ('Ondo','Akure North'),
+  ('Ondo','Akure South'),
+  ('Ondo','Ese Odo'),
+  ('Ondo','Idanre'),
+  ('Ondo','Ifedore'),
+  ('Ondo','Ilaje'),
+  ('Ondo','Ile Oluji/Okeigbo'),
+  ('Ondo','Irele'),
+  ('Ondo','Odigbo'),
+  ('Ondo','Okitipupa'),
+  ('Ondo','Ondo East'),
+  ('Ondo','Ondo West'),
+  ('Ondo','Ose'),
+  ('Ondo','Owo'),
+  ('Osun','Aiyedire'),
+  ('Osun','Atakunmosa East'),
+  ('Osun','Atakunmosa West'),
+  ('Osun','Ayedaade'),
+  ('Osun','Boluwaduro'),
+  ('Osun','Boripe'),
+  ('Osun','Ede North'),
+  ('Osun','Ede South'),
+  ('Osun','Egbedore'),
+  ('Osun','Ejigbo'),
+  ('Osun','Ife Central'),
+  ('Osun','Ife East'),
+  ('Osun','Ife North'),
+  ('Osun','Ife South'),
+  ('Osun','Ifedayo'),
+  ('Osun','Ifelodun'),
+  ('Osun','Ila'),
+  ('Osun','Ilesa East'),
+  ('Osun','Ilesa West'),
+  ('Osun','Irepodun'),
+  ('Osun','Irewole'),
+  ('Osun','Isokan'),
+  ('Osun','Iwo'),
+  ('Osun','Obokun'),
+  ('Osun','Odo-Otin'),
+  ('Osun','Ola-Oluwa'),
+  ('Osun','Olorunda'),
+  ('Osun','Oriade'),
+  ('Osun','Orolu'),
+  ('Osun','Osogbo'),
+  ('Oyo','Afijio'),
+  ('Oyo','Akinyele'),
+  ('Oyo','Atiba'),
+  ('Oyo','Atisbo'),
+  ('Oyo','Egbeda'),
+  ('Oyo','Ibadan North'),
+  ('Oyo','Ibadan North East'),
+  ('Oyo','Ibadan North West'),
+  ('Oyo','Ibadan South East'),
+  ('Oyo','Ibadan South West'),
+  ('Oyo','Ibarapa Central'),
+  ('Oyo','Ibarapa East'),
+  ('Oyo','Ibarapa North'),
+  ('Oyo','Ido'),
+  ('Oyo','Irepo'),
+  ('Oyo','Iseyin'),
+  ('Oyo','Itesiwaju'),
+  ('Oyo','Iwajowa'),
+  ('Oyo','Kajola'),
+  ('Oyo','Lagelu'),
+  ('Oyo','Ogbomosho North'),
+  ('Oyo','Ogbomosho South'),
+  ('Oyo','Ogo Oluwa'),
+  ('Oyo','Olorunsogo'),
+  ('Oyo','Oluyole'),
+  ('Oyo','Ona Ara'),
+  ('Oyo','Oorelope'),
+  ('Oyo','Ori Ire'),
+  ('Oyo','Oyo East'),
+  ('Oyo','Oyo West'),
+  ('Oyo','Saki East'),
+  ('Oyo','Saki West'),
+  ('Oyo','Surulere'),
+  ('Plateau','Barkin Ladi'),
+  ('Plateau','Bassa'),
+  ('Plateau','Bokkos'),
+  ('Plateau','Jos East'),
+  ('Plateau','Jos North'),
+  ('Plateau','Jos South'),
+  ('Plateau','Kanam'),
+  ('Plateau','Kanke'),
+  ('Plateau','Langtang North'),
+  ('Plateau','Langtang South'),
+  ('Plateau','Mangu'),
+  ('Plateau','Mikang'),
+  ('Plateau','Pankshin'),
+  ('Plateau','Qua''an Pan'),
+  ('Plateau','Riyom'),
+  ('Plateau','Shendam'),
+  ('Plateau','Wase'),
+  ('Rivers','Abua-Odual'),
+  ('Rivers','Ahoada East'),
+  ('Rivers','Ahoada West'),
+  ('Rivers','Akuku-Toru'),
+  ('Rivers','Andoni'),
+  ('Rivers','Asari-Toru'),
+  ('Rivers','Bonny'),
+  ('Rivers','Degema'),
+  ('Rivers','Eleme'),
+  ('Rivers','Emohua'),
+  ('Rivers','Etche'),
+  ('Rivers','Gokana'),
+  ('Rivers','Ikwerre'),
+  ('Rivers','Khana'),
+  ('Rivers','Obio/Akpor'),
+  ('Rivers','Ogba/Egbema/Ndoni'),
+  ('Rivers','Ogu/Bolo'),
+  ('Rivers','Okrika'),
+  ('Rivers','Omuma'),
+  ('Rivers','Opobo/Nkoro'),
+  ('Rivers','Oyigbo'),
+  ('Rivers','Port Harcourt'),
+  ('Rivers','Tai'),
+  ('Sokoto','Binji'),
+  ('Sokoto','Bodinga'),
+  ('Sokoto','Dange/Shuni'),
+  ('Sokoto','Gada'),
+  ('Sokoto','Goronyo'),
+  ('Sokoto','Gudu'),
+  ('Sokoto','Gwadabawa'),
+  ('Sokoto','Illela'),
+  ('Sokoto','Isa'),
+  ('Sokoto','Kebbe'),
+  ('Sokoto','Kware'),
+  ('Sokoto','Rabah'),
+  ('Sokoto','Sabon Birni'),
+  ('Sokoto','Shagari'),
+  ('Sokoto','Silame'),
+  ('Sokoto','Sokoto North'),
+  ('Sokoto','Sokoto South'),
+  ('Sokoto','Tambuwal'),
+  ('Sokoto','Tangaza'),
+  ('Sokoto','Tureta'),
+  ('Sokoto','Wamako'),
+  ('Sokoto','Wurno'),
+  ('Sokoto','Yabo'),
+  ('Taraba','Ardo Kola'),
+  ('Taraba','Bali'),
+  ('Taraba','Donga'),
+  ('Taraba','Gashaka'),
+  ('Taraba','Gassol'),
+  ('Taraba','Ibi'),
+  ('Taraba','Jalingo'),
+  ('Taraba','Karim Lamido'),
+  ('Taraba','Kurmi'),
+  ('Taraba','Lau'),
+  ('Taraba','Sardauna'),
+  ('Taraba','Takum'),
+  ('Taraba','Ussa'),
+  ('Taraba','Wukari'),
+  ('Taraba','Yorro'),
+  ('Taraba','Zing'),
+  ('Yobe','Bade'),
+  ('Yobe','Bursari'),
+  ('Yobe','Damaturu'),
+  ('Yobe','Fika'),
+  ('Yobe','Fune'),
+  ('Yobe','Geidam'),
+  ('Yobe','Gujba'),
+  ('Yobe','Gulani'),
+  ('Yobe','Jakusko'),
+  ('Yobe','Karasuwa'),
+  ('Yobe','Machina'),
+  ('Yobe','Nangere'),
+  ('Yobe','Nguru'),
+  ('Yobe','Potiskum'),
+  ('Yobe','Tarmuwa'),
+  ('Yobe','Yunusari'),
+  ('Yobe','Yusufari'),
+  ('Zamfara','Anka'),
+  ('Zamfara','Bakura'),
+  ('Zamfara','Birnin Magaji/Kiyaw'),
+  ('Zamfara','Bukkuyum'),
+  ('Zamfara','Bungudu'),
+  ('Zamfara','Gummi'),
+  ('Zamfara','Gusau'),
+  ('Zamfara','Kaura Namoda'),
+  ('Zamfara','Maradun'),
+  ('Zamfara','Maru'),
+  ('Zamfara','Shinkafi'),
+  ('Zamfara','Talata Mafara'),
+  ('Zamfara','Tsafe'),
+  ('Zamfara','Zurmi')
+on conflict do nothing;
+
+insert into public.payment_models (name, description, duration_months, fixed_price, min_down_payment, is_active) values
+  ('Amina Sales Model',null,12,42000.00,3500.00,true),
+  ('Direct Community Engagement Sales Model',null,6,66000.00,11000.00,true),
+  ('Hakimi Sales Model',null,6,56975.00,0.00,true),
+  ('Institutional Sales - Flexible Payment',null,4,80000.00,0.00,true)
+on conflict do nothing;
+
+-- ============ synthetic records, for preview branches only ============
+--
+-- Everything below is invented. No production personal data is copied into a
+-- preview environment: production holds real end-user names, phone numbers and
+-- residential addresses, and those stay there.
+--
+-- Emails use the reserved .test TLD so they can never route anywhere real.
+--
+-- PREVIEW PASSWORD FOR EVERY ACCOUNT: PreviewOnly!2026
+-- That is deliberately public and deliberately weak-looking. It exists so a
+-- preview can be signed into and clicked through. It must never be used for a
+-- real account, and this file must never be seeded into production.
+
+-- ---------- partners ----------
+insert into public.organizations (id, partner_name, state, branch, contact_person, contact_phone, address, partner_type)
+values
+  ('a0000000-0000-4000-8000-000000000001','Amina Sales Model Gombe','Gombe','Gombe','Preview Contact','08030000001','1 Preview Road, Gombe','partner'),
+  ('a0000000-0000-4000-8000-000000000002','Hakimi Partner Kano','Kano','Kano Central','Preview Contact','08030000002','2 Preview Road, Kano','partner'),
+  ('a0000000-0000-4000-8000-000000000003','Direct Community Abuja','FCT','Abuja','Preview Contact','08030000003','3 Preview Road, Abuja','partner'),
+  -- Assigned to nobody, on purpose. Every other partner here is held by the
+  -- call centre account, so without a fourth there is no way to ask what
+  -- happens when someone reaches for a partner that is not theirs, and the
+  -- server-side scope check would have nothing to prove itself against.
+  ('a0000000-0000-4000-8000-000000000004','Unassigned Partner Jos','Plateau','Jos','Preview Contact','08030000004','4 Preview Road, Jos','partner')
+on conflict (id) do nothing;
+
+-- ---------- sign-in accounts ----------
+-- One per role so the RBAC matrix in ACCESS_CONTROL.md can be walked through on
+-- the preview. handle_new_user() turns each of these into a profiles row, so
+-- role and organization_id are passed through raw_user_meta_data.
+insert into auth.users (
+  instance_id, id, aud, role, email, encrypted_password, email_confirmed_at,
+  created_at, updated_at, raw_app_meta_data, raw_user_meta_data, is_super_admin,
+  confirmation_token, recovery_token, email_change_token_new, email_change
+)
+select
+  '00000000-0000-0000-0000-000000000000', u.id, 'authenticated', 'authenticated', u.email,
+  extensions.crypt('PreviewOnly!2026', extensions.gen_salt('bf')), now(), now(), now(),
+  '{"provider":"email","providers":["email"]}'::jsonb,
+  jsonb_strip_nulls(jsonb_build_object('full_name', u.full_name, 'role', u.role, 'organization_id', u.org)),
+  false, '', '', '', ''
+from (values
+  ('b0000000-0000-4000-8000-000000000001'::uuid,'admin@preview.acsl.test',      'Preview Super Admin',   'super_admin',        null),
+  ('b0000000-0000-4000-8000-000000000002'::uuid,'manager@preview.acsl.test',    'Preview Agent Manager', 'acsl_agent_manager', null),
+  ('b0000000-0000-4000-8000-000000000003'::uuid,'acslagent@preview.acsl.test',  'Preview ACSL Agent',    'acsl_agent',         null),
+  ('b0000000-0000-4000-8000-000000000004'::uuid,'partner@preview.acsl.test',    'Preview Partner',       'partner',            'a0000000-0000-4000-8000-000000000001'),
+  ('b0000000-0000-4000-8000-000000000005'::uuid,'agent@preview.acsl.test',      'Preview Partner Agent', 'partner_agent',      'a0000000-0000-4000-8000-000000000001'),
+  -- Call centre staff hold an ACSL role, not a partner one. A call centre
+  -- operator verifies sales across every partner, and the sales app scopes a
+  -- partner_agent to their own sales, so a Data Center grant alone would sit
+  -- them in front of an empty table. Decided 2026-08-19: the Data Center keeps
+  -- mirroring the sales app's scope rule, and call centre accounts are given
+  -- the role that already means "ACSL staff". See src/app/data-center/PLAN.md.
+  ('b0000000-0000-4000-8000-000000000006'::uuid,'callcentre@preview.acsl.test', 'Preview Call Centre',   'acsl_agent',         null),
+  -- The person who runs the Data Center without running the application. Held
+  -- as its own account rather than tested through the super admin, because a
+  -- super admin passes every check by short-circuit and so proves nothing
+  -- about what the level actually grants.
+  ('b0000000-0000-4000-8000-000000000007'::uuid,'datamanager@preview.acsl.test','Preview Data Manager',  'acsl_agent_manager', null)
+) as u(id, email, full_name, role, org)
+on conflict (id) do nothing;
+
+-- GoTrue requires a matching identity before email sign-in will succeed.
+insert into auth.identities (id, user_id, identity_data, provider, provider_id, last_sign_in_at, created_at, updated_at)
+select gen_random_uuid(), u.id,
+       jsonb_build_object('sub', u.id::text, 'email', u.email, 'email_verified', true),
+       'email', u.id::text, now(), now(), now()
+from auth.users u
+where u.email like '%@preview.acsl.test'
+on conflict do nothing;
+
+-- login-with-credentials resolves a username to an email via profiles, so the
+-- preview must be signable-in by username as well as by email.
+update public.profiles p
+   set username = split_part(p.email, '@', 1),
+       has_changed_password = true
+ where p.email like '%@preview.acsl.test';
+
+-- ---------- stock ----------
+-- 600 synthetic serials, deliberately outside production's 9-digit range so a
+-- preview serial can never be mistaken for a real stove.
+insert into public.stove_ids_base (stove_id, organization_id, status, factory)
+select
+  'PRV' || lpad(g::text, 6, '0'),
+  (array['a0000000-0000-4000-8000-000000000001',
+         'a0000000-0000-4000-8000-000000000002',
+         'a0000000-0000-4000-8000-000000000003']::uuid[])[1 + (g % 3)],
+  'available',
+  (array['Gombe','Kano','Keffi'])[1 + (g % 3)]
+from generate_series(1, 600) g
+on conflict do nothing;
+
+-- ---------- a few sales, so the screens are not empty ----------
+insert into public.addresses (id, full_address, street, city, state, country, latitude, longitude)
+select ('c0000000-0000-4000-8000-00000000000' || g)::uuid,
+       'Plot ' || g || ' Preview Layout, Gombe', 'Preview Layout', 'Gombe', 'Gombe', 'Nigeria', 10.28 + g/1000.0, 11.17 + g/1000.0
+from generate_series(1, 5) g
+on conflict (id) do nothing;
+
+insert into public.sales (
+  id, transaction_id, stove_serial_no, sales_date, end_user_name, phone,
+  contact_person, contact_phone, partner_name, retailer_branch,
+  state_backup, lga_backup, amount, total_paid, organization_id, address_id,
+  created_by, previous_stove_type, pot_quantity, heat_retention_device, platform
+)
+select
+  ('d0000000-0000-4000-8000-00000000000' || g)::uuid,
+  'PRV' || lpad(g::text, 3, '0'),
+  'PRV' || lpad((g * 7)::text, 6, '0'),
+  current_date - (g * 3),
+  (array['Amina Test','Bala Test','Chioma Test','Danjuma Test','Esther Test'])[g],
+  '080100000' || lpad(g::text, 2, '0'),
+  (array['Amina Test','Bala Test','Chioma Test','Danjuma Test','Esther Test'])[g],
+  '080100000' || lpad(g::text, 2, '0'),
+  'Amina Sales Model Gombe', 'Gombe', 'Gombe', 'Gombe',
+  42000, 42000,
+  'a0000000-0000-4000-8000-000000000001',
+  ('c0000000-0000-4000-8000-00000000000' || g)::uuid,
+  'b0000000-0000-4000-8000-000000000005',
+  (array['charcoal','wood_stove','charcoal','wood_stove','other'])[g],
+  1, (g % 2 = 0), 'web'
+from generate_series(1, 5) g
+on conflict (id) do nothing;
+
+-- stove_ids_sale_id_check requires a sold stove to carry its sale_id, so this
+-- has to follow the sales insert rather than precede it.
+update public.stove_ids_base b
+   set status = 'sold', sale_id = s.id
+  from public.sales s
+ where b.stove_id = s.stove_serial_no;
+
+-- ---------- Data Center tier-2 grants ----------
+-- The call-centre account gets a deliberately partial set, so the preview shows
+-- the gate working rather than everything being open. The super admin needs no
+-- row: it short-circuits, exactly as usePermissions does in the host app.
+insert into data_center.feature_grants (user_id, feature_key)
+select 'b0000000-0000-4000-8000-000000000006'::uuid, k
+from unnest(array['records.view','call_records.view','call_records.edit']) k
+on conflict (user_id, feature_key) do nothing;
+
+-- ---------- Call centre partner assignments ----------
+-- An ACSL agent sees the partners assigned to them, so an account with no
+-- assignments sees nothing. The call centre is assigned every seeded partner,
+-- which is what a real verification desk needs and what makes the scope
+-- testable through the UI.
+insert into public.acsl_agent_organizations (agent_id, organization_id, assigned_by)
+select 'b0000000-0000-4000-8000-000000000006'::uuid, o.id,
+       'b0000000-0000-4000-8000-000000000001'::uuid
+from public.organizations o
+on conflict do nothing;
+
+-- ---------- Data Center module access (viewer / call agent / editor) ----------
+-- Access is granted per user, case by case, never per role. callcentre is the
+-- editor example, manager is the viewer example, and acslagent is the call
+-- agent. admin needs no row because super_admin short-circuits, and partner
+-- and agent deliberately have nothing so the denied path stays testable.
+insert into data_center.module_access (user_id, access_role)
+values
+  ('b0000000-0000-4000-8000-000000000006', 'editor'),
+  ('b0000000-0000-4000-8000-000000000003', 'call_agent'),
+  ('b0000000-0000-4000-8000-000000000002', 'viewer'),
+  ('b0000000-0000-4000-8000-000000000007', 'data_manager')
+on conflict (user_id) do update set access_role = excluded.access_role;
+
+-- Taking work. Separate from the grant on purpose: holding the role is a
+-- permission question and being on shift today is a scheduling one.
+insert into data_center.call_agent_profiles (user_id, is_enabled, enabled_at)
+values ('b0000000-0000-4000-8000-000000000003', true, now())
+on conflict (user_id) do nothing;
+
+-- A reporting line, so the manager scorecard has a row. Production carries
+-- manager_id on 50 of 486 profiles, so sparseness is the realistic state; one
+-- line here is what lets the rollup be seen working at all.
+update public.profiles set manager_id = 'b0000000-0000-4000-8000-000000000002'
+ where id = 'b0000000-0000-4000-8000-000000000003' and manager_id is null;
+-- ---------- transfers ----------
+-- Three consignments of stoves from ACSL to partners, so the reconciliation
+-- funnel has something to reconcile.
+--
+-- Every serial listed here already exists in stove_ids_base above, because the
+-- funnel ties a sale back to its transfer through the serial. A transfer full
+-- of serials nobody holds would look right and count nothing.
+--
+-- The three are deliberately at different stages, so Partner Records shows the
+-- range rather than one shape repeated:
+--
+--   TR-PRV001   200 issued, some sold, some verified. The normal case.
+--   TR-PRV002   150 issued, nothing back yet. The case people need to chase.
+--   TR-PRV003    80 issued, paper returned but not all typed. The backlog case.
+insert into public.stove_transfer_history
+  (transaction_id, organization_id, partner_name, partner_id, state, branch,
+   stove_count, stove_ids, source, sales_rep, sales_factory, sales_date, transfer_date)
+select
+  t.txn,
+  t.org::uuid,
+  o.partner_name,
+  coalesce(o.partner_id, 'PRV-' || substr(t.txn, 8)),
+  o.state,
+  o.branch,
+  t.qty,
+  (select coalesce(jsonb_agg(jsonb_build_object(
+            'stove_id', b.stove_id, 'factory', b.factory, 'sales_reference', t.txn)), '[]'::jsonb)
+     from (select stove_id, factory from public.stove_ids_base
+           where organization_id = t.org::uuid
+           order by stove_id
+           offset t.skip limit t.qty) b),
+  'external-sync',
+  t.rep,
+  o.branch,
+  current_date - t.age,
+  now() - make_interval(days => t.age)
+from (values
+  ('TR-PRV001', 'a0000000-0000-4000-8000-000000000001', 200,   0, 'Adaeze Princess Okuoniye', 45),
+  ('TR-PRV002', 'a0000000-0000-4000-8000-000000000002', 150,   0, 'Abdulrasheed Imam',        20),
+  ('TR-PRV003', 'a0000000-0000-4000-8000-000000000003',  80,   0, 'Olatunji Bello',           70)
+) as t(txn, org, qty, skip, rep, age)
+join public.organizations o on o.id = t.org::uuid
+on conflict do nothing;
+
+-- ---------- close the loop the ERP sync closes in production ----------
+--
+-- stove_ids_base.sales_reference names the transfer a stove went out on, and
+-- production has it on all 15,498 rows because the sync writes it. The seed
+-- put the reference inside the transfer's jsonb and never back on the stove,
+-- so preview had it nowhere and anything reading it saw null.
+--
+-- That is not a cosmetic gap. The import resolves a file's partner from the
+-- stove ID and then checks the transfer reference the file carries against
+-- this column; with the column empty the check silently passes every time,
+-- which is the worst way for a check to be wrong.
+update public.stove_ids_base b
+   set sales_reference = t.transaction_id
+  from public.stove_transfer_history t,
+       jsonb_array_elements(t.stove_ids) as e
+ where e ->> 'stove_id' = b.stove_id
+   and b.sales_reference is distinct from t.transaction_id;
+
+-- Paper came back for the third one, more than has been typed. That gap is the
+-- transcription backlog the funnel is there to make visible.
+insert into data_center.record_consignments
+  (organization_id, transaction_id, received_count, received_at, note, source)
+values
+  ('a0000000-0000-4000-8000-000000000003'::uuid, 'TR-PRV003', 24,
+   current_date - 5, 'Envelope returned by the partner, not yet transcribed', 'paper')
+on conflict do nothing;
+
+-- The funnel is a computed table, so it needs a first refresh. After this the
+-- compute run keeps it current.
+select data_center.refresh_transfer_funnel();
+-- ---------------------------------------------------------------------------
+-- Phase 23 fixtures: the money, and a cancellation.
+--
+-- Four states the stove record has to tell apart, and production has all four.
+-- Without them here the payment block and the cancelled pill can only be tested
+-- by reading the code, which is how the cancelled pill came to be unreachable
+-- for two phases without anybody noticing.
+--
+--   PRV003  instalment, payments that add up          -> reconciles quietly
+--   PRV004  instalment, partially paid, NO payments   -> "nothing recorded"
+--   PRV005  instalment, payments that do NOT add up   -> states the disagreement
+--   PRV006  a cancelled sale                          -> the red pill
+-- ---------------------------------------------------------------------------
+
+-- PRV003: agrees. 42,000 in two instalments of 21,000.
+update public.sales
+   set is_installment = true, payment_status = 'fully_paid', total_paid = 42000
+ where transaction_id = 'PRV003';
+
+-- PRV004: flagged and part-paid, with nothing recorded against it. This is the
+-- case an empty table would misreport as "nothing was paid".
+update public.sales
+   set is_installment = true, payment_status = 'partially_paid', total_paid = 15000
+ where transaction_id = 'PRV004';
+
+-- PRV005: the payments say 30,000, the sale says 25,000. Neither is shown as
+-- the answer.
+update public.sales
+   set is_installment = true, payment_status = 'partially_paid', total_paid = 25000
+ where transaction_id = 'PRV005';
+
+insert into public.installment_payments
+  (sale_id, amount, payment_method, payment_date, notes, recorded_by)
+select s.id, v.amount, v.method, current_date - v.days_ago, v.note, s.created_by
+  from public.sales s
+  join (values
+      ('PRV003', 21000, 'transfer', 30, 'First instalment'),
+      ('PRV003', 21000, 'cash',           2, 'Balance settled'),
+      ('PRV005', 20000, 'transfer', 20, 'Deposit'),
+      ('PRV005', 10000, 'cash',           4, 'Second instalment')
+    ) as v(txn, amount, method, days_ago, note) on v.txn = s.transaction_id
+ where not exists (
+   select 1 from public.installment_payments p where p.sale_id = s.id
+ );
+
+-- PRV006: sold, then cancelled. Archived with it, which is what makes the
+-- pill order matter: every cancelled sale on production carries both flags.
+insert into public.sales (
+  id, transaction_id, stove_serial_no, sales_date, end_user_name, phone,
+  contact_person, contact_phone, partner_name, state_backup, lga_backup,
+  amount, total_paid, organization_id, created_by, platform,
+  is_archived, cancelled_at, cancel_reason, cancelled_by
+)
+select
+  'd0000000-0000-4000-8000-000000000006'::uuid,
+  'PRV006',
+  'PRV000042',
+  current_date - 12,
+  'Fatima Cancelled',
+  '08010000006',
+  'Fatima Cancelled',
+  '08010000006',
+  o.partner_name,
+  'Gombe', 'Akko',
+  42000, 0,
+  o.id,
+  s.created_by,
+  'web',
+  true,
+  now() - interval '6 days',
+  'Buyer changed their mind before collection',
+  s.created_by
+  from public.organizations o
+  join public.sales s on s.transaction_id = 'PRV001'
+ where o.id = 'a0000000-0000-4000-8000-000000000001'::uuid
+on conflict (id) do nothing;

@@ -1,0 +1,60 @@
+-- Data Center Phase 20: the index behind the stock ageing chart.
+--
+-- ###########################################################################
+-- ## THIS MIGRATION MUST NOT RUN INSIDE A TRANSACTION.                     ##
+-- ## CREATE INDEX CONCURRENTLY is rejected inside one. The Supabase CLI    ##
+-- ## wraps migrations in a transaction by default, so apply this file by   ##
+-- ## hand (SQL editor or psql), not via `supabase db push`.                ##
+-- ###########################################################################
+--
+-- WHY THIS EXISTS
+--
+-- Two things read unsold stock, and neither had any index behind it:
+--
+--   compute_analysis      scans every unsold row once per run to bucket it by
+--                         age, for both the partner and the location cut.
+--   the `stock` action    serves /data-center/stock, which is where the ageing
+--                         chart drills, keyset-paginated on
+--                         (transfer_sales_date desc, stove_id desc).
+--
+-- public.stove_ids_base carries indexes on factory, is_archived and
+-- sales_reference only. At the 15,498 rows in production today the sequential
+-- scan is invisible. At the 500,000 this module is designed for, the compute
+-- run pays for it every time and the drill pays for it on every page.
+--
+-- WHY A PARTIAL INDEX
+--
+-- The population is narrow and permanent: transferred to a partner, not
+-- archived, not yet sold. That is the only set either reader ever asks for,
+-- and once a stove sells it leaves the set for good. So the predicate belongs
+-- in the index rather than in the scan - it keeps the index small as the sold
+-- population grows past it, which is the direction this table only ever moves.
+--
+-- The ordering columns are included so the keyset page is served from the
+-- index rather than sorted afterwards.
+--
+-- ONE THING IT DELIBERATELY DOES NOT COVER
+--
+-- Rows whose transfer_sales_date is null fall back to
+-- stove_transfer_history.transfer_date through a join, and no index on this
+-- table can help that. If those turn out to be common at volume, the fix is to
+-- backfill transfer_sales_date rather than to index around it: the fallback
+-- exists because the column was added later, not because two sources of the
+-- date are wanted.
+--
+-- AFTER RUNNING IT
+--
+-- CONCURRENTLY leaves an INVALID index behind if it fails rather than rolling
+-- back, and an invalid index is not used and not obviously broken. Check it:
+--
+--   select indexrelid::regclass as index, indisvalid
+--     from pg_index
+--    where indexrelid::regclass::text = 'idx_stove_ids_unsold_age';
+--
+-- If indisvalid is false, drop it and run this again:
+--
+--   drop index concurrently if exists public.idx_stove_ids_unsold_age;
+
+create index concurrently if not exists idx_stove_ids_unsold_age
+  on public.stove_ids_base (organization_id, transfer_sales_date desc, stove_id desc)
+  where is_archived is not true and sale_id is null and status <> 'sold';

@@ -1,0 +1,187 @@
+/*
+ * The Data Center's palette, in one place.
+ *
+ * The olive identity used to be hardcoded ~80 times across 14 files as
+ * arbitrary values. Everything now reads these variables, so the identity is
+ * one edit rather than a find-and-replace with misses.
+ *
+ * On :root, deliberately. Radix dialogs and popovers portal to <body>, outside
+ * any wrapper this module renders, and variables scoped under a wrapper would
+ * never reach them. The --dc- prefix keeps the host's names clear, and this
+ * file only loads with the lazily-imported module, so a user who never opens
+ * the Data Center never downloads it: the sales app does not notice.
+ *
+ * Every value is a raw color, never a var of a var, because Tailwind v4's
+ * opacity modifier (bg-(--dc-primary)/10) needs a plain color to mix.
+ */
+
+:root {
+  /* The olive family: the module's brand anchor, shared with the host. */
+  --dc-primary: #4a5d0f;
+  --dc-primary-strong: #3d4d0c;
+  --dc-primary-mid: #6b8016;
+  --dc-primary-soft: #eef3c4;
+
+  /* Surfaces. */
+  --dc-surface: #ffffff;
+  --dc-surface-muted: #fafafa;
+
+  /* The default accent, for anything rendered outside an area (portaled
+     dialogs that carry no data-area, shared chrome). */
+  --dc-accent: #4a5d0f;
+  --dc-accent-strong: #3d4d0c;
+  --dc-accent-soft: #eef3c4;
+}
+
+/*
+ * The call brief's five blocks, one hue each.
+ *
+ * NOT decoration, and not the area accent either. A call agent reading this
+ * card is holding a live phone call, and the five blocks answer five different
+ * questions - who am I ringing, which stove, what did they pay, where are
+ * they, what happened before. On a single white card those five run together
+ * and the agent hunts. Coloured, the eye goes to the block before it reads a
+ * word.
+ *
+ * Each hue is the accent of the AREA those facts come from, so the colour is
+ * still wayfinding: the stove block is Stove Records' slate, the money block
+ * is the olive the module shares with the host, the place block is Partner
+ * Records' ochre, the history block is Import's plum. Only the first is new -
+ * teal is the call centre's own accent, and the block about the person being
+ * called is the call centre's own fact.
+ *
+ * On :root rather than .dc-root because this card renders inside a dialog that
+ * Radix portals to <body>. Every value clears 4.5:1 for white text.
+ */
+:root {
+  --dc-brief-who: #0e5a56;
+  --dc-brief-who-soft: #d9efec;
+  --dc-brief-stove: #33527b;
+  --dc-brief-stove-soft: #e0e9f4;
+  --dc-brief-money: #4a5d0f;
+  --dc-brief-money-soft: #eef3c4;
+  --dc-brief-place: #8a5a08;
+  --dc-brief-place-soft: #f7ecd2;
+  --dc-brief-history: #6b3a6e;
+  --dc-brief-history-soft: #f1e2f2;
+}
+
+/*
+ * Severity, for the Analysis charts.
+ *
+ * These are state colours, not an area accent, so they keep their meanings
+ * everywhere: a critical band is the same red whichever chart it appears in.
+ * Which BAND is critical is not decided here - that comes from `severity` in
+ * workflow_config, alongside the threshold itself, so re-grading a limit in
+ * Settings recolours the chart without a deploy.
+ *
+ * On :root and as raw colours because recharts needs a resolved colour string
+ * rather than a Tailwind class or a var reference; lib/palette.js reads them
+ * back once. That is also why these are the only chart colours in the module
+ * and no chart component holds a hex of its own.
+ *
+ * Each clears 4.5:1 on white, so a severity label is readable text.
+ */
+:root {
+  --dc-sev-ok: #3f7d3f;
+  --dc-sev-ok-soft: #e4f1e4;
+  --dc-sev-warning: #9a5b0d;
+  --dc-sev-warning-soft: #fbeedb;
+  --dc-sev-critical: #a32626;
+  --dc-sev-critical-soft: #fbe3e3;
+}
+
+/*
+ * One accent per area: wayfinding, carried from the Explore card through to
+ * the page it opens. Each triple is (text/fill on white, hover/pressed, tint).
+ * All accent values hold >= 4.5:1 against white and --dc-surface-muted, so an
+ * accent-colored label is always readable text, not just a decoration color.
+ */
+.dc-root[data-area="explore"],
+.dc-root[data-area="dashboard"] {
+  --dc-accent: #4a5d0f;
+  --dc-accent-strong: #3d4d0c;
+  --dc-accent-soft: #eef3c4;
+}
+
+.dc-root[data-area="call-centre"] {
+  --dc-accent: #0e5a56;
+  --dc-accent-strong: #0a4744;
+  --dc-accent-soft: #d9efec;
+}
+
+.dc-root[data-area="partner-records"] {
+  --dc-accent: #8a5a08;
+  --dc-accent-strong: #6f4806;
+  --dc-accent-soft: #f7ecd2;
+}
+
+.dc-root[data-area="stove-records"] {
+  --dc-accent: #33527b;
+  --dc-accent-strong: #28405f;
+  --dc-accent-soft: #e0e9f4;
+}
+
+.dc-root[data-area="import"] {
+  --dc-accent: #6b3a6e;
+  --dc-accent-strong: #542c57;
+  --dc-accent-soft: #f1e2f2;
+}
+
+/*
+ * Settings is administration, not an area of the data. Graphite rather than a
+ * sixth hue: it says "this is the panel behind the panel" without competing
+ * with the five areas for wayfinding, and it stays clear of every semantic
+ * state colour. 8.0:1 on white.
+ */
+.dc-root[data-area="settings"] {
+  --dc-accent: #414750;
+  --dc-accent-strong: #2f343b;
+  --dc-accent-soft: #e7e9ed;
+}
+
+/*
+ * Analysis. Rust: the last hue on the wheel that is not already carrying an
+ * area and is not a semantic state. It reads as its own place beside the teal
+ * of the call centre and the ochre of partner records, and at 7.7:1 on white
+ * it clears AA with room to spare.
+ *
+ * The severity colours the charts use are NOT here. Whether a band is fine,
+ * a warning or critical comes from `workflow_config` with the data, because a
+ * threshold re-graded in Settings has to move the chart. Only the area's own
+ * identity is a token.
+ */
+.dc-root[data-area="analysis"] {
+  --dc-accent: #8c3a3a;
+  --dc-accent-strong: #6f2d2d;
+  --dc-accent-soft: #f6e2e2;
+}
+
+/*
+ * Figure colours: the dashboard's headline numbers.
+ *
+ * A deliberate exception to "colour is wayfinding and state, never
+ * decoration". Eight identical white cards is what the dashboard was, and a
+ * page of them reads as a wall rather than as four answers to four questions.
+ * Each headline figure carries one fixed hue, so the colour identifies the
+ * metric and stays the same wherever that metric appears.
+ *
+ * The two that are also states keep their state meaning: unverified is the
+ * amber this module already uses for "partial, needs attention", and nothing
+ * else on the dashboard borrows it.
+ *
+ * Every gradient is dark enough for white text at >= 4.5:1 against its
+ * lighter stop, which is the stop the text actually sits over at the top left.
+ */
+.dc-root {
+  --dc-fig-transferred: linear-gradient(135deg, #2f5d9e 0%, #1d3f70 100%);
+  --dc-fig-sold: linear-gradient(135deg, #5b7314 0%, #3d4d0c 100%);
+  --dc-fig-verified: linear-gradient(135deg, #10736d 0%, #0a4744 100%);
+  --dc-fig-unverified: linear-gradient(135deg, #a86a12 0%, #7a4b08 100%);
+
+  /* The second row is support, not headline: tinted grounds, dark text. */
+  --dc-fig-soft-neutral: linear-gradient(135deg, #f6f7f2 0%, #eceee4 100%);
+  --dc-fig-soft-warn: linear-gradient(135deg, #fdf4e3 0%, #f8e8cc 100%);
+  --dc-fig-soft-info: linear-gradient(135deg, #eef3fa 0%, #dfe9f6 100%);
+  --dc-fig-soft-plum: linear-gradient(135deg, #f6eef7 0%, #eee0f0 100%);
+}
