@@ -1322,3 +1322,73 @@ is the condition this prevents.
   preparation would be a wide blast radius for a cosmetic gain. The call-import
   spec asserts "refused, and names the grant" rather than pinning either
   number, so reconciling it later will not break a test.
+
+---
+
+## Phase 22: production, ahead of the merge: DONE (2026-08-23)
+
+The database and the functions went to production **before** the merge, so the
+step that auto-deploys to every user is last and depends on nothing that is not
+already there. Nothing is merged; the route key is still `super_admin` only and
+production carries zero access grants.
+
+### What ran, in this order
+
+1. **`supabase db push`** applied **31 migrations**. Not 30, which is what the
+   plan said until the dry run counted them.
+2. **`idx_stove_ids_unsold_age`** created separately. It is the one index in
+   `supabase/manual/` with no migration counterpart, so `db push` does not make
+   it and the stock ageing page would have run a sequential scan for ever
+   without anything saying so.
+3. **Seven edge functions deployed.** The six new `data-center-*` first,
+   because nothing can call them, and `create-sale` last and alone.
+
+### What the numbers say
+
+| | before | after |
+|---|---|---|
+| `data_center` schema | absent | 24 tables, 11 views, 19 functions |
+| migrations recorded | 1 | 32 |
+| indexes on `public.sales` | 9 | 16 |
+| **sales / stock / transfers / orgs / profiles** | **45 / 15,498 / 497 / 398 / 523** | **unchanged** |
+| public tables | 26 | 26 |
+
+Registry seeded: 13 option lists, 82 option values, 13 field definitions, 28
+workflow-config keys. `pg_trgm` installed. Zero rows in `module_access`,
+`feature_grants` and `call_records`, which is the correct state for a module
+nobody has been let into yet.
+
+### The two things worth proving rather than asserting
+
+**PostgREST cannot reach `data_center`.** Asking for it by name answers
+`PGRST106: The schema must be one of the following: public, graphql_public`,
+while the same request against `public.sales` answers 200. That is the
+guarantee the whole module rests on, and it is now checked on production rather
+than inferred from `config.toml`.
+
+**`db push` does not run `seed.sql`.** Reported as `"seeds":[]` by both the dry
+run and the real run. That file writes to `public` and carries a header warning
+never to run it against production; it is reached by `db reset` and branch
+creation, not by a migration push. Previously reasoned; now observed.
+
+### Corrections this made to the written plan
+
+- The manual index directory is **skippable on a first deploy** and was skipped.
+  Seven of its eight indexes have migration counterparts and build in
+  milliseconds on a 44-row table, so the write lock it exists to avoid never
+  happens. It earns its place when `public.sales` is large, which is the
+  situation it was written for and not the one it first met.
+- `CREATE INDEX CONCURRENTLY` **cannot run through the Management API** at all:
+  it cannot run inside a transaction block and `/database/query` opens one.
+- `POST /v1/projects/{ref}/database/migrations` exists and **ignores the version
+  you give it**, stamping its own timestamp. Applying migrations that way would
+  leave production's history permanently out of step with the repo, so a later
+  `db push` would try to re-run all 31 including the seeds. Tested on preview
+  and rejected as a route.
+
+### Still to do before the merge
+
+Confirm `VITE_SUPABASE_URL` in the Vercel production environment. The value is
+encrypted and could not be read from here; every other Supabase call in the app
+already resolves through it, so the risk is small, but `manageProfileService`
+now depends on it too.
