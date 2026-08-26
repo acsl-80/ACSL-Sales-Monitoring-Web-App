@@ -53,8 +53,9 @@ a thing to measure rather than a thing to assume.
 `calculate_sale_status()` requires a stove photo and an agreement document
 before it returns `completed`. The Sell Stove form stopped requiring either.
 
-In production that means **30 of 38 sales read `incomplete`**, including 14 of
-the 15 live ones, and exactly one sale in the whole database reads `completed`.
+In production that means **all 17 live sales read `incomplete`**, every one of
+them missing both the stove photo and the agreement and nothing else. Not one
+live sale reads `completed`; the eight rows that do are all cancelled.
 A dashboard counting completed sales would report 1 out of 15, be technically
 correct, and be useless.
 

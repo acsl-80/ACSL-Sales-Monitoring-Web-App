@@ -27,7 +27,7 @@ the API returns `25001` and nothing is created.
 The usual reason given is that a non-concurrent `CREATE INDEX` takes a SHARE
 lock and blocks writes to `public.sales`, taking the Sell Stove path down for
 the length of the build. That is true, and today it is nearly free: production
-holds 44 sales, so every one of these builds in milliseconds.
+holds 45 rows in `public.sales`, so every one of these builds in milliseconds.
 
 **Which is why, for the first deploy, the honest answer is to skip them.**
 Seven of the eight indexes below have a migration counterpart, so `db push`

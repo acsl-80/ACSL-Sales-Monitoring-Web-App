@@ -140,8 +140,10 @@ from the caller's JWT before doing anything else.
 Measured against the live database and one week's call centre workbook, not
 assumed.
 
-**Capacity is a target, not current state.** `public.sales` holds 38 rows, 15 of
-them live. The 500,000 figure is what the design must survive, so capacity is
+**Capacity is a target, not current state.** `public.sales` holds 45 rows, of
+which **17 are live sales**. The other 28 are cancelled: fifteen say some
+spelling of "test" in the reason and thirteen give none, so the real business
+recorded in this app is seventeen stoves. The 500,000 figure is what the design must survive, so capacity is
 proven against seeded synthetic rows or it is not proven at all.
 
 **The call centre is ahead of the app.** Of 359 distinct serials in one week's

@@ -19,7 +19,7 @@ Measured in production:
 | Stoves transferred to partners | 14,564 |
 | Partners | 278 |
 | Sales reps | 23 |
-| **Sales recorded in the app** | **38** |
+| **Sales recorded in the app** | **17** |
 
 That is not a rounding error, it is the whole point. Paper and Excel are the
 real system of record; the app holds a fraction of a percent of what has been

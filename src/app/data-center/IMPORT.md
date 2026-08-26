@@ -6,7 +6,7 @@ why the stock figures moved.
 ## Why this exists at all
 
 One week of the call centre workbook holds **359 stove serials**. The whole
-sales app holds **38 sales**. Of those 359, 329 exist in stock and **328 of them
+sales app holds **17 live sales** (45 rows, 28 of them cancelled test records). Of those 359, 329 exist in stock and **328 of them
 are still marked available**.
 
 Paper and Excel are the real system of record today. Without import, the Data

@@ -1350,7 +1350,7 @@ production carries zero access grants.
 | `data_center` schema | absent | 24 tables, 11 views, 19 functions |
 | migrations recorded | 1 | 32 |
 | indexes on `public.sales` | 9 | 16 |
-| **sales / stock / transfers / orgs / profiles** | **45 / 15,498 / 497 / 398 / 523** | **unchanged** |
+| **sales / stock / transfers / orgs / profiles** | **45 rows (17 live) / 15,498 / 497 / 398 / 523** | **unchanged** |
 | public tables | 26 | 26 |
 
 Registry seeded: 13 option lists, 82 option values, 13 field definitions, 28
@@ -1375,8 +1375,8 @@ creation, not by a migration push. Previously reasoned; now observed.
 
 - The manual index directory is **skippable on a first deploy** and was skipped.
   Seven of its eight indexes have migration counterparts and build in
-  milliseconds on a 44-row table, so the write lock it exists to avoid never
-  happens. It earns its place when `public.sales` is large, which is the
+  milliseconds on a table of 45 rows, so the write lock it exists to avoid
+  never happens. It earns its place when `public.sales` is large, which is the
   situation it was written for and not the one it first met.
 - `CREATE INDEX CONCURRENTLY` **cannot run through the Management API** at all:
   it cannot run inside a transaction block and `/database/query` opens one.
@@ -1392,3 +1392,82 @@ Confirm `VITE_SUPABASE_URL` in the Vercel production environment. The value is
 encrypted and could not be read from here; every other Supabase call in the app
 already resolves through it, so the risk is small, but `manageProfileService`
 now depends on it too.
+
+---
+
+## Phase 23: the money and the cancellation, told the same way twice
+
+The Data Center lives inside the sales app and must never tell a different
+story about the same stove. Two places where it currently can.
+
+### What was actually found
+
+**Cancellation is already carried.** `stove_detail` selects `cancelled_at`,
+`cancel_reason` and the canceller's name, and the stove record renders a red
+banner with all three. An earlier note in this file claiming a cancelled stove
+"would show nothing" was wrong: it was reasoning from `cancelled_purchases`,
+which is **cancelled ERP transfers** and holds zero rows. An end-user sale is
+cancelled in place on `public.sales`.
+
+**But the status pill is unreachable.** It tests `is_archived` first and
+`cancelled_at` second. In production those are the same 28 rows, with zero
+archived-and-not-cancelled, so the red "cancelled" pill can never render and
+every cancelled sale reads as the grey "archived". The sales app says
+cancelled; this says archived. That is the contradiction.
+
+**Payments are not read at all.** 32 of the 45 rows are installment sales, and
+`installment_payments` holds 36 rows nothing in the module has ever opened.
+
+**And the two sources already disagree**, on 4 of 33:
+
+| Sales | State |
+|---|---|
+| 29 | `sum(payments)` equals `total_paid` |
+| 2 | installment sale marked `partially_paid`, **no payment rows** |
+| 1 | payment rows on a sale **not flagged** installment |
+| 1 | `sum(payments)` <> `total_paid` |
+
+That is the whole argument for how this gets built. Showing a payment list
+beside a summary total, with no reconciliation, puts two contradicting numbers
+on one screen and lets the reader pick. About one installment sale in eight
+would do it.
+
+### What gets built
+
+**Nothing is stored.** No migration, no new table, no column. Both are reads
+over `public` tables the sales app already owns, which is the module's standing
+rule: it holds facts *about* sales and never a second copy of one.
+
+1. **Payment history on the stove record.** Date, amount, method, who recorded
+   it, note, and the proof where one exists, newest first, under the money
+   block that already shows the plan and the running total.
+
+2. **A reconciliation line, always.** The sum of the payments against
+   `total_paid`. When they agree it says so quietly. When they disagree it
+   names both numbers and says which came from where. When a sale is flagged
+   installment and has no payments it says that too, rather than drawing an
+   empty list that reads like "nothing was paid".
+
+3. **Cancelled reads as cancelled.** The pill tests `cancelled_at` first.
+   `is_archived` stays as its own state for the archived-but-not-cancelled case
+   that does not exist today and would otherwise silently reappear as the wrong
+   word.
+
+4. **The records table can tell them apart.** `cancelled_at` and
+   `cancel_reason` join the column list, so a list of records distinguishes
+   cancelled from archived, and both reach the export.
+
+### What it does not change, verified
+
+Cancelled sales are excluded from every count, queue, funnel and creditable
+figure through `is_archived is not true`, consistently, in metrics, analysis,
+assignment, transfers, records and send-back routing. This phase changes
+presentation and traceability only. No number moves.
+
+### The decision taken
+
+Payment detail sits under `records.view`, the key that already exposes
+`amount`, `total_paid` and `payment_status` on the same surface. Splitting the
+running total from the payments that make it up would put two halves of one
+fact behind two doors. A separate key is a one-line change if the proof images
+later argue for one.
