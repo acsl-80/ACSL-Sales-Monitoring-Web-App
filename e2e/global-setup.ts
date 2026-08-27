@@ -36,6 +36,31 @@ export default async function globalSetup(config: FullConfig) {
     // setup breaks in the same place the tests would if login itself broke.
     await signIn(page, USERS.admin);
 
+    /*
+     * The engine first, the computation second. The order is the whole point.
+     *
+     * Two of the five scorecards are computed FROM assignment data: the call
+     * agent cut off `assignment_batches.assigned_to`, the manager cut off the
+     * agent's `manager_id`. Computing before assigning leaves both empty, so a
+     * fresh database renders three scorecards where the dashboard promises
+     * five, and the specs that check all five carry the same columns fail on
+     * a page that is not actually wrong.
+     *
+     * This file shipped with the order reversed and did exactly that. It hid
+     * on a warm database, where yesterday's batches were already there to be
+     * counted, which is the same way the dependency this file removes stayed
+     * hidden for months.
+     */
+    const assign = await callEdgeFunction(page, "data-center-assign", { action: "run" });
+    if (assign.status !== 200) {
+      throw new Error(
+        `global setup could not run the assignment engine: ${assign.status} ` +
+          JSON.stringify(assign.body),
+      );
+    }
+    const batches =
+      (assign.body as { data?: { batches?: unknown[] } })?.data?.batches?.length ?? 0;
+
     const compute = await callEdgeFunction(page, "data-center-compute", { action: "run" });
     /*
      * 409 means a run is already in flight, held off by the advisory lock. That
@@ -52,24 +77,11 @@ export default async function globalSetup(config: FullConfig) {
     const written =
       (compute.body as { data?: { metricsWritten?: number } })?.data?.metricsWritten;
 
-    // The engine hands work to call agents in batches. It is safe to run early:
-    // the console spec is written to cope with everything already being
-    // assigned, and an engine with nothing to hand out returns no batches
-    // rather than failing.
-    const assign = await callEdgeFunction(page, "data-center-assign", { action: "run" });
-    if (assign.status !== 200) {
-      throw new Error(
-        `global setup could not run the assignment engine: ${assign.status} ` +
-          JSON.stringify(assign.body),
-      );
-    }
-    const batches =
-      (assign.body as { data?: { batches?: unknown[] } })?.data?.batches?.length ?? 0;
-
     console.log(
-      `global setup   : ${
+      `global setup   : ${batches} batch(es) assigned, ${
         compute.status === 409 ? "computation already running" : `${written ?? 0} metrics written`
-      }, ${batches} batch(es) assigned\n`,
+      }
+`,
     );
   } finally {
     await browser.close();
