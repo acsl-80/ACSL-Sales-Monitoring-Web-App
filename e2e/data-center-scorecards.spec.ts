@@ -263,7 +263,21 @@ test.describe("the headline figures", () => {
       page.getByRole("heading", { name: "Partner", exact: true }),
     ).toBeVisible({ timeout: 30_000 });
 
-    for (const label of ["Transferred to partners", "Sold", "Fully verified", "Unverified"]) {
+    /*
+     * These strings are not free text. They are what `withScope()` in
+     * lib/measures.ts produces, which is the single place the module names a
+     * measure. "Transferred to partners" and "Fully verified" were this
+     * card row's own private names for Issued and Verified, and pairing each
+     * with its scope is what lets a reader reconcile this page against
+     * Partner Records instead of filing a bug. If a label moves, it moves
+     * there and this follows.
+     */
+    for (const label of [
+      "Issued · all time",
+      "Sold · all time",
+      "Verified · all time",
+      "Unverified · all time",
+    ]) {
       await expect(
         page.getByRole("link", { name: new RegExp(`^${label}:`) }),
       ).toBeVisible();
@@ -275,7 +289,7 @@ test.describe("the headline figures", () => {
     }
   });
 
-  test("Transferred equals what the partner scorecard issued", async ({ page }) => {
+  test("the Issued card equals what the partner scorecard issued", async ({ page }) => {
     await signIn(page, USERS.admin);
     await page.goto("/data-center/dashboard");
     await expect(
@@ -287,7 +301,7 @@ test.describe("the headline figures", () => {
     // population; call agent and manager are a different one, which is why
     // only one cut is summed.
     const shown = await page
-      .getByRole("link", { name: /^Transferred to partners:/ })
+      .getByRole("link", { name: /^Issued · all time:/ })
       .evaluate((el) => Number((el.textContent ?? "").replace(/[^0-9]/g, "") || 0));
 
     const issuedTotal = await page.evaluate(() => {
@@ -321,7 +335,7 @@ test.describe("the headline figures", () => {
       page.getByRole("heading", { name: "Partner", exact: true }),
     ).toBeVisible({ timeout: 30_000 });
 
-    await page.getByRole("link", { name: /^Unverified:/ }).click();
+    await page.getByRole("link", { name: /^Unverified · all time:/ }).click();
 
     // Both sides define unverified the same way - the funnel view, the
     // scorecard compute and the queue filter all read it off one list, which
