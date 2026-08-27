@@ -26,6 +26,10 @@ if (!bypass) {
 
 export default defineConfig({
   testDir: "./e2e",
+  // The module's boards read state that a computation run and the assignment
+  // engine write. Nothing else creates it, so it is created once here rather
+  // than left to whichever spec happens to run first.
+  globalSetup: "./e2e/global-setup.ts",
   // The suite asserts on which backend the app talks to, and parallel workers
   // sharing one browser context would make those assertions ambiguous.
   fullyParallel: false,
