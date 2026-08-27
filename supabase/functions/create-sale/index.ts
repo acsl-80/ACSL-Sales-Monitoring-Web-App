@@ -186,6 +186,43 @@ Deno.serve(async (req) => {
       }
     }
 
+    // ── A sale cannot have happened tomorrow ──────────────────────────────────
+    //
+    // The Sell Stove form already caps its date input at today, but that is a
+    // `max` attribute: it stops the picker, not the request. The mobile app and
+    // every import path reach this function directly, and nothing here checked,
+    // so a future date could be written by anything that was not the web form.
+    //
+    // It matters because dates are what everything downstream ages against.
+    // Three stoves reached production carrying ERP transfer dates in November
+    // and December 2026 and read as brand-new stock while being months old; a
+    // future SALE date would do the same to the call queue and to every
+    // creditable figure computed from it.
+    //
+    // Compared in Africa/Lagos, not UTC. Lagos is an hour ahead, so a sale
+    // entered at half past midnight is already tomorrow locally while the
+    // server still calls it today - and a UTC comparison would refuse a
+    // perfectly ordinary evening sale.
+    //
+    // Historical dates stay welcome. The whole point of digitalisation is
+    // typing in receipts from months ago, and the stock cutoff was removed in
+    // the same change precisely so the past stays visible.
+    {
+      const salesDateText = String(salesDate).trim().slice(0, 10);
+      const todayInLagos = new Date().toLocaleDateString("en-CA", {
+        timeZone: "Africa/Lagos",
+      });
+      if (!/^\d{4}-\d{2}-\d{2}$/.test(salesDateText)) {
+        return jsonError("Sales date must be a date, as YYYY-MM-DD", 400);
+      }
+      if (salesDateText > todayInLagos) {
+        return jsonError(
+          `Sales date ${salesDateText} is in the future. A sale cannot be recorded before it happens; today is ${todayInLagos}.`,
+          400,
+        );
+      }
+    }
+
     let sharesPhoneWith: { id: string; transaction_id: string; phone: string | null }[] = [];
 
     // ── End-user phone uniqueness ─────────────────────────────────────────────

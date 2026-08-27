@@ -162,4 +162,72 @@ test.describe("the sales app is unaffected", () => {
     // Truthy, but not `true`. Strictness is the whole guard.
     expect((await attempt("yes")).status).toBe(409);
   });
+
+  /**
+   * A sale cannot have happened tomorrow, whatever asks.
+   *
+   * The Sell Stove form caps its date input at today, but that is a `max`
+   * attribute: it stops the picker, not the request. The mobile app and every
+   * import path reach create-sale directly and nothing there checked.
+   *
+   * It matters because dates are what everything downstream ages against.
+   * Three stoves reached production carrying ERP dates in November and
+   * December 2026, read as brand-new stock while being months old, and had to
+   * be deleted and re-transferred. A future SALE date would do the same to the
+   * call queue and to every creditable figure computed from it.
+   *
+   * The past stays welcome, and is asserted here too: digitalisation exists to
+   * type in receipts from months ago, so a rule that refused old dates would
+   * break the thing this whole module was built for.
+   */
+  test("create-sale refuses a sale dated in the future, and still accepts the past", async ({
+    page,
+  }) => {
+    await signIn(page, USERS.admin);
+
+    const existing = await callEdgeFunction(page, "data-center-read", {
+      action: "records",
+      limit: 1,
+    });
+    const sale = (
+      existing.body as {
+        data?: { rows?: { partner_name?: string; organization_id?: string }[] };
+      }
+    ).data?.rows?.[0];
+    expect(sale?.organization_id, "no seeded sale to borrow a partner from").toBeTruthy();
+
+    const on = (salesDate: string, phone: string) =>
+      callEdgeFunction(page, "create-sale", {
+        stoveSerialNo: "NON-EXISTENT-FOR-THIS-TEST",
+        endUserName: "Future date probe",
+        phone,
+        contactPerson: "Probe",
+        contactPhone: "08030000999",
+        partnerName: sale!.partner_name ?? "Probe partner",
+        organizationId: sale!.organization_id,
+        salesDate,
+        amount: 1000,
+        transactionId: `FD-${Date.now()}-${Math.floor(Math.random() * 1e6)}`,
+      });
+
+    const iso = (d: Date) => d.toISOString().slice(0, 10);
+    const tomorrow = new Date(Date.now() + 36 * 3600 * 1000);
+
+    const future = await on(iso(tomorrow), "08039990001");
+    expect(
+      future.status,
+      `expected a refusal, got ${JSON.stringify(future.body)}`,
+    ).toBe(400);
+    expect(JSON.stringify(future.body)).toMatch(/in the future/i);
+
+    /*
+     * A date in the past must NOT be refused for being old. The serial is
+     * deliberately unknown, so the correct answer is a stock or partner
+     * complaint - anything except the future-date message. Asserting on the
+     * message rather than the status is what separates "the date was fine" from
+     * "it failed for the reason we are testing".
+     */
+    const past = await on("2025-03-14", "08039990002");
+    expect(JSON.stringify(past.body ?? {})).not.toMatch(/in the future/i);
+  });
 });
