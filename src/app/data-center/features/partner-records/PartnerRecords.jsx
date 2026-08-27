@@ -6,6 +6,7 @@ import PartnerDetail from "./PartnerDetail";
 import { plural } from "../../lib/plural";
 import PeriodFilter from "../../components/PeriodFilter";
 import { usePeriod } from "../../lib/usePeriod";
+import { MEASURES } from "../../lib/measures";
 import {
   Handshake, Loader2, AlertTriangle, Search, X, Clock, TriangleAlert,
 } from "lucide-react";
@@ -242,12 +243,13 @@ export default function PartnerRecords() {
 
       <div className="grid grid-cols-2 gap-2 border-b border-gray-100 px-4 py-3 sm:grid-cols-5">
         {[
-          // "Issued in the selected period", not "issued ever". The Dashboard
-          // card counts all time and will always be the larger of the two.
-          ["Issued (period)", totals.issued, "text-gray-900"],
-          ["Received", totals.received, "text-gray-900"],
-          ["Digitalised", totals.digitalised, "text-gray-900"],
-          ["Verified", totals.verified, "text-(--dc-accent)"],
+          // Every figure here is scoped to the period control above, which is
+          // why the Dashboard card counting all time is always the larger.
+          // The names come from lib/measures so they match every other surface.
+          [MEASURES.issued.label, totals.issued, "text-gray-900"],
+          [MEASURES.received.label, totals.received, "text-gray-900"],
+          [MEASURES.digitalised.label, totals.digitalised, "text-gray-900"],
+          [MEASURES.verified.label, totals.verified, "text-(--dc-accent)"],
           ["Outstanding", totals.outstanding, totals.outstanding > 0 ? "text-amber-700" : "text-gray-900"],
         ].map(([label, v, tone]) => (
           <div

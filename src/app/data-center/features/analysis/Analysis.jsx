@@ -6,6 +6,7 @@ import StockBoard from "./boards/StockBoard";
 import YieldBoard from "./boards/YieldBoard";
 import { xtab, share } from "./lib/readAnalysis";
 import { previousRange, delta } from "./lib/range";
+import { MEASURES, SCOPES } from "../../lib/measures";
 
 /**
  * Analysis: the module's seventh area.
@@ -200,7 +201,7 @@ function headline(data, previous) {
       key: "past",
       label: "Stock past the line",
       value: now.past,
-      hint: `of ${now.stock.toLocaleString()} still unsold with a partner`,
+      hint: `of ${now.stock.toLocaleString()} ${MEASURES.unsoldAtPartners.label.toLowerCase()}, ${SCOPES.now}`,
       change: before ? delta(now.past, before.past) : null,
       // More stock sitting past the threshold is worse, so a rise is bad here
       // and a rise in creditable records is good. Colouring both green for
