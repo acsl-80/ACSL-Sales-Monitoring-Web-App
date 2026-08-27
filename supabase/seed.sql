@@ -986,13 +986,21 @@ on conflict (user_id, feature_key) do nothing;
 
 -- ---------- Call centre partner assignments ----------
 -- An ACSL agent sees the partners assigned to them, so an account with no
--- assignments sees nothing. The call centre is assigned every seeded partner,
--- which is what a real verification desk needs and what makes the scope
--- testable through the UI.
+-- assignments sees nothing. The call centre is assigned every seeded partner
+-- except 'Unassigned Partner Jos', which exists to stay unassigned.
+--
+-- That exclusion is load-bearing, not tidiness. The check that an editor
+-- cannot stage an import against a partner who is not theirs needs one partner
+-- nobody holds; without it there is nothing out of scope to reach for and the
+-- test proves nothing. This insert previously swept in every organization,
+-- including that one. It went unnoticed because the long-lived preview
+-- database had already run it before 'Unassigned Partner Jos' was added to the
+-- seed, so only a database built from scratch ever showed the fault.
 insert into public.acsl_agent_organizations (agent_id, organization_id, assigned_by)
 select 'b0000000-0000-4000-8000-000000000006'::uuid, o.id,
        'b0000000-0000-4000-8000-000000000001'::uuid
 from public.organizations o
+where o.id <> 'a0000000-0000-4000-8000-000000000004'::uuid
 on conflict do nothing;
 
 -- ---------- Data Center module access (viewer / call agent / editor) ----------
