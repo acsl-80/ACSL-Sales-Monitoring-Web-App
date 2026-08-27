@@ -902,29 +902,72 @@ serve(async (req) => {
         const limit = Math.min(Math.max(Number(body.limit) || 100, 1), 500);
 
         return await withReadConnection(async (connection) => {
-          const rows = await connection.queryObject({
-            text: `select f.transfer_id::text, f.transaction_id, f.organization_id::text,
-                          f.partner_name, f.partner_id, f.transfer_state, f.transfer_branch,
-                          f.sales_rep, f.sales_date, f.transfer_date,
-                          f.issued_count, f.received_count, f.received_is_logged,
-                          f.digitalised_count, f.verified_count, f.unverified_count,
-                          f.unreachable_count, f.unresolved_count, f.outstanding_count,
-                          f.computed_at
-                   from data_center.transfer_funnel f
-                   where ${where.join(" and ")}
-                   order by f.outstanding_count desc, f.sales_date desc nulls last
-                   limit ${limit}`,
+          /*
+           * The page AND the totals for everything the filters matched.
+           *
+           * This used to return rows only, and Partner Records summed the
+           * column across whatever it had been given. With `limit: 300` against
+           * 483 matching transfers, the figure labelled "Issued" was the top
+           * 300 by outstanding count: 14,224 where the real answer was 14,465.
+           * A hundred and ninety-five consignments missing from a total, with
+           * nothing on the page able to say so, because nothing in this
+           * response carried a count.
+           *
+           * Totalling in SQL over the same predicate is the only version that
+           * cannot drift from the rows beneath it. Returning `matched` as well
+           * lets the page say "showing 300 of 483" rather than leaving the
+           * reader to assume it has everything.
+           *
+           * One statement rather than the previous two: the totals ride along
+           * with the page and the timestamp, so this is a round trip cheaper
+           * than what it replaces.
+           */
+          const result = await connection.queryObject<{
+            rows: unknown[] | null;
+            totals: Record<string, number> | null;
+            computed_at: string | null;
+          }>({
+            text: `select
+                     (select coalesce(jsonb_agg(t), '[]'::jsonb) from (
+                        select f.transfer_id::text, f.transaction_id, f.organization_id::text,
+                               f.partner_name, f.partner_id, f.transfer_state, f.transfer_branch,
+                               f.sales_rep, f.sales_date, f.transfer_date,
+                               f.issued_count, f.received_count, f.received_is_logged,
+                               f.digitalised_count, f.verified_count, f.unverified_count,
+                               f.unreachable_count, f.unresolved_count, f.outstanding_count,
+                               f.computed_at
+                          from data_center.transfer_funnel f
+                         where ${where.join(" and ")}
+                         order by f.outstanding_count desc, f.sales_date desc nulls last
+                         limit ${limit}) t) as rows,
+                     (select jsonb_build_object(
+                        'transfers',   count(*),
+                        'issued',      coalesce(sum(f.issued_count), 0),
+                        'received',    coalesce(sum(f.received_count), 0),
+                        'digitalised', coalesce(sum(f.digitalised_count), 0),
+                        'verified',    coalesce(sum(f.verified_count), 0),
+                        'outstanding', coalesce(sum(f.outstanding_count), 0))
+                        from data_center.transfer_funnel f
+                       where ${where.join(" and ")}) as totals,
+                     (select max(computed_at) from data_center.transfer_funnel) as computed_at`,
             args,
           });
-          const stamp = await connection.queryObject<{ computed_at: string | null }>({
-            text: "select max(computed_at) as computed_at from data_center.transfer_funnel",
-          });
+
+          const row = result.rows[0];
+          const rows = (row?.rows ?? []) as Record<string, unknown>[];
+          const totals = (row?.totals ?? {}) as Record<string, number>;
+
           return json(
             {
               data: {
-                rows: rows.rows,
+                rows,
+                // Every matching transfer, not just the ones on this page.
+                totals,
+                matched: Number(totals.transfers ?? 0),
+                shown: rows.length,
+                limit,
                 scope: scope.description,
-                computedAt: stamp.rows[0]?.computed_at ?? null,
+                computedAt: row?.computed_at ?? null,
               },
             },
             200,

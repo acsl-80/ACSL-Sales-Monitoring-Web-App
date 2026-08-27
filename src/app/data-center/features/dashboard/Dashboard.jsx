@@ -3,6 +3,7 @@ import { Link } from "@tanstack/react-router";
 import { dataCenterDashboard, DataCenterError } from "../../lib/client";
 import Scorecard, { scorecardRows } from "./Scorecard";
 import ExportScorecards from "./ExportScorecards";
+import { MEASURES, withScope, explain } from "../../lib/measures";
 import {
   BarChart3, Loader2, AlertTriangle, RefreshCw, Clock, TriangleAlert, ArrowUpRight,
 } from "lucide-react";
@@ -418,15 +419,15 @@ export default function Dashboard({ canRun }) {
               much is not. Everything else on this page is a cut of these. */}
           <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
             <Card
-              label="Transferred to partners"
+              label={withScope("issued", "allTime")}
               value={transferred}
-              hint="stoves shipped, all partners"
+              hint={explain("issued", "allTime")}
               skin="transferred"
               to="/data-center/partner-records"
               arrow="See what went to each partner"
             />
             <Card
-              label="Sold"
+              label={withScope("sold", "allTime")}
               value={total}
               hint={
                 transferred
@@ -437,17 +438,17 @@ export default function Dashboard({ canRun }) {
               to="/data-center/stove-records"
             />
             <Card
-              label="Fully verified"
+              label={withScope("verified", "allTime")}
               value={verified}
               hint={total ? `${Math.round((verified / total) * 100)}% of sales` : undefined}
               skin="verified"
               to="/data-center/call-centre"
-              search={{ status: "verified", label: "Fully verified" }}
+              search={{ status: "verified", label: MEASURES.verified.label }}
             />
             <Card
-              label="Unverified"
+              label={withScope("unverified", "allTime")}
               value={unverified}
-              hint="received, called, not confirmed"
+              hint={MEASURES.unverified.definition}
               skin="unverified"
               to="/data-center/call-centre"
               search={{ status: "unverified", label: "Unverified" }}
