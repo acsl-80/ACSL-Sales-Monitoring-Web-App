@@ -359,6 +359,26 @@ export type TransferFunnelFilters = {
 
 export type TransferFunnelPage = {
   rows: TransferFunnelRow[];
+  /**
+   * Totals over every transfer the filters matched, not just this page.
+   *
+   * Summing `rows` was how the Issued figure on Partner Records came to be the
+   * top 300 of 483 matching consignments while calling itself a total. These
+   * are computed in SQL over the same predicate, so they cannot drift from the
+   * rows underneath them.
+   */
+  totals: {
+    transfers: number;
+    issued: number;
+    received: number;
+    digitalised: number;
+    verified: number;
+    outstanding: number;
+  };
+  /** How many matched, against how many came back, so a page can say which. */
+  matched: number;
+  shown: number;
+  limit: number;
   scope: string;
   computedAt: string | null;
 };

@@ -200,7 +200,7 @@ function headline(data, previous) {
       key: "past",
       label: "Stock past the line",
       value: now.past,
-      hint: `of ${now.stock.toLocaleString()} unsold at partners`,
+      hint: `of ${now.stock.toLocaleString()} still unsold with a partner`,
       change: before ? delta(now.past, before.past) : null,
       // More stock sitting past the threshold is worse, so a rise is bad here
       // and a rise in creditable records is good. Colouring both green for

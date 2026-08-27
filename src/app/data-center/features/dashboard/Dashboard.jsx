@@ -420,7 +420,7 @@ export default function Dashboard({ canRun }) {
             <Card
               label="Transferred to partners"
               value={transferred}
-              hint="stoves shipped, all partners"
+              hint="stoves shipped, all partners, all time"
               skin="transferred"
               to="/data-center/partner-records"
               arrow="See what went to each partner"

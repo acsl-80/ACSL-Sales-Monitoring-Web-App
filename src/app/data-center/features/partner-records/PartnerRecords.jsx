@@ -114,6 +114,8 @@ export default function PartnerRecords() {
       : null,
   );
   const [computedAt, setComputedAt] = useState(null);
+  const [serverTotals, setServerTotals] = useState(null);
+  const [matched, setMatched] = useState(0);
   const [scope, setScope] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
@@ -146,6 +148,8 @@ export default function PartnerRecords() {
         },
       });
       setRows(page.rows);
+      setServerTotals(page.totals ?? null);
+      setMatched(Number(page.matched ?? page.rows.length));
       setComputedAt(page.computedAt);
       setScope(page.scope);
       setError(null);
@@ -162,20 +166,35 @@ export default function PartnerRecords() {
     load();
   }, [load]);
 
-  const totals = useMemo(
-    () =>
-      rows.reduce(
-        (a, r) => ({
-          issued: a.issued + r.issued_count,
-          received: a.received + r.received_count,
-          digitalised: a.digitalised + r.digitalised_count,
-          verified: a.verified + r.verified_count,
-          outstanding: a.outstanding + r.outstanding_count,
-        }),
-        { issued: 0, received: 0, digitalised: 0, verified: 0, outstanding: 0 },
-      ),
-    [rows],
-  );
+  /**
+   * The totals come from the server, over every transfer the filters matched.
+   *
+   * They used to be summed from `rows`, which is one page. With `limit: 300`
+   * against 483 matching consignments, the figure labelled "Issued" was the
+   * top 300 by outstanding count - 14,224 where the answer was 14,465 - and
+   * nothing on the page could say so, because nothing in the response carried
+   * a count of what had been left behind.
+   *
+   * Reducing `rows` is kept only as the fallback for an older response shape,
+   * and `truncated` below is what stops it lying quietly if it ever runs.
+   */
+  const totals = useMemo(() => {
+    if (serverTotals) return serverTotals;
+    return rows.reduce(
+      (a, r) => ({
+        issued: a.issued + r.issued_count,
+        received: a.received + r.received_count,
+        digitalised: a.digitalised + r.digitalised_count,
+        verified: a.verified + r.verified_count,
+        outstanding: a.outstanding + r.outstanding_count,
+      }),
+      { issued: 0, received: 0, digitalised: 0, verified: 0, outstanding: 0 },
+    );
+  }, [rows, serverTotals]);
+
+  // More matched the filters than came back, so the table below is a part of
+  // what the totals describe. Said out loud rather than left to be discovered.
+  const truncated = matched > rows.length;
 
 
   return (
@@ -184,8 +203,22 @@ export default function PartnerRecords() {
         <Handshake className="h-4 w-4 text-(--dc-accent)" />
         <span className="text-sm font-semibold text-gray-900">Partner Records</span>
         <span className="text-sm text-gray-500">
-          {loading ? "loading..." : `${plural(rows.length, "transfer")}`}
+          {loading
+            ? "loading..."
+            : truncated
+              ? `${plural(rows.length, "transfer")} of ${matched}`
+              : `${plural(rows.length, "transfer")}`}
         </span>
+        {/*
+          The totals describe every matching consignment; the table shows the
+          first page of them. Without this the reader has a grand total above a
+          partial list and no reason to suspect the two are different sets.
+        */}
+        {truncated && (
+          <span className="rounded-full bg-amber-100 px-2.5 py-0.5 text-xs font-medium text-amber-900">
+            totals cover all {matched}; the table lists the first {rows.length}
+          </span>
+        )}
         {computedAt && (
           <span className="inline-flex items-center gap-1 text-xs text-gray-500">
             <Clock className="h-3 w-3" />
@@ -209,7 +242,9 @@ export default function PartnerRecords() {
 
       <div className="grid grid-cols-2 gap-2 border-b border-gray-100 px-4 py-3 sm:grid-cols-5">
         {[
-          ["Issued", totals.issued, "text-gray-900"],
+          // "Issued in the selected period", not "issued ever". The Dashboard
+          // card counts all time and will always be the larger of the two.
+          ["Issued (period)", totals.issued, "text-gray-900"],
           ["Received", totals.received, "text-gray-900"],
           ["Digitalised", totals.digitalised, "text-gray-900"],
           ["Verified", totals.verified, "text-(--dc-accent)"],
