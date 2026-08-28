@@ -137,9 +137,23 @@ create policy "super_admin_full_access" on public."acsl_agent_organization_exclu
 -- anything needs; RLS is what actually holds the line there. New tables start
 -- correct rather than inheriting an old habit. Writes go through the
 -- service-role edge functions.
-grant select on public."acsl_agent_scope" to "anon", "authenticated";
+--
+-- REVOKE first, and this is not belt-and-braces. Supabase ships default
+-- privileges that grant ALL on every new table in `public` to anon and
+-- authenticated at CREATE TABLE time, so a bare `grant select` is additive and
+-- leaves the table exactly as wide as the ones this is trying not to copy.
+-- Verified: without these revokes both tables came out holding
+-- DELETE/INSERT/TRUNCATE/UPDATE for both roles.
+--
+-- anon gets nothing at all. It is unauthenticated, both policies address
+-- `authenticated`, so it could never read a row anyway; a grant that resolves
+-- to zero rows is a grant nobody can explain later.
+revoke all on public."acsl_agent_scope" from "anon", "authenticated";
+revoke all on public."acsl_agent_organization_exclusions" from "anon", "authenticated";
+
+grant select on public."acsl_agent_scope" to "authenticated";
 grant all on public."acsl_agent_scope" to "service_role";
-grant select on public."acsl_agent_organization_exclusions" to "anon", "authenticated";
+grant select on public."acsl_agent_organization_exclusions" to "authenticated";
 grant all on public."acsl_agent_organization_exclusions" to "service_role";
 
 -- ---------------------------------------------------------------------------
@@ -183,4 +197,10 @@ with (security_invoker = true) as
 comment on view public."acsl_state_name_health" is
   'Every distinct state string in use, and whether it matches nigeria_states exactly, only ignoring case, or not at all. Read-only. A row with matches_canonical_exactly = false is a partner or an assignment that state-based coverage cannot connect.';
 
-grant select on public."acsl_state_name_health" to "authenticated", "service_role";
+-- Same default-privilege trap as the tables above: revoke, then grant what is
+-- actually needed. A diagnostic view over partner and assignment data has no
+-- business being writable, and `security_invoker = true` above means it cannot
+-- become a way around the base tables' RLS either.
+revoke all on public."acsl_state_name_health" from "anon", "authenticated";
+grant select on public."acsl_state_name_health" to "authenticated";
+grant all on public."acsl_state_name_health" to "service_role";
