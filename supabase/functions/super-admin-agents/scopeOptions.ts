@@ -42,7 +42,7 @@ export async function assertMayEditScope(
   if (!target) throw new Error("Agent not found");
 
   if (!["acsl_agent", "acsl_agent_manager", "super_admin_agent"].includes(target.role)) {
-    throw new Error("Only ACSL agents and managers hold partner scope");
+    throw new Error("validation: only ACSL agents and managers hold partner scope");
   }
 
   // managerScopeId is null for a super admin, who may edit anyone.
@@ -95,10 +95,14 @@ export async function setAgentScope(
 
   const mode: string | null = body?.mode ?? null;
   if (mode !== null && mode !== "state_coverage" && mode !== "explicit_partners") {
-    throw new Error(`Unknown coverage mode: ${mode}`);
+    throw new Error(`validation: unknown coverage mode "${mode}"`);
   }
 
   /*
+   * The "validation:" prefix is load-bearing: index.ts maps it to a 400 and
+   * everything else to a 500. Without it a malformed request reports an
+   * internal error, which sends whoever hit it looking in the wrong place.
+   *
    * Missing keys are refused rather than treated as empty.
    *
    * The routes this replaces default a missing body key to [], so a malformed
@@ -108,7 +112,7 @@ export async function setAgentScope(
    */
   for (const key of ["states", "organization_ids", "excluded_organization_ids"]) {
     if (!Array.isArray(body?.[key])) {
-      throw new Error(`${key} must be an array. Send [] to clear it.`);
+      throw new Error(`validation: ${key} must be an array. Send [] to clear it.`);
     }
   }
 
