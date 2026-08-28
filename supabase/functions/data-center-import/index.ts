@@ -738,6 +738,18 @@ async function contentHash(rows: Record<string, unknown>[]): Promise<string> {
  *
  * The question is the same one the `partners` action answers, asked of one
  * organization instead of listing them all.
+ *
+ * Scope comes from public.acsl_agent_org_scope, the one definition of the
+ * rule. This used to read acsl_agent_organizations directly, which is only
+ * half of it: an agent covered by state holds no named partners, so this
+ * resolved them to nothing and refused every import they attempted. It was
+ * invisible only because everyone was materialised into named rows.
+ *
+ * Own coverage, not the team's. That is faithful to what this did before, and
+ * widening a manager to their subordinates' partners is a separate decision
+ * from fixing the state hole. Worth knowing that create-sale does include
+ * subordinates, so the two are not identical; that inconsistency predates this
+ * change and is left where it was rather than quietly settled here.
  */
 async function organizationInScope(
   conn: PoolClient,
@@ -751,8 +763,7 @@ async function organizationInScope(
               where o.id = $3
                 and (o.id = $2
                      or o.id in (select organization_id
-                                   from public.acsl_agent_organizations
-                                  where agent_id = $1))
+                                   from public.acsl_agent_org_scope(array[$1::uuid])))
            ) as ok`,
     args: [userId, ownOrganizationId, organizationId],
   });
@@ -2284,8 +2295,8 @@ serve(async (req) => {
           const r = await conn.queryObject({
             text: `select o.id, o.partner_name from public.organizations o
                    where o.id = $2
-                      or o.id in (select organization_id from public.acsl_agent_organizations
-                                   where agent_id = $1)
+                      or o.id in (select organization_id
+                                    from public.acsl_agent_org_scope(array[$1::uuid]))
                    order by o.partner_name limit 500`,
             args: [userId, profile.organization_id ?? null],
           });

@@ -19,42 +19,25 @@ export async function listAgents(supabase: any, searchParams: URLSearchParams, m
         .map(r => r === "super_admin_agent" ? "acsl_agent" : r)
     : [];
 
-  // When filtering by organization_id, resolve which agent IDs are assigned to that org
-  // (either directly via acsl_agent_organizations, or via state assignment)
+  /*
+   * Which agents cover this partner.
+   *
+   * Four queries and a hand-applied precedence rule became one call. The rule
+   * lives in public.acsl_agents_covering_org, the same definition the forward
+   * lookup uses, so this list and an agent's own partner list cannot disagree.
+   * It also honours exclusions, which the version here could not see at all.
+   */
   let filteredAgentIds: string[] | null = null;
   if (organizationId) {
-    // 1. Direct assignments
-    const { data: directRows } = await supabase
-      .from("acsl_agent_organizations")
-      .select("agent_id")
-      .eq("organization_id", organizationId);
-    const directIds = new Set((directRows || []).map((r: any) => r.agent_id as string));
-
-    // 2. State-based: get the org's state, then find agents assigned to that state
-    const { data: orgRow } = await supabase
-      .from("organizations")
-      .select("state")
-      .eq("id", organizationId)
-      .single();
-    if (orgRow?.state) {
-      const { data: stateRows } = await supabase
-        .from("acsl_agent_states")
-        .select("agent_id")
-        .eq("state", orgRow.state);
-      const stateAgentIds = (stateRows || []).map((r: any) => r.agent_id as string);
-      if (stateAgentIds.length > 0) {
-        // A state assignment only grants the whole state when the agent has no
-        // specific partner assignments — those take precedence.
-        const { data: withDirectRows } = await supabase
-          .from("acsl_agent_organizations")
-          .select("agent_id")
-          .in("agent_id", stateAgentIds);
-        const hasDirect = new Set<string>((withDirectRows || []).map((r: any) => r.agent_id as string));
-        stateAgentIds.forEach((id: string) => { if (!hasDirect.has(id)) directIds.add(id); });
-      }
+    const { data: coveringRows, error: coveringError } = await supabase.rpc(
+      "acsl_agents_covering_org",
+      { p_org_id: organizationId },
+    );
+    if (coveringError) {
+      throw new Error(`Could not resolve agents for this partner: ${coveringError.message}`);
     }
 
-    filteredAgentIds = [...directIds];
+    filteredAgentIds = [...new Set((coveringRows || []).map((r: any) => r.agent_id as string))];
     // If no agents are assigned, return empty immediately
     if (filteredAgentIds.length === 0) {
       return {
@@ -109,38 +92,40 @@ export async function listAgents(supabase: any, searchParams: URLSearchParams, m
     supabase.from("acsl_agent_states").select("agent_id, state").in("agent_id", agentIdList),
   ]);
 
-  // 3: resolve all unique states → org IDs in one query
-  const allStates = [...new Set((allStateRows || []).map((r: any) => r.state as string))];
-  const stateToOrgIds: Record<string, string[]> = {};
-  if (allStates.length > 0) {
-    const { data: stateOrgRows } = await supabase
-      .from("organizations").select("id, state").in("state", allStates);
-    (stateOrgRows || []).forEach((o: any) => {
-      if (!stateToOrgIds[o.state]) stateToOrgIds[o.state] = [];
-      stateToOrgIds[o.state].push(o.id);
-    });
+  /*
+   * 3: effective coverage for the whole page, in one call.
+   *
+   * This is why acsl_agent_org_scope takes an array. It used to be a third
+   * query expanding states to orgs, plus a hand-applied precedence rule that
+   * was the fourth copy of something the database now decides once. The rows
+   * below are the same answer create-sale gates on, so what an admin reads
+   * here and what an agent can actually do cannot drift apart.
+   */
+  const { data: scopeRows, error: scopeError } = await supabase.rpc(
+    "acsl_agent_org_scope",
+    { p_agent_ids: agentIdList },
+  );
+  if (scopeError) {
+    throw new Error(`Could not resolve agent coverage: ${scopeError.message}`);
   }
 
-  // Build per-agent maps
+  // Named partners and held states stay as they are: both are shown in the UI
+  // and both remain true whichever rule is in force for the agent.
   const agentDirectIds: Record<string, Set<string>> = {};
   const agentAllOrgIds: Record<string, Set<string>> = {};
   const agentStates:    Record<string, string[]>     = {};
 
   (allDirectOrgRows || []).forEach((r: any) => {
-    if (!agentDirectIds[r.agent_id])  agentDirectIds[r.agent_id]  = new Set();
-    if (!agentAllOrgIds[r.agent_id])  agentAllOrgIds[r.agent_id]  = new Set();
+    if (!agentDirectIds[r.agent_id]) agentDirectIds[r.agent_id] = new Set();
     agentDirectIds[r.agent_id].add(r.organization_id);
-    agentAllOrgIds[r.agent_id].add(r.organization_id);
   });
   (allStateRows || []).forEach((r: any) => {
-    if (!agentStates[r.agent_id])    agentStates[r.agent_id]    = [];
-    if (!agentAllOrgIds[r.agent_id]) agentAllOrgIds[r.agent_id] = new Set();
+    if (!agentStates[r.agent_id]) agentStates[r.agent_id] = [];
     agentStates[r.agent_id].push(r.state);
-    // Direct partner assignments take precedence: a state only expands to all
-    // of its orgs when the agent has no specific partners assigned.
-    if (!agentDirectIds[r.agent_id]?.size) {
-      (stateToOrgIds[r.state] || []).forEach((oid) => agentAllOrgIds[r.agent_id].add(oid));
-    }
+  });
+  (scopeRows || []).forEach((r: any) => {
+    if (!agentAllOrgIds[r.agent_id]) agentAllOrgIds[r.agent_id] = new Set();
+    agentAllOrgIds[r.agent_id].add(r.organization_id);
   });
 
   // 4: stove counts for all orgs across the page — 1 RPC call
@@ -399,8 +384,6 @@ export async function getAgentOrganizations(supabase: any, agentId: string, sear
     ...row.organizations,
   }));
 
-  const directOrgIds = new Set(directOrgs.map((o: any) => o.id));
-
   // Fetch assigned states
   const { data: stateRows } = await supabase
     .from("acsl_agent_states")
@@ -416,35 +399,61 @@ export async function getAgentOrganizations(supabase: any, agentId: string, sear
     stateAssignmentMap[r.state] = { id: r.id, assigned_at: r.assigned_at, assigned_by: r.assigned_by };
   });
 
-  // Resolve states → organizations. Direct partner assignments take
-  // precedence: a state only expands to every org in it when the agent has
-  // no specific partners assigned.
-  let stateOrgs: any[] = [];
-  if (assignedStates.length > 0 && directOrgs.length === 0) {
-    const { data: stateOrgRows } = await supabase
+  /*
+   * What this agent actually covers, from the one definition of the rule.
+   *
+   * This used to restate the precedence condition verbatim, the fourth copy of
+   * it. Now the database decides and this only presents the answer: which
+   * partners, and whether each arrived by name or by state.
+   *
+   * Exclusions are handled for free. The old version could not express one, so
+   * a partner an admin had carved out still appeared in this list.
+   */
+  const { data: scopeRows, error: scopeError } = await supabase.rpc(
+    "acsl_agent_org_scope",
+    { p_agent_ids: [agentId] },
+  );
+  if (scopeError) throw new Error(`Could not resolve coverage: ${scopeError.message}`);
+
+  const sourceByOrgId = new Map<string, string>(
+    (scopeRows || []).map((r: any) => [r.organization_id as string, r.source as string]),
+  );
+  const directMetaByOrgId = new Map<string, any>(directOrgs.map((o: any) => [o.id, o]));
+  const coveredOrgIds = [...sourceByOrgId.keys()];
+
+  let coveredOrgRows: any[] = [];
+  if (coveredOrgIds.length > 0) {
+    const { data, error: orgErr } = await supabase
       .from("organizations")
       .select("id, partner_name, branch, state, contact_person, contact_phone, email")
-      .in("state", assignedStates);
-
-    stateOrgs = (stateOrgRows || [])
-      .filter((o: any) => !directOrgIds.has(o.id))
-      .map((o: any) => {
-        const stateAssignment = stateAssignmentMap[o.state] || {};
-        return {
-          assignment_id: stateAssignment.id || null,
-          assigned_at: stateAssignment.assigned_at || null,
-          assigned_by: stateAssignment.assigned_by || null,
-          source: "state" as const,
-          source_state: o.state,
-          ...o,
-        };
-      });
+      .in("id", coveredOrgIds);
+    if (orgErr) throw new Error(`Database error: ${orgErr.message}`);
+    coveredOrgRows = data || [];
   }
 
-  const allOrganizations = [...directOrgs, ...stateOrgs];
+  const allOrganizations = coveredOrgRows.map((o: any) => {
+    if (sourceByOrgId.get(o.id) === "explicit") {
+      // Keep the row the direct query already built: it carries the real
+      // assignment id and who made it.
+      return directMetaByOrgId.get(o.id) ?? {
+        assignment_id: null, assigned_at: null, assigned_by: null,
+        source: "direct" as const, ...o,
+      };
+    }
+    const stateAssignment = stateAssignmentMap[o.state] || {};
+    return {
+      assignment_id: stateAssignment.id || null,
+      assigned_at: stateAssignment.assigned_at || null,
+      assigned_by: stateAssignment.assigned_by || null,
+      source: "state" as const,
+      source_state: o.state,
+      ...o,
+    };
+  });
 
+  const viaState = allOrganizations.filter((o: any) => o.source === "state").length;
   console.log(
-    `✅ Found ${directOrgs.length} direct + ${stateOrgs.length} state-resolved organizations`
+    `✅ Found ${allOrganizations.length - viaState} direct + ${viaState} state-resolved organizations`
   );
 
   // Fetch per-org stove counts using the same RPC used by manage-organizations

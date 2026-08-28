@@ -174,25 +174,14 @@ export async function getUsers(
       (managers || []).forEach((m: any) => managerMap.set(m.id, m.full_name));
     }
 
-    // Resolve which agent-id columns exist per assignment table (schema drift
-    // between deployments: agent_id / super_admin_agent_id / user_id).
-    const ASSIGNMENT_TABLES = ["super_admin_agent_organizations", "acsl_agent_organizations"];
-    const AGENT_ID_CANDIDATES = ["agent_id", "super_admin_agent_id", "user_id"];
-    const existingAgentCols: Record<string, string[]> = {};
-    await Promise.all(
-      ASSIGNMENT_TABLES.map(async (table) => {
-        const found: string[] = [];
-        for (const col of AGENT_ID_CANDIDATES) {
-          const { error } = await supabase
-            .from(table)
-            .select(col, { count: "exact", head: true })
-            .limit(1);
-          if (!error) found.push(col);
-        }
-        existingAgentCols[table] = found;
-      })
-    );
-
+    /*
+     * The column-probing block that used to sit here is gone with the query it
+     * fed. It fired six head requests on every listing to discover whether
+     * agent_id, super_admin_agent_id or user_id existed on each of two
+     * assignment names. Only agent_id has ever existed, and
+     * super_admin_agent_organizations is a view over acsl_agent_organizations,
+     * so it was probing one table twice for two columns that never shipped.
+     */
     const ACSL_ROLES = new Set(["acsl_agent", "acsl_agent_manager", "super_admin_agent"]);
 
     // Fetch assigned_organizations_count + assigned_states_count for each SAA user
@@ -203,24 +192,28 @@ export async function getUsers(
           manager_name: u.manager_id ? managerMap.get(u.manager_id) ?? null : null,
         };
         if (ACSL_ROLES.has(user.role)) {
-          // Union across both assignment tables + all existing agent-id column
-          // variants. Legacy explicit state rows are also folded in.
-          const orgIdSet = new Set<string>();
-          await Promise.all(
-            ASSIGNMENT_TABLES.map(async (table) => {
-              const cols = existingAgentCols[table] || [];
-              if (cols.length === 0) return;
-              const orExpr = cols.map((c) => `${c}.eq.${user.id}`).join(",");
-              const { data } = await supabase
-                .from(table)
-                .select("organization_id")
-                .or(orExpr);
-              (data || []).forEach((r: any) => {
-                if (r.organization_id) orgIdSet.add(r.organization_id);
-              });
-            })
+          /*
+           * What this user actually covers, from the one definition of the
+           * rule rather than from the assignment table.
+           *
+           * This used to union both assignment names across three candidate
+           * agent-id columns, none of which is the effective answer: an agent
+           * covered by state holds no named rows and showed 0 partners, while
+           * an excluded partner still counted. It was also the one copy that
+           * ran the rule backwards, deriving states FROM the named partners,
+           * so a direct assignment added states where the resolver suppresses
+           * them.
+           */
+          const { data: scopeRows, error: scopeError } = await supabase.rpc(
+            "acsl_agent_org_scope",
+            { p_agent_ids: [user.id] },
           );
-          const orgIds = Array.from(orgIdSet);
+          if (scopeError) {
+            throw new Error(`Could not resolve coverage for ${user.id}: ${scopeError.message}`);
+          }
+          const orgIds = Array.from(
+            new Set((scopeRows || []).map((r: any) => r.organization_id as string)),
+          );
 
           const stateMap = new Map<string, string>();
           const addState = (raw: any) => {
@@ -231,19 +224,18 @@ export async function getUsers(
             if (!stateMap.has(key)) stateMap.set(key, s);
           };
 
-          if (orgIds.length > 0) {
-            const { data: orgRows } = await supabase
-              .from("organizations")
-              .select("state")
-              .in("id", orgIds);
-            (orgRows || []).forEach((o: any) => addState(o.state));
-          }
-
-          const { data: legacyStates } = await supabase
+          /*
+           * The states this user holds, not the states their partners happen
+           * to sit in. Deriving one from the other is what made this disagree
+           * with every other surface: an agent named against three partners in
+           * two states was reported as holding two states they had never been
+           * given.
+           */
+          const { data: heldStates } = await supabase
             .from("acsl_agent_states")
             .select("state")
             .eq("agent_id", user.id);
-          (legacyStates || []).forEach((r: any) => addState(r.state));
+          (heldStates || []).forEach((r: any) => addState(r.state));
 
           const assigned_states = Array.from(stateMap.values());
           return {
