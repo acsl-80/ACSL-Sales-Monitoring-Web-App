@@ -23,6 +23,13 @@
  * Whether an account works that way is stored per account, and every existing
  * account was backfilled with the mode it already behaved as, so nobody's
  * coverage moved when this shipped.
+ *
+ * WHAT IS DELIBERATELY NOT HERE
+ *
+ * Which rule an agent resolved under would be a useful thing to log, and it is
+ * one query away. It is not fetched, because create-sale calls this on every
+ * sale and nothing consumes the answer yet. A round trip on the write path
+ * buys a log line; it can be added when something actually reads it.
  */
 
 export interface ResolvedAssignments {
@@ -36,12 +43,6 @@ export interface ResolvedAssignments {
   stateResolvedOrgIds: string[];
   /** Org IDs inherited from subordinate acsl_agents (manager_id = agentId) */
   subordinateOrgIds: string[];
-  /**
-   * Which rule produced this: 'state_coverage', 'explicit_partners', or null
-   * when the agent has no scope row and resolved through the legacy
-   * derivation. Additive; nothing is required to read it.
-   */
-  mode: string | null;
 }
 
 /**
@@ -69,15 +70,38 @@ export async function resolveAssignedOrgIds(
     );
   };
 
-  // 1. The acsl_agents reporting to this agent. Unchanged: the role filter is
-  //    what stops a manager inheriting another manager's whole tree.
-  const { data: subordinates, error: subError } = await supabase
-    .from("profiles")
-    .select("id")
-    .eq("manager_id", agentId)
-    .eq("role", "acsl_agent");
+  /*
+   * 1. Everything that depends on nothing, at once.
+   *
+   * Only the subordinate list feeds the next step. The other two are
+   * descriptive and could be fetched at any point, so they go here rather than
+   * adding a round trip after it. create-sale runs this on every sale.
+   *
+   * `directOrgIds` means "partners named against this agent" and
+   * `assignedStates` means "states held". Both stay true regardless of which
+   * rule is in force, which is what makes them worth logging: an agent on
+   * state coverage may still hold named rows that are not contributing, and a
+   * log line that hid that would be the confusing kind.
+   *
+   * The role filter on subordinates is unchanged. It is what stops a manager
+   * inheriting another manager's whole tree.
+   */
+  const [
+    { data: subordinates, error: subError },
+    { data: directRows, error: directError },
+    { data: stateRows, error: stateError },
+  ] = await Promise.all([
+    supabase.from("profiles").select("id").eq("manager_id", agentId).eq("role", "acsl_agent"),
+    supabase.from("acsl_agent_organizations").select("organization_id").eq("agent_id", agentId),
+    supabase.from("acsl_agent_states").select("state").eq("agent_id", agentId),
+  ]);
   if (subError) fail("read subordinates", subError);
+  if (directError) fail("read named partners", directError);
+  if (stateError) fail("read assigned states", stateError);
+
   const subordinateIds: string[] = (subordinates ?? []).map((s: any) => s.id);
+  const directOrgIds: string[] = (directRows ?? []).map((a: any) => a.organization_id);
+  const assignedStates: string[] = (stateRows ?? []).map((s: any) => s.state);
 
   // 2. One call resolves this agent and the whole team, under whichever rule
   //    each of them is on.
@@ -102,37 +126,7 @@ export async function resolveAssignedOrgIds(
   ];
 
   /*
-   * 3. The two descriptive fields, read from the tables rather than derived
-   *    from the answer.
-   *
-   * `directOrgIds` means "partners named against this agent" and
-   * `assignedStates` means "states held". Both stay true regardless of which
-   * rule is in force, which is what makes them worth logging: an agent on
-   * state coverage may still hold named rows that are not contributing, and a
-   * log line that hid that would be the confusing kind.
-   */
-  const [{ data: directRows, error: directError }, { data: stateRows, error: stateError }] =
-    await Promise.all([
-      supabase.from("acsl_agent_organizations").select("organization_id").eq("agent_id", agentId),
-      supabase.from("acsl_agent_states").select("state").eq("agent_id", agentId),
-    ]);
-  if (directError) fail("read named partners", directError);
-  if (stateError) fail("read assigned states", stateError);
-
-  const directOrgIds: string[] = (directRows ?? []).map((a: any) => a.organization_id);
-  const assignedStates: string[] = (stateRows ?? []).map((s: any) => s.state);
-
-  // 4. Which rule this agent resolved under. Absent row means the legacy
-  //    derivation applied, which is a valid state rather than a missing one.
-  const { data: scopeRow, error: modeError } = await supabase
-    .from("acsl_agent_scope")
-    .select("mode")
-    .eq("agent_id", agentId)
-    .maybeSingle();
-  if (modeError) fail("read scope mode", modeError);
-
-  /*
-   * 5. The answer.
+   * 3. The answer.
    *
    * Own coverage comes from the function, not from directOrgIds, because under
    * state coverage a named row is deliberately not a grant. Unioning them here
@@ -147,6 +141,5 @@ export async function resolveAssignedOrgIds(
     assignedStates,
     stateResolvedOrgIds,
     subordinateOrgIds,
-    mode: scopeRow?.mode ?? null,
   };
 }
