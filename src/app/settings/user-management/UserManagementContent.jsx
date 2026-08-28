@@ -216,6 +216,14 @@ const UserManagementPage = () => {
   const [formMode, setFormMode] = useState("create"); // "create" | "edit"
   const [showDeleteModal, setShowDeleteModal] = useState(false);
   const [showAssignOrgsModal, setShowAssignOrgsModal] = useState(false);
+  /*
+   * Partners carved out of a state a manager otherwise covers.
+   *
+   * Managers are scoped by state: selecting states covers every partner in
+   * them, including partners created later. This is how an admin says "all of
+   * Kano except these two".
+   */
+  const [excludedPartnerIds, setExcludedPartnerIds] = useState(new Set());
   const [selectedUser, setSelectedUser] = useState(null);
   const [selectedUserForOrgs, setSelectedUserForOrgs] = useState(null);
   const [actionLoading, setActionLoading] = useState(null); // stores userId or 'create'/'delete' etc.
@@ -824,6 +832,7 @@ const UserManagementPage = () => {
     setUserForm((prev) => ({ ...prev, role }));
     setSelectedPartnerIds(new Set());
     setSelectedStates(new Set());
+    setExcludedPartnerIds(new Set());
     setSelectedManagerIds(new Set());
     setPartnerSearch("");
     setManagerSearch("");
@@ -844,16 +853,56 @@ const UserManagementPage = () => {
     }
   };
 
-  // Auto-check all partners in selected states when states change (Agent Manager flow)
+  /*
+   * Save an ACSL user's coverage.
+   *
+   * A manager is scoped by state: the states are the rule and exclusions carve
+   * partners out of them. An agent keeps a named list, chosen under their
+   * manager. That is not a new distinction; it is what the two cascades on this
+   * screen already did, now said out loud to the server instead of both being
+   * flattened into named rows.
+   *
+   * One atomic call where the endpoint exists, the old racing pair where it
+   * does not, so this screen does not have to wait for a function deploy.
+   */
+  const saveUserScope = async (userId, role) => {
+    const isManager = role === "acsl_agent_manager";
+    const probe = await superAdminAgentService.getAgentScope(userId).catch(() => null);
+    if (probe !== null) {
+      await superAdminAgentService.setAgentScope(userId, {
+        mode: isManager ? "state_coverage" : "explicit_partners",
+        states: Array.from(selectedStates),
+        organizationIds: Array.from(selectedPartnerIds),
+        excludedOrganizationIds: isManager ? Array.from(excludedPartnerIds) : [],
+      });
+      return;
+    }
+    await superAdminAgentService.setAgentStates(userId, Array.from(selectedStates));
+    await superAdminAgentService.setAgentOrganizations(userId, Array.from(selectedPartnerIds));
+  };
+
+  /*
+   * A manager's states are a rule, not a shortcut for ticking partners.
+   *
+   * This used to copy every partner then in the selected states into the named
+   * list, and that list was what got saved. It is why coverage froze: the
+   * named list was never empty afterwards, the resolver ignored states once it
+   * was not, and partners created later never reached the manager, who then
+   * could not sell for them either.
+   *
+   * Nothing is materialised now. Coverage is the states minus exclusions, and
+   * an exclusion for a state no longer held has nothing left to mean.
+   */
   useEffect(() => {
     if (userForm.role !== "acsl_agent_manager") return;
     if (hydratingRef.current) return;
-    const ids = new Set(
-      allOrgs
-        .filter((o) => o.state && selectedStates.has(o.state))
-        .map((o) => o.id)
-    );
-    setSelectedPartnerIds(ids);
+    setExcludedPartnerIds((prev) => {
+      const next = new Set();
+      allOrgs.forEach((o) => {
+        if (prev.has(o.id) && o.state && selectedStates.has(o.state)) next.add(o.id);
+      });
+      return next;
+    });
   }, [selectedStates, allOrgs, userForm.role]);
 
   // When ACSL Agent cascade selections change, reconcile selected partners to
@@ -975,6 +1024,14 @@ const UserManagementPage = () => {
       setSelectedStates(new Set(stateNames));
       setSelectedPartnerIds(new Set(orgIds));
 
+      /*
+       * A manager's carve-outs, so reopening the form shows what they actually
+       * cover rather than every partner in their states. Absent endpoint or no
+       * row means none, which is the correct reading either way.
+       */
+      const scopeRes = await superAdminAgentService.getAgentScope(user.id).catch(() => null);
+      setExcludedPartnerIds(new Set(scopeRes?.data?.excluded_organization_ids ?? []));
+
       // For acsl_agent: retain the original manager selection as tightly as
       // possible. Prefer the assignment creator when available, otherwise use
       // the single best manager that covers the agent's saved partners.
@@ -1045,18 +1102,10 @@ const UserManagementPage = () => {
          * this point, so the honest report is "created, but scope did not
          * save", with the reason.
          */
-        if (
-          newUserId &&
-          (userForm.role === "acsl_agent_manager" || userForm.role === "acsl_agent") &&
-          selectedStates.size > 0
-        ) {
-          await superAdminAgentService.setAgentStates(newUserId, Array.from(selectedStates))
-            .catch((e) => { scopeError = e; });
-        }
-        if (newUserId && selectedPartnerIds.size > 0 && !scopeError) {
+        if (newUserId && (userForm.role === "acsl_agent_manager" || userForm.role === "acsl_agent")) {
           try {
-            await superAdminAgentService.setAgentOrganizations(newUserId, Array.from(selectedPartnerIds));
-            if (userForm.role === "acsl_agent") {
+            await saveUserScope(newUserId, userForm.role);
+            if (userForm.role === "acsl_agent" && selectedPartnerIds.size > 0) {
               await persistAgentSupervisorMarker(newUserId, Array.from(selectedPartnerIds), Array.from(selectedManagerIds));
             }
           } catch (e) { scopeError = e; }
@@ -1142,8 +1191,7 @@ const UserManagementPage = () => {
          * because it already succeeded.
          */
         try {
-          await superAdminAgentService.setAgentStates(selectedUser.id, Array.from(selectedStates));
-          await superAdminAgentService.setAgentOrganizations(selectedUser.id, Array.from(selectedPartnerIds));
+          await saveUserScope(selectedUser.id, role);
           if (role === "acsl_agent") {
             await persistAgentSupervisorMarker(selectedUser.id, Array.from(selectedPartnerIds), Array.from(selectedManagerIds));
           }
@@ -1775,7 +1823,9 @@ const UserManagementPage = () => {
                           <Label className="text-sm font-semibold text-[#4a5d0f]">
                             Assign Partners
                             <span className="text-xs text-gray-500 font-normal">
-                              ({selectedPartnerIds.size} selected · {partnersInStates.length} available)
+                              ({userForm.role === "acsl_agent_manager"
+                                  ? partnersInStates.length - excludedPartnerIds.size
+                                  : selectedPartnerIds.size} covered · {partnersInStates.length} in these states)
                             </span>
                           </Label>
                           <div className="flex items-center gap-2">
@@ -1822,7 +1872,12 @@ const UserManagementPage = () => {
                           <div className="max-h-72 overflow-y-auto rounded border border-gray-200 bg-gray-50 p-2">
                             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-1.5">
                               {visiblePartners.map((org) => {
-                                const checked = selectedPartnerIds.has(org.id);
+                                // Managers are covered by state unless excluded.
+                                // Agents keep a named list, so this is a no-op for them.
+                                const byState = userForm.role === "acsl_agent_manager";
+                                const checked = byState
+                                  ? !excludedPartnerIds.has(org.id)
+                                  : selectedPartnerIds.has(org.id);
                                 return (
                                   <label
                                     key={org.id}
@@ -1836,12 +1891,14 @@ const UserManagementPage = () => {
                                       type="checkbox"
                                       checked={checked}
                                       onChange={() => {
-                                        setSelectedPartnerIds((prev) => {
+                                        const flip = (prev) => {
                                           const next = new Set(prev);
                                           if (next.has(org.id)) next.delete(org.id);
                                           else next.add(org.id);
                                           return next;
-                                        });
+                                        };
+                                        if (byState) setExcludedPartnerIds(flip);
+                                        else setSelectedPartnerIds(flip);
                                       }}
                                       className="rounded accent-[#4a5d0f] shrink-0"
                                     />
@@ -2117,7 +2174,12 @@ const UserManagementPage = () => {
                           <div className="max-h-72 overflow-y-auto rounded border border-gray-200 bg-gray-50 p-2">
                             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-1.5">
                               {visiblePartners.map((org) => {
-                                const checked = selectedPartnerIds.has(org.id);
+                                // Managers are covered by state unless excluded.
+                                // Agents keep a named list, so this is a no-op for them.
+                                const byState = userForm.role === "acsl_agent_manager";
+                                const checked = byState
+                                  ? !excludedPartnerIds.has(org.id)
+                                  : selectedPartnerIds.has(org.id);
                                 return (
                                   <label key={org.id}
                                     className={`flex items-center gap-2 px-2.5 py-2 rounded cursor-pointer text-xs transition-colors border ${
@@ -2252,6 +2314,8 @@ const UserManagementPage = () => {
                                       type="checkbox"
                                       checked={checked}
                                       onChange={() => {
+                                        // Org-bound roles pick one partner outright.
+                                        // No states, so no exclusions to express.
                                         setSelectedPartnerIds((prev) => {
                                           const next = new Set(prev);
                                           if (next.has(org.id)) next.delete(org.id);
