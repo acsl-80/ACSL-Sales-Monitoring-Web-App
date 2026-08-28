@@ -2,6 +2,7 @@
 
 import { listAgents, getAgent, getAgentOrganizations } from "./readOptions.ts";
 import { createAgent, updateAgent } from "./writeOptions.ts";
+import { getAgentScope, setAgentScope, assertMayEditScope } from "./scopeOptions.ts";
 import { deleteAgent } from "./deleteOptions.ts";
 import { setAgentOrganizations, removeAgentOrganization } from "./organizationOptions.ts";
 import { getAgentStates, setAgentStates, removeAgentState } from "./stateOptions.ts";
@@ -95,9 +96,35 @@ export async function handleRoute(req: Request, supabase: any) {
     return await createAgent(supabase, body, auth.userId, managerId);
   }
 
+  // ── GET /super-admin-agents/{id}/scope  (the whole coverage configuration)
+  if (method === "GET" && agentId && subResource === "scope") {
+    const auth = await authenticateReadAccess(supabase, authHeader);
+    // Self-reads are already permitted by the read tier; anything wider is a
+    // manager or an admin, both of which this tier allows.
+    void auth;
+    return await getAgentScope(supabase, agentId);
+  }
+
+  // ── PUT /super-admin-agents/{id}/scope  (replace it, atomically)
+  if ((method === "PUT" || method === "POST") && agentId && subResource === "scope") {
+    const auth = await authenticateManagerOrAdmin(supabase, authHeader);
+    const body = await req.json();
+    return await setAgentScope(
+      supabase,
+      agentId,
+      body,
+      auth.userId,
+      auth.userRole === "acsl_agent_manager" ? auth.userId : null,
+    );
+  }
+
   // ── POST /super-admin-agents/{id}/organizations  (replace org assignments)
   if (method === "POST" && agentId && subResource === "organizations") {
     const auth = await authenticateManagerOrAdmin(supabase, authHeader);
+    await assertMayEditScope(
+      supabase, agentId, auth.userId,
+      auth.userRole === "acsl_agent_manager" ? auth.userId : null,
+    );
     const body = await req.json();
     const orgIds: string[] = body.organization_ids ?? [];
     return await setAgentOrganizations(supabase, agentId, orgIds, auth.userId);
@@ -106,6 +133,10 @@ export async function handleRoute(req: Request, supabase: any) {
   // ── POST /super-admin-agents/{id}/states  (replace state assignments)
   if (method === "POST" && agentId && subResource === "states") {
     const auth = await authenticateManagerOrAdmin(supabase, authHeader);
+    await assertMayEditScope(
+      supabase, agentId, auth.userId,
+      auth.userRole === "acsl_agent_manager" ? auth.userId : null,
+    );
     const body = await req.json();
     const states: string[] = body.states ?? [];
     return await setAgentStates(supabase, agentId, states, auth.userId);
@@ -121,12 +152,20 @@ export async function handleRoute(req: Request, supabase: any) {
   // ── DELETE /super-admin-agents/{id}/organizations/{orgId}
   if (method === "DELETE" && agentId && subResource === "organizations" && subResourceId) {
     const auth = await authenticateManagerOrAdmin(supabase, authHeader);
+    await assertMayEditScope(
+      supabase, agentId, auth.userId,
+      auth.userRole === "acsl_agent_manager" ? auth.userId : null,
+    );
     return await removeAgentOrganization(supabase, agentId, subResourceId);
   }
 
   // ── DELETE /super-admin-agents/{id}/states/{state}
   if (method === "DELETE" && agentId && subResource === "states" && subResourceId) {
     const auth = await authenticateManagerOrAdmin(supabase, authHeader);
+    await assertMayEditScope(
+      supabase, agentId, auth.userId,
+      auth.userRole === "acsl_agent_manager" ? auth.userId : null,
+    );
     return await removeAgentState(supabase, agentId, decodeURIComponent(subResourceId));
   }
 
