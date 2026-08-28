@@ -1033,27 +1033,47 @@ const UserManagementPage = () => {
       const newUserId = extractCreatedUserId(result);
       const generatedPassword = result.generated_password || result.data?.password;
 
+      let scopeError = null;
       if (needsOrgBinding) {
         // Organization-bound roles (partner, partner_agent, agent) are bound via profiles.organization_id only.
         // Skip super-admin-agents assignment endpoints — they only exist for acsl_agent / acsl_agent_manager.
       } else {
+        /*
+         * A failure here used to be swallowed and the toast still said the
+         * user was created successfully, so somebody could be given no partner
+         * scope at all and nothing would say so. The user row does exist by
+         * this point, so the honest report is "created, but scope did not
+         * save", with the reason.
+         */
         if (
           newUserId &&
           (userForm.role === "acsl_agent_manager" || userForm.role === "acsl_agent") &&
           selectedStates.size > 0
         ) {
-          try {
-            await superAdminAgentService.setAgentStates(newUserId, Array.from(selectedStates));
-          } catch { /* non-fatal */ }
+          await superAdminAgentService.setAgentStates(newUserId, Array.from(selectedStates))
+            .catch((e) => { scopeError = e; });
         }
-        if (newUserId && selectedPartnerIds.size > 0) {
+        if (newUserId && selectedPartnerIds.size > 0 && !scopeError) {
           try {
             await superAdminAgentService.setAgentOrganizations(newUserId, Array.from(selectedPartnerIds));
             if (userForm.role === "acsl_agent") {
               await persistAgentSupervisorMarker(newUserId, Array.from(selectedPartnerIds), Array.from(selectedManagerIds));
             }
-          } catch { /* non-fatal */ }
+          } catch (e) { scopeError = e; }
         }
+      }
+
+      if (scopeError) {
+        toast({
+          variant: "destructive",
+          title: "User created, but partner scope was not saved",
+          description:
+            `${scopeError?.message ?? scopeError}. Open the user and set their states or partners.`,
+        });
+        await fetchUsers();
+        resetForm();
+        setShowCreateModal(false);
+        return;
       }
 
       toast({
@@ -1115,17 +1135,28 @@ const UserManagementPage = () => {
         // Organization-bound roles bind via profiles.organization_id only.
         // Skip super-admin-agents endpoints — they 404 for non-ACSL roles.
       } else if (role === "acsl_agent_manager" || role === "acsl_agent") {
-        // The super-admin-agents endpoints only accept ACSL agent roles; skip
-        // them for anything else to avoid 404 "Agent not found" responses.
+        /*
+         * The same swallowed-failure problem as the create path: an admin
+         * could change somebody's partners, be told it saved, and have nothing
+         * change. Reported instead, with the profile edit itself left applied
+         * because it already succeeded.
+         */
         try {
           await superAdminAgentService.setAgentStates(selectedUser.id, Array.from(selectedStates));
-        } catch { /* non-fatal */ }
-        try {
           await superAdminAgentService.setAgentOrganizations(selectedUser.id, Array.from(selectedPartnerIds));
           if (role === "acsl_agent") {
             await persistAgentSupervisorMarker(selectedUser.id, Array.from(selectedPartnerIds), Array.from(selectedManagerIds));
           }
-        } catch { /* non-fatal */ }
+        } catch (e) {
+          toast({
+            variant: "destructive",
+            title: "Profile saved, but partner scope was not",
+            description: `${e?.message ?? e}. Reopen the user and try the scope change again.`,
+          });
+          await fetchUsers();
+          setShowCreateModal(false);
+          return;
+        }
       }
 
 

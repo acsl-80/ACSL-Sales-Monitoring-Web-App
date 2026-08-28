@@ -132,6 +132,53 @@ class SuperAdminAgentService {
     );
   }
 
+  // ─── Coverage scope (mode + states + partners + exclusions) ───────────────
+
+  /**
+   * The whole coverage configuration for an agent.
+   *
+   * Returns null when the endpoint is not deployed yet, rather than throwing.
+   * Migrations apply to production on merge but edge functions do not, so
+   * there is a window where the new UI is live and this route is not. The
+   * modal probes with this and falls back to the old two-endpoint path, which
+   * means neither deploy has to wait for the other.
+   */
+  async getAgentScope(agentId) {
+    try {
+      return await this.request(
+        `${API_FUNCTIONS_URL}/super-admin-agents/${agentId}/scope`,
+        { method: "GET" }
+      );
+    } catch (e) {
+      const msg = String(e?.message ?? e);
+      if (msg.includes("404") || msg.toLowerCase().includes("route not found")) return null;
+      throw e;
+    }
+  }
+
+  /**
+   * Replace the whole configuration in one call.
+   *
+   * All four keys are always sent. The server refuses a missing array rather
+   * than treating it as empty, because the endpoints this replaces defaulted
+   * them to [] and a malformed request silently cleared every assignment an
+   * agent had.
+   */
+  async setAgentScope(agentId, { mode, states, organizationIds, excludedOrganizationIds }) {
+    return await this.request(
+      `${API_FUNCTIONS_URL}/super-admin-agents/${agentId}/scope`,
+      {
+        method: "PUT",
+        body: JSON.stringify({
+          mode: mode ?? null,
+          states: states ?? [],
+          organization_ids: organizationIds ?? [],
+          excluded_organization_ids: excludedOrganizationIds ?? [],
+        }),
+      }
+    );
+  }
+
   // ─── State Assignments ────────────────────────────────────────────────────
 
   // Get assigned states for an agent
