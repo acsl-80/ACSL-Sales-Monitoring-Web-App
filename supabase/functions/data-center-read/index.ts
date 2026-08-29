@@ -447,6 +447,27 @@ serve(async (req) => {
           return json({ error: "Not permitted", code: "no_feature" }, 403, cors);
         }
 
+        /*
+         * Bounds are months, not dates. Validated here rather than trusted,
+         * because they are compared as text against a jsonb field and
+         * "2026-08" sorting correctly is the whole mechanism. Same rule as the
+         * analysis action, deliberately: two surfaces that accept a period
+         * should not disagree about what one looks like.
+         */
+        const DASH_MONTH = /^\d{4}-(0[1-9]|1[0-2])$/;
+        const periodFrom = typeof body.from === "string" && body.from ? body.from : null;
+        const periodTo = typeof body.to === "string" && body.to ? body.to : null;
+        if ((periodFrom && !DASH_MONTH.test(periodFrom)) || (periodTo && !DASH_MONTH.test(periodTo))) {
+          return json(
+            { error: "from and to must look like 2026-08", code: "bad_period" },
+            400,
+            cors,
+          );
+        }
+        if (periodFrom && periodTo && periodFrom > periodTo) {
+          return json({ error: "from is after to", code: "bad_period" }, 400, cors);
+        }
+
         return await withReadConnection(async (connection) => {
           // One statement, not three.
           //
@@ -464,25 +485,47 @@ serve(async (req) => {
             computed_at: string | null;
           }>({
             text: `select
+                     /*
+                      * Scorecards are stored at month grain, so a range is a
+                      * sum of months and the period key is stripped from
+                      * the dimension afterwards. That leaves exactly the shape the
+                      * page already renders, so asking for no period returns
+                      * what it always returned.
+                      *
+                      * A row with no period is a shipment whose sold-to-partner
+                      * date is unusable. It belongs in the all-time view and in
+                      * no particular month, so it is included only when no
+                      * range is asked for. Nine such rows exist today, carrying
+                      * four stoves, three of them demo.
+                      *
+                      * The Analysis area writes its own families into the same
+                      * run, also at month grain, which is tens of thousands of
+                      * rows. This page renders none of them, so without that
+                      * filter the Dashboard silently pays for a payload it
+                      * never reads. The e2e spec asserts no 'analysis.' key
+                      * reaches here, because the day somebody adds a family and
+                      * forgets is the day this gets slow for no visible reason.
+                      */
                      (select coalesce(jsonb_agg(t order by t.metric_key, t.value_num desc nulls last), '[]'::jsonb)
-                        from (select metric_key, dimension, value_num, value_text, run_finished_at
+                        from (select metric_key,
+                                     (dimension - 'period') as dimension,
+                                     sum(value_num) as value_num,
+                                     min(value_text) as value_text,
+                                     max(run_finished_at) as run_finished_at
                                 from data_center.v_current_metrics
-                               -- The Analysis area writes its own families into
-                               -- the same run, at month grain, which is tens of
-                               -- thousands of rows. This page renders none of
-                               -- them, so without this filter the Dashboard
-                               -- silently pays for a payload it never reads.
-                               -- The e2e spec asserts no 'analysis.' key
-                               -- reaches here, because the day somebody adds a
-                               -- family and forgets is the day this gets slow
-                               -- for no visible reason.
-                               where metric_key not like 'analysis.%') t) as metrics,
+                               where metric_key not like 'analysis.%'
+                                 and (($1::text is null and $2::text is null)
+                                      or (dimension ->> 'period' is not null
+                                          and ($1::text is null or dimension ->> 'period' >= $1)
+                                          and ($2::text is null or dimension ->> 'period' <= $2)))
+                               group by 1, 2) t) as metrics,
                      (select coalesce(value::text::int, 24) from data_center.workflow_config
                        where key = 'metrics.stale_after_hours') as stale_after_hours,
                      (select to_jsonb(r) from (
                         select finished_at, status, duration_ms
                         from data_center.metric_runs order by started_at desc limit 1) r) as last_run,
                      (select max(run_finished_at) from data_center.v_current_metrics) as computed_at`,
+            args: [periodFrom, periodTo],
           });
 
           const row = result.rows[0];

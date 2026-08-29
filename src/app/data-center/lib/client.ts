@@ -1645,7 +1645,17 @@ export type MetricRun = {
  * sales or 500,000.
  */
 export const dataCenterDashboard = {
-  get: () => call<DashboardData>("data-center-read", "dashboard"),
+  /**
+   * `from` and `to` are months, not dates, because the metrics behind this
+   * page are stored at month grain and a range is a sum of months. Omitting
+   * both asks for all time, which is what this page could only ever show
+   * before the metrics carried a period.
+   */
+  get: (range?: { from?: string | null; to?: string | null }) =>
+    call<DashboardData>("data-center-read", "dashboard", {
+      ...(range?.from ? { from: range.from } : {}),
+      ...(range?.to ? { to: range.to } : {}),
+    }),
 
   /** Recent computation runs, so a dashboard can say how current it is. */
   runs: () => call<{ runs: MetricRun[] }>("data-center-compute", "status"),

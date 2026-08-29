@@ -4,6 +4,8 @@ import { dataCenterDashboard, DataCenterError } from "../../lib/client";
 import Scorecard, { scorecardRows } from "./Scorecard";
 import ExportScorecards from "./ExportScorecards";
 import { MEASURES, withScope, explain } from "../../lib/measures";
+import { usePeriod } from "../../lib/usePeriod";
+import PeriodFilter from "../../components/PeriodFilter";
 import {
   BarChart3, Loader2, AlertTriangle, RefreshCw, Clock, TriangleAlert, ArrowUpRight,
 } from "lucide-react";
@@ -205,17 +207,27 @@ export default function Dashboard({ canRun }) {
   const [loading, setLoading] = useState(true);
   const [running, setRunning] = useState(false);
   const [error, setError] = useState(null);
+  const { period, setPeriod, resolved, earliest } = usePeriod("/data-center/dashboard");
+
+  /*
+   * The control speaks in dates; these metrics are stored by month, so the
+   * bounds are trimmed to months. That is a real coarsening and worth knowing:
+   * a range starting mid-August asks for all of August, because August is the
+   * smallest thing the numbers are kept in.
+   */
+  const from = resolved.dateFrom ? resolved.dateFrom.slice(0, 7) : null;
+  const to = resolved.dateTo ? resolved.dateTo.slice(0, 7) : null;
 
   const load = useCallback(async () => {
     try {
-      setData(await dataCenterDashboard.get());
+      setData(await dataCenterDashboard.get({ from, to }));
       setError(null);
     } catch (err) {
       setError(err instanceof DataCenterError ? err.message : "Could not load the dashboard.");
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [from, to]);
 
   useEffect(() => {
     load();
@@ -398,6 +410,24 @@ export default function Dashboard({ canRun }) {
             {running ? "Computing..." : "Recompute"}
           </button>
         )}
+      </div>
+
+      {/*
+        * The same control every other Data Center surface carries, so a period
+        * means the same thing on all of them and a narrowed view is a link.
+        *
+        * Its noun is "consignments" because that is what these figures count
+        * and what the period dates them by: when a stove was sold to the
+        * partner, never when the record reached this app.
+        */}
+      <div className="flex flex-wrap items-center gap-2">
+        <PeriodFilter
+          period={period}
+          onChange={setPeriod}
+          earliest={earliest}
+          area="dashboard"
+          noun="consignments"
+        />
       </div>
 
       {error && (
