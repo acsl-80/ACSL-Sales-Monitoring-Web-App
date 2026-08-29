@@ -1110,10 +1110,24 @@ serve(async (req) => {
         }
 
         const b = body as { organizationId?: string; month?: string; transferId?: string };
+        /*
+         * A partner is now optional.
+         *
+         * One partner is still the common case and still what the Partner
+         * Records button asks for. Left out, the sheet covers every partner
+         * this caller holds, because the import no longer needs a file to
+         * belong to one: each row's partner is resolved from its stove ID, so
+         * a sheet spanning partners lands correctly and a person working a
+         * stack of receipts from several partners no longer downloads several
+         * files and reconciles them by hand.
+         *
+         * An id that is present but malformed is still refused. Only its
+         * absence means "everything".
+         */
         const organizationId = String(b.organizationId ?? "");
-        if (!UUID_RE.test(organizationId)) {
+        if (organizationId && !UUID_RE.test(organizationId)) {
           return json(
-            { error: "Choose which partner's sheet to download", code: "bad_input" },
+            { error: "That is not a partner id", code: "bad_input" },
             400,
             cors,
           );
@@ -1130,7 +1144,7 @@ serve(async (req) => {
           profile.organization_id ?? null,
         );
         const scope = buildTransferScopeSql(
-          { ...scopeInput, requestedOrgId: organizationId },
+          { ...scopeInput, requestedOrgId: organizationId || null },
           1,
           "f",
         );
@@ -1147,13 +1161,25 @@ serve(async (req) => {
 
         return await withReadConnection(async (connection) => {
           const rows = await connection.queryObject({
+            /*
+             * partner_id travels with the name because the name does not
+             * identify the partner. Four organizations are called LAPO and four
+             * Solar Sister, two of those both "Main Branch" in different
+             * states. On a sheet covering several partners, a person checking
+             * their own work needs to be able to tell which is which.
+             *
+             * None of these columns is read back on upload. The stove ID
+             * decides the partner; these are for the eye.
+             */
             text: `select ts.stove_id, f.transaction_id, f.partner_name,
+                          o.partner_id,
                           f.sales_rep, f.sales_date, f.transfer_state, f.transfer_branch,
                           sb.status as stock_status,
                           (sb.sale_id is not null) as already_recorded
                      from data_center.transfer_funnel f
                      join data_center.v_transfer_stoves ts on ts.transfer_id = f.transfer_id
                      left join public.stove_ids_base sb on sb.stove_id = ts.stove_id
+                     left join public.organizations o on o.id = f.organization_id
                     where ${where.join(" and ")}
                     order by f.sales_date desc nulls last, f.transaction_id, ts.stove_id
                     limit 20000`,

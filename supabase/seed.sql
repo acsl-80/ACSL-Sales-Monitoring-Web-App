@@ -1103,6 +1103,74 @@ from (values
 join public.organizations o on o.id = t.org::uuid
 on conflict do nothing;
 
+-- ---------- two partners with one name, because production has several ----------
+--
+-- This fixture exists to make one specific failure testable.
+--
+-- On production several partner NAMES cover more than one organization, because
+-- they are branches: four rows are called LAPO, four Solar Sister, and two of
+-- the Solar Sister rows are both "Main Branch", in Niger and in FCT. So a name,
+-- and even a name plus a branch, does not identify a partner.
+--
+-- An import that took the partner from a name column would land those rows
+-- under whichever organization the name matched first. The import takes it from
+-- the stove ID instead, resolved against stock, and this pair is what proves
+-- that: two organizations, one name, different states, each holding its own
+-- stoves. A sheet mixing them must land every row under the branch that
+-- actually holds the stove.
+--
+-- Their own stove ID prefix, so nothing above this line changes.
+insert into public.organizations (id, partner_id, partner_name, state, branch, contact_person, contact_phone, address, partner_type)
+values
+  ('a0000000-0000-4000-8000-00000000000a','TWIN-A','Twin Name Partner','Kogi','ISANLU','Preview Contact','08030000010','10 Preview Road, Isanlu','partner'),
+  ('a0000000-0000-4000-8000-00000000000b','TWIN-B','Twin Name Partner','Kwara','ORO','Preview Contact','08030000011','11 Preview Road, Oro','partner')
+on conflict (id) do nothing;
+
+insert into public.stove_ids_base (stove_id, organization_id, status, factory)
+select
+  'TWN' || lpad(g::text, 6, '0'),
+  case when g % 2 = 0
+       then 'a0000000-0000-4000-8000-00000000000a'
+       else 'a0000000-0000-4000-8000-00000000000b' end::uuid,
+  'available',
+  case when g % 2 = 0 then 'Isanlu' else 'Oro' end
+from generate_series(1, 40) g
+on conflict do nothing;
+
+insert into public.stove_transfer_history
+  (transaction_id, organization_id, partner_name, partner_id, state, branch,
+   stove_count, stove_ids, source, sales_rep, sales_factory, sales_date, transfer_date)
+select
+  t.txn, t.org::uuid, o.partner_name,
+  coalesce(o.partner_id, 'PRV-' || substr(t.txn, 8)),
+  o.state, o.branch,
+  (select count(*) from public.stove_ids_base b where b.organization_id = t.org::uuid),
+  (select coalesce(jsonb_agg(jsonb_build_object(
+            'stove_id', b.stove_id, 'factory', b.factory, 'sales_reference', t.txn)), '[]'::jsonb)
+     from public.stove_ids_base b where b.organization_id = t.org::uuid),
+  'external-sync', t.rep, o.branch,
+  current_date - 30,
+  now() - make_interval(days => 30)
+from (values
+  ('TR-TWINA', 'a0000000-0000-4000-8000-00000000000a', 'Adaeze Princess Okuoniye'),
+  ('TR-TWINB', 'a0000000-0000-4000-8000-00000000000b', 'Olatunji Bello')
+) as t(txn, org, rep)
+join public.organizations o on o.id = t.org::uuid
+on conflict do nothing;
+
+-- Both twins are held by the accounts that import, or the scope check refuses
+-- the sheet before the partner resolution is ever exercised.
+insert into public.acsl_agent_organizations (agent_id, organization_id, assigned_by)
+select a.id, o.id, 'b0000000-0000-4000-8000-000000000001'::uuid
+from (values
+  ('b0000000-0000-4000-8000-000000000006'::uuid),
+  ('b0000000-0000-4000-8000-000000000007'::uuid)
+) as a(id)
+cross join public.organizations o
+where o.id in ('a0000000-0000-4000-8000-00000000000a'::uuid,
+               'a0000000-0000-4000-8000-00000000000b'::uuid)
+on conflict do nothing;
+
 -- ---------- close the loop the ERP sync closes in production ----------
 --
 -- stove_ids_base.sales_reference names the transfer a stove went out on, and

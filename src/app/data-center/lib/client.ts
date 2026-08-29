@@ -520,12 +520,22 @@ export const dataCenterClient = {
    * The sheet the digitisers work from: one row per transferred stove, already
    * carrying the serial and the transfer reference so neither is typed.
    */
+  /**
+    * The sheet for one partner, or for every partner the caller holds.
+    *
+    * An empty `organizationId` means everything. The import resolves each row's
+    * partner from its stove ID, so a sheet spanning partners lands correctly
+    * and somebody working a stack of receipts from several partners no longer
+    * downloads several files and reconciles them by hand.
+    */
   digitisationSheet: (organizationId: string, month?: string | null) =>
     call<{
       rows: {
         stove_id: string;
         transaction_id: string;
         partner_name: string;
+        /** The unique one. Names are shared across branches; this is not. */
+        partner_id: string | null;
         sales_rep: string | null;
         sales_date: string | null;
         transfer_state: string | null;

@@ -91,7 +91,10 @@ export default function GetTheSheet({ onGoToUpload }) {
   }, []);
 
   const partnerName = useMemo(
-    () => (partners ?? []).find((p) => p.id === chosen)?.partner_name ?? "",
+    () =>
+      chosen === "all"
+        ? "every partner you cover"
+        : ((partners ?? []).find((p) => p.id === chosen)?.partner_name ?? ""),
     [partners, chosen],
   );
 
@@ -140,6 +143,19 @@ export default function GetTheSheet({ onGoToUpload }) {
                 <option value="">
                   {partners === null ? "Loading partners..." : "Choose a partner"}
                 </option>
+                {/*
+                  One sheet for the lot.
+
+                  The import used to refuse a file covering more than one
+                  partner, so a sheet had to be one partner's and a person
+                  holding receipts from four of them downloaded four files.
+                  Each row's partner now comes from its stove ID, so the sheet
+                  can carry them all and still land each row under the right
+                  one.
+                */}
+                {partners !== null && partners.length > 1 && (
+                  <option value="all">Every partner you cover</option>
+                )}
                 {(partners ?? []).map((p) => (
                   <option key={p.id} value={p.id}>
                     {p.partner_name}
@@ -216,7 +232,8 @@ export default function GetTheSheet({ onGoToUpload }) {
 
       {sheetOpen && chosen && (
         <DigitisationSheet
-          organizationId={chosen}
+          // "" is the server's word for everything.
+          organizationId={chosen === "all" ? "" : chosen}
           partnerName={partnerName || "this partner"}
           area="import"
           onClose={() => setSheetOpen(false)}

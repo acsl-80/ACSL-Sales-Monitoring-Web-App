@@ -982,21 +982,36 @@ serve(async (req) => {
             );
           }
 
-          if (resolution.partners.length > 1) {
-            const named = resolution.partners
-              .map((p) => `${p.partnerName} (${p.count})`)
-              .join(", ");
-            throw new BadRequest(
-              `This file covers more than one partner: ${named}. Import one partner at a time, ` +
-                "so a batch can be rolled back without touching anybody else's records. " +
-                "Download a fresh sheet per partner from Partner Records and split the rows.",
-            );
+          /*
+           * A file may cover several partners.
+           *
+           * It used to be refused, on the reasoning that a batch should roll
+           * back without touching anybody else's records. That reasoning holds
+           * and this keeps it: the batch is still one batch and still rolls
+           * back whole. What changes is that the partner is a property of the
+           * ROW rather than of the batch, decided by the stove ID, which is the
+           * only thing in the file that can be checked against something.
+           *
+           * Every partner in the file is scope-checked, not just the first.
+           * Staging a sheet that happens to contain one row for a partner you
+           * do not cover must be refused, and checking only the majority
+           * partner would let that row through.
+           */
+          for (const p of resolution.partners) {
+            await requireOrganization(p.organizationId);
           }
 
-          resolvedOrgId = resolution.partners[0].organizationId;
+          /*
+           * One partner still pins the batch, which keeps every existing
+           * reading of `import_batches.organization_id` true. Several leaves it
+           * null, and the rows carry it instead.
+           */
+          resolvedOrgId = resolution.partners.length === 1
+            ? resolution.partners[0].organizationId
+            : "";
         }
 
-        await requireOrganization(resolvedOrgId);
+        if (resolvedOrgId) await requireOrganization(resolvedOrgId);
 
         // Apply the operator's header mapping before anything else, so
         // everything downstream sees one vocabulary. A mapped column is copied
@@ -1056,7 +1071,9 @@ serve(async (req) => {
                         content_hash, column_mapping, source_note)
                      values ($5, $1, $2, $3, $4, 'staged', $6, $7::jsonb, $8) returning id`,
               args: [
-                body.filename ?? null, userId, resolvedOrgId, rows.length,
+                // Null rather than empty: a mixed batch belongs to no one
+                // partner, and the column is nullable for exactly that.
+                body.filename ?? null, userId, resolvedOrgId || null, rows.length,
                 source, hash,
                 JSON.stringify(mapping),
                 body.sourceNote ?? null,
@@ -1234,9 +1251,21 @@ serve(async (req) => {
               .filter((s) => s.result.ok)
               .map((s) => (s.result as { ok: true; row: NormalizedRow }).row.stoveSerialNo);
 
-            const stock = await conn.queryObject<{ stove_id: string; status: string; organization_id: string }>({
-              text: `select stove_id, status, organization_id from public.stove_ids_base
-                     where upper(stove_id) = any($1::text[])`,
+            const stock = await conn.queryObject<{
+              stove_id: string;
+              status: string;
+              organization_id: string;
+              partner_id: string | null;
+              partner_name: string | null;
+            }>({
+              // The partner comes along for the ride. It is what lets a file
+              // covering several partners be previewed row by row, and what
+              // commit checks its own answer against.
+              text: `select sb.stove_id, sb.status, sb.organization_id,
+                            o.partner_id, o.partner_name
+                       from public.stove_ids_base sb
+                       left join public.organizations o on o.id = sb.organization_id
+                      where upper(sb.stove_id) = any($1::text[])`,
               args: [[...new Set(serials)]],
             });
             const byStoveId = new Map(stock.rows.map((s) => [s.stove_id.toUpperCase(), s]));
@@ -1419,7 +1448,23 @@ serve(async (req) => {
                 // matching. create-sale compares case-sensitively, so a row
                 // that validated on `SA000000A0` would be refused at commit for
                 // a stove recorded as `SA000000a0`.
-                const canonical = { ...row, stoveSerialNo: found!.stove_id };
+                /*
+                 * The partner this row resolved to, recorded under its own name.
+                 *
+                 * Deliberately NOT `organizationId`. That is a create-sale
+                 * field name, and PASSTHROUGH_FIELDS exists precisely so a
+                 * column called `organizationId` in somebody's spreadsheet
+                 * cannot decide whose sale it is. These keys are written by the
+                 * server from stock and are only ever compared against stock
+                 * again at commit, so the file cannot reach them either way.
+                 */
+                const canonical = {
+                  ...row,
+                  stoveSerialNo: found!.stove_id,
+                  resolvedOrganizationId: found!.organization_id ?? null,
+                  resolvedPartnerId: found!.partner_id ?? null,
+                  resolvedPartnerName: found!.partner_name ?? null,
+                };
                 verdicts.push({
                   id: s.id,
                   status: "valid",
@@ -1578,11 +1623,31 @@ serve(async (req) => {
             // collects is dropped between the row and the sale.
             draft_values: Record<string, unknown> | null;
             raw: Record<string, unknown> | null;
+            stock_org_id: string | null;
+            stock_partner_name: string | null;
           }>({
-            text: `select id, stove_serial_no, normalized, draft_values, raw
-                     from data_center.import_rows
-                    where batch_id = $1 and status = 'valid'
-                    order by row_number limit $2`,
+            /*
+             * The partner is resolved here, from stock, per row.
+             *
+             * A lateral with limit 1 rather than a plain join: one stove ID
+             * still exists as two stock rows at two different partners, and a
+             * join would return that row twice, which in this loop means
+             * committing it twice.
+             */
+            text: `select r.id, r.stove_serial_no, r.normalized, r.draft_values, r.raw,
+                          k.organization_id::text as stock_org_id,
+                          k.partner_name as stock_partner_name
+                     from data_center.import_rows r
+                     left join lateral (
+                       select sb.organization_id, o.partner_name
+                         from public.stove_ids_base sb
+                         left join public.organizations o on o.id = sb.organization_id
+                        where upper(sb.stove_id) = upper(r.stove_serial_no)
+                        order by sb.organization_id
+                        limit 1
+                     ) k on true
+                    where r.batch_id = $1 and r.status = 'valid'
+                    order by r.row_number limit $2`,
             args: [batchId, sliceSize],
           });
           return r.rows;
@@ -1612,12 +1677,81 @@ serve(async (req) => {
           });
           return r.rows[0] ?? null;
         });
-        if (!org?.organization_id) throw new BadRequest("This batch has no partner");
+        /*
+         * A batch with no partner is normal now: it means the file covered
+         * several, and each row carries its own. What is not normal is a row
+         * that resolves to neither, and that is refused per row below rather
+         * than failing the whole batch.
+         */
+        const batchOrgId = org?.organization_id ?? null;
 
         let committed = 0;
         const failures: { rowId: string; reason: string }[] = [];
 
+        /** Refuse one row without touching the rest of the batch. */
+        const refuseRow = async (rowId: string, why: string) => {
+          await withConnection(async (conn) => {
+            await conn.queryObject({
+              text: `update data_center.import_rows
+                     set status = 'exception', exception_reason = $2 where id = $1`,
+              args: [rowId, why],
+            });
+          });
+          failures.push({ rowId, reason: why });
+        };
+
         for (const row of slice) {
+          /*
+           * Whose sale this is, decided by stock rather than by the file.
+           *
+           * The batch's partner is only a fallback now, for the bench and for
+           * single-partner files. What decides is the stove ID, because it is
+           * the one column in a spreadsheet that can be checked against
+           * something the writer of the spreadsheet does not control.
+           *
+           * This matters more than it sounds. Several partner names cover more
+           * than one organization: four are called LAPO, four Solar Sister, and
+           * two Solar Sister rows are both "Main Branch" in different states.
+           * A sheet that named its partner would land those rows under
+           * whichever row the name happened to match first. The stove ID lands
+           * them under the branch that actually holds the stove.
+           */
+          const rowOrgId = row.stock_org_id ?? batchOrgId;
+          const rowPartnerName = row.stock_partner_name ?? org?.partner_name ?? null;
+
+          if (!rowOrgId) {
+            await refuseRow(
+              row.id,
+              `Stove ${row.stove_serial_no} is not in stock against any partner, so there is ` +
+                "nobody to record this sale for.",
+            );
+            continue;
+          }
+
+          /*
+           * The answer the operator was shown, checked against the answer now.
+           *
+           * Staging previewed a partner per row and somebody approved it. If
+           * the stove has been transferred since, committing under the partner
+           * they were shown would be wrong and committing under the new one
+           * silently would be worse. Refusing the row says which, and the rest
+           * of the batch still lands.
+           */
+          const stagedOrgId =
+            (row.normalized as unknown as Record<string, unknown>).resolvedOrganizationId ?? null;
+          if (
+            typeof stagedOrgId === "string" &&
+            row.stock_org_id &&
+            stagedOrgId !== row.stock_org_id
+          ) {
+            await refuseRow(
+              row.id,
+              `Stove ${row.stove_serial_no} has moved to a different partner since this file was ` +
+                "checked. Re-validate the batch so the change is on screen before it is committed.",
+            );
+            continue;
+          }
+
           // Claim first. The primary key is the lock: a second batch asking for
           // the same serial gets a conflict here rather than a duplicate sale.
           const claimed = await withConnection(async (conn) => {
@@ -1675,8 +1809,8 @@ serve(async (req) => {
                 (extras.addressData as Record<string, unknown>).fullAddress)
               ? extras.addressData
               : { fullAddress: n.fullAddress, state: n.state, city: n.lga },
-            organizationId: org.organization_id,
-            partnerName: org.partner_name,
+            organizationId: rowOrgId,
+            partnerName: rowPartnerName,
             // Everything the row carried beyond the spine. A bench row brings
             // the signature, the photographs and the rest of the form; a
             // spreadsheet row brings none of it and the object is empty.
