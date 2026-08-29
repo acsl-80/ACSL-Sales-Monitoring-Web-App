@@ -119,13 +119,24 @@ serve(async (req) => {
       );
     }
 
-    // Balance-sheet stove counts: cumulative as of end of selected year.
-    // created_at proxies transfer date; sales_date is authoritative for sold.
+    /*
+     * Balance-sheet stove counts: cumulative as of end of selected year.
+     *
+     * Dated by transfer_sales_date, not created_at. created_at is when the row
+     * reached this database, which is a fact about the sync rather than about
+     * the stove: a January transfer imported in March counted as March. It
+     * happened to agree on today's data, and it is the same column
+     * get-super-admin-dashboard counts on, so the partner view and the global
+     * view can no longer answer the same question differently.
+     *
+     * Every stock row on production carries a transfer date, so nothing falls
+     * out of the count by switching.
+     */
     let stovesReceivedQuery = supabase
       .from("stove_ids")
       .select("*", { count: "exact", head: true })
       .eq("organization_id", organizationId);
-    if (endOfYear) stovesReceivedQuery = stovesReceivedQuery.lt("created_at", endOfYear);
+    if (endOfYear) stovesReceivedQuery = stovesReceivedQuery.lt("transfer_sales_date", endOfYear);
 
     let stovesSoldQuery = supabase
       .from("sales")

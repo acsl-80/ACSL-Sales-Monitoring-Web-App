@@ -69,8 +69,29 @@ serve(async (req) => {
       ? (() => { const d = new Date(body.date_to + "T00:00:00Z"); d.setUTCDate(d.getUTCDate() + 1); return d.toISOString().slice(0, 10); })()
       : `${maxYear + 1}-01-01`;
 
+    /*
+     * Stock is a balance, not a flow.
+     *
+     * A stove transferred to a partner in 2025 is still sitting with that
+     * partner today. Counting stock by "moved inside the selected period"
+     * answers a different question from the one the card asks, and on this
+     * data it hid 204 stoves across 16 partners: the headline read 18,510
+     * against 18,714 actually held, and the two never reconciled because they
+     * were never the same measure.
+     *
+     * So stock is counted as at the end of the period, cumulatively, which is
+     * what get-dashboard-stats already did for the partner view. Sales stay a
+     * flow, because a sale genuinely happens inside a period.
+     *
+     * With no period chosen this filters nothing, which is the point: all time
+     * is the honest default for a balance.
+     */
+    const applyBalance = (query: any, col: string) =>
+      endOfYear ? query.lt(col, endOfYear) : query;
+
     // Apply the date period to a query. Contiguous years / custom dates use a
     // simple range; non-contiguous year sets use an OR of per-year ranges.
+    // Correct for flows (sales); see applyBalance for stock.
     const applyPeriod = (query: any, col: string) => {
       if (hasCustomDate || yearsContiguous) {
         return query.gte(col, startDate).lt(col, endOfYear);
@@ -103,22 +124,32 @@ serve(async (req) => {
     // Stoves received count — chunk over organizationIds when present.
     const receivedPromise = organizationIds
       ? countInChunks(organizationIds, (c) =>
-          applyPeriod(
+          applyBalance(
             serviceClient.from("stove_ids").select("*", { count: "exact", head: true }).not("organization_id", "is", null),
             "transfer_sales_date"
           ).in("organization_id", c)
         )
-      : applyPeriod(
+      : applyBalance(
           serviceClient.from("stove_ids").select("*", { count: "exact", head: true }).not("organization_id", "is", null),
           "transfer_sales_date"
         );
 
-    // Sold cumulative count + sales rows — chunk over partnerNames when present.
+    /*
+     * The sold COUNT is a balance too, because it is one side of a balance
+     * sheet: received minus sold is what a partner still holds. The comment
+     * below it has always said "cumulative as of year end" and the identity
+     * has always been stated in those terms, but the query used the flow
+     * filter, so received and sold were measured over different windows and
+     * "available" was the difference between two unlike things.
+     *
+     * The sales ROWS underneath stay a flow. Money earned is genuinely a
+     * period question, and those rows feed revenue rather than the balance.
+     */
     const soldPromise = partnerNames?.length
       ? countInChunks(partnerNames, (c) =>
-          applyPeriod(buildSalesBase(serviceClient.from("sales").select("*", { count: "exact", head: true })), "sales_date").in("partner_name", c)
+          applyBalance(buildSalesBase(serviceClient.from("sales").select("*", { count: "exact", head: true })), "sales_date").in("partner_name", c)
         )
-      : applyPeriod(buildSalesBase(serviceClient.from("sales").select("*", { count: "exact", head: true })), "sales_date");
+      : applyBalance(buildSalesBase(serviceClient.from("sales").select("*", { count: "exact", head: true })), "sales_date");
 
     const salesCols = "id, amount, total_paid, state_backup, partner_name, retailer_branch, payment_model_id, created_by";
     const salesPromise = partnerNames?.length
