@@ -1248,6 +1248,14 @@ export const dataCenterImport = {
       batchId: string;
       totalRows: number;
       resolvedPartner: {
+        /** Every partner the file turned out to cover, with a row count each. */
+        partners?: {
+          organizationId: string;
+          partnerName: string | null;
+          /** Two branches of one partner share a name; this is what separates them. */
+          branch?: string | null;
+          count: number;
+        }[];
         organizationId: string;
         partnerName: string | null;
         matched: number;

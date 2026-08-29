@@ -430,7 +430,7 @@ async function resolvePartnersFromSerials(
   conn: { queryObject: (q: unknown) => Promise<{ rows: unknown[] }> },
   rows: Record<string, unknown>[],
 ): Promise<{
-  partners: { organizationId: string; partnerName: string; count: number }[];
+  partners: { organizationId: string; partnerName: string; branch: string | null; count: number }[];
   matched: number;
   unmatched: string[];
   mismatches: { serial: string; fileRef: string; stockRef: string }[];
@@ -452,7 +452,7 @@ async function resolvePartnersFromSerials(
 
   const found = await conn.queryObject({
     text: `select sb.stove_id, sb.organization_id::text, sb.sales_reference,
-                  o.partner_name
+                  o.partner_name, o.branch
              from public.stove_ids_base sb
              left join public.organizations o on o.id = sb.organization_id
             where sb.stove_id = any($1::text[])`,
@@ -462,10 +462,23 @@ async function resolvePartnersFromSerials(
     organization_id: string | null;
     sales_reference: string | null;
     partner_name: string | null;
+    branch: string | null;
   }[] };
 
   const byId = new Map(found.rows.map((r) => [r.stove_id, r]));
-  const counts = new Map<string, { partnerName: string; count: number }>();
+  /*
+   * Branch belongs in this summary, not only the name.
+   *
+   * A file covering two branches of one partner would otherwise report
+   * "Twin Name Partner (1), Twin Name Partner (1)", which reads as a bug in
+   * the counting rather than as two real partners. Production has four rows
+   * called LAPO and four called Solar Sister, so this is the normal case there,
+   * not an edge one.
+   */
+  const counts = new Map<
+    string,
+    { partnerName: string; branch: string | null; count: number }
+  >();
   const unmatched: string[] = [];
   const mismatches: { serial: string; fileRef: string; stockRef: string }[] = [];
   let matched = 0;
@@ -478,7 +491,11 @@ async function resolvePartnersFromSerials(
     }
     matched++;
     const entry = counts.get(hit.organization_id) ??
-      { partnerName: hit.partner_name ?? "Unnamed partner", count: 0 };
+      {
+        partnerName: hit.partner_name ?? "Unnamed partner",
+        branch: hit.branch ?? null,
+        count: 0,
+      };
     entry.count++;
     counts.set(hit.organization_id, entry);
 
@@ -1036,9 +1053,14 @@ serve(async (req) => {
             const r = await conn.queryObject<{ id: string; state: string; uploaded_at: string; filename: string | null }>({
               text: `select id::text, state, uploaded_at, filename
                      from data_center.import_batches
-                     where content_hash = $1 and organization_id = $2
+                     where content_hash = $1
+                       and organization_id is not distinct from $2::uuid
                      order by uploaded_at desc limit 1`,
-              args: [hash, resolvedOrgId],
+              // Null, not empty: a mixed-partner batch has no organization, and
+              // '' is not a uuid, which Postgres refuses rather than treating as
+              // "no partner". `is not distinct from` is what makes null match
+              // null, so re-uploading the same mixed file is still caught.
+              args: [hash, resolvedOrgId || null],
             });
             return r.rows[0] ?? null;
           });
@@ -1099,8 +1121,25 @@ serve(async (req) => {
                   // the page has to show what the file turned out to be.
                   resolvedPartner: resolution
                     ? {
-                      organizationId: resolvedOrgId,
-                      partnerName: resolution.partners[0]?.partnerName ?? null,
+                      organizationId: resolvedOrgId || null,
+                      /*
+                       * The whole list, not the first of it.
+                       *
+                       * When a file covered one partner this was that partner's
+                       * name, and it still is. When it covers three, naming one
+                       * of them is worse than naming none: the operator reads
+                       * it as what the file is and only finds out otherwise
+                       * from where the sales ended up.
+                       */
+                      partnerName: resolution.partners.length === 1
+                        ? (resolution.partners[0]?.partnerName ?? null)
+                        : null,
+                      partners: resolution.partners.map((p) => ({
+                        organizationId: p.organizationId,
+                        partnerName: p.partnerName,
+                        branch: p.branch ?? null,
+                        count: p.count,
+                      })),
                       matched: resolution.matched,
                       unmatched: resolution.unmatched.length,
                       mismatches: resolution.mismatches.slice(0, 20),

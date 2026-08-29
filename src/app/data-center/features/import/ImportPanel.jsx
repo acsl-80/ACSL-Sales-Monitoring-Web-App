@@ -275,7 +275,20 @@ export default function ImportPanel({ canUpload, canCommit, canResolve }) {
         const counts = await dataCenterImport.validate(batchId);
         setNotice(
           `${file.name}: ${file.rows.length} rows staged` +
-            (resolvedPartner?.partnerName ? ` for ${resolvedPartner.partnerName}` : "") +
+            /*
+             * One partner reads as "for X". Several has to say so, or the
+             * operator is told the file is one partner's when it is not.
+             */
+            (resolvedPartner?.partners?.length > 1
+              ? ` across ${resolvedPartner.partners.length} partners: ` +
+                resolvedPartner.partners
+                  .map((p) =>
+                    `${[p.partnerName ?? "Unknown", p.branch].filter(Boolean).join(", ")} (${p.count})`,
+                  )
+                  .join("; ")
+              : resolvedPartner?.partnerName
+                ? ` for ${resolvedPartner.partnerName}`
+                : "") +
             `. ${counts.valid} ready, ${counts.exception} need a look, ` +
             `${counts.rejected} could not be read. ` +
             `${counts.linkedToTransfer} matched to a transfer.` +
