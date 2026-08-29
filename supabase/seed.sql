@@ -1019,6 +1019,22 @@ from public.organizations o
 where o.id <> 'a0000000-0000-4000-8000-000000000004'::uuid
 on conflict do nothing;
 
+-- The data manager needs partners too, for the same reason and with the same
+-- exclusion.
+--
+-- Not tidiness: the call sheet's partner picker is built from a facet that is
+-- scoped to the partners the caller covers, and this account holds the only
+-- seeded call_import.use grant. Without assignments it is the one account that
+-- can open the sheet and the one account with nothing to pick, so the picker
+-- rendered empty on the preview while being correct in production, where this
+-- role holds 421 assignments. Found by looking at the rendered control.
+insert into public.acsl_agent_organizations (agent_id, organization_id, assigned_by)
+select 'b0000000-0000-4000-8000-000000000007'::uuid, o.id,
+       'b0000000-0000-4000-8000-000000000001'::uuid
+from public.organizations o
+where o.id <> 'a0000000-0000-4000-8000-000000000004'::uuid
+on conflict do nothing;
+
 -- ---------- Data Center module access (viewer / call agent / editor) ----------
 -- Access is granted per user, case by case, never per role. callcentre is the
 -- editor example, manager is the viewer example, and acslagent is the call

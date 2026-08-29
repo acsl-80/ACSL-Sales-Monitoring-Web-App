@@ -412,6 +412,22 @@ export default function CallSheet({ canCommit = false }) {
             </p>
           )}
 
+          {/*
+            No partners is a real answer and it needs saying.
+
+            The list is scoped to the partners this person covers, so somebody
+            with no assignments gets an empty one. On screen that is identical
+            to a list that loaded fine and to one that failed: a control with a
+            single option and nothing explaining why. Saying it costs a line and
+            turns "this feature looks broken" into "ask for an assignment".
+          */}
+          {!partnersFailed && partners !== null && partners.length === 0 && (
+            <p className="mt-1 text-sm text-gray-600">
+              No partners are assigned to you, so there is nobody to narrow to. The whole queue
+              is what you can see.
+            </p>
+          )}
+
           {downloaded && (
             <p className="mt-2 flex items-start gap-2 text-sm text-gray-700">
               <CircleCheck className="mt-0.5 h-4 w-4 shrink-0 text-(--dc-primary)" />
