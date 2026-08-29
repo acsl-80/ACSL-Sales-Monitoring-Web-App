@@ -152,6 +152,67 @@ test.describe("a sheet may cover several partners", () => {
     expect(await partnerOfSale(page, b)).toBe("TWIN-B");
   });
 
+  test("a row whose Partner column disagrees with its stove ID is refused", async ({
+    page,
+  }, testInfo) => {
+    /*
+     * The sheet arrives with the partner already filled in. Until now only the
+     * stove ID was read back, so a sheet whose rows had been sorted, or pasted
+     * a column at a time, or had one stove ID overwritten, imported cleanly and
+     * put a buyer against the wrong stove. Nothing in the file contradicts
+     * itself loudly enough to see by eye at four hundred rows.
+     */
+    await signIn(page, USERS.admin);
+    await page.goto("/data-center/import");
+
+    const a = await freeStoveOf(page, TWIN_A);
+    test.skip(!a, "no free twin stove left");
+
+    const marker = `mismatch${testInfo.workerIndex}-${Date.now()}`;
+    const staged = await callEdgeFunction(page, "data-center-import", {
+      action: "stage",
+      filename: `${marker}.csv`,
+      rows: [
+        {
+          stove_serial_no: a,
+          // The stove belongs to Twin Name Partner. This names somebody else.
+          partner_name: "Amina Sales Model Gombe",
+          first_name: "Wrong",
+          last_name: "Partner",
+          phone: "08012345670",
+          sales_date: "2026-01-04",
+          amount: "25000",
+          state: "Kogi",
+          lga: "Isanlu",
+          address: `${marker} Road`,
+        },
+      ],
+    });
+    expect(staged.status).toBe(200);
+    const batchId = (staged.body as { data: { batchId: string } }).data.batchId;
+
+    const validated = await callEdgeFunction(page, "data-center-import", {
+      action: "validate",
+      batchId,
+    });
+    expect(validated.status).toBe(200);
+    const summary = (validated.body as { data: { valid: number; exception: number } }).data;
+
+    // Refused, and refused for the right reason rather than as a generic
+    // failure the operator has to guess at.
+    expect(summary.valid).toBe(0);
+    expect(summary.exception).toBe(1);
+
+    const rows = await callEdgeFunction(page, "data-center-import", {
+      action: "rows",
+      batchId,
+    });
+    const why = JSON.stringify(rows.body);
+    expect(why).toMatch(/Partner column says/);
+    expect(why).toMatch(/Amina Sales Model Gombe/);
+    expect(why).toMatch(/Twin Name Partner/);
+  });
+
   test("a partner outside your scope is refused even as one row among many", async ({
     page,
   }, testInfo) => {

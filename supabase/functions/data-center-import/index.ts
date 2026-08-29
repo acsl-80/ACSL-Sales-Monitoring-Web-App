@@ -1284,6 +1284,9 @@ serve(async (req) => {
             const shaped = pending.rows.map((r) => ({
               id: r.id,
               rowNumber: Number(r.row_number),
+              // Kept, because the columns the system filled in are checked
+              // against the stove ID below and normalizeRow does not carry them.
+              raw: r.raw,
               result: normalizeRow(r.raw),
             }));
             const serials = shaped
@@ -1315,13 +1318,23 @@ serve(async (req) => {
             // belongs to. Roughly one serial in twelve matches nothing, which
             // is why the column is nullable rather than the join being a
             // condition of import.
-            const transfers = await conn.queryObject<{ stove_id: string; transaction_id: string }>({
-              text: `select stove_id, transaction_id from data_center.v_transfer_stoves
-                     where stove_id = any($1::text[])`,
+            const transfers = await conn.queryObject<{
+              stove_id: string;
+              transaction_id: string;
+              sales_rep: string | null;
+            }>({
+              text: `select ts.stove_id, ts.transaction_id, f.sales_rep
+                       from data_center.v_transfer_stoves ts
+                       left join data_center.transfer_funnel f
+                              on f.transfer_id = ts.transfer_id
+                      where ts.stove_id = any($1::text[])`,
               args: [[...new Set(serials)]],
             });
             const transferBySerial = new Map(
               transfers.rows.map((t) => [t.stove_id, t.transaction_id]),
+            );
+            const repBySerial = new Map(
+              transfers.rows.map((t) => [t.stove_id, t.sales_rep]),
             );
 
             // The same serial twice in one file. It used to import twice: the
@@ -1454,10 +1467,80 @@ serve(async (req) => {
                 seenPhone.set(tail, [...(seenPhone.get(tail) ?? []), row.stoveSerialNo]);
               }
 
-              let exceptionReason: string | null = null;
+              /*
+               * The columns the system filled in, checked against the stove ID.
+               *
+               * The sheet this module hands out arrives with five columns
+               * already filled: the stove ID, the transfer reference, the
+               * partner, the sales rep and the transfer date. Only the stove ID
+               * was ever read back. The other four were decoration, so a sheet
+               * whose rows had been sorted, or pasted a column at a time, or had
+               * one stove ID overwritten, imported cleanly and put a buyer
+               * against the wrong stove. Nothing in the file contradicts itself
+               * loudly enough to notice by eye at four hundred rows.
+               *
+               * So each one is compared with what the stove ID resolves to.
+               * Absent columns are not checked: somebody may be using their own
+               * sheet, and demanding a column they never had would refuse a file
+               * for lacking decoration.
+               *
+               * WHAT BLOCKS AND WHAT DOES NOT
+               *
+               * Partner and transfer reference block. Either disagreeing means
+               * the row is about a different consignment from the one its stove
+               * ID names, and there is no reading of that which is safe to
+               * import.
+               *
+               * The sales rep is reported and does not block: a consignment can
+               * legitimately be re-attributed, and refusing four hundred rows
+               * over a name in a column nobody sells from would be the check
+               * costing more than it catches.
+               *
+               * The transfer date is not compared at all. A spreadsheet rewrites
+               * dates on open, so the comparison would fail on formatting rather
+               * than on facts, which trains people to ignore it.
+               */
+              const sheetSays = (key: string) => {
+                const v = field(s.raw as Record<string, unknown>, key);
+                return typeof v === "string" && v.trim() !== "" ? v.trim() : null;
+              };
+              const agrees = (a: string | null, b: string | null | undefined) =>
+                a === null || b === null || b === undefined ||
+                a.toLowerCase().replace(/\s+/g, " ") ===
+                  String(b).toLowerCase().replace(/\s+/g, " ");
+
+              const sheetPartner = sheetSays("partnerName");
+              const sheetRef = sheetSays("transactionId");
+              const sheetRep = sheetSays("salesRep");
+              const stockRef = transferBySerial.get(row.stoveSerialNo.toUpperCase()) ?? null;
+              const stockRep = repBySerial.get(row.stoveSerialNo.toUpperCase()) ?? null;
+
+              let columnMismatch: string | null = null;
+              if (found && !agrees(sheetPartner, found.partner_name)) {
+                columnMismatch =
+                  `The Partner column says "${sheetPartner}" but stove ${row.stoveSerialNo} ` +
+                  `belongs to "${found.partner_name ?? "no partner"}". ` +
+                  "Either the stove ID or the partner on this row is wrong.";
+              } else if (stockRef && !agrees(sheetRef, stockRef)) {
+                columnMismatch =
+                  `The Transaction ID column says "${sheetRef}" but stove ${row.stoveSerialNo} ` +
+                  `came on ${stockRef}. Either the stove ID or the reference on this row is wrong.`;
+              }
+
+              const repWarning =
+                !columnMismatch && stockRep && !agrees(sheetRep, stockRep)
+                  ? `The Sales Rep column says "${sheetRep}" and the consignment records ` +
+                    `"${stockRep}". Imported as it stands.`
+                  : null;
+
+              let exceptionReason: string | null = columnMismatch;
               if (duplicateOf !== null) {
                 exceptionReason =
                   `Stove serial "${row.stoveSerialNo}" already appears on row ${duplicateOf} of this file`;
+              } else if (columnMismatch) {
+                // Already set above. Named here so the order of causes reads in
+                // one place rather than one of them being invisible.
+                exceptionReason = columnMismatch;
               } else if (!found) {
                 exceptionReason = `Stove serial "${row.stoveSerialNo}" is not in stock records`;
               } else if (orgId && found.organization_id !== orgId) {
@@ -2835,15 +2918,20 @@ serve(async (req) => {
                            * A batch with no partner of its own covers several,
                            * and the history showed it as "-", which reads as
                            * missing data rather than as a fact about the file.
-                           * Counting them here is one subquery on a page of ten
-                           * rows, and it turns a dash into "3 partners".
+                           * This turns a dash into "3 partners".
+                           *
+                           * Counted off the partner validation already recorded
+                           * on each row, not by joining stock again. The first
+                           * version matched on upper(stove_id), which no index
+                           * can serve, so every mixed batch on the page scanned
+                           * the whole stock table once per row of it. This reads
+                           * a column the batch already owns.
                            */
                           case when b.organization_id is null then (
-                            select count(distinct sb.organization_id)::int
+                            select count(distinct r2.normalized ->> 'resolvedOrganizationId')::int
                               from data_center.import_rows r2
-                              join public.stove_ids_base sb
-                                on upper(sb.stove_id) = upper(r2.stove_serial_no)
                              where r2.batch_id = b.id
+                               and r2.normalized ? 'resolvedOrganizationId'
                           ) end as partner_count,
                           p.full_name as uploaded_by_name,
                           (select count(*)::int from data_center.import_rows r
