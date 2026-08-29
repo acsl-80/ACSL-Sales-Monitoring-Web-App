@@ -51,7 +51,9 @@ const TABS = [
     icon: PhoneCall,
     blurb:
       "Call-centre work an agent already did on their own spreadsheet: download the records waiting to be called, fill in what the calls found, upload it back. It attaches to sales that exist and never creates one.",
-    needs: DATA_CENTER_FEATURES.IMPORT_UPLOAD,
+    // Its own grant, not import.upload. This is an occasional backlog intake,
+    // and the people who digitalise receipts all day should not see it.
+    needs: DATA_CENTER_FEATURES.CALL_IMPORT,
   },
   {
     key: "confirm",

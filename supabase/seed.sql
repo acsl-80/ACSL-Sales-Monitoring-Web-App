@@ -984,6 +984,22 @@ select 'b0000000-0000-4000-8000-000000000006'::uuid, k
 from unnest(array['records.view','call_records.view','call_records.edit']) k
 on conflict (user_id, feature_key) do nothing;
 
+-- The bulk call-sheet grant, given to exactly one account on purpose.
+--
+-- `call_import.use` is implied by NO access level, not even data_manager. It
+-- is an occasional intake for a backlog an agent already worked on their own
+-- spreadsheet, and the ask was that it be available only to people it has been
+-- turned on for. So the data manager has it because somebody granted it, which
+-- is the only way anybody gets it.
+--
+-- The callcentre account deliberately does NOT have it, while holding
+-- `import.upload` through the editor level. That pair is what makes the gate
+-- testable: before this, `import.upload` was the key, so anybody who could
+-- digitalise a receipt could also pull the call backlog.
+insert into data_center.feature_grants (user_id, feature_key)
+values ('b0000000-0000-4000-8000-000000000007'::uuid, 'call_import.use')
+on conflict (user_id, feature_key) do nothing;
+
 -- ---------- Call centre partner assignments ----------
 -- An ACSL agent sees the partners assigned to them, so an account with no
 -- assignments sees nothing. The call centre is assigned every seeded partner

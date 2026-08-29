@@ -20,6 +20,8 @@ export const USERS = {
   partner: "partner@preview.acsl.test",
   agent: "agent@preview.acsl.test",
   callCentre: "callcentre@preview.acsl.test",
+  /** The only seeded account holding call_import.use. */
+  dataManager: "datamanager@preview.acsl.test",
 } as const;
 
 /**

@@ -204,6 +204,12 @@ export type RecordsFilters = {
   transferSalesRep?: string;
   saleStatus?: string;
   paymentStatus?: string;
+  /**
+   * Call centre table only. `false` is "nobody has called this yet", which is
+   * what the bulk call sheet offers: a record with an outcome already on it
+   * would come back from the import refused rather than merged.
+   */
+  hasCallRecord?: boolean;
   platform?: string;
   dateFrom?: string;
   dateTo?: string;
@@ -235,7 +241,20 @@ export type SendBackRow = {
 
 /** The lists the filter panel offers. Small tables only - never a DISTINCT. */
 export type RecordFacets = {
-  partners: { id: string; name: string | null; transfers: number }[];
+  /**
+   * Branch and state travel with the name because the name alone does not
+   * identify a partner. Four organizations are called LAPO and four Solar
+   * Sister, and two of the Solar Sister rows are both "Main Branch", in Niger
+   * and in FCT. A picker showing names only offers the same word four times.
+   */
+  partners: {
+    id: string;
+    name: string | null;
+    partner_id: string | null;
+    branch: string | null;
+    state: string | null;
+    transfers: number;
+  }[];
   salesReps: { name: string; transfers: number }[];
   states: string[];
   lgasByState: Record<string, string[]>;

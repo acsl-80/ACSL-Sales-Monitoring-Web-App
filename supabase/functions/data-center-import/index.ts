@@ -2121,11 +2121,17 @@ serve(async (req) => {
        *
        * The work itself is in call-import.ts. What lives here is the gate,
        * the slice size, and the door out to data-center-write.
+       *
+       * The gate is `call_import.use`, granted to nobody by default. It used to
+       * be `import.upload`, which every person digitalising receipts holds, so
+       * the tab appeared for the whole bench. This is the authority: the tab in
+       * ImportPage.jsx checks the same key, but a hidden button is not a
+       * permission.
        * ===================================================================== */
 
       /** The columns the sheet carries, registry questions included. */
       case "call_sheet": {
-        requireFeature("import.upload");
+        requireFeature("call_import.use");
         return await withReadConnection(async (conn) => {
           const spec = await callSheetSpec(conn);
           return json({ data: spec }, 200, cors);
@@ -2133,7 +2139,7 @@ serve(async (req) => {
       }
 
       case "call_stage": {
-        requireFeature("import.upload");
+        requireFeature("call_import.use");
         const incoming = body.rows as Record<string, unknown>[] | undefined;
         if (!Array.isArray(incoming) || incoming.length === 0) {
           throw new BadRequest("No rows to import");
@@ -2193,7 +2199,7 @@ serve(async (req) => {
       }
 
       case "call_validate": {
-        requireFeature("import.upload");
+        requireFeature("call_import.use");
         const batchId = String(body.batchId ?? "");
         if (!batchId) throw new BadRequest("batchId is required");
         return await withConnection(async (conn) => {
@@ -2207,6 +2213,9 @@ serve(async (req) => {
       }
 
       case "call_commit": {
+        // Both. Seeing the sheet and landing it are separate privileges, the
+        // same split the receipt import makes between upload and commit.
+        requireFeature("call_import.use");
         requireFeature("import.commit");
         const batchId = String(body.batchId ?? "");
         if (!batchId) throw new BadRequest("batchId is required");
@@ -2264,6 +2273,7 @@ serve(async (req) => {
       }
 
       case "call_rollback": {
+        requireFeature("call_import.use");
         requireFeature("import.commit");
         const batchId = String(body.batchId ?? "");
         if (!batchId) throw new BadRequest("batchId is required");

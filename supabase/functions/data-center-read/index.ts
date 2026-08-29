@@ -1853,13 +1853,24 @@ serve(async (req) => {
         return await withReadConnection(async (connection) => {
           const [partners, reps, states, lgas, models, agents] = await Promise.all([
             connection.queryObject({
+              /*
+                * Branch and state come too, because the name does not identify
+                * the partner. Four organizations are called LAPO, four Solar
+                * Sister, and two Solar Sister rows are both "Main Branch" in
+                * different states. A picker built on names alone offers the
+                * same word several times and cannot say which is which.
+                */
               text: `select f.organization_id::text as id,
                             max(f.partner_name) as name,
+                            max(o.partner_id) as partner_id,
+                            max(o.branch) as branch,
+                            max(o.state) as state,
                             count(*)::int as transfers
                        from data_center.transfer_funnel f
+                       left join public.organizations o on o.id = f.organization_id
                       where f.organization_id is not null and ${scope.sql}
                       group by f.organization_id
-                      order by max(f.partner_name)
+                      order by max(f.partner_name), max(o.branch)
                       limit 500`,
               args: scope.args,
             }),
