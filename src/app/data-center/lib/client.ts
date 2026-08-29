@@ -1182,6 +1182,8 @@ export type ImportBatch = {
   committed_at: string | null;
   last_error: string | null;
   partner_name: string | null;
+  /** Only for a batch with no single partner: how many it covers. */
+  partner_count?: number | null;
   uploaded_by_name: string | null;
 };
 

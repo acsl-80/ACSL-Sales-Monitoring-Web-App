@@ -701,7 +701,13 @@ export default function ImportPanel({ canUpload, canCommit, canResolve }) {
                   {b.filename ?? "(typed in, no file)"}
                 </td>
                 <td className="max-w-[14rem] truncate px-3 py-2 text-sm text-gray-700">
-                  {b.partner_name ?? "-"}
+                  {/*
+                    A batch covering several partners is not a batch with a
+                    missing partner. "-" said the second thing about the first,
+                    which is how somebody concludes the import lost the data.
+                  */}
+                  {b.partner_name ??
+                    (b.partner_count > 1 ? `${b.partner_count} partners` : "-")}
                 </td>
                 <td className="px-3 py-2 text-right text-sm tabular-nums text-gray-700">
                   {b.total_rows}

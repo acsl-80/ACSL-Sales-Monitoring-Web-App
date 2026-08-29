@@ -2830,7 +2830,22 @@ serve(async (req) => {
             text: `select b.id, b.filename, b.state, b.total_rows, b.valid_rows,
                           b.rejected_rows, b.committed_rows, b.uploaded_at, b.dry_run_at,
                           b.committed_at, b.last_error,
-                          o.partner_name, p.full_name as uploaded_by_name,
+                          o.partner_name,
+                          /*
+                           * A batch with no partner of its own covers several,
+                           * and the history showed it as "-", which reads as
+                           * missing data rather than as a fact about the file.
+                           * Counting them here is one subquery on a page of ten
+                           * rows, and it turns a dash into "3 partners".
+                           */
+                          case when b.organization_id is null then (
+                            select count(distinct sb.organization_id)::int
+                              from data_center.import_rows r2
+                              join public.stove_ids_base sb
+                                on upper(sb.stove_id) = upper(r2.stove_serial_no)
+                             where r2.batch_id = b.id
+                          ) end as partner_count,
+                          p.full_name as uploaded_by_name,
                           (select count(*)::int from data_center.import_rows r
                             where r.batch_id = b.id and r.status = 'exception') as exception_rows
                    from data_center.import_batches b
