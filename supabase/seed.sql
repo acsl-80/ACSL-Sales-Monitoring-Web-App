@@ -1158,6 +1158,33 @@ from (values
 join public.organizations o on o.id = t.org::uuid
 on conflict do nothing;
 
+-- The unassigned partner needs stock of its own.
+--
+-- It exists so there is one partner nobody holds, but it had no stoves, so a
+-- test asking "what happens when a file contains one row for a partner that is
+-- not yours" had nothing to put in that row and skipped: green, and proving the
+-- opposite of what it claimed.
+insert into public.stove_ids_base (stove_id, organization_id, status, factory)
+select 'JOS' || lpad(g::text, 6, '0'),
+       'a0000000-0000-4000-8000-000000000004'::uuid, 'available', 'Jos'
+from generate_series(1, 10) g
+on conflict do nothing;
+
+insert into public.stove_transfer_history
+  (transaction_id, organization_id, partner_name, partner_id, state, branch,
+   stove_count, stove_ids, source, sales_rep, sales_factory, sales_date, transfer_date)
+select 'TR-JOS001', o.id, o.partner_name, coalesce(o.partner_id, 'PRV-JOS001'),
+       o.state, o.branch,
+       (select count(*) from public.stove_ids_base b where b.organization_id = o.id),
+       (select coalesce(jsonb_agg(jsonb_build_object(
+                 'stove_id', b.stove_id, 'factory', b.factory, 'sales_reference', 'TR-JOS001')), '[]'::jsonb)
+          from public.stove_ids_base b where b.organization_id = o.id),
+       'external-sync', 'Olatunji Bello', o.branch,
+       current_date - 30, now() - make_interval(days => 30)
+from public.organizations o
+where o.id = 'a0000000-0000-4000-8000-000000000004'::uuid
+on conflict do nothing;
+
 -- Both twins are held by the accounts that import, or the scope check refuses
 -- the sheet before the partner resolution is ever exercised.
 insert into public.acsl_agent_organizations (agent_id, organization_id, assigned_by)
