@@ -1620,6 +1620,15 @@ export type Metric = {
 
 export type DashboardData = {
   metrics: Metric[];
+  /**
+   * The families that can answer for a period at all.
+   *
+   * Sent by the server rather than listed here, because the list is a property
+   * of what compute_metrics writes and a copy kept in the client would go stale
+   * the first time a family gains or loses a period. A card whose key is absent
+   * shows an all-time figure however the page is narrowed, and says so.
+   */
+  periodicKeys: string[];
   computedAt: string | null;
   /** True when the newest run is older than metrics.stale_after_hours. */
   isStale: boolean;

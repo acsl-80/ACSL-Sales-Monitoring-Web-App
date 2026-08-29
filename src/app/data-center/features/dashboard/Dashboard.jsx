@@ -3,7 +3,7 @@ import { Link } from "@tanstack/react-router";
 import { dataCenterDashboard, DataCenterError } from "../../lib/client";
 import Scorecard, { scorecardRows } from "./Scorecard";
 import ExportScorecards from "./ExportScorecards";
-import { MEASURES, withScope, explain } from "../../lib/measures";
+import { MEASURES, SCOPES, withScope, explain } from "../../lib/measures";
 import { usePeriod } from "../../lib/usePeriod";
 import PeriodFilter from "../../components/PeriodFilter";
 import {
@@ -251,6 +251,34 @@ export default function Dashboard({ canRun }) {
 
   const m = data?.metrics ?? [];
 
+  /*
+   * What population a figure on this page actually describes.
+   *
+   * Not every family can answer for a period, and the ones that cannot are not
+   * broken. calls.avg_attempts is an average, and the read query sums a range,
+   * so a periodised average would be a sum of monthly averages: a number that
+   * is wrong rather than narrow. import.* counts the bench's own batches, and a
+   * batch spans however many consignments the sheet covered.
+   *
+   * So the page holds two kinds of figure at once whenever it is narrowed, and
+   * the honest thing is to say which is which rather than let a reader assume
+   * the whole screen moved. The server names the families that carry a period;
+   * everything else is all-time and is labelled all-time.
+   */
+  const periodAsked = Boolean(from || to);
+  const periodicKeys = data?.periodicKeys ?? [];
+  const canNarrow = (key) => periodicKeys.includes(key);
+  const scopeOf = (key) => (periodAsked && canNarrow(key) ? "period" : "allTime");
+
+  /*
+   * Only the exception is marked. When the page is narrowed, a card that
+   * followed needs no annotation - that is what the reader asked for. A card
+   * that could not follow does, or its number reads as part of the same
+   * narrowed picture when it is not.
+   */
+  const scopedLabel = (label, key) =>
+    periodAsked && !canNarrow(key) ? `${label} \u00b7 ${SCOPES.allTime}` : label;
+
   const verification = useMemo(
     () => series(m, "verification.by_outcome", "outcome"),
     [m],
@@ -449,15 +477,15 @@ export default function Dashboard({ canRun }) {
               much is not. Everything else on this page is a cut of these. */}
           <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
             <Card
-              label={withScope("issued", "allTime")}
+              label={withScope("issued", scopeOf("scorecard.issued"))}
               value={transferred}
-              hint={explain("issued", "allTime")}
+              hint={explain("issued", scopeOf("scorecard.issued"))}
               skin="transferred"
               to="/data-center/partner-records"
               arrow="See what went to each partner"
             />
             <Card
-              label={withScope("sold", "allTime")}
+              label={withScope("sold", scopeOf("sales.total"))}
               value={total}
               hint={
                 transferred
@@ -468,7 +496,7 @@ export default function Dashboard({ canRun }) {
               to="/data-center/stove-records"
             />
             <Card
-              label={withScope("verified", "allTime")}
+              label={withScope("verified", scopeOf("verification.by_outcome"))}
               value={verified}
               hint={total ? `${Math.round((verified / total) * 100)}% of sales` : undefined}
               skin="verified"
@@ -476,7 +504,7 @@ export default function Dashboard({ canRun }) {
               search={{ status: "verified", label: MEASURES.verified.label }}
             />
             <Card
-              label={withScope("unverified", "allTime")}
+              label={withScope("unverified", scopeOf("scorecard.unverified"))}
               value={unverified}
               hint={MEASURES.unverified.definition}
               skin="unverified"
@@ -586,7 +614,7 @@ export default function Dashboard({ canRun }) {
               an internal completeness rule, the other a queue of six. */}
           <div className="grid grid-cols-2 gap-3 lg:grid-cols-3 xl:grid-cols-6">
             <Card
-              label="Complete"
+              label={scopedLabel("Complete", "sales.complete")}
               value={complete}
               hint={total ? `${Math.round((complete / total) * 100)}% by this module's rule` : undefined}
               skin="info"
@@ -598,7 +626,7 @@ export default function Dashboard({ canRun }) {
               search={{ saleStatus: "completed", label: "Complete" }}
             />
             <Card
-              label="Open corrections"
+              label={scopedLabel("Open corrections", "corrections.open")}
               value={value(m, "corrections.open")}
               hint="waiting on Sales"
               skin={value(m, "corrections.open") > 0 ? "warn" : "neutral"}
@@ -606,20 +634,20 @@ export default function Dashboard({ canRun }) {
               search={{ preset: "correction" }}
             />
             <Card
-              label="Calls logged"
+              label={scopedLabel("Calls logged", "calls.attempts_total")}
               value={value(m, "calls.attempts_total")}
               skin="info"
               to="/data-center/call-centre"
             />
             <Card
-              label="Average calls"
+              label={scopedLabel("Average calls", "calls.avg_attempts")}
               value={value(m, "calls.avg_attempts")}
               hint="per record worked"
               skin="info"
               to="/data-center/call-centre"
             />
             <Card
-              label="Chased 3 times"
+              label={scopedLabel("Chased 3 times", "calls.exhausted")}
               value={value(m, "calls.exhausted")}
               hint="still not verified"
               skin={value(m, "calls.exhausted") > 0 ? "warn" : "neutral"}
@@ -627,7 +655,7 @@ export default function Dashboard({ canRun }) {
               search={{ preset: "exhausted" }}
             />
             <Card
-              label="Imported rows"
+              label={scopedLabel("Imported rows", "import.rows_committed")}
               value={value(m, "import.rows_committed")}
               hint={`${NUMBER.format(value(m, "import.exceptions_open"))} exceptions open`}
               skin="plum"
