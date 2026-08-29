@@ -434,6 +434,28 @@ export const dataCenterClient = {
   recordFacets: () => call<RecordFacets>("data-center-read", "record_facets"),
 
   /**
+   * A partner's stoves, rather than one consignment's.
+   *
+   * `period` is a month, matching every other Data Centre control. `search`
+   * matches anywhere in the stove ID and runs on the server, which is the
+   * point: the rail's own filter only ever saw the page it was handed, so a
+   * stove that exists but is not loaded came back as "not found".
+   */
+  partnerStoves: (params: {
+    organizationId: string;
+    period?: string | null;
+    search?: string | null;
+    cursor?: string | null;
+    limit?: number;
+  }) =>
+    call<{
+      stoves: Record<string, unknown>[];
+      hasMore: boolean;
+      nextCursor: string | null;
+      scope: string;
+    }>("data-center-read", "partner_stoves", params),
+
+  /**
    * The records sent back to Sales that this person is responsible for.
    *
    * Routing is worked out server-side from the standing recipient list and the
