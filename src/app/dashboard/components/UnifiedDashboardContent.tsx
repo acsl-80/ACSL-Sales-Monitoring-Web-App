@@ -61,7 +61,16 @@ const UnifiedDashboardContent = () => {
   const [loading, setLoading] = useState(true);
   const [data, setData] = useState<any>(null);
   const [year, setYear] = useState<number>(CURRENT_YEAR);
-  const [years, setYears] = useState<number[]>([CURRENT_YEAR]); // global only
+  /*
+   * Every year by default, not the current one.
+   *
+   * Opening on the current year and labelling the result "Total Stoves
+   * Received By Partner(s)" is what hid 204 stoves dated 2025: the number was
+   * correct for the filter and wrong for the label, and nothing on screen said
+   * a filter was applied. Empty means every year downstream, and the year
+   * control still narrows when somebody asks it to.
+   */
+  const [years, setYears] = useState<number[]>([]); // global only
   const [dateFrom, setDateFrom] = useState<string | null>(null);
   const [dateTo, setDateTo] = useState<string | null>(null);
   const [activeCard, setActiveCard] = useState<string | null>(null);

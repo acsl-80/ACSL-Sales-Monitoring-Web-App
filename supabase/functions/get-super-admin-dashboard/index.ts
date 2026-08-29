@@ -70,38 +70,43 @@ serve(async (req) => {
       : `${maxYear + 1}-01-01`;
 
     /*
-     * Stock is a balance, not a flow.
+     * Stock counted over the selected period, plus stock we cannot date.
      *
-     * A stove transferred to a partner in 2025 is still sitting with that
-     * partner today. Counting stock by "moved inside the selected period"
-     * answers a different question from the one the card asks, and on this
-     * data it hid 204 stoves across 16 partners: the headline read 18,510
-     * against 18,714 actually held, and the two never reconciled because they
-     * were never the same measure.
+     * An earlier cut of this made stock a balance: everything held as at the
+     * end of the period. Defensible in the abstract, wrong here for two
+     * reasons. Selecting 2026 then returned 2025's stoves as well, so the
+     * filter did not filter. And Partner Records in the Data Center does
+     * narrow by period, so the two screens disagreed about what a year means,
+     * which is the whole problem this work exists to end.
      *
-     * So stock is counted as at the end of the period, cumulatively, which is
-     * what get-dashboard-stats already did for the partner view. Sales stay a
-     * flow, because a sale genuinely happens inside a period.
+     * The year filter narrows. What was actually broken was the DEFAULT: the
+     * dashboard opened on the current year and presented the result as a
+     * total, which is how 204 stoves went missing from a figure labelled
+     * "Total Stoves Received By Partner(s)". The default is now every year.
      *
-     * With no period chosen this filters nothing, which is the point: all time
-     * is the honest default for a balance.
+     * Undated stock is always included, in every period. `gte`/`lt` against
+     * NULL is never true, so a stove with no transfer date would vanish from
+     * every view including the all-time one. We know it reached a partner; we
+     * only do not know when, and dropping it silently is the worse answer.
+     * Production carries none today; the preview seed carries 170, which is
+     * how the silent version of this was caught.
      */
-    const applyBalance = (query: any, col: string) =>
-      /*
-       * Undated stock counts. `lt` alone would drop it, because SQL comparisons
-       * against NULL are never true, and a stove with no transfer date is still
-       * a stove the partner is holding.
-       *
-       * Production carries none today, so this changes nothing there. The
-       * preview seed carries 170, which is how it surfaced: the balance read
-       * 430 of 600. The ERP has produced undated rows before, and the failure
-       * mode is silent, so it is worth spending an `or` on.
-       */
-      endOfYear ? query.or(`${col}.lt.${endOfYear},${col}.is.null`) : query;
+    const applyStockPeriod = (query: any, col: string) => {
+      if (hasCustomDate || yearsContiguous) {
+        return query.or(
+          `and(${col}.gte.${startDate},${col}.lt.${endOfYear}),${col}.is.null`
+        );
+      }
+      return query.or(
+        years
+          .map((y) => `and(${col}.gte.${y}-01-01,${col}.lt.${y + 1}-01-01)`)
+          .concat(`${col}.is.null`)
+          .join(",")
+      );
+    };
 
     // Apply the date period to a query. Contiguous years / custom dates use a
     // simple range; non-contiguous year sets use an OR of per-year ranges.
-    // Correct for flows (sales); see applyBalance for stock.
     const applyPeriod = (query: any, col: string) => {
       if (hasCustomDate || yearsContiguous) {
         return query.gte(col, startDate).lt(col, endOfYear);
@@ -134,12 +139,12 @@ serve(async (req) => {
     // Stoves received count — chunk over organizationIds when present.
     const receivedPromise = organizationIds
       ? countInChunks(organizationIds, (c) =>
-          applyBalance(
+          applyStockPeriod(
             serviceClient.from("stove_ids").select("*", { count: "exact", head: true }).not("organization_id", "is", null),
             "transfer_sales_date"
           ).in("organization_id", c)
         )
-      : applyBalance(
+      : applyStockPeriod(
           serviceClient.from("stove_ids").select("*", { count: "exact", head: true }).not("organization_id", "is", null),
           "transfer_sales_date"
         );
@@ -157,9 +162,9 @@ serve(async (req) => {
      */
     const soldPromise = partnerNames?.length
       ? countInChunks(partnerNames, (c) =>
-          applyBalance(buildSalesBase(serviceClient.from("sales").select("*", { count: "exact", head: true })), "sales_date").in("partner_name", c)
+          applyPeriod(buildSalesBase(serviceClient.from("sales").select("*", { count: "exact", head: true })), "sales_date").in("partner_name", c)
         )
-      : applyBalance(buildSalesBase(serviceClient.from("sales").select("*", { count: "exact", head: true })), "sales_date");
+      : applyPeriod(buildSalesBase(serviceClient.from("sales").select("*", { count: "exact", head: true })), "sales_date");
 
     const salesCols = "id, amount, total_paid, state_backup, partner_name, retailer_branch, payment_model_id, created_by";
     const salesPromise = partnerNames?.length
