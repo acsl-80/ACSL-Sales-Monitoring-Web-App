@@ -272,6 +272,43 @@ test.describe("the headline figures", () => {
      * Partner Records instead of filing a bug. If a label moves, it moves
      * there and this follows.
      */
+    /*
+     * The scope in the label is the live one, not a constant.
+     *
+     * The page opens on This year, so these four opened saying "all time" over
+     * figures that were already narrowed to this year. The number was right and
+     * the label was wrong, which is worse than a wrong number: a wrong number
+     * gets questioned.
+     */
+    for (const label of [
+      "Issued · in the period shown",
+      "Sold · in the period shown",
+      "Verified · in the period shown",
+      "Unverified · in the period shown",
+    ]) {
+      await expect(
+        page.getByRole("link", { name: new RegExp(`^${label}:`) }),
+      ).toBeVisible();
+    }
+
+    /*
+     * A card that cannot follow the narrowing says so, and only that card.
+     *
+     * Imported rows counts the bench's own batches and a batch spans many
+     * consignments, so it has no period to answer for. Complete does, so it
+     * carries no marker: annotating every card would make the one that matters
+     * invisible.
+     */
+    await expect(
+      page.getByRole("link", { name: /^Imported rows · all time:/ }),
+    ).toBeVisible();
+    await expect(page.getByRole("link", { name: /^Complete:/ })).toBeVisible();
+
+    // Everything, and the same four say so.
+    await page.goto("/data-center/dashboard?period=all");
+    await expect(
+      page.getByRole("heading", { name: "Partner", exact: true }),
+    ).toBeVisible({ timeout: 30_000 });
     for (const label of [
       "Issued · all time",
       "Sold · all time",
@@ -282,6 +319,9 @@ test.describe("the headline figures", () => {
         page.getByRole("link", { name: new RegExp(`^${label}:`) }),
       ).toBeVisible();
     }
+
+    // Nothing is marked when nothing was narrowed.
+    await expect(page.getByRole("link", { name: /^Imported rows:/ })).toBeVisible();
 
     // Displaced rather than dropped: both are still on the page, below.
     for (const label of ["Complete", "Open corrections"]) {
@@ -301,7 +341,7 @@ test.describe("the headline figures", () => {
     // population; call agent and manager are a different one, which is why
     // only one cut is summed.
     const shown = await page
-      .getByRole("link", { name: /^Issued · all time:/ })
+      .getByRole("link", { name: /^Issued · in the period shown:/ })
       .evaluate((el) => Number((el.textContent ?? "").replace(/[^0-9]/g, "") || 0));
 
     const issuedTotal = await page.evaluate(() => {
@@ -335,7 +375,7 @@ test.describe("the headline figures", () => {
       page.getByRole("heading", { name: "Partner", exact: true }),
     ).toBeVisible({ timeout: 30_000 });
 
-    await page.getByRole("link", { name: /^Unverified · all time:/ }).click();
+    await page.getByRole("link", { name: /^Unverified · in the period shown:/ }).click();
 
     // Both sides define unverified the same way - the funnel view, the
     // scorecard compute and the queue filter all read it off one list, which
