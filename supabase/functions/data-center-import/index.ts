@@ -1460,7 +1460,23 @@ serve(async (req) => {
                   `Stove serial "${row.stoveSerialNo}" already appears on row ${duplicateOf} of this file`;
               } else if (!found) {
                 exceptionReason = `Stove serial "${row.stoveSerialNo}" is not in stock records`;
-              } else if (found.organization_id !== orgId) {
+              } else if (orgId && found.organization_id !== orgId) {
+                /*
+                 * Only when the batch has a partner of its own.
+                 *
+                 * A batch pinned to one partner, which is manual entry, the
+                 * bench, and any single-partner file, must still refuse a stove
+                 * belonging to somebody else: the operator said whose sheet this
+                 * was and a stray serial is a mistake worth stopping.
+                 *
+                 * A mixed batch has no partner to disagree with. Each row's
+                 * partner IS whatever stock says, and every partner in the file
+                 * was scope-checked at staging, so there is nothing left here to
+                 * refuse. Leaving this check unconditional made every row of a
+                 * mixed file an exception reading "belongs to a different
+                 * partner", which is true of no row and confusing about all of
+                 * them.
+                 */
                 exceptionReason = `Stove serial "${row.stoveSerialNo}" belongs to a different partner`;
               } else if (found.status === "sold") {
                 exceptionReason = `Stove serial "${row.stoveSerialNo}" is already recorded as sold`;

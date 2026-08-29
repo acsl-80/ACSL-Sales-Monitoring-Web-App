@@ -160,17 +160,22 @@ test.describe("a sheet may cover several partners", () => {
      * through, which is the failure mode of resolving a file to one partner and
      * then checking that one.
      */
-    // The out-of-scope stove has to be found by somebody who can see it. Asking
-    // as the account under test would return nothing and the test would skip,
-    // passing green while proving the opposite of what it claims.
-    await signIn(page, USERS.admin);
-    await page.goto("/data-center/import");
-    const mine = await freeStoveOf(page, TWIN_A);
-    const theirs = await freeStoveOf(page, "a0000000-0000-4000-8000-000000000004");
-    test.skip(!mine || !theirs, "no free stove on one side of this check");
-
     await signIn(page, USERS.callCentre); // holds every seeded partner except Jos
     await page.goto("/data-center/import");
+
+    const mine = await freeStoveOf(page, TWIN_A);
+    test.skip(!mine, "no free twin stove left");
+
+    /*
+     * Named rather than looked up.
+     *
+     * This stove belongs to the partner nobody is assigned, so the account
+     * under test cannot see it, and asking as somebody who can would mean
+     * signing in twice inside one test. It comes from the seed, which creates
+     * JOS000001 to JOS000010 for exactly this purpose, and no test ever sells
+     * one because staging them is what this check proves is refused.
+     */
+    const theirs = "JOS000001";
 
     const marker = `scope${testInfo.workerIndex}-${Date.now()}`;
     const r = await callEdgeFunction(page, "data-center-import", {
