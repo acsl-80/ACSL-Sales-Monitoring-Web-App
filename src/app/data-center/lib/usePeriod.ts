@@ -16,6 +16,7 @@ import {
  * filter that silently never applies.
  */
 type PeriodRoute =
+  | "/data-center/dashboard"
   | "/data-center/stove-records"
   | "/data-center/call-centre"
   | "/data-center/partner-records"
