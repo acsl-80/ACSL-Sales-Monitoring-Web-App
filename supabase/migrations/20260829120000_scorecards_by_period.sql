@@ -142,7 +142,7 @@ begin
 
   return written;
 end;
-$function$
+$function$;
 
 comment on function data_center.compute_scorecards(uuid) is
   'Scorecard metrics at month grain. Shipment cuts are dated by the sold-to-partner date (transfer_funnel.sales_date), never by when the record reached this app; assignment cuts by assignment_batches.assigned_at, when the work was handed out. A range is a sum of months, as in compute_analysis.';
