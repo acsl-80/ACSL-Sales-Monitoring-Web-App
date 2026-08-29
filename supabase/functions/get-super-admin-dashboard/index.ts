@@ -87,7 +87,17 @@ serve(async (req) => {
      * is the honest default for a balance.
      */
     const applyBalance = (query: any, col: string) =>
-      endOfYear ? query.lt(col, endOfYear) : query;
+      /*
+       * Undated stock counts. `lt` alone would drop it, because SQL comparisons
+       * against NULL are never true, and a stove with no transfer date is still
+       * a stove the partner is holding.
+       *
+       * Production carries none today, so this changes nothing there. The
+       * preview seed carries 170, which is how it surfaced: the balance read
+       * 430 of 600. The ERP has produced undated rows before, and the failure
+       * mode is silent, so it is worth spending an `or` on.
+       */
+      endOfYear ? query.or(`${col}.lt.${endOfYear},${col}.is.null`) : query;
 
     // Apply the date period to a query. Contiguous years / custom dates use a
     // simple range; non-contiguous year sets use an OR of per-year ranges.

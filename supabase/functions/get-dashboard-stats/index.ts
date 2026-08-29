@@ -136,7 +136,13 @@ serve(async (req) => {
       .from("stove_ids")
       .select("*", { count: "exact", head: true })
       .eq("organization_id", organizationId);
-    if (endOfYear) stovesReceivedQuery = stovesReceivedQuery.lt("transfer_sales_date", endOfYear);
+    // Undated stock counts, for the same reason as the global view: `lt` alone
+    // drops NULLs, and a stove with no transfer date is still held.
+    if (endOfYear) {
+      stovesReceivedQuery = stovesReceivedQuery.or(
+        `transfer_sales_date.lt.${endOfYear},transfer_sales_date.is.null`
+      );
+    }
 
     let stovesSoldQuery = supabase
       .from("sales")
