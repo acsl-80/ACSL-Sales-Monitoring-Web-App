@@ -208,9 +208,10 @@ function PartnerList({ onPick }) {
   );
 }
 
-function BatchList({ partner, onPick }) {
+function BatchList({ partner, onPick, onSweep }) {
   const [data, setData] = useState(null);
   const [error, setError] = useState(null);
+  const [way, setWay] = useState("consignment");
 
   useEffect(() => {
     let live = true;
@@ -229,6 +230,27 @@ function BatchList({ partner, onPick }) {
 
   const paged = usePaged(data?.batches ?? [], 10);
 
+  /*
+   * The months this partner actually has consignments in.
+   *
+   * Derived from the consignments already loaded rather than asked for
+   * separately, and only months with stoves in them are offered: a list of
+   * every month since the partner existed, most of them empty, is a longer way
+   * of saying nothing happened.
+   */
+  const months = useMemo(() => {
+    const by = new Map();
+    for (const b of data?.batches ?? []) {
+      const m = typeof b.sales_date === "string" ? b.sales_date.slice(0, 7) : null;
+      if (!m || !/^\d{4}-\d{2}$/.test(m)) continue;
+      const at = by.get(m) ?? { period: m, consignments: 0, issued: 0 };
+      at.consignments += 1;
+      at.issued += Number(b.issued_count ?? 0);
+      by.set(m, at);
+    }
+    return [...by.values()].sort((a, z) => z.period.localeCompare(a.period));
+  }, [data]);
+
   if (error) return <p className="text-sm text-red-600">{error}</p>;
   if (!data) {
     return (
@@ -238,9 +260,82 @@ function BatchList({ partner, onPick }) {
     );
   }
 
+  const ways = (
+    /*
+     * Three ways into the same partner's stoves.
+     *
+     * The consignment stays first and stays the default, because it is how the
+     * paper actually arrives: a bundle of receipts for one delivery. The other
+     * two exist for the times it does not. A receipt turns up whose batch
+     * nobody recorded, or somebody wants to work a partner in date order, and
+     * before this there was no way in at all for either.
+     */
+    <div className="mb-3 flex flex-wrap gap-1.5">
+      {[
+        { key: "consignment", label: "By consignment", n: data.batches?.length ?? 0 },
+        { key: "month", label: "By month", n: months.length },
+        { key: "all", label: "Everything this partner holds", n: null },
+      ].map((w) => (
+        <button
+          key={w.key}
+          type="button"
+          aria-pressed={way === w.key}
+          onClick={() => {
+            if (w.key === "all") {
+              onSweep({ kind: "all" });
+              return;
+            }
+            setWay(w.key);
+          }}
+          className={`rounded-full border px-3 py-1 text-xs font-medium transition ${
+            way === w.key
+              ? "border-(--dc-accent) bg-(--dc-accent) text-white"
+              : "border-gray-300 text-gray-700 hover:border-(--dc-accent)/40 hover:bg-(--dc-accent-soft)/50"
+          }`}
+        >
+          {w.label}
+          {w.n !== null && ` (${w.n})`}
+        </button>
+      ))}
+    </div>
+  );
+
+  if (way === "month") {
+    return (
+      <div>
+        {ways}
+        {months.length === 0 ? (
+          <p className="text-sm text-gray-600">
+            None of this partner&apos;s consignments carries a usable date, so there is no month
+            to pick. Use a consignment or everything this partner holds.
+          </p>
+        ) : (
+          <ul className="grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-4">
+            {months.map((m) => (
+              <li key={m.period}>
+                <button
+                  type="button"
+                  onClick={() => onSweep({ kind: "month", period: m.period })}
+                  className="w-full rounded-lg border border-gray-200 bg-white px-3 py-2 text-left transition hover:border-(--dc-accent)/40 hover:bg-(--dc-accent-soft)/40"
+                >
+                  <span className="block text-sm font-semibold text-gray-900">{m.period}</span>
+                  <span className="block text-xs text-gray-600">
+                    {plural(m.issued, "stove")} on {plural(m.consignments, "consignment")}
+                  </span>
+                </button>
+              </li>
+            ))}
+          </ul>
+        )}
+      </div>
+    );
+  }
+
   return (
-    <div className="overflow-hidden rounded-lg border border-gray-200">
-      <div className="overflow-x-auto">
+    <div>
+      {ways}
+      <div className="overflow-hidden rounded-lg border border-gray-200">
+        <div className="overflow-x-auto">
         <table className="w-full min-w-[36rem] text-sm">
           <thead>
             <tr className="bg-(--dc-accent-soft) text-left text-xs uppercase tracking-wide text-(--dc-accent-strong)">
@@ -284,6 +379,7 @@ function BatchList({ partner, onPick }) {
         onPageSize={paged.setPageSize}
         noun="consignment"
       />
+      </div>
     </div>
   );
 }
@@ -307,7 +403,7 @@ const STOVE_COLUMNS = [
  * one is being typed, and the one thing that does change (a stove becoming
  * recorded) is applied locally on save.
  */
-function StoveList({ batch, stoves, error, onPick }) {
+function StoveList({ batch, stoves, error, onPick, label = "stoves" }) {
   const [only, setOnly] = useState("todo");
 
   const shown = useMemo(() => {
@@ -364,7 +460,7 @@ function StoveList({ batch, stoves, error, onPick }) {
           <ExportButton
             columns={STOVE_COLUMNS}
             rows={() => shown}
-            filename={`stoves-${batch.transaction_id}.csv`}
+            filename={`stoves-${batch?.transaction_id ?? label}.csv`}
             label="Export stoves"
             disabled={shown.length === 0}
           />
@@ -844,9 +940,106 @@ function Bench({ stoveId, onSaved, onBack, onNext, nextLabel }) {
 
 /* ----------------------------------------------------------------- the shell */
 
+/**
+ * A partner's stoves, by month or all of them.
+ *
+ * The consignment view can filter in the browser because it holds every stove
+ * it will ever show. This one holds a page, so its search goes to the server
+ * and its list grows on request. Two consequences worth stating on screen: the
+ * count is what is loaded rather than what exists, and a search covers the
+ * whole partner rather than the page.
+ */
+function PartnerSweep({
+  partner,
+  label,
+  stoves,
+  error,
+  search,
+  onSearch,
+  hasMore,
+  loadingMore,
+  onLoadMore,
+  onPick,
+}) {
+  const [term, setTerm] = useState(search ?? "");
+
+  // Debounced for the same reason the rail is: each keystroke is a round trip
+  // now, and a six-character serial should be one request rather than six.
+  useEffect(() => {
+    const id = setTimeout(() => onSearch(term.trim()), 250);
+    return () => clearTimeout(id);
+  }, [term, onSearch]);
+
+  return (
+    <div className="space-y-3">
+      <div className="flex flex-wrap items-center gap-2">
+        <div className="relative min-w-0 flex-1 sm:max-w-sm">
+          <Search className="pointer-events-none absolute left-2.5 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-400" />
+          <input
+            type="search"
+            value={term}
+            onChange={(e) => setTerm(e.target.value)}
+            placeholder="Find a stove ID anywhere in this partner"
+            aria-label="Find a stove ID"
+            className="w-full rounded-md border border-gray-300 py-1.5 pl-8 pr-2 text-sm"
+          />
+        </div>
+        <p className="text-xs text-gray-600">
+          {partner?.partner_name}
+          {label ? ` · ${label}` : ""}
+        </p>
+      </div>
+
+      {/*
+        Said out loud, because the number below is not the number that exists.
+        A count that silently means "loaded so far" is how somebody concludes a
+        partner has 200 stoves when it has three thousand.
+      */}
+      {stoves !== null && (
+        <p className="text-xs text-gray-600">
+          {plural(stoves.length, "stove")} loaded
+          {hasMore ? ", and there are more" : ""}
+          {search ? `, matching "${search}"` : ""}. The search covers every stove this partner
+          holds, not only the ones on this page.
+        </p>
+      )}
+
+      <StoveList
+        stoves={stoves}
+        error={error}
+        onPick={onPick}
+        label={`${partner?.partner_id ?? "partner"}-${label ?? "all"}`}
+      />
+
+      {hasMore && (
+        <button
+          type="button"
+          onClick={onLoadMore}
+          disabled={loadingMore}
+          className="rounded-md border border-gray-300 px-3 py-1.5 text-sm font-medium text-gray-700 transition hover:border-(--dc-accent)/40 hover:bg-(--dc-accent-soft)/40 disabled:opacity-50"
+        >
+          {loadingMore ? "Loading..." : "Load more"}
+        </button>
+      )}
+    </div>
+  );
+}
+
 export default function Workbench() {
   const [partner, setPartner] = useState(null);
   const [batch, setBatch] = useState(null);
+  /**
+   * A way in that is not a consignment: a month, or the whole partner.
+   *
+   * Held beside `batch` rather than replacing it, so the consignment path -
+   * the default, and the one people use every day - keeps running exactly the
+   * code it ran before. Only one of the two is ever set.
+   */
+  const [sweep, setSweep] = useState(null);
+  const [sweepSearch, setSweepSearch] = useState("");
+  const [sweepCursor, setSweepCursor] = useState(null);
+  const [sweepMore, setSweepMore] = useState(false);
+  const [loadingMore, setLoadingMore] = useState(false);
   const [stove, setStove] = useState(null);
   const [queue, setQueue] = useState(null);
   const [stoves, setStoves] = useState(null);
@@ -873,11 +1066,7 @@ export default function Workbench() {
    * rail turns green the moment the save returns rather than on a refetch.
    */
   useEffect(() => {
-    if (!batch) {
-      setStoves(null);
-      setStovesError(null);
-      return;
-    }
+    if (!batch) return undefined;
     let live = true;
     setStoves(null);
     setStovesError(null);
@@ -895,6 +1084,83 @@ export default function Workbench() {
       live = false;
     };
   }, [batch]);
+
+  /*
+   * The same list, for a month or for the whole partner.
+   *
+   * A page at a time, and the search runs on the server. Both matter for the
+   * same reason: a partner can hold thousands of stoves, and a filter that
+   * only ever saw the loaded page would answer "not found" for a stove that is
+   * there. That is the one answer a typist holding its receipt must not get.
+   */
+  const orgId = partner?.organization_id ?? null;
+  useEffect(() => {
+    if (batch || !sweep || !orgId) {
+      if (!batch && !sweep) {
+        setStoves(null);
+        setStovesError(null);
+      }
+      return undefined;
+    }
+    let live = true;
+    setStoves(null);
+    setStovesError(null);
+    setSweepCursor(null);
+    setSweepMore(false);
+    dataCenterClient
+      .partnerStoves({
+        organizationId: orgId,
+        period: sweep.kind === "month" ? sweep.period : null,
+        search: sweepSearch || null,
+        limit: 200,
+      })
+      .then((r) => {
+        if (!live) return;
+        setStoves(r.stoves);
+        setSweepCursor(r.nextCursor);
+        setSweepMore(r.hasMore);
+      })
+      .catch(
+        (err) =>
+          live &&
+          setStovesError(
+            err instanceof DataCenterError ? err.message : "Could not load stoves.",
+          ),
+      );
+    return () => {
+      live = false;
+    };
+  }, [batch, sweep, sweepSearch, orgId]);
+
+  const loadMore = useCallback(async () => {
+    if (!sweep || !sweepCursor || !orgId) return;
+    setLoadingMore(true);
+    try {
+      const r = await dataCenterClient.partnerStoves({
+        organizationId: orgId,
+        period: sweep.kind === "month" ? sweep.period : null,
+        search: sweepSearch || null,
+        cursor: sweepCursor,
+        limit: 200,
+      });
+      setStoves((list) => [...(list ?? []), ...r.stoves]);
+      setSweepCursor(r.nextCursor);
+      setSweepMore(r.hasMore);
+    } catch (err) {
+      setStovesError(
+        err instanceof DataCenterError ? err.message : "Could not load more stoves.",
+      );
+    } finally {
+      setLoadingMore(false);
+    }
+  }, [sweep, sweepCursor, sweepSearch, orgId]);
+
+  /** What this way in is called, wherever it needs naming. */
+  const sweepLabel = sweep
+    ? sweep.kind === "month"
+      ? sweep.period
+      : "Everything"
+    : null;
 
   /** Which stove IDs somebody has part-typed, for the rail's amber marks. */
   const draftSerials = useMemo(
@@ -953,12 +1219,16 @@ export default function Workbench() {
   }, [stoves, draftSerials]);
 
   const trail = [
-    { label: "Partners", on: () => { setPartner(null); setBatch(null); setStove(null); } },
+    {
+      label: "Partners",
+      on: () => { setPartner(null); setBatch(null); setSweep(null); setStove(null); },
+    },
     partner && {
       label: partner.partner_name,
-      on: () => { setBatch(null); setStove(null); },
+      on: () => { setBatch(null); setSweep(null); setStove(null); },
     },
     batch && { label: batch.transaction_id, on: () => setStove(null) },
+    sweep && { label: sweepLabel, on: () => setStove(null) },
     stove && { label: stove.stove_id, on: null },
   ].filter(Boolean);
 
@@ -1033,12 +1303,28 @@ export default function Workbench() {
          * it up would be a round trip to draw a sidebar nobody asked for.
          */
         <div className="flex flex-col gap-4 lg:flex-row lg:items-start">
-          {batch && stoves && (
+          {(batch || sweep) && stoves && (
             <BenchRail
               stoves={stoves}
               current={stove.stove_id}
               drafts={draftSerials}
               onPick={(s) => setStove(s)}
+              title={batch ? "This consignment" : `${partner?.partner_name ?? "Partner"}: ${sweepLabel}`}
+              // Only a sweep searches the server. A consignment is fully
+              // loaded, so its filter is instant and stays where it was.
+              onSearch={sweep ? setSweepSearch : null}
+              footer={
+                sweep && sweepMore ? (
+                  <button
+                    type="button"
+                    onClick={loadMore}
+                    disabled={loadingMore}
+                    className="w-full rounded-md border border-gray-300 px-2 py-1 text-xs font-medium text-gray-700 transition hover:border-(--dc-accent)/40 disabled:opacity-50"
+                  >
+                    {loadingMore ? "Loading..." : "Load more"}
+                  </button>
+                ) : null
+              }
             />
           )}
           <div className="min-w-0 flex-1">
@@ -1053,7 +1339,7 @@ export default function Workbench() {
                 return out;
               }}
               onBack={() => { setStove(null); loadQueue(); }}
-              onNext={batch ? () => {
+              onNext={batch || sweep ? () => {
                 const next = nextTodo(stove.stove_id);
                 if (next) setStove(next);
                 // Nothing left is worth saying rather than silently doing
@@ -1068,8 +1354,21 @@ export default function Workbench() {
         </div>
       ) : batch ? (
         <StoveList batch={batch} stoves={stoves} error={stovesError} onPick={setStove} />
+      ) : sweep ? (
+        <PartnerSweep
+          partner={partner}
+          label={sweepLabel}
+          stoves={stoves}
+          error={stovesError}
+          search={sweepSearch}
+          onSearch={setSweepSearch}
+          hasMore={sweepMore}
+          loadingMore={loadingMore}
+          onLoadMore={loadMore}
+          onPick={setStove}
+        />
       ) : partner ? (
-        <BatchList partner={partner} onPick={setBatch} />
+        <BatchList partner={partner} onPick={setBatch} onSweep={setSweep} />
       ) : (
         <PartnerList onPick={setPartner} />
       )}

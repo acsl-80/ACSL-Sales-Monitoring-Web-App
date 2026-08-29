@@ -1353,6 +1353,136 @@ serve(async (req) => {
       }
 
       /**
+       * A partner's stoves, rather than one consignment's.
+       *
+       * The bench could only ever be entered through a consignment: partner,
+       * then transfer batch, then type. That is the right default and it is not
+       * the only way people work. A receipt turns up whose batch nobody
+       * recorded, or somebody wants to work a partner in date order, and
+       * neither has a way in.
+       *
+       * Same select as `batch_stoves`, deliberately, so the rail and the table
+       * beside it render this without knowing which action produced it. What
+       * differs is the key: an organization instead of a transfer, with an
+       * optional month and an optional match on the stove ID.
+       *
+       * SEARCH IS HERE AND NOT IN THE BROWSER. The rail filters the list it was
+       * handed, which is exactly right for a consignment of forty and useless
+       * across a partner holding thousands: the stove on the receipt in your
+       * hand is usually not on the page in front of you. A filter that silently
+       * only searches what is loaded is worse than no filter, because it
+       * answers "not found" for a stove that is there.
+       */
+      case "partner_stoves": {
+        const superAdmin = isSuperAdmin(profile.role);
+        const resolved = superAdmin
+          ? { accessRole: null, features: [] as string[] }
+          : await resolveAccess(userId);
+        if (!superAdmin && resolved.accessRole === null) {
+          return json({ error: "No Data Center access", code: "no_access" }, 403, cors);
+        }
+        if (!superAdmin && !resolved.features.includes("records.view")) {
+          return json({ error: "Not permitted", code: "no_feature" }, 403, cors);
+        }
+
+        const b = body as {
+          organizationId?: string;
+          period?: string | null;
+          search?: string | null;
+          cursor?: string | null;
+          limit?: number;
+        };
+
+        const organizationId = String(b.organizationId ?? "");
+        if (!UUID_RE.test(organizationId)) {
+          return json({ error: "organizationId must be a UUID", code: "bad_input" }, 400, cors);
+        }
+
+        // The same month shape every other Data Centre surface accepts, so a
+        // period means one thing across the module.
+        const period = typeof b.period === "string" && b.period ? b.period : null;
+        if (period && !/^\d{4}-(0[1-9]|1[0-2])$/.test(period)) {
+          return json({ error: "period must look like 2026-08", code: "bad_period" }, 400, cors);
+        }
+
+        const raw = String(b.search ?? "").trim().slice(0, 60);
+        // Escaped, so a serial containing % or _ searches for itself rather
+        // than for everything. Matched anywhere in the ID, because nobody reads
+        // a serial out from the front.
+        const like = raw ? `%${raw.replace(/[%_\\]/g, (c) => `\\${c}`)}%` : "";
+
+        const cursor = typeof b.cursor === "string" && b.cursor ? b.cursor : null;
+        const limit = Math.min(Math.max(Number(b.limit) || 200, 1), 500);
+
+        const scopeInput = await resolveScope(
+          supabase,
+          userId,
+          profile.role,
+          profile.organization_id ?? null,
+        );
+        /*
+         * requestedOrgId does two jobs: it narrows to this partner and it
+         * refuses outright when the partner is not one this caller covers. The
+         * id arrives from the client, so it is checked rather than trusted.
+         */
+        const scope = buildTransferScopeSql(
+          { ...scopeInput, requestedOrgId: organizationId },
+          5,
+          "f",
+        );
+
+        return await withReadConnection(async (connection) => {
+          // One more than asked for, so "is there another page" is answered by
+          // the same query rather than by a second count over the same rows.
+          const rows = await connection.queryObject({
+            text: `select b.stove_id, b.transaction_id,
+                          b.transfer_id::text as transfer_id,
+                          f.sales_date as consignment_sales_date,
+                          sb.status as stock_status, sb.sale_id::text,
+                          c.sales_date, c.end_user_name,
+                          coalesce(c.corrected_phone, c.primary_phone) as phone,
+                          c.user_state, c.verification_outcome, c.attempt_count,
+                          ba.assigned_to::text as agent_id,
+                          ap.full_name as agent_name,
+                          ba.state as batch_state
+                     from data_center.v_transfer_stoves b
+                     join data_center.transfer_funnel f on f.transfer_id = b.transfer_id
+                     left join public.stove_ids_base sb on sb.stove_id = b.stove_id
+                     left join data_center.v_call_center_resolved c on c.sale_id = sb.sale_id
+                     left join data_center.assignment_items ai
+                            on ai.sale_id = sb.sale_id and ai.is_active
+                     left join data_center.assignment_batches ba on ba.id = ai.batch_id
+                     left join public.profiles ap on ap.id = ba.assigned_to
+                    where ${scope.sql}
+                      and ($1::text is null
+                           or (f.sales_date ~ '^[0-9]{4}-[0-9]{2}'
+                               and left(f.sales_date, 7) = $1))
+                      and ($2::text = '' or b.stove_id like $2)
+                      and ($3::text is null or b.stove_id > $3)
+                    order by b.stove_id
+                    limit $4`,
+            args: [period, like, cursor, limit + 1, ...scope.args],
+          });
+
+          const all = rows.rows as { stove_id: string }[];
+          const hasMore = all.length > limit;
+          const stoves = hasMore ? all.slice(0, limit) : all;
+          return json(
+            {
+              data: {
+                stoves,
+                hasMore,
+                nextCursor: hasMore ? stoves[stoves.length - 1].stove_id : null,
+                scope: scope.description,
+              },
+            },
+            200,
+            cors,
+          );
+        });
+      }
+
+      /**
        * One stove, everything known about it.
        *
        * The end of the drill: the transfer it arrived on, the sale if it was

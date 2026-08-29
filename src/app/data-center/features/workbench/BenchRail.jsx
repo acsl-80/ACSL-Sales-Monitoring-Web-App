@@ -53,10 +53,42 @@ export function stoveState(stove, draftSerials) {
   return "todo";
 }
 
-export default function BenchRail({ stoves, current, drafts = [], onPick }) {
+export default function BenchRail({
+  stoves,
+  current,
+  drafts = [],
+  onPick,
+  /**
+   * Where the search runs.
+   *
+   * Absent, the rail filters the list it was handed, which is right for a
+   * consignment: forty stoves, all of them loaded, and an instant answer.
+   *
+   * Present, the parent is working a whole partner and only a page of it is
+   * loaded, so the rail hands the term up and renders whatever comes back. A
+   * filter that silently searched only the loaded page would answer "not
+   * found" for a stove that is there, which is the one answer a typist holding
+   * that stove's receipt must never be given.
+   */
+  onSearch = null,
+  title = "This consignment",
+  footer = null,
+}) {
   const [query, setQuery] = useState("");
   const [only, setOnly] = useState("todo");
   const currentRef = useRef(null);
+
+  /*
+   * Debounced, because this now costs a round trip.
+   *
+   * 250ms is short enough that it feels like typing and long enough that a
+   * six-character serial is one request rather than six.
+   */
+  useEffect(() => {
+    if (!onSearch) return undefined;
+    const id = setTimeout(() => onSearch(query.trim()), 250);
+    return () => clearTimeout(id);
+  }, [query, onSearch]);
 
   const draftSerials = useMemo(
     () => new Set(drafts.map((d) => String(d).toUpperCase())),
@@ -97,7 +129,9 @@ export default function BenchRail({ stoves, current, drafts = [], onPick }) {
        * holding a receipt for a stove that turns out to be in another
        * consignment entirely.
        */
-      if (term) return String(s.stove_id).toUpperCase().includes(term);
+      // With a server search the rows already ARE the matches, so filtering
+      // them again here would only remove rows the server decided to include.
+      if (term) return onSearch ? true : String(s.stove_id).toUpperCase().includes(term);
       if (s.stove_id === current) return true;
       if (only === "todo" && s.state === "done") return false;
       if (only === "done" && s.state !== "done") return false;
@@ -117,7 +151,7 @@ export default function BenchRail({ stoves, current, drafts = [], onPick }) {
     <aside className="flex max-h-[75dvh] min-h-0 w-full flex-col overflow-hidden rounded-xl border border-gray-200 bg-white shadow-sm lg:w-72 lg:shrink-0">
       <div className="shrink-0 border-b border-gray-100 bg-(--dc-accent-soft)/40 px-3 py-2.5">
         <p className="text-xs font-semibold uppercase tracking-wide text-(--dc-accent-strong)">
-          This consignment
+          {title}
         </p>
         {/*
           A run that visibly shrinks. Typing forty receipts with no sense of
@@ -221,6 +255,9 @@ export default function BenchRail({ stoves, current, drafts = [], onPick }) {
           })
         )}
       </ul>
+      {/* Somewhere for the parent to say "there are more, load them", which
+          only exists when the rail is showing a page of a larger list. */}
+      {footer && <div className="shrink-0 border-t border-gray-100 px-3 py-2">{footer}</div>}
     </aside>
   );
 }
