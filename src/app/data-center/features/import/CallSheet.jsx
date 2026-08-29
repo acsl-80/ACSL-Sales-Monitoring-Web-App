@@ -75,6 +75,12 @@ export default function CallSheet({ canCommit = false }) {
   const [schema, setSchema] = useState(null);
   const [busy, setBusy] = useState("");
   const [error, setError] = useState("");
+  const [partners, setPartners] = useState(null);
+  /** True when the partner list could not be fetched, as opposed to being empty. */
+  const [partnersFailed, setPartnersFailed] = useState(false);
+  /** "" is everything this person may see. Otherwise an organization id. */
+  const [orgId, setOrgId] = useState("");
+  const [downloaded, setDownloaded] = useState(null); // { rows, partner }
   const [batch, setBatch] = useState(null); // { batchId, staged }
   const [checked, setChecked] = useState(null); // validate summary
   const [result, setResult] = useState(null); // commit summary
@@ -82,11 +88,37 @@ export default function CallSheet({ canCommit = false }) {
 
   useEffect(() => {
     let live = true;
-    Promise.all([dataCenterImport.callSheet(), dataCenterWrite.formSchema()])
-      .then(([s, f]) => {
+    Promise.all([
+      dataCenterImport.callSheet(),
+      dataCenterWrite.formSchema(),
+      /*
+       * The partner list is a facet, so it is already scoped to what this
+       * person may see. A picker offering partners whose records they cannot
+       * download would be a list of disappointments.
+       */
+      dataCenterClient.recordFacets().catch(() => "failed"),
+    ])
+      .then(([s, f, facets]) => {
         if (!live) return;
         setSpec(s);
         setSchema(f);
+        /*
+         * A failure here is reported, not swallowed.
+         *
+         * The first version caught it and set an empty list, which renders as a
+         * picker offering "everything" and nothing else. That is exactly what a
+         * database with one partner looks like, so a broken facets call would
+         * have been indistinguishable from a working one, and somebody would
+         * have downloaded the whole queue believing they had asked for a
+         * partner. Failing visibly costs one line and removes a whole class of
+         * quiet wrong answer.
+         */
+        if (facets === "failed") {
+          setPartnersFailed(true);
+          setPartners([]);
+        } else {
+          setPartners(facets?.partners ?? []);
+        }
       })
       .catch((e) => live && setError(e instanceof DataCenterError ? e.message : "Could not load the sheet"));
     return () => {
@@ -138,9 +170,53 @@ export default function CallSheet({ canCommit = false }) {
        * one agent another's work. It is also the same list the call centre
        * page shows, which means the sheet and the screen never disagree about
        * what is outstanding.
+       *
+       * `hasCallRecord: false` is the order of work stated as a filter. A
+       * record that already has an outcome comes back from the import refused
+       * rather than merged, so offering it here would hand somebody rows that
+       * cannot land and let them find out after they had filled them in.
        */
-      const page = await dataCenterClient.getCallQueue({ limit: 500 });
-      const rows = (page.rows ?? []).map((r) => {
+      const filters = {
+        hasCallRecord: false,
+        ...(orgId ? { organizationId: orgId } : {}),
+      };
+
+      /*
+       * Paged to the end, not capped.
+       *
+       * This asked for 500 and took whatever came back. A partner with more
+       * than that got a sheet that looked complete and was not, and nothing on
+       * it said so - which for a backlog import is the worst kind of wrong,
+       * because the rows that were silently missing are exactly the ones
+       * nobody then chases.
+       *
+       * PAGE_LIMIT bounds one request, not the download. The loop bound is a
+       * runaway guard rather than a business rule; it is far above any real
+       * partner and it says so out loud if it is ever reached.
+       */
+      const PAGE_LIMIT = 500;
+      const MAX_PAGES = 400; // 200,000 records
+      const collected = [];
+      let cursor = null;
+      let pages = 0;
+      let truncated = false;
+      for (;;) {
+        const page = await dataCenterClient.getCallQueue({
+          limit: PAGE_LIMIT,
+          cursor,
+          filters,
+        });
+        collected.push(...(page.rows ?? []));
+        pages += 1;
+        if (!page.hasMore || !page.nextCursor) break;
+        if (pages >= MAX_PAGES) {
+          truncated = true;
+          break;
+        }
+        cursor = page.nextCursor;
+      }
+
+      const rows = collected.map((r) => {
         const out = {};
         for (const c of columns) {
           const fill = LOCKED_FROM_QUEUE[c.field];
@@ -150,11 +226,18 @@ export default function CallSheet({ canCommit = false }) {
       });
 
       if (rows.length === 0) {
-        setError("There is nothing waiting to be called, so the sheet would be empty.");
+        setError(
+          orgId
+            ? "Nothing is waiting to be called for that partner, so the sheet would be empty."
+            : "There is nothing waiting to be called, so the sheet would be empty.",
+        );
         return;
       }
 
-      const stem = `call-centre-sheet-${new Date().toISOString().slice(0, 10)}`;
+      const chosen = (partners ?? []).find((x) => x.id === orgId);
+      const stem = `call-centre-sheet-${
+        chosen ? `${chosen.name ?? "partner"}-`.replace(/[^A-Za-z0-9-]+/g, "-") : ""
+      }${new Date().toISOString().slice(0, 10)}`;
       if (asXlsx) {
         downloadWorkbook(
           `${stem}.xlsx`,
@@ -171,6 +254,16 @@ export default function CallSheet({ canCommit = false }) {
         );
       } else {
         downloadCsv(`${stem}.csv`, toCsv(rows, columns.map((c) => c.header)));
+      }
+
+      setDownloaded({ rows: rows.length, partner: chosen ?? null });
+      // Said rather than left to be discovered. Reaching this means something
+      // is wrong with the assumption behind MAX_PAGES, not with the sheet.
+      if (truncated) {
+        setError(
+          `The sheet stopped at ${rows.length.toLocaleString()} records, which is this download's ceiling. ` +
+            "Pick a single partner to bring the rest in.",
+        );
       }
     } catch (e) {
       setError(e instanceof DataCenterError ? e.message : "Could not build the sheet");
@@ -274,8 +367,80 @@ export default function CallSheet({ canCommit = false }) {
         <Step n={1} title="Get the sheet" tone={!batch ? "active" : "plain"}>
           <p>
             One row per record waiting to be called, with the stove ID, the buyer and the number
-            we hold already filled in and locked.
+            we hold already filled in and locked. Records already called are left out: the import
+            refuses them rather than overwriting what the first call found.
           </p>
+
+          {/*
+            Which partner, or all of them.
+
+            The label carries the branch and the state as well as the name,
+            because the name on its own does not identify a partner: several
+            names cover more than one organization, and two Solar Sister rows
+            are both called "Main Branch". Somebody picking from names alone
+            cannot tell which one they chose, and would find out from the
+            contents of the sheet.
+          */}
+          <label className="mt-2 block">
+            <span className="text-xs font-medium text-gray-700">Whose records</span>
+            <select
+              value={orgId}
+              onChange={(e) => {
+                setOrgId(e.target.value);
+                setDownloaded(null);
+                setError("");
+              }}
+              disabled={busy === "download" || partners === null}
+              className="mt-1 block w-full max-w-md rounded-md border border-gray-300 bg-white px-2 py-1.5 text-sm disabled:bg-gray-50"
+            >
+              <option value="">
+                {partners === null ? "Loading partners..." : "Everything waiting to be called"}
+              </option>
+              {(partners ?? []).map((x) => (
+                <option key={x.id} value={x.id}>
+                  {[x.name ?? "Unnamed partner", x.branch, x.state].filter(Boolean).join(", ")}
+                </option>
+              ))}
+            </select>
+          </label>
+
+          {partnersFailed && (
+            <p className="mt-1 flex items-start gap-2 text-sm text-amber-800">
+              <CircleAlert className="mt-0.5 h-4 w-4 shrink-0" />
+              The partner list could not be loaded, so only the whole queue can be downloaded.
+              Reload the page to try again.
+            </p>
+          )}
+
+          {/*
+            No partners is a real answer and it needs saying.
+
+            The list is scoped to the partners this person covers, so somebody
+            with no assignments gets an empty one. On screen that is identical
+            to a list that loaded fine and to one that failed: a control with a
+            single option and nothing explaining why. Saying it costs a line and
+            turns "this feature looks broken" into "ask for an assignment".
+          */}
+          {!partnersFailed && partners !== null && partners.length === 0 && (
+            <p className="mt-1 text-sm text-gray-600">
+              No partners are assigned to you, so there is nobody to narrow to. The whole queue
+              is what you can see.
+            </p>
+          )}
+
+          {downloaded && (
+            <p className="mt-2 flex items-start gap-2 text-sm text-gray-700">
+              <CircleCheck className="mt-0.5 h-4 w-4 shrink-0 text-(--dc-primary)" />
+              {plural(downloaded.rows, "record")} in the sheet
+              {downloaded.partner
+                ? ` for ${[downloaded.partner.name, downloaded.partner.branch]
+                    .filter(Boolean)
+                    .join(", ")}`
+                : ", across every partner you can see"}
+              .
+            </p>
+          )}
+
           <div className="mt-2 flex flex-wrap gap-2">
             <button
               type="button"

@@ -62,10 +62,37 @@ test.describe("the call sheet knows what it is for", () => {
     expect(data.columns.map((c) => c.field)).toContain("callDate1");
   });
 
+  test("the sheet is offered to the one account it was turned on for", async ({ page }) => {
+    // call_import.use is implied by no access level. The data manager holds it
+    // because it was granted, which is the only way anybody holds it.
+    await signIn(page, USERS.dataManager);
+    const r = await callEdgeFunction(page, "data-center-import", { action: "call_sheet" });
+    expect(r.status).toBe(200);
+  });
+
+  test("holding import.upload is no longer enough to pull the call backlog", async ({
+    page,
+  }) => {
+    /*
+     * The point of the split, asserted from the side that used to pass.
+     *
+     * callcentre is an editor, so it holds import.upload and can digitalise
+     * receipts all day. Until now that same key opened the call sheet, which
+     * meant every person on the digitalisation bench could download the call
+     * centre's backlog. It cannot any more, and the refusal names the grant
+     * that is actually missing rather than the one they already have.
+     */
+    await signIn(page, USERS.callCentre);
+    const r = await callEdgeFunction(page, "data-center-import", { action: "call_sheet" });
+    expect([400, 403]).toContain(r.status);
+    expect(JSON.stringify(r.body)).toMatch(/call_import\.use/);
+    expect(JSON.stringify(r.body)).not.toMatch(/import\.upload/);
+  });
+
   test("somebody who cannot import is refused the sheet, not shown an empty one", async ({
     page,
   }) => {
-    await signIn(page, USERS.manager); // a viewer: records.view, no import.upload
+    await signIn(page, USERS.manager); // a viewer: records.view, no import grants
     const r = await callEdgeFunction(page, "data-center-import", { action: "call_sheet" });
 
     /*
@@ -81,7 +108,28 @@ test.describe("the call sheet knows what it is for", () => {
      * the caller like there was simply nothing to call.
      */
     expect([400, 403]).toContain(r.status);
-    expect(JSON.stringify(r.body)).toMatch(/import\.upload/);
+    expect(JSON.stringify(r.body)).toMatch(/call_import\.use/);
+  });
+
+  test("the sheet offers only records nobody has called yet", async ({ page }) => {
+    /*
+     * The order of work, enforced where it can be checked.
+     *
+     * Digitalise, then call. A record with an outcome already on it comes back
+     * from this import refused rather than merged, so putting one in the sheet
+     * would hand somebody a row that cannot land and let them discover it
+     * after filling it in.
+     */
+    await signIn(page, USERS.admin);
+    const r = await callEdgeFunction(page, "data-center-read", {
+      action: "call_queue",
+      limit: 50,
+      filters: { hasCallRecord: false },
+    });
+    expect(r.status).toBe(200);
+    const rows =
+      (r.body as { data?: { rows?: { has_call_record?: boolean }[] } })?.data?.rows ?? [];
+    expect(rows.every((x) => !x.has_call_record)).toBe(true);
   });
 });
 

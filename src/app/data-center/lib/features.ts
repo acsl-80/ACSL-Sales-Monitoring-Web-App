@@ -48,6 +48,20 @@ export const DATA_CENTER_FEATURES = {
   CORRECTIONS_ROUTE: "corrections.route",
   /** Read the Analysis area: stock ageing, creditable yield, and the cross-tabs. */
   ANALYSIS_VIEW: "analysis.view",
+  /**
+   * Use the call-centre bulk sheet: download records waiting to be called, and
+   * upload the outcomes back.
+   *
+   * Its own key rather than import.upload, which is what it used to share.
+   * That grant belongs to the people who digitalise receipts, which is the
+   * daily work; this is an occasional intake for a backlog an agent already
+   * worked on their own spreadsheet, and it should not appear for a typist.
+   * Off for everyone until somebody is given it.
+   *
+   * Committing still needs IMPORT_COMMIT as well. Preparing an import and
+   * landing it stay two privileges here for the same reason they do there.
+   */
+  CALL_IMPORT: "call_import.use",
 } as const;
 
 export type DataCenterFeature =
@@ -73,4 +87,5 @@ export const FEATURE_LABELS: Record<DataCenterFeature, string> = {
   [DATA_CENTER_FEATURES.CORRECTIONS_FIX]: "Treat records sent back to Sales",
   [DATA_CENTER_FEATURES.CORRECTIONS_ROUTE]: "Decide who receives send-backs",
   [DATA_CENTER_FEATURES.ANALYSIS_VIEW]: "View analysis",
+  [DATA_CENTER_FEATURES.CALL_IMPORT]: "Bulk import call-centre outcomes",
 };
