@@ -480,24 +480,13 @@ serve(async (req) => {
           // statements per request is the thing worth minimising.
           const result = await connection.queryObject<{
             metrics: unknown[] | null;
+            periodic_keys: unknown[] | null;
             stale_after_hours: number;
             last_run: unknown | null;
             computed_at: string | null;
           }>({
-            text: `select
+            text: `with cur as (
                      /*
-                      * Scorecards are stored at month grain, so a range is a
-                      * sum of months and the period key is stripped from
-                      * the dimension afterwards. That leaves exactly the shape the
-                      * page already renders, so asking for no period returns
-                      * what it always returned.
-                      *
-                      * A row with no period is a shipment whose sold-to-partner
-                      * date is unusable. It belongs in the all-time view and in
-                      * no particular month, so it is included only when no
-                      * range is asked for. Nine such rows exist today, carrying
-                      * four stoves, three of them demo.
-                      *
                       * The Analysis area writes its own families into the same
                       * run, also at month grain, which is tens of thousands of
                       * rows. This page renders none of them, so without that
@@ -506,19 +495,66 @@ serve(async (req) => {
                       * reaches here, because the day somebody adds a family and
                       * forgets is the day this gets slow for no visible reason.
                       */
+                     select metric_key, dimension, value_num, value_text, run_finished_at
+                       from data_center.v_current_metrics
+                      where metric_key not like 'analysis.%'
+                   ),
+                   periodised as (
+                     /*
+                      * Which families can answer for a period at all.
+                      *
+                      * Read off the data rather than kept as a list here, so a
+                      * family that gains or loses a period in compute_metrics
+                      * cannot leave this function describing the old shape.
+                      * Two averages and the three import counters carry none on
+                      * purpose: a sum of monthly averages is not an average,
+                      * and an import batch spans many consignments.
+                      */
+                     select distinct metric_key from cur
+                      where dimension ->> 'period' is not null
+                   )
+                   select
+                     /*
+                      * Stored at month grain, so a range is a sum of months and
+                      * the period key is stripped from the dimension
+                      * afterwards. That leaves exactly the shape the page
+                      * already renders, so asking for no period returns what it
+                      * always returned.
+                      *
+                      * Three cases, and the middle one is the fix. A family
+                      * that HAS periods narrows to the range. A family that has
+                      * NONE passes through whole, because it is an all-time
+                      * figure and dropping it would tell the reader zero when
+                      * the truth is that the number does not vary by month.
+                      * Before this, selecting a period emptied Sold, Verified,
+                      * all four bar charts and five support cards.
+                      *
+                      * A row with no period inside a family that has them is a
+                      * shipment whose sold-to-partner date is unusable. It
+                      * belongs in the all-time view and in no particular month,
+                      * so a range drops it.
+                      */
                      (select coalesce(jsonb_agg(t order by t.metric_key, t.value_num desc nulls last), '[]'::jsonb)
                         from (select metric_key,
                                      (dimension - 'period') as dimension,
                                      sum(value_num) as value_num,
                                      min(value_text) as value_text,
                                      max(run_finished_at) as run_finished_at
-                                from data_center.v_current_metrics
-                               where metric_key not like 'analysis.%'
-                                 and (($1::text is null and $2::text is null)
-                                      or (dimension ->> 'period' is not null
-                                          and ($1::text is null or dimension ->> 'period' >= $1)
-                                          and ($2::text is null or dimension ->> 'period' <= $2)))
+                                from cur
+                               where ($1::text is null and $2::text is null)
+                                  or metric_key not in (select metric_key from periodised)
+                                  or (dimension ->> 'period' is not null
+                                      and ($1::text is null or dimension ->> 'period' >= $1)
+                                      and ($2::text is null or dimension ->> 'period' <= $2))
                                group by 1, 2) t) as metrics,
+                     /*
+                      * Told to the client rather than inferred there, so the
+                      * page can mark one card "all time" while its neighbours
+                      * say "in the period shown", without keeping a second copy
+                      * of this list in the UI to drift out of date.
+                      */
+                     (select coalesce(jsonb_agg(metric_key order by metric_key), '[]'::jsonb)
+                        from periodised) as periodic_keys,
                      (select coalesce(value::text::int, 24) from data_center.workflow_config
                        where key = 'metrics.stale_after_hours') as stale_after_hours,
                      (select to_jsonb(r) from (
@@ -543,6 +579,7 @@ serve(async (req) => {
             {
               data: {
                 metrics,
+                periodicKeys: (row?.periodic_keys ?? []) as string[],
                 computedAt: finishedAt,
                 isStale,
                 staleAfterHours: hours,
