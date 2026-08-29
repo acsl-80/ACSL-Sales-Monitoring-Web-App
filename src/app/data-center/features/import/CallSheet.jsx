@@ -76,6 +76,8 @@ export default function CallSheet({ canCommit = false }) {
   const [busy, setBusy] = useState("");
   const [error, setError] = useState("");
   const [partners, setPartners] = useState(null);
+  /** True when the partner list could not be fetched, as opposed to being empty. */
+  const [partnersFailed, setPartnersFailed] = useState(false);
   /** "" is everything this person may see. Otherwise an organization id. */
   const [orgId, setOrgId] = useState("");
   const [downloaded, setDownloaded] = useState(null); // { rows, partner }
@@ -94,13 +96,29 @@ export default function CallSheet({ canCommit = false }) {
        * person may see. A picker offering partners whose records they cannot
        * download would be a list of disappointments.
        */
-      dataCenterClient.recordFacets().catch(() => null),
+      dataCenterClient.recordFacets().catch(() => "failed"),
     ])
       .then(([s, f, facets]) => {
         if (!live) return;
         setSpec(s);
         setSchema(f);
-        setPartners(facets?.partners ?? []);
+        /*
+         * A failure here is reported, not swallowed.
+         *
+         * The first version caught it and set an empty list, which renders as a
+         * picker offering "everything" and nothing else. That is exactly what a
+         * database with one partner looks like, so a broken facets call would
+         * have been indistinguishable from a working one, and somebody would
+         * have downloaded the whole queue believing they had asked for a
+         * partner. Failing visibly costs one line and removes a whole class of
+         * quiet wrong answer.
+         */
+        if (facets === "failed") {
+          setPartnersFailed(true);
+          setPartners([]);
+        } else {
+          setPartners(facets?.partners ?? []);
+        }
       })
       .catch((e) => live && setError(e instanceof DataCenterError ? e.message : "Could not load the sheet"));
     return () => {
@@ -385,6 +403,14 @@ export default function CallSheet({ canCommit = false }) {
               ))}
             </select>
           </label>
+
+          {partnersFailed && (
+            <p className="mt-1 flex items-start gap-2 text-sm text-amber-800">
+              <CircleAlert className="mt-0.5 h-4 w-4 shrink-0" />
+              The partner list could not be loaded, so only the whole queue can be downloaded.
+              Reload the page to try again.
+            </p>
+          )}
 
           {downloaded && (
             <p className="mt-2 flex items-start gap-2 text-sm text-gray-700">
