@@ -520,12 +520,22 @@ export const dataCenterClient = {
    * The sheet the digitisers work from: one row per transferred stove, already
    * carrying the serial and the transfer reference so neither is typed.
    */
+  /**
+    * The sheet for one partner, or for every partner the caller holds.
+    *
+    * An empty `organizationId` means everything. The import resolves each row's
+    * partner from its stove ID, so a sheet spanning partners lands correctly
+    * and somebody working a stack of receipts from several partners no longer
+    * downloads several files and reconciles them by hand.
+    */
   digitisationSheet: (organizationId: string, month?: string | null) =>
     call<{
       rows: {
         stove_id: string;
         transaction_id: string;
         partner_name: string;
+        /** The unique one. Names are shared across branches; this is not. */
+        partner_id: string | null;
         sales_rep: string | null;
         sales_date: string | null;
         transfer_state: string | null;
@@ -1172,6 +1182,8 @@ export type ImportBatch = {
   committed_at: string | null;
   last_error: string | null;
   partner_name: string | null;
+  /** Only for a batch with no single partner: how many it covers. */
+  partner_count?: number | null;
   uploaded_by_name: string | null;
 };
 
@@ -1238,6 +1250,14 @@ export const dataCenterImport = {
       batchId: string;
       totalRows: number;
       resolvedPartner: {
+        /** Every partner the file turned out to cover, with a row count each. */
+        partners?: {
+          organizationId: string;
+          partnerName: string | null;
+          /** Two branches of one partner share a name; this is what separates them. */
+          branch?: string | null;
+          count: number;
+        }[];
         organizationId: string;
         partnerName: string | null;
         matched: number;

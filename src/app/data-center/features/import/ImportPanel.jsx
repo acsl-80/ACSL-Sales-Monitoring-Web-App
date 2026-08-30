@@ -275,7 +275,20 @@ export default function ImportPanel({ canUpload, canCommit, canResolve }) {
         const counts = await dataCenterImport.validate(batchId);
         setNotice(
           `${file.name}: ${file.rows.length} rows staged` +
-            (resolvedPartner?.partnerName ? ` for ${resolvedPartner.partnerName}` : "") +
+            /*
+             * One partner reads as "for X". Several has to say so, or the
+             * operator is told the file is one partner's when it is not.
+             */
+            (resolvedPartner?.partners?.length > 1
+              ? ` across ${resolvedPartner.partners.length} partners: ` +
+                resolvedPartner.partners
+                  .map((p) =>
+                    `${[p.partnerName ?? "Unknown", p.branch].filter(Boolean).join(", ")} (${p.count})`,
+                  )
+                  .join("; ")
+              : resolvedPartner?.partnerName
+                ? ` for ${resolvedPartner.partnerName}`
+                : "") +
             `. ${counts.valid} ready, ${counts.exception} need a look, ` +
             `${counts.rejected} could not be read. ` +
             `${counts.linkedToTransfer} matched to a transfer.` +
@@ -688,7 +701,13 @@ export default function ImportPanel({ canUpload, canCommit, canResolve }) {
                   {b.filename ?? "(typed in, no file)"}
                 </td>
                 <td className="max-w-[14rem] truncate px-3 py-2 text-sm text-gray-700">
-                  {b.partner_name ?? "-"}
+                  {/*
+                    A batch covering several partners is not a batch with a
+                    missing partner. "-" said the second thing about the first,
+                    which is how somebody concludes the import lost the data.
+                  */}
+                  {b.partner_name ??
+                    (b.partner_count > 1 ? `${b.partner_count} partners` : "-")}
                 </td>
                 <td className="px-3 py-2 text-right text-sm tabular-nums text-gray-700">
                   {b.total_rows}
