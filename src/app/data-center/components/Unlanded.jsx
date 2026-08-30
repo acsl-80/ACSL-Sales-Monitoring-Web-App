@@ -50,14 +50,27 @@ export async function groupUnlanded(batchId) {
   }
 }
 
-export default function Unlanded({ groups, noun = "row" }) {
+/**
+ * `phase` is not decoration.
+ *
+ * The same list is shown at two moments and they are not the same statement.
+ * After a commit, "did not go in" is a fact. Before one, nothing has gone in
+ * yet and saying it had is simply false: those rows WILL not go in, and the
+ * rest still can, which is the thing the reader has to decide about. Getting
+ * this wrong tells somebody their import already half failed when they have not
+ * pressed anything.
+ */
+export default function Unlanded({ groups, noun = "row", phase = "committed" }) {
   if (!groups?.length) return null;
   const total = groups.reduce((n, g) => n + g.rows.length, 0);
+  const many = total !== 1;
   return (
     <div className="border-b border-amber-200 bg-amber-50 px-4 py-3">
       <p className="flex items-start gap-2 text-sm font-medium text-amber-900">
         <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-amber-600" />
-        {total} {total === 1 ? `${noun} did` : `${noun}s did`} not go in. Nothing else was affected.
+        {phase === "staged"
+          ? `${total} ${many ? `${noun}s` : noun} cannot be written as ${many ? "they" : "it"} stand${many ? "" : "s"}. Everything else can still be committed.`
+          : `${total} ${many ? `${noun}s did` : `${noun} did`} not go in. Nothing else was affected.`}
       </p>
       <ul className="mt-2 space-y-1.5">
         {groups.map((g) => (

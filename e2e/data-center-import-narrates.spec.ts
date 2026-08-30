@@ -92,10 +92,11 @@ test.describe("an import is credited and accounted for", () => {
     });
     const batchId = (staged.body as { data: { batchId: string } }).data.batchId;
 
+    // Both list actions answer with the array directly under `data`, not
+    // wrapped in a named key.
     const list = await callEdgeFunction(page, "data-center-import", { action: "batches" });
     const rows =
-      (list.body as { data?: { batches?: { id: string; uploaded_by_name: string | null }[] } })
-        ?.data?.batches ?? [];
+      (list.body as { data?: { id: string; uploaded_by_name: string | null }[] })?.data ?? [];
     const mine = rows.find((b) => b.id === batchId);
     expect(mine, "the batch should be in the history").toBeTruthy();
     expect(mine?.uploaded_by_name).toBe("Preview Super Admin");
@@ -135,8 +136,8 @@ test.describe("an import is credited and accounted for", () => {
       status: "exception",
     });
     const bad =
-      (rows.body as { data?: { rows?: { row_number: number; exception_reason: string | null }[] } })
-        ?.data?.rows ?? [];
+      (rows.body as { data?: { row_number: number; exception_reason: string | null }[] })?.data ??
+      [];
 
     // One row refused, carrying both what is wrong and where it is.
     expect(bad.length).toBe(1);
@@ -175,8 +176,13 @@ test.describe("an import is credited and accounted for", () => {
     });
     await expect(page.getByText("Checking every row against the stove register")).toBeVisible();
 
-    // And the duplicate is named on screen, before anybody commits.
-    await expect(page.getByText(/did not go in/)).toBeVisible({ timeout: 30_000 });
+    /*
+     * Named on screen BEFORE anybody commits, and worded for that moment:
+     * nothing has gone in yet, so saying it had would be false.
+     */
+    await expect(page.getByText(/cannot be written as they stand/)).toBeVisible({
+      timeout: 30_000,
+    });
     await expect(page.getByText(/already appears on row 1/)).toBeVisible();
   });
 });

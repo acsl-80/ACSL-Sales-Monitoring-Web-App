@@ -266,6 +266,8 @@ export default function ImportPanel({ canUpload, canCommit, canResolve }) {
   /** What the import is doing now, and what it did. Survives `busy` clearing. */
   const [steps, setSteps] = useState(null);
   const [unlanded, setUnlanded] = useState(null);
+  /** Which moment the unlanded list is describing: before a commit, or after. */
+  const [unlandedPhase, setUnlandedPhase] = useState("staged");
 
   /** Move one step along without rebuilding the list at every call site. */
   const stepTo = useCallback((key, state, detail = null) => {
@@ -382,6 +384,7 @@ export default function ImportPanel({ canUpload, canCommit, canResolve }) {
         );
         // What is wrong, grouped, before anybody presses commit rather than
         // after. The whole point of staging is that this is cheap to look at.
+        setUnlandedPhase("staged");
         await collectUnlanded(batchId);
         stepTo(
           "ready",
@@ -547,6 +550,7 @@ export default function ImportPanel({ canUpload, canCommit, canResolve }) {
     setBusy(true);
     setProgress({ done: 0, failed: 0 });
     setUnlanded(null);
+    setUnlandedPhase("committed");
     setSteps([
       { key: "write", label: "Writing the sales", state: "running", detail: `0 of ${total}` },
       { key: "settled", label: "Finished", state: "pending", detail: null },
@@ -791,7 +795,7 @@ export default function ImportPanel({ canUpload, canCommit, canResolve }) {
         have refused half the file.
       */}
       <Steps steps={steps} />
-      <Unlanded groups={unlanded} />
+      <Unlanded groups={unlanded} phase={unlandedPhase} />
 
       <div className="flex flex-wrap items-center gap-2 border-b border-gray-100 bg-(--dc-accent-soft)/20 px-4 py-2.5">
         <PeriodFilter
