@@ -9,6 +9,7 @@ import ManualEntry from "./ManualEntry";
 import RejectedRows from "./RejectedRows";
 import { plural } from "../../lib/plural";
 import Pagination from "../../components/Pagination";
+import Unlanded, { groupUnlanded } from "../../components/Unlanded";
 import { usePaged } from "../../lib/usePaged";
 import {
   AlertDialog,
@@ -207,6 +208,51 @@ function ExceptionsQueue({ batchId, canResolve, onChanged }) {
   );
 }
 
+/**
+ * What the import is doing, while it does it.
+ *
+ * A bulk import was one spinner and then one long sentence. On four hundred
+ * rows that is thirty seconds of blank screen followed by a paragraph, and the
+ * two questions people actually have during it - is it stuck, and is it going
+ * to work - had no answer until it was over.
+ *
+ * Each step says what it is for in plain words, because "validate" means
+ * nothing to somebody holding a stack of receipts.
+ */
+function Steps({ steps }) {
+  if (!steps?.length) return null;
+  return (
+    <ol className="space-y-1.5 border-b border-gray-100 px-4 py-3">
+      {steps.map((s) => (
+        <li key={s.key} className="flex items-start gap-2 text-sm">
+          <span className="mt-0.5 shrink-0">
+            {s.state === "running" && <Loader2 className="h-4 w-4 animate-spin text-(--dc-accent)" />}
+            {s.state === "done" && <CheckCircle2 className="h-4 w-4 text-(--dc-accent)" />}
+            {s.state === "failed" && <AlertTriangle className="h-4 w-4 text-amber-600" />}
+            {s.state === "pending" && (
+              <span className="block h-4 w-4 rounded-full border border-gray-300" />
+            )}
+          </span>
+          <span className="min-w-0">
+            <span
+              className={
+                s.state === "pending"
+                  ? "text-gray-400"
+                  : s.state === "failed"
+                    ? "font-medium text-amber-900"
+                    : "text-gray-800"
+              }
+            >
+              {s.label}
+            </span>
+            {s.detail && <span className="block text-xs text-gray-600">{s.detail}</span>}
+          </span>
+        </li>
+      ))}
+    </ol>
+  );
+}
+
 export default function ImportPanel({ canUpload, canCommit, canResolve }) {
   const [batches, setBatches] = useState([]);
   // The history grows for as long as the module runs, so it pages.
@@ -217,6 +263,31 @@ export default function ImportPanel({ canUpload, canCommit, canResolve }) {
   const [notice, setNotice] = useState(null);
   const [busy, setBusy] = useState(false);
   const [progress, setProgress] = useState(null);
+  /** What the import is doing now, and what it did. Survives `busy` clearing. */
+  const [steps, setSteps] = useState(null);
+  const [unlanded, setUnlanded] = useState(null);
+  /** Which moment the unlanded list is describing: before a commit, or after. */
+  const [unlandedPhase, setUnlandedPhase] = useState("staged");
+
+  /** Move one step along without rebuilding the list at every call site. */
+  const stepTo = useCallback((key, state, detail = null) => {
+    setSteps((list) =>
+      (list ?? []).map((s) => (s.key === key ? { ...s, state, detail } : s)),
+    );
+  }, []);
+
+  /**
+   * The rows that did not land, grouped by why.
+   *
+   * Read back from the batch rather than from the commit response, because a
+   * row can fail at two different moments - checking, and writing - and the
+   * person reading this does not care which. One list, whatever stopped it.
+   */
+  const collectUnlanded = useCallback(async (batchId) => {
+    const groups = await groupUnlanded(batchId);
+    setUnlanded(groups.length ? groups : null);
+    return groups;
+  }, []);
   const [open, setOpen] = useState(null);
   const [dryRun, setDryRun] = useState(null);
   // A file held between inspection and staging, while the operator maps its
@@ -267,12 +338,61 @@ export default function ImportPanel({ canUpload, canCommit, canResolve }) {
     async (file, options = {}) => {
       setBusy(true);
       setNotice(null);
+      setUnlanded(null);
+      /*
+       * Named in the words of the job, not of the code.
+       *
+       * "Validate" means nothing to somebody holding a stack of receipts. What
+       * they want to know is whether the stove IDs were recognised and whether
+       * anything is wrong before it is written, so that is what the steps say.
+       */
+      setSteps([
+        { key: "read", label: `Reading ${file.name}`, state: "running",
+          detail: `${plural(file.rows.length, "row")}` },
+        { key: "partner", label: "Working out which partner each stove belongs to",
+          state: "pending", detail: null },
+        { key: "check", label: "Checking every row against the stove register",
+          state: "pending", detail: null },
+        { key: "ready", label: "Ready to commit", state: "pending", detail: null },
+      ]);
       try {
+        stepTo("read", "done", `${plural(file.rows.length, "row")} read`);
+        stepTo("partner", "running");
         // No partner is sent. The stove IDs in the file name it, and the
         // server says which one it worked out.
         const staged = await dataCenterImport.stage(null, file.name, file.rows, options);
         const { batchId, resolvedPartner } = staged;
+        stepTo(
+          "partner",
+          "done",
+          resolvedPartner?.partners?.length > 1
+            ? `${resolvedPartner.partners.length} partners: ` +
+              resolvedPartner.partners
+                .map((p) =>
+                  `${[p.partnerName ?? "Unknown", p.branch].filter(Boolean).join(", ")} (${p.count})`,
+                )
+                .join("; ")
+            : (resolvedPartner?.partnerName ?? "one partner"),
+        );
+        stepTo("check", "running");
         const counts = await dataCenterImport.validate(batchId);
+        stepTo(
+          "check",
+          "done",
+          `${counts.valid} ready, ${counts.exception} need a look, ` +
+            `${counts.rejected} could not be read`,
+        );
+        // What is wrong, grouped, before anybody presses commit rather than
+        // after. The whole point of staging is that this is cheap to look at.
+        setUnlandedPhase("staged");
+        await collectUnlanded(batchId);
+        stepTo(
+          "ready",
+          counts.valid > 0 ? "done" : "failed",
+          counts.valid > 0
+            ? `${plural(counts.valid, "row")} will be written when you commit`
+            : "Nothing in this file can be written as it stands",
+        );
         setNotice(
           `${file.name}: ${file.rows.length} rows staged` +
             /*
@@ -289,9 +409,16 @@ export default function ImportPanel({ canUpload, canCommit, canResolve }) {
               : resolvedPartner?.partnerName
                 ? ` for ${resolvedPartner.partnerName}`
                 : "") +
-            `. ${counts.valid} ready, ${counts.exception} need a look, ` +
-            `${counts.rejected} could not be read. ` +
-            `${counts.linkedToTransfer} matched to a transfer.` +
+            /*
+             * The counts belong to the step, not to this line as well.
+             *
+             * Both said "2 ready, 2 need a look, 0 could not be read" on the
+             * same screen, one under the other, and a Playwright selector
+             * matching that phrase resolved to two elements - which is the
+             * cheap version of the reader's problem: the same three numbers
+             * twice, in two shapes, with nothing saying they are the same three.
+             */
+            `. ${counts.linkedToTransfer} matched to a transfer.` +
             (resolvedPartner?.mismatches?.length
               ? ` ${resolvedPartner.mismatches.length} row(s) carry a transfer reference that does not match the stove.`
               : "") +
@@ -429,19 +556,49 @@ export default function ImportPanel({ canUpload, canCommit, canResolve }) {
   const runCommit = async (batchId, total) => {
     setBusy(true);
     setProgress({ done: 0, failed: 0 });
+    setUnlanded(null);
+    setUnlandedPhase("committed");
+    setSteps([
+      { key: "write", label: "Writing the sales", state: "running", detail: `0 of ${total}` },
+      { key: "settled", label: "Finished", state: "pending", detail: null },
+    ]);
+    let done = 0;
     try {
       for (;;) {
         const out = await dataCenterImport.commit(batchId);
+        done += out.committed;
         setProgress((p) => ({
           done: (p?.done ?? 0) + out.committed,
           failed: (p?.failed ?? 0) + out.failed,
         }));
+        stepTo("write", "running", `${done} of ${total}`);
         if (out.done) break;
         if (out.committed === 0 && out.failed === 0) break;
       }
-      setNotice("Commit finished.");
+      stepTo("write", "done", `${plural(done, "sale")} written`);
+
+      /*
+       * What did not land, said out loud.
+       *
+       * This used to read "Commit finished." over any number of rows that did
+       * not, while the server had been returning a reason for each one all
+       * along. A count of successes is not a result; the result is what
+       * happened to every row.
+       */
+      const groups = await collectUnlanded(batchId);
+      const missed = groups.reduce((n, g) => n + g.rows.length, 0);
+      stepTo(
+        "settled",
+        missed ? "failed" : "done",
+        missed
+          ? `${plural(missed, "row")} did not go in. They are listed below.`
+          : "Every row went in.",
+      );
+      setNotice(missed ? null : `Commit finished. ${plural(done, "sale")} written.`);
       await refresh();
     } catch (err) {
+      stepTo("write", "failed", "Stopped part way. Asking again resumes where it left off.");
+      await collectUnlanded(batchId);
       setError(err instanceof DataCenterError ? err.message : "Commit stopped early. Ask again to resume.");
     } finally {
       setBusy(false);
@@ -636,12 +793,16 @@ export default function ImportPanel({ canUpload, canCommit, canResolve }) {
           <p className="text-sm text-(--dc-accent)">{notice}</p>
         </div>
       )}
-      {progress && busy && (
-        <div className="flex items-center gap-2 border-b border-gray-100 px-4 py-2 text-sm text-gray-600">
-          <Loader2 className="h-4 w-4 animate-spin" />
-          {progress.done} done{progress.failed ? `, ${progress.failed} could not be committed` : ""}
-        </div>
-      )}
+      {/*
+        The steps outlive `busy`.
+
+        The old progress line was hidden the moment the run ended, so the last
+        thing it showed vanished at exactly the moment somebody wanted to read
+        it, leaving "Commit finished." as the whole account of a run that may
+        have refused half the file.
+      */}
+      <Steps steps={steps} />
+      <Unlanded groups={unlanded} phase={unlandedPhase} />
 
       <div className="flex flex-wrap items-center gap-2 border-b border-gray-100 bg-(--dc-accent-soft)/20 px-4 py-2.5">
         <PeriodFilter

@@ -9,6 +9,7 @@ import { buildWorkbook, downloadWorkbook, parseWorkbook, looksLikeWorkbook } fro
 import { parseCsv } from "../../lib/csv";
 import { toCsv, downloadCsv } from "../../lib/export";
 import { plural } from "../../lib/plural";
+import Unlanded, { groupUnlanded } from "../../components/Unlanded";
 import {
   Download, PhoneCall, ArrowRight, Loader2, CircleAlert, CircleCheck, Undo2,
 } from "lucide-react";
@@ -318,7 +319,10 @@ export default function CallSheet({ canCommit = false }) {
         failures.push(...(out.failures ?? []));
         if (out.done) break;
       }
-      setResult({ committed, failures });
+      // The reasons, read back and grouped. The failures array carries a
+      // reason per row and this used to report only how many there were.
+      const groups = await groupUnlanded(batch.batchId);
+      setResult({ committed, failures, groups });
     } catch (e) {
       setError(e instanceof DataCenterError ? e.message : "The commit did not finish");
     } finally {
@@ -381,9 +385,23 @@ export default function CallSheet({ canCommit = false }) {
             cannot tell which one they chose, and would find out from the
             contents of the sheet.
           */}
-          <label className="mt-2 block">
-            <span className="text-xs font-medium text-gray-700">Whose records</span>
+          {/*
+            htmlFor and an id, not a wrapper.
+
+            A <label> around a <select> does associate them, but the accessible
+            name becomes the label's whole text content, and the selected
+            <option> is inside it. The module learned this once already, on a
+            field labelled "Partner" that answered to "PartnerAny partner".
+          */}
+          <div className="mt-2 block">
+            <label
+              htmlFor="dc-callsheet-partner"
+              className="block text-xs font-medium text-gray-700"
+            >
+              Whose records
+            </label>
             <select
+              id="dc-callsheet-partner"
               value={orgId}
               onChange={(e) => {
                 setOrgId(e.target.value);
@@ -402,7 +420,7 @@ export default function CallSheet({ canCommit = false }) {
                 </option>
               ))}
             </select>
-          </label>
+          </div>
 
           {partnersFailed && (
             <p className="mt-1 flex items-start gap-2 text-sm text-amber-800">
@@ -547,13 +565,36 @@ export default function CallSheet({ canCommit = false }) {
       )}
 
       {result && (
-        <div className="mt-3 rounded-xl border border-emerald-200 bg-emerald-50 p-4">
-          <p className="flex items-center gap-2 text-sm font-semibold text-emerald-900">
+        /*
+          Green only when it all went in.
+
+          This box was emerald whatever happened, with one line saying some rows
+          "kept its reason" - which tells somebody a reason exists without
+          showing it, in the colour used for success. A run that refused half
+          the file should not look like a run that did not.
+        */
+        <div
+          className={`mt-3 rounded-xl border p-4 ${
+            result.failures.length > 0
+              ? "border-amber-200 bg-amber-50"
+              : "border-emerald-200 bg-emerald-50"
+          }`}
+        >
+          <p
+            className={`flex items-center gap-2 text-sm font-semibold ${
+              result.failures.length > 0 ? "text-amber-900" : "text-emerald-900"
+            }`}
+          >
             <CircleCheck className="h-4 w-4" /> {plural(result.committed, "call record")} attached
           </p>
-          {result.failures.length > 0 && (
-            <p className="mt-1 text-xs text-emerald-900">
-              {plural(result.failures.length, "row")} did not go through and kept its reason.
+          {result.groups?.length > 0 && (
+            <div className="mt-2 overflow-hidden rounded-lg border border-amber-200 bg-white">
+              <Unlanded groups={result.groups} />
+            </div>
+          )}
+          {result.failures.length > 0 && !result.groups?.length && (
+            <p className="mt-1 text-xs text-amber-900">
+              {plural(result.failures.length, "row")} did not go through. Open the batch to see why.
             </p>
           )}
           {canCommit && (
