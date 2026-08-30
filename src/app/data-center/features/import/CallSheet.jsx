@@ -385,9 +385,23 @@ export default function CallSheet({ canCommit = false }) {
             cannot tell which one they chose, and would find out from the
             contents of the sheet.
           */}
-          <label className="mt-2 block">
-            <span className="text-xs font-medium text-gray-700">Whose records</span>
+          {/*
+            htmlFor and an id, not a wrapper.
+
+            A <label> around a <select> does associate them, but the accessible
+            name becomes the label's whole text content, and the selected
+            <option> is inside it. The module learned this once already, on a
+            field labelled "Partner" that answered to "PartnerAny partner".
+          */}
+          <div className="mt-2 block">
+            <label
+              htmlFor="dc-callsheet-partner"
+              className="block text-xs font-medium text-gray-700"
+            >
+              Whose records
+            </label>
             <select
+              id="dc-callsheet-partner"
               value={orgId}
               onChange={(e) => {
                 setOrgId(e.target.value);
@@ -406,7 +420,7 @@ export default function CallSheet({ canCommit = false }) {
                 </option>
               ))}
             </select>
-          </label>
+          </div>
 
           {partnersFailed && (
             <p className="mt-1 flex items-start gap-2 text-sm text-amber-800">
