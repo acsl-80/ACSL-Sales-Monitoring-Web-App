@@ -276,7 +276,10 @@ export const REQUIRED_FIELDS = [
   //
   // `lga` is not here either, matching normalizeRow, which records it and no
   // longer demands it.
-  "endUserName", "phone", "salesDate", "state", "fullAddress",
+  // `fullAddress` came off for the same reason as `lga`: it is worth having and
+  // it is not what a record is for. The stove ID, the buyer's name, their
+  // phone, the date and the state are.
+  "endUserName", "phone", "salesDate", "state",
 ] as const;
 
 function text(raw: Record<string, unknown>, ...keys: string[]): string {
@@ -699,15 +702,23 @@ export function normalizeRow(
    */
   const lga = field(raw, "lga", "lgaBackup");
 
+  /*
+   * The address is recorded when the file has it, and never demanded.
+   *
+   * The stove ID is what a record is FOR: it is the thing that ties a buyer to
+   * a stove, a partner and a carbon claim, and it is the one column that can be
+   * checked against something. An address is worth having and can be filled in
+   * afterwards from the call the call centre is about to make; refusing a row
+   * that names a real stove and a real buyer because the receipt had no street
+   * loses the record entirely to gain a field somebody will supply next week.
+   *
+   * 140 rows of the first real file are exactly this: named buyer, real phone,
+   * real stove, no address written on the receipt.
+   *
+   * `create-sale` does not require it either, and public.addresses accepts a
+   * blank row - production already holds two.
+   */
   const fullAddress = field(raw, "fullAddress");
-  if (!fullAddress) {
-    return {
-      ok: false,
-      reason: "No residential address",
-      hint:
-        "Add where the buyer lives, in enough detail for a field agent to find the house.",
-    };
-  }
 
   // The buyer defaults to the end user, which is what a receipt with one name
   // on it means.
