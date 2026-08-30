@@ -1419,7 +1419,7 @@ serve(async (req) => {
             // above cannot see because neither row is a sale yet.
             const seenPhone = new Map<string, string[]>();
 
-            let valid = 0, rejected = 0, exception = 0, linked = 0;
+            let valid = 0, rejected = 0, exception = 0, linked = 0, noted = 0;
 
             for (const s of shaped) {
               if (!s.result.ok) {
@@ -1515,20 +1515,49 @@ serve(async (req) => {
               const stockRef = transferBySerial.get(row.stoveSerialNo.toUpperCase()) ?? null;
               const stockRep = repBySerial.get(row.stoveSerialNo.toUpperCase()) ?? null;
 
+              /*
+               * The partner check blocks only on a sheet this module wrote.
+               *
+               * On our own sheet the Partner column is filled BY US from the
+               * stove ID, so a disagreement means the row moved and blocking is
+               * right. On somebody else's sheet it is a human's shorthand for
+               * the same partner, and blocking it is refusing correct data over
+               * a naming convention.
+               *
+               * Measured on the real digitisation file before this existed:
+               * 580 of 983 rows refused, 17 agreed. "Amina Sales Model Kajuru"
+               * against "Kajuru". "Solar Sisters" against "SOLAR SISTER
+               * IBADAN". Not one was an error.
+               *
+               * The transfer reference is the tell, because only our sheet
+               * carries it. It is also the column that actually identifies a
+               * consignment, so where it IS present it still blocks: that is a
+               * value the file was given rather than one somebody typed.
+               */
+              const ourSheet = sheetRef !== null;
+
               let columnMismatch: string | null = null;
+              let columnWarning: string | null = null;
               if (found && !agrees(sheetPartner, found.partner_name)) {
-                columnMismatch =
+                const said =
                   `The Partner column says "${sheetPartner}" but stove ${row.stoveSerialNo} ` +
-                  `belongs to "${found.partner_name ?? "no partner"}". ` +
-                  "Either the stove ID or the partner on this row is wrong.";
-              } else if (stockRef && !agrees(sheetRef, stockRef)) {
+                  `belongs to "${found.partner_name ?? "no partner"}".`;
+                if (ourSheet) {
+                  columnMismatch = `${said} Either the stove ID or the partner on this row is wrong.`;
+                } else {
+                  columnWarning =
+                    `${said} The stove ID decides, so this row is filed under ` +
+                    `"${found.partner_name ?? "no partner"}".`;
+                }
+              }
+              if (!columnMismatch && stockRef && !agrees(sheetRef, stockRef)) {
                 columnMismatch =
                   `The Transaction ID column says "${sheetRef}" but stove ${row.stoveSerialNo} ` +
                   `came on ${stockRef}. Either the stove ID or the reference on this row is wrong.`;
               }
 
               const repWarning =
-                !columnMismatch && stockRep && !agrees(sheetRep, stockRep)
+                !columnMismatch && !columnWarning && stockRep && !agrees(sheetRep, stockRep)
                   ? `The Sales Rep column says "${sheetRep}" and the consignment records ` +
                     `"${stockRep}". Imported as it stands.`
                   : null;
@@ -1596,12 +1625,28 @@ serve(async (req) => {
                  * server from stock and are only ever compared against stock
                  * again at commit, so the file cannot reach them either way.
                  */
+                /*
+                 * Warnings travel with the row.
+                 *
+                 * They were computed and dropped, which is worse than never
+                 * computing them: the code looked like it reported a sales-rep
+                 * mismatch and a partner shorthand, and nothing ever did. A
+                 * warning nobody can read is a comment, not a feature.
+                 *
+                 * On `normalized` rather than a new column, because the row
+                 * already carries this object and a migration for a note the
+                 * import writes and the panel reads would be a schema change
+                 * for a sentence.
+                 */
+                const importWarnings = [columnWarning, repWarning].filter(Boolean);
+                if (importWarnings.length) noted++;
                 const canonical = {
                   ...row,
                   stoveSerialNo: found!.stove_id,
                   resolvedOrganizationId: found!.organization_id ?? null,
                   resolvedPartnerId: found!.partner_id ?? null,
                   resolvedPartnerName: found!.partner_name ?? null,
+                  ...(importWarnings.length ? { importWarnings } : {}),
                 };
                 verdicts.push({
                   id: s.id,
@@ -1685,7 +1730,7 @@ serve(async (req) => {
             });
             await conn.queryObject("commit");
             return json(
-              { data: { valid, rejected, exception, linkedToTransfer: linked } },
+              { data: { valid, rejected, exception, linkedToTransfer: linked, noted } },
               200,
               cors,
             );

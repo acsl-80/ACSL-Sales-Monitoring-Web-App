@@ -1,3 +1,4 @@
+import { uniqueHeaders, duplicateWarning } from "./headers";
 /**
  * Writing a workbook, by hand, because a dependency is not available here.
  *
@@ -355,8 +356,13 @@ export async function parseWorkbook(
   }
 
   if (grid.length === 0) throw new Error("That workbook is empty.");
-  const headers = (grid[0] ?? []).map((h) => (h ?? "").trim());
+  const rawHeaders = (grid[0] ?? []).map((h) => (h ?? "").trim());
+  // Same rule as the CSV path, and for the same sheet. Keyed on header text,
+  // the rightmost of two identical columns silently won.
+  const { names: headers, duplicates } = uniqueHeaders(rawHeaders);
   const warnings: string[] = [];
+  const dupeNote = duplicateWarning(duplicates);
+  if (dupeNote) warnings.push(dupeNote);
 
   const rows: Record<string, string>[] = [];
   for (let i = 1; i < grid.length; i++) {

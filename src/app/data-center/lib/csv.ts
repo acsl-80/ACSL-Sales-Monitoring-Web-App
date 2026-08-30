@@ -1,3 +1,4 @@
+import { uniqueHeaders, duplicateWarning } from "./headers";
 /**
  * A CSV reader, in about sixty lines.
  *
@@ -83,11 +84,17 @@ export function parseCsv(text: string): ParsedCsv {
   if (records.length === 0) throw new CsvError("That file is empty.");
   if (records.length === 1) throw new CsvError("That file has a header row and nothing else.");
 
-  const headers = records[0].map((h) => h.trim());
+  const raw = records[0].map((h) => h.trim());
+  // A repeated heading keeps both columns. See lib/headers.ts: the sheet this
+  // module is fed uses one heading twice on purpose, once for the digitiser and
+  // once for the call centre confirming them.
+  const { names: headers, duplicates } = uniqueHeaders(raw);
   const warnings: string[] = [];
 
   const blank = headers.filter((h) => h === "").length;
   if (blank > 0) warnings.push(`${blank} column(s) have no name and were ignored.`);
+  const dupeNote = duplicateWarning(duplicates);
+  if (dupeNote) warnings.push(dupeNote);
 
   const rows: Record<string, string>[] = [];
   for (let i = 1; i < records.length; i++) {
