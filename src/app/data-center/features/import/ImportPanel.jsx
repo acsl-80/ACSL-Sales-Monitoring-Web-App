@@ -409,9 +409,16 @@ export default function ImportPanel({ canUpload, canCommit, canResolve }) {
               : resolvedPartner?.partnerName
                 ? ` for ${resolvedPartner.partnerName}`
                 : "") +
-            `. ${counts.valid} ready, ${counts.exception} need a look, ` +
-            `${counts.rejected} could not be read. ` +
-            `${counts.linkedToTransfer} matched to a transfer.` +
+            /*
+             * The counts belong to the step, not to this line as well.
+             *
+             * Both said "2 ready, 2 need a look, 0 could not be read" on the
+             * same screen, one under the other, and a Playwright selector
+             * matching that phrase resolved to two elements - which is the
+             * cheap version of the reader's problem: the same three numbers
+             * twice, in two shapes, with nothing saying they are the same three.
+             */
+            `. ${counts.linkedToTransfer} matched to a transfer.` +
             (resolvedPartner?.mismatches?.length
               ? ` ${resolvedPartner.mismatches.length} row(s) carry a transfer reference that does not match the stove.`
               : "") +

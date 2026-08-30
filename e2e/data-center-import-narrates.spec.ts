@@ -180,7 +180,10 @@ test.describe("an import is credited and accounted for", () => {
      * Named on screen BEFORE anybody commits, and worded for that moment:
      * nothing has gone in yet, so saying it had would be false.
      */
-    await expect(page.getByText(/cannot be written as they stand/)).toBeVisible({
+    // Phrased for the moment, and asserted on the half that does not change
+    // with the count: one bad row reads "as it stands", two read "as they
+    // stand", and the sentence after them is the same either way.
+    await expect(page.getByText(/Everything else can still be committed/)).toBeVisible({
       timeout: 30_000,
     });
     await expect(page.getByText(/already appears on row 1/)).toBeVisible();
