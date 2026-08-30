@@ -196,6 +196,9 @@ export const HEADER_ALIASES: Record<string, string[]> = {
   // need mapping is not a template.
   // ---------------------------------------------------------------------
   partnerName:        ["partner_name", "Partner", "Partner Name", "partnerName"],
+  // Not a field on the sale. It is read to price a row whose sheet has no
+  // amount column, from the table in workflow_config.
+  salesModel:         ["sales_model", "Sales Model", "salesModel"],
   salesRep:           ["sales_rep", "Sales Rep", "Sales Representative", "salesRep"],
   transferDate:       ["transfer_date", "Transfer Date", "transferDate"],
   potQuantity:        ["pot_quantity", "Pots Quantity", "Pot Quantity", "potQuantity"],
@@ -264,7 +267,16 @@ export const REQUIRED_FIELDS = [
   // satisfying it. Leaving this off the list let `inspect` bless a file whose
   // every row would then be rejected, which is the exact silent failure this
   // step exists to close.
-  "endUserName", "phone", "salesDate", "amount", "state", "lga", "fullAddress",
+  //
+  // `amount` is NOT here, and that is deliberate rather than an oversight. A
+  // sheet may carry no amount column at all, because the price belongs to the
+  // sales model; a row whose model has no price set is refused one row at a
+  // time, with a reason naming where to set it. Demanding the column would
+  // refuse the file before anybody saw which rows were priced.
+  //
+  // `lga` is not here either, matching normalizeRow, which records it and no
+  // longer demands it.
+  "endUserName", "phone", "salesDate", "state", "fullAddress",
 ] as const;
 
 function text(raw: Record<string, unknown>, ...keys: string[]): string {
@@ -541,6 +553,16 @@ function field(raw: Record<string, unknown>, key: keyof typeof HEADER_ALIASES, .
  */
 export function normalizeRow(
   raw: Record<string, unknown>,
+  /**
+   * Values to fall back on when the file does not carry them.
+   *
+   * Only `amount` today, and only when the row has none. A sheet written for
+   * digitisation records what was sold, not what it cost, because the price is
+   * a property of the sales model rather than of the receipt. The alternative
+   * was writing the price into `raw`, and `raw` is what a rejected row is shown
+   * as - the version the person fixing it recognises - so it stays as typed.
+   */
+  defaults: { amount?: number | null } = {},
 ):
   // `hint` says what to do about it. A reason without a fix leaves a digitiser
   // with four hundred rows and no next step, which is how a rejection file gets
@@ -618,13 +640,20 @@ export function normalizeRow(
   }
 
   const amountRaw = field(raw, "amount");
-  const amount = Number(amountRaw.replace(/[^0-9.]/g, ""));
+  const priced = typeof defaults.amount === "number" && defaults.amount > 0;
+  const amount = amountRaw.trim() === "" && priced
+    ? (defaults.amount as number)
+    : Number(amountRaw.replace(/[^0-9.]/g, ""));
   if (!Number.isFinite(amount) || amount <= 0) {
     return {
       ok: false,
-      reason: `Sale amount "${amountRaw}" is not a number above zero`,
-      hint:
-        "Enter digits only, like 47500. Leave out the naira sign and any commas, and do not write 'cash' or 'paid'.",
+      reason: amountRaw.trim() === ""
+        ? "No sale amount, and this row's sales model has no price set"
+        : `Sale amount "${amountRaw}" is not a number above zero`,
+      hint: amountRaw.trim() === ""
+        ? "Either add a Sale Amount column to the sheet, or set a price for this " +
+          "sales model in Settings so every row on that model is priced the same."
+        : "Enter digits only, like 47500. Leave out the naira sign and any commas, and do not write 'cash' or 'paid'.",
     };
   }
 
@@ -655,14 +684,20 @@ export function normalizeRow(
       hint: "Add the buyer's state, spelled out, like Gombe or Kano.",
     };
   }
+  /*
+   * LGA is recorded when the file has it, and never demanded.
+   *
+   * A digitisation sheet is typed from a paper receipt and the LGA is often
+   * not on it: on the real file every one of 983 rows is blank, because the
+   * only "Local Govt Area" column belongs to the CALL CENTRE half of the
+   * sheet, where it is confirmed with the end user on the phone. Refusing 983
+   * good rows for a field the digitiser was never given, which the call pass
+   * is about to supply, is the check costing more than it catches.
+   *
+   * State is still required. It is on the receipt, it is on the sheet, and it
+   * is what the scorecards cut by.
+   */
   const lga = field(raw, "lga", "lgaBackup");
-  if (!lga) {
-    return {
-      ok: false,
-      reason: "No local government area",
-      hint: "Add the buyer's LGA. It is on the receipt under the address.",
-    };
-  }
 
   const fullAddress = field(raw, "fullAddress");
   if (!fullAddress) {
@@ -1281,13 +1316,40 @@ serve(async (req) => {
             // serials exist. One query for the whole batch rather than one per
             // row, which at 20,000 rows is the difference between seconds and
             // an afternoon.
+            /*
+             * What each sales model costs, read once for the batch.
+             *
+             * A digitisation sheet records what was sold, not what it cost: the
+             * price belongs to the sales model, and the real file carries a
+             * "Sales Model" column and no amount column at all. Held in
+             * workflow_config so pricing a new model is data entry, and so a
+             * model nobody has priced refuses its rows with a reason that says
+             * where to set it rather than "amount is not a number".
+             */
+            const priceRow = await conn.queryObject<{ value: unknown }>({
+              text: `select value from data_center.workflow_config
+                      where key = 'import.model_amounts'`,
+            });
+            const prices = new Map<string, number>();
+            const rawPrices = priceRow.rows[0]?.value;
+            if (rawPrices && typeof rawPrices === "object") {
+              for (const [model, amount] of Object.entries(rawPrices as Record<string, unknown>)) {
+                const n = Number(amount);
+                if (Number.isFinite(n) && n > 0) prices.set(model.trim().toLowerCase(), n);
+              }
+            }
+            const priceOf = (raw: Record<string, unknown>) => {
+              const model = field(raw, "salesModel").trim().toLowerCase();
+              return model ? (prices.get(model) ?? null) : null;
+            };
+
             const shaped = pending.rows.map((r) => ({
               id: r.id,
               rowNumber: Number(r.row_number),
               // Kept, because the columns the system filled in are checked
               // against the stove ID below and normalizeRow does not carry them.
               raw: r.raw,
-              result: normalizeRow(r.raw),
+              result: normalizeRow(r.raw, { amount: priceOf(r.raw) }),
             }));
             const serials = shaped
               .filter((s) => s.result.ok)
