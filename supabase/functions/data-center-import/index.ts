@@ -260,6 +260,58 @@ export function fromSheetValues(row: Record<string, unknown>): Record<string, un
   return out;
 }
 
+/**
+ * A thing that can be queried.
+ *
+ * `{ queryObject: (q: unknown) => ... }` was the shape both helpers declared,
+ * and the real Client does not satisfy it: its queryObject is overloaded, and
+ * an overload taking `string` is not assignable to one taking `unknown`. So
+ * every call site type-errored, four of them, and the errors had been there
+ * long enough to read as background noise.
+ *
+ * Named once and widened to what the driver actually offers.
+ */
+// deno-lint-ignore no-explicit-any
+type Queryable = { queryObject: (...args: any[]) => Promise<{ rows: any[] }> };
+
+/**
+ * What one stove costs under a row's sales model.
+ *
+ * ONE RULE, WHATEVER THE CHANNEL.
+ *
+ * This started life inside the bulk validate step, which meant a Partner Sales
+ * receipt in a FILE was priced automatically while the same receipt typed at
+ * the bench was refused for having no amount. Two behaviours from one rule is
+ * how the two paths drift, and the cheaper-looking one ends up accepting
+ * records the other would have refused - which is the failure this module's
+ * rules name explicitly.
+ *
+ * So it lives here and every entry path calls it: the file, the typed record
+ * and the bench.
+ *
+ * Returns null when the model is unknown or unpriced, which is not an error.
+ * The caller then refuses that one row with a reason naming the setting.
+ */
+export async function modelPriceFor(
+  conn: Queryable,
+  raw: Record<string, unknown>,
+): Promise<number | null> {
+  const model = field(raw, "salesModel").trim().toLowerCase();
+  if (!model) return null;
+  const r = await conn.queryObject({
+    text: `select value from data_center.workflow_config where key = 'import.model_amounts'`,
+  }) as { rows: { value: unknown }[] };
+  const table = r.rows[0]?.value;
+  if (!table || typeof table !== "object") return null;
+  for (const [name, amount] of Object.entries(table as Record<string, unknown>)) {
+    if (name.trim().toLowerCase() === model) {
+      const n = Number(amount);
+      return Number.isFinite(n) && n > 0 ? n : null;
+    }
+  }
+  return null;
+}
+
 /** Which fields must be present for a row to be usable at all. */
 export const REQUIRED_FIELDS = [
   "stoveSerialNo",
@@ -442,7 +494,7 @@ function fromSaleForm(values: Record<string, unknown>): Record<string, unknown> 
  * somebody pasted into the wrong sheet, and it is named.
  */
 async function resolvePartnersFromSerials(
-  conn: { queryObject: (q: unknown) => Promise<{ rows: unknown[] }> },
+  conn: Queryable,
   rows: Record<string, unknown>[],
 ): Promise<{
   partners: { organizationId: string; partnerName: string; branch: string | null; count: number }[];
@@ -1251,7 +1303,11 @@ serve(async (req) => {
         // Fail on the shape before writing anything. A file gets staged first
         // because the operator wants to see all the failures at once; a single
         // record is better answered immediately.
-        const shape = normalizeRow(record);
+        //
+        // Priced by the same rule a file is. One validator, whatever the
+        // channel, and that has to include what the validator is given.
+        const typedPrice = await withReadConnection((c) => modelPriceFor(c, record));
+        const shape = normalizeRow(record, { amount: typedPrice });
         if (!shape.ok) {
           throw new BadRequest(shape.hint ? `${shape.reason}. ${shape.hint}` : shape.reason);
         }
@@ -1328,14 +1384,12 @@ serve(async (req) => {
             // row, which at 20,000 rows is the difference between seconds and
             // an afternoon.
             /*
-             * What each sales model costs, read once for the batch.
+             * The price table, read once for the batch rather than once per row.
              *
-             * A digitisation sheet records what was sold, not what it cost: the
-             * price belongs to the sales model, and the real file carries a
-             * "Sales Model" column and no amount column at all. Held in
-             * workflow_config so pricing a new model is data entry, and so a
-             * model nobody has priced refuses its rows with a reason that says
-             * where to set it rather than "amount is not a number".
+             * modelPriceFor is the rule and is what the single-record paths
+             * call; a file of four hundred rows would ask the same question
+             * four hundred times, so the answer is cached here. Same table,
+             * same matching, one place to change either.
              */
             const priceRow = await conn.queryObject<{ value: unknown }>({
               text: `select value from data_center.workflow_config
@@ -2796,7 +2850,13 @@ serve(async (req) => {
         const record = fromSheetValues(autoMapRow(fromSaleForm({ ...values, stoveSerialNo: stoveId })));
 
         // Finishing means it has to hold together. Half-typed does not.
-        const shape = complete ? normalizeRow(record) : null;
+        //
+        // Priced by the same rule as a file and a typed record, or the bench
+        // would refuse a receipt the other two accept.
+        const benchPrice = complete
+          ? await withReadConnection((c) => modelPriceFor(c, record))
+          : null;
+        const shape = complete ? normalizeRow(record, { amount: benchPrice }) : null;
         const finished = shape?.ok ? shape.row : null;
         if (complete) {
           if (shape && !shape.ok) {
