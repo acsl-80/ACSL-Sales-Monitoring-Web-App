@@ -1,4 +1,5 @@
 import { useState } from "react";
+import StateLgaSelect from "../../components/StateLgaSelect";
 import { Loader2, PenLine, X } from "lucide-react";
 
 /**
@@ -26,8 +27,16 @@ const FIELDS = [
   { key: "sales_date", label: "Sale date", required: true, type: "date" },
   { key: "amount", label: "Amount", required: true, type: "number", placeholder: "25000" },
   { key: "amount_received", label: "Amount received", type: "number" },
-  { key: "state", label: "State", required: true },
-  { key: "lga", label: "LGA", required: true },
+  /*
+   * The one pair that is picked rather than typed.
+   *
+   * `geo` is not a fourth input type - it is one control answering two fields,
+   * because an LGA cannot be offered until a state has been chosen. Rendered
+   * where `state` sits and skipped where `lga` does, so the field order on
+   * screen is the field order in this list.
+   */
+  { key: "state", label: "State", required: true, type: "geo" },
+  { key: "lga", label: "LGA", required: true, type: "geo-skip" },
   { key: "address", label: "Address", required: true, width: "sm:col-span-2" },
 ];
 
@@ -65,7 +74,24 @@ export default function ManualEntry({ onSubmit, onCancel, busy, partnerName }) {
       </div>
 
       <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4">
-        {FIELDS.map((f) => (
+        {FIELDS.map((f) => {
+          if (f.type === "geo-skip") return null;
+          if (f.type === "geo") {
+            return (
+              <div key={f.key} className="sm:col-span-2 grid grid-cols-1 gap-3 sm:grid-cols-2">
+                <StateLgaSelect
+                  idPrefix="dc-manual"
+                  state={values.state ?? ""}
+                  lga={values.lga ?? ""}
+                  onState={(v) => set("state", v)}
+                  onLga={(v) => set("lga", v)}
+                  stateLabel="State"
+                  lgaLabel="LGA"
+                />
+              </div>
+            );
+          }
+          return (
           <div key={f.key} className={f.width ?? ""}>
             <label
               htmlFor={`dc-manual-${f.key}`}
@@ -93,7 +119,8 @@ export default function ManualEntry({ onSubmit, onCancel, busy, partnerName }) {
               className="w-full rounded-md border border-gray-300 px-2 py-1.5 text-sm focus:border-(--dc-accent) focus:outline-none"
             />
           </div>
-        ))}
+          );
+        })}
       </div>
 
       <div className="mt-3 flex flex-wrap items-center gap-2">

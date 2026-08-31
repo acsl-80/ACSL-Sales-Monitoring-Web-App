@@ -175,3 +175,52 @@ test.describe("the bench can be entered three ways", () => {
     await expect(page.getByText(/covers every stove this partner holds/)).toBeVisible();
   });
 });
+
+test.describe("where the buyer lives is chosen, not typed", () => {
+  /**
+   * The bench took `state` and `lga` as free text.
+   *
+   * That is the screen a typist uses forty times a morning with a paper
+   * receipt in hand, so it was the one place in the app where a misspelt state
+   * could enter the database with nothing to be wrong against - while the 36
+   * states, the FCT and all 774 LGAs sat in this same database, already served
+   * by the geo-data function, used by exactly one screen out of twenty-two.
+   */
+  test("a state narrows the LGAs to that state's own", async ({ page }) => {
+    await signIn(page, USERS.admin);
+    await page.goto("/data-center/import");
+    await expect(page.getByRole("heading", { name: "Bulk Import" })).toBeVisible({
+      timeout: 30_000,
+    });
+    await page.getByRole("button", { name: /One receipt at a time/ }).click();
+
+    const partners = page.locator("tbody tr");
+    await expect(partners.first()).toBeVisible({ timeout: 30_000 });
+    await partners.first().click();
+    await page.getByRole("button", { name: /Everything this partner holds/ }).click();
+
+    const stove = page.locator("tbody tr").first();
+    await expect(stove).toBeVisible({ timeout: 30_000 });
+    await stove.click();
+
+    // The LGA cannot be answered before the state, because an LGA belongs to
+    // one state and offering all 774 is not a choice anybody can make.
+    const lga = page.getByRole("combobox", { name: "Local government area" });
+    await expect(lga).toBeVisible({ timeout: 30_000 });
+    await expect(lga).toBeDisabled();
+
+    const state = page.getByRole("combobox", { name: "State" });
+    await state.click();
+    const stateList = page.getByRole("listbox");
+    await page.getByRole("combobox", { name: "State" }).fill("Kogi");
+    await stateList.getByRole("option", { name: "Kogi", exact: true }).click();
+
+    await expect(lga).toBeEnabled();
+    await lga.click();
+    const lgaList = page.getByRole("listbox");
+    // Kogi's own, and not a neighbour's. Two sales already carry an LGA that
+    // does not belong to their state, which is what this prevents from here on.
+    await expect(lgaList.getByRole("option", { name: "Yagba West", exact: true })).toBeVisible();
+    await expect(lgaList.getByRole("option", { name: "Ikeja", exact: true })).toHaveCount(0);
+  });
+});

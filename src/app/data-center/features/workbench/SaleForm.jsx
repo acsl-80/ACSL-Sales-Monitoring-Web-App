@@ -1,4 +1,5 @@
 import { useMemo, useState } from "react";
+import StateLgaSelect from "../../components/StateLgaSelect";
 import ImageUploadSection from "@/app/components/ui/ImageUploadSection";
 import SignatureCanvas from "@/app/components/ui/SignatureCanvas";
 import adminSalesService from "@/app/services/adminSalesService";
@@ -284,30 +285,37 @@ export default function SaleForm({ values, onChange, disabled, errors = {} }) {
       </Section>
 
       <Section title="Where they live">
-        <Field label="State" htmlFor="wb-state" required error={errors.stateBackup}>
-          <input
-            id="wb-state"
-            className={INPUT}
-            value={values.stateBackup ?? ""}
+        {/*
+          Chosen, not typed.
+
+          These were two free-text inputs, on the screen a typist uses forty
+          times a morning with a paper receipt in hand - so this was the one
+          place in the app where a misspelt state could enter the database with
+          nothing to be wrong against. The 36 states, the FCT and all 774 LGAs
+          were already in this database and already served by the geo-data
+          function; the bench simply never asked for them.
+        */}
+        <div className="sm:col-span-2 lg:col-span-3 grid grid-cols-1 gap-3 sm:grid-cols-2">
+          <StateLgaSelect
+            idPrefix="wb"
+            state={values.stateBackup ?? ""}
+            lga={values.lgaBackup ?? ""}
             disabled={disabled}
-            onChange={(e) => {
-              set("stateBackup", e.target.value);
-              setAddress("state", e.target.value);
+            onState={(v) => {
+              set("stateBackup", v);
+              setAddress("state", v);
+            }}
+            onLga={(v) => {
+              set("lgaBackup", v);
+              setAddress("city", v);
             }}
           />
-        </Field>
-        <Field label="Local government area" htmlFor="wb-lga" required error={errors.lgaBackup}>
-          <input
-            id="wb-lga"
-            className={INPUT}
-            value={values.lgaBackup ?? ""}
-            disabled={disabled}
-            onChange={(e) => {
-              set("lgaBackup", e.target.value);
-              setAddress("city", e.target.value);
-            }}
-          />
-        </Field>
+        </div>
+        {(errors.stateBackup || errors.lgaBackup) && (
+          <p className="sm:col-span-2 lg:col-span-3 text-xs text-red-600">
+            {errors.stateBackup ?? errors.lgaBackup}
+          </p>
+        )}
         <Field
           label="Residential address"
           htmlFor="wb-address"
