@@ -3018,8 +3018,11 @@ serve(async (req) => {
             }
 
             const status = complete ? "valid" : "draft";
+            // What the row ends up with, which is not the same as what was
+            // asked for: the downgrade guard below can refuse a draft save.
+            let stored = status;
             if (existing.rows[0]) {
-              await conn.queryObject({
+              const updated = await conn.queryObject<{ status: string }>({
                 /*
                  * A draft save keeps the typing and leaves the verdict alone.
                  *
@@ -3055,32 +3058,36 @@ serve(async (req) => {
                                            end,
                               last_edited_by = $5, last_edited_at = now(),
                               rejection_reason = null, rejection_hint = null
-                        where id = $1`,
+                        where id = $1
+                    returning status`,
                 args: [
                   existing.rows[0].id, JSON.stringify(values), status,
                   finished ? JSON.stringify(finished) : null,
                   userId,
                 ],
               });
+              stored = String(updated.rows[0]?.status ?? status);
             } else {
               const next = await conn.queryObject<{ n: number }>({
                 text: `select coalesce(max(row_number), 0) + 1 as n
                          from data_center.import_rows where batch_id = $1`,
                 args: [batchId],
               });
-              await conn.queryObject({
+              const inserted = await conn.queryObject<{ status: string }>({
                 text: `insert into data_center.import_rows
                          (batch_id, row_number, raw, status, stove_serial_no,
                           draft_values, normalized, last_edited_by, last_edited_at)
                        values ($1, $2, $3::jsonb, $4, $5, $3::jsonb,
                                case when $4 = 'valid' then $6::jsonb else null end,
-                               $7, now())`,
+                               $7, now())
+                       returning status`,
                 args: [
                   batchId, next.rows[0].n, JSON.stringify(values), status, stoveId,
                   finished ? JSON.stringify(finished) : null,
                   userId,
                 ],
               });
+              stored = String(inserted.rows[0]?.status ?? status);
               await conn.queryObject({
                 text: `update data_center.import_batches
                           set total_rows = (select count(*) from data_center.import_rows
@@ -3091,7 +3098,16 @@ serve(async (req) => {
             }
 
             await conn.queryObject("commit");
-            return json({ data: { batchId, stoveId, status } }, 200, cors);
+            /*
+             * The status the row HAS, not the one it was asked for.
+             *
+             * This echoed the request, so a draft save the downgrade guard
+             * correctly refused still answered "draft" - the caller handed its
+             * own intention back as though it were a fact. The bench reads this
+             * to decide whether a receipt is finished, and a screen that trusts
+             * an echo is how a panel and a database come to disagree.
+             */
+            return json({ data: { batchId, stoveId, status: stored } }, 200, cors);
           } catch (err) {
             await conn.queryObject("rollback");
             throw err;
