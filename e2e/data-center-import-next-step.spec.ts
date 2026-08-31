@@ -67,9 +67,22 @@ test.describe("a staged batch says what to do next", () => {
     await stageOnly(page, marker, stoves);
     await page.reload();
 
-    // The sentence a person meets, without opening anything.
-    const check = page.getByRole("button", { name: "Check the rows" });
-    await expect(page.getByText(/none has been checked yet/)).toBeVisible({ timeout: 30_000 });
+    /*
+     * Scoped to the row this test made, not to the page.
+     *
+     * Every unchecked batch says this, and a full suite run leaves several
+     * behind, so a page-level match resolves to all of them and Playwright
+     * refuses it. Passing alone and failing in the suite is the signature of a
+     * test asserting on somebody else's data.
+     *
+     * The next-step line is the sibling row immediately after the batch's own.
+     */
+    const row = page
+      .locator("tr", { hasText: `${marker}.csv` })
+      .locator("xpath=following-sibling::tr[1]");
+    await expect(row.getByText(/none has been checked yet/)).toBeVisible({ timeout: 30_000 });
+
+    const check = row.getByRole("button", { name: "Check the rows" });
     await expect(check).toBeVisible();
 
     // And the check runs from here. This is the door that did not exist.
@@ -80,10 +93,10 @@ test.describe("a staged batch says what to do next", () => {
      * not asserted: the seeded stoves may already be sold by an earlier spec in
      * the same run, and this is about the sentence, not the arithmetic.
      */
-    await expect(page.getByText(/Nothing is written until you commit/)).toBeVisible({
+    await expect(row.getByText(/Nothing is written until you commit/)).toBeVisible({
       timeout: 40_000,
     });
-    await expect(page.getByRole("button", { name: /^Commit \d+$/ })).toBeVisible();
+    await expect(row.getByRole("button", { name: /^Commit \d+$/ })).toBeVisible();
   });
 
   test("the three-step explainer is folded away, and opens on its heading", async ({ page }) => {
@@ -125,7 +138,7 @@ test.describe("a staged batch says what to do next", () => {
     // not a thing waiting on you. What matters is that it is not called "Dry run".
     await page.getByText(`${marker}.csv`).click();
     await expect(
-      page.getByRole("button", { name: "Show what a commit would do" }),
+      page.getByRole("button", { name: "Show what a commit would do" }).first(),
     ).toBeVisible({ timeout: 20_000 });
     await expect(page.getByRole("button", { name: /^Dry run$/ })).toHaveCount(0);
   });
