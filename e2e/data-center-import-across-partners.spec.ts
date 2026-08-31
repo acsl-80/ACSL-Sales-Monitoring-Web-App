@@ -152,33 +152,47 @@ test.describe("a sheet may cover several partners", () => {
     expect(await partnerOfSale(page, b)).toBe("TWIN-B");
   });
 
-  test("a row whose Partner column disagrees with its stove ID is refused", async ({
+  test("a wrong Partner column blocks the row on a sheet this module wrote", async ({
     page,
   }, testInfo) => {
     /*
-     * The sheet arrives with the partner already filled in. Until now only the
-     * stove ID was read back, so a sheet whose rows had been sorted, or pasted
-     * a column at a time, or had one stove ID overwritten, imported cleanly and
-     * put a buyer against the wrong stove. Nothing in the file contradicts
-     * itself loudly enough to see by eye at four hundred rows.
+     * On OUR sheet the Partner column is filled by us from the stove ID, so a
+     * disagreement means the row moved: sorted, pasted a column at a time, or
+     * one stove ID overwritten. There is no safe reading of that.
+     *
+     * The transfer reference is what identifies the sheet as ours, because only
+     * ours carries it. It is also the column that actually names a consignment,
+     * rather than a name somebody typed.
      */
     await signIn(page, USERS.admin);
     await page.goto("/data-center/import");
 
-    const a = await freeStoveOf(page, TWIN_A);
-    test.skip(!a, "no free twin stove left");
+    const r = await callEdgeFunction(page, "data-center-read", {
+      action: "partner_stoves",
+      organizationId: TWIN_A,
+      limit: 100,
+    });
+    const stoves =
+      (r.body as {
+        data?: { stoves?: { stove_id: string; sale_id: string | null; transaction_id: string }[] };
+      })?.data?.stoves ?? [];
+    const mine = stoves.find((x) => !x.sale_id && x.transaction_id);
+    test.skip(!mine, "no free twin stove carrying a transfer reference");
 
-    const marker = `mismatch${testInfo.workerIndex}-${Date.now()}`;
+    const marker = `ours${testInfo.workerIndex}-${Date.now()}`;
     const staged = await callEdgeFunction(page, "data-center-import", {
       action: "stage",
       filename: `${marker}.csv`,
       rows: [
         {
-          stove_serial_no: a,
-          // The stove belongs to Twin Name Partner. This names somebody else.
+          stove_serial_no: mine!.stove_id,
+          // The reference is right, which makes this our sheet.
+          transaction_id: mine!.transaction_id,
+          // The partner is not. The stove belongs to Twin Name Partner.
           partner_name: "Amina Sales Model Gombe",
           first_name: "Wrong",
           last_name: "Partner",
+          aka: marker,
           phone: "08012345670",
           sales_date: "2026-01-04",
           amount: "25000",
@@ -195,22 +209,74 @@ test.describe("a sheet may cover several partners", () => {
       action: "validate",
       batchId,
     });
-    expect(validated.status).toBe(200);
     const summary = (validated.body as { data: { valid: number; exception: number } }).data;
-
-    // Refused, and refused for the right reason rather than as a generic
-    // failure the operator has to guess at.
     expect(summary.valid).toBe(0);
     expect(summary.exception).toBe(1);
 
-    const rows = await callEdgeFunction(page, "data-center-import", {
-      action: "rows",
-      batchId,
-    });
+    const rows = await callEdgeFunction(page, "data-center-import", { action: "rows", batchId });
     const why = JSON.stringify(rows.body);
     expect(why).toMatch(/Partner column says/);
     expect(why).toMatch(/Amina Sales Model Gombe/);
     expect(why).toMatch(/Twin Name Partner/);
+  });
+
+  test("the same disagreement on somebody else's sheet is a note, not a refusal", async ({
+    page,
+  }, testInfo) => {
+    /*
+     * A sheet with no transfer reference was not written by this module, so its
+     * Partner column is a human's shorthand rather than a value we supplied.
+     * Measured on the first real file: 580 of 983 rows disagreed and 17 agreed.
+     * "Amina Sales Model Kajuru" against "Kajuru". "Solar Sisters" against
+     * "SOLAR SISTER IBADAN". Not one of them was an error, and refusing them
+     * would have refused the import.
+     *
+     * The stove ID still decides whose sale it is. The name is only recorded.
+     */
+    await signIn(page, USERS.admin);
+    await page.goto("/data-center/import");
+
+    const a = await freeStoveOf(page, TWIN_A);
+    test.skip(!a, "no free twin stove left");
+
+    const marker = `theirs${testInfo.workerIndex}-${Date.now()}`;
+    const staged = await callEdgeFunction(page, "data-center-import", {
+      action: "stage",
+      filename: `${marker}.csv`,
+      rows: [
+        {
+          stove_serial_no: a,
+          // No transaction_id: this is not one of our sheets.
+          partner_name: "Amina Sales Model Gombe",
+          first_name: "Shorthand",
+          last_name: "Partner",
+          aka: marker,
+          phone: "08012345671",
+          sales_date: "2026-01-04",
+          amount: "25000",
+          state: "Kogi",
+          lga: "Isanlu",
+          address: `${marker} Road`,
+        },
+      ],
+    });
+    const batchId = (staged.body as { data: { batchId: string } }).data.batchId;
+
+    const validated = await callEdgeFunction(page, "data-center-import", {
+      action: "validate",
+      batchId,
+    });
+    const summary = (validated.body as { data: { valid: number; noted?: number } }).data;
+
+    // It lands, and it is counted as carrying something worth reading.
+    expect(summary.valid).toBe(1);
+    expect(summary.noted).toBe(1);
+
+    const rows = await callEdgeFunction(page, "data-center-import", { action: "rows", batchId });
+    const body = JSON.stringify(rows.body);
+    // The note says which partner it was actually filed under.
+    expect(body).toMatch(/The stove ID decides/);
+    expect(body).toMatch(/Twin Name Partner/);
   });
 
   test("a partner outside your scope is refused even as one row among many", async ({

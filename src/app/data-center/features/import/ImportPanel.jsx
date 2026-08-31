@@ -380,7 +380,11 @@ export default function ImportPanel({ canUpload, canCommit, canResolve }) {
           "check",
           "done",
           `${counts.valid} ready, ${counts.exception} need a look, ` +
-            `${counts.rejected} could not be read`,
+            `${counts.rejected} could not be read` +
+            // Rows that WILL land but disagreed with the sheet about something
+            // the stove ID overrules. Said, because the alternative is a note
+            // computed and thrown away.
+            (counts.noted ? `, ${counts.noted} with a note` : ""),
         );
         // What is wrong, grouped, before anybody presses commit rather than
         // after. The whole point of staging is that this is cheap to look at.

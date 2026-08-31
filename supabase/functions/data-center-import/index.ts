@@ -196,6 +196,9 @@ export const HEADER_ALIASES: Record<string, string[]> = {
   // need mapping is not a template.
   // ---------------------------------------------------------------------
   partnerName:        ["partner_name", "Partner", "Partner Name", "partnerName"],
+  // Not a field on the sale. It is read to price a row whose sheet has no
+  // amount column, from the table in workflow_config.
+  salesModel:         ["sales_model", "Sales Model", "salesModel"],
   salesRep:           ["sales_rep", "Sales Rep", "Sales Representative", "salesRep"],
   transferDate:       ["transfer_date", "Transfer Date", "transferDate"],
   potQuantity:        ["pot_quantity", "Pots Quantity", "Pot Quantity", "potQuantity"],
@@ -257,6 +260,58 @@ export function fromSheetValues(row: Record<string, unknown>): Record<string, un
   return out;
 }
 
+/**
+ * A thing that can be queried.
+ *
+ * `{ queryObject: (q: unknown) => ... }` was the shape both helpers declared,
+ * and the real Client does not satisfy it: its queryObject is overloaded, and
+ * an overload taking `string` is not assignable to one taking `unknown`. So
+ * every call site type-errored, four of them, and the errors had been there
+ * long enough to read as background noise.
+ *
+ * Named once and widened to what the driver actually offers.
+ */
+// deno-lint-ignore no-explicit-any
+type Queryable = { queryObject: (...args: any[]) => Promise<{ rows: any[] }> };
+
+/**
+ * What one stove costs under a row's sales model.
+ *
+ * ONE RULE, WHATEVER THE CHANNEL.
+ *
+ * This started life inside the bulk validate step, which meant a Partner Sales
+ * receipt in a FILE was priced automatically while the same receipt typed at
+ * the bench was refused for having no amount. Two behaviours from one rule is
+ * how the two paths drift, and the cheaper-looking one ends up accepting
+ * records the other would have refused - which is the failure this module's
+ * rules name explicitly.
+ *
+ * So it lives here and every entry path calls it: the file, the typed record
+ * and the bench.
+ *
+ * Returns null when the model is unknown or unpriced, which is not an error.
+ * The caller then refuses that one row with a reason naming the setting.
+ */
+export async function modelPriceFor(
+  conn: Queryable,
+  raw: Record<string, unknown>,
+): Promise<number | null> {
+  const model = field(raw, "salesModel").trim().toLowerCase();
+  if (!model) return null;
+  const r = await conn.queryObject({
+    text: `select value from data_center.workflow_config where key = 'import.model_amounts'`,
+  }) as { rows: { value: unknown }[] };
+  const table = r.rows[0]?.value;
+  if (!table || typeof table !== "object") return null;
+  for (const [name, amount] of Object.entries(table as Record<string, unknown>)) {
+    if (name.trim().toLowerCase() === model) {
+      const n = Number(amount);
+      return Number.isFinite(n) && n > 0 ? n : null;
+    }
+  }
+  return null;
+}
+
 /** Which fields must be present for a row to be usable at all. */
 export const REQUIRED_FIELDS = [
   "stoveSerialNo",
@@ -264,7 +319,19 @@ export const REQUIRED_FIELDS = [
   // satisfying it. Leaving this off the list let `inspect` bless a file whose
   // every row would then be rejected, which is the exact silent failure this
   // step exists to close.
-  "endUserName", "phone", "salesDate", "amount", "state", "lga", "fullAddress",
+  //
+  // `amount` is NOT here, and that is deliberate rather than an oversight. A
+  // sheet may carry no amount column at all, because the price belongs to the
+  // sales model; a row whose model has no price set is refused one row at a
+  // time, with a reason naming where to set it. Demanding the column would
+  // refuse the file before anybody saw which rows were priced.
+  //
+  // `lga` is not here either, matching normalizeRow, which records it and no
+  // longer demands it.
+  // `fullAddress` came off for the same reason as `lga`: it is worth having and
+  // it is not what a record is for. The stove ID, the buyer's name, their
+  // phone, the date and the state are.
+  "endUserName", "phone", "salesDate", "state",
 ] as const;
 
 function text(raw: Record<string, unknown>, ...keys: string[]): string {
@@ -427,7 +494,7 @@ function fromSaleForm(values: Record<string, unknown>): Record<string, unknown> 
  * somebody pasted into the wrong sheet, and it is named.
  */
 async function resolvePartnersFromSerials(
-  conn: { queryObject: (q: unknown) => Promise<{ rows: unknown[] }> },
+  conn: Queryable,
   rows: Record<string, unknown>[],
 ): Promise<{
   partners: { organizationId: string; partnerName: string; branch: string | null; count: number }[];
@@ -541,6 +608,16 @@ function field(raw: Record<string, unknown>, key: keyof typeof HEADER_ALIASES, .
  */
 export function normalizeRow(
   raw: Record<string, unknown>,
+  /**
+   * Values to fall back on when the file does not carry them.
+   *
+   * Only `amount` today, and only when the row has none. A sheet written for
+   * digitisation records what was sold, not what it cost, because the price is
+   * a property of the sales model rather than of the receipt. The alternative
+   * was writing the price into `raw`, and `raw` is what a rejected row is shown
+   * as - the version the person fixing it recognises - so it stays as typed.
+   */
+  defaults: { amount?: number | null } = {},
 ):
   // `hint` says what to do about it. A reason without a fix leaves a digitiser
   // with four hundred rows and no next step, which is how a rejection file gets
@@ -618,13 +695,20 @@ export function normalizeRow(
   }
 
   const amountRaw = field(raw, "amount");
-  const amount = Number(amountRaw.replace(/[^0-9.]/g, ""));
+  const priced = typeof defaults.amount === "number" && defaults.amount > 0;
+  const amount = amountRaw.trim() === "" && priced
+    ? (defaults.amount as number)
+    : Number(amountRaw.replace(/[^0-9.]/g, ""));
   if (!Number.isFinite(amount) || amount <= 0) {
     return {
       ok: false,
-      reason: `Sale amount "${amountRaw}" is not a number above zero`,
-      hint:
-        "Enter digits only, like 47500. Leave out the naira sign and any commas, and do not write 'cash' or 'paid'.",
+      reason: amountRaw.trim() === ""
+        ? "No sale amount, and this row's sales model has no price set"
+        : `Sale amount "${amountRaw}" is not a number above zero`,
+      hint: amountRaw.trim() === ""
+        ? "Either add a Sale Amount column to the sheet, or set a price for this " +
+          "sales model in Settings so every row on that model is priced the same."
+        : "Enter digits only, like 47500. Leave out the naira sign and any commas, and do not write 'cash' or 'paid'.",
     };
   }
 
@@ -655,24 +739,38 @@ export function normalizeRow(
       hint: "Add the buyer's state, spelled out, like Gombe or Kano.",
     };
   }
+  /*
+   * LGA is recorded when the file has it, and never demanded.
+   *
+   * A digitisation sheet is typed from a paper receipt and the LGA is often
+   * not on it: on the real file every one of 983 rows is blank, because the
+   * only "Local Govt Area" column belongs to the CALL CENTRE half of the
+   * sheet, where it is confirmed with the end user on the phone. Refusing 983
+   * good rows for a field the digitiser was never given, which the call pass
+   * is about to supply, is the check costing more than it catches.
+   *
+   * State is still required. It is on the receipt, it is on the sheet, and it
+   * is what the scorecards cut by.
+   */
   const lga = field(raw, "lga", "lgaBackup");
-  if (!lga) {
-    return {
-      ok: false,
-      reason: "No local government area",
-      hint: "Add the buyer's LGA. It is on the receipt under the address.",
-    };
-  }
 
+  /*
+   * The address is recorded when the file has it, and never demanded.
+   *
+   * The stove ID is what a record is FOR: it is the thing that ties a buyer to
+   * a stove, a partner and a carbon claim, and it is the one column that can be
+   * checked against something. An address is worth having and can be filled in
+   * afterwards from the call the call centre is about to make; refusing a row
+   * that names a real stove and a real buyer because the receipt had no street
+   * loses the record entirely to gain a field somebody will supply next week.
+   *
+   * 140 rows of the first real file are exactly this: named buyer, real phone,
+   * real stove, no address written on the receipt.
+   *
+   * `create-sale` does not require it either, and public.addresses accepts a
+   * blank row - production already holds two.
+   */
   const fullAddress = field(raw, "fullAddress");
-  if (!fullAddress) {
-    return {
-      ok: false,
-      reason: "No residential address",
-      hint:
-        "Add where the buyer lives, in enough detail for a field agent to find the house.",
-    };
-  }
 
   // The buyer defaults to the end user, which is what a receipt with one name
   // on it means.
@@ -1205,7 +1303,11 @@ serve(async (req) => {
         // Fail on the shape before writing anything. A file gets staged first
         // because the operator wants to see all the failures at once; a single
         // record is better answered immediately.
-        const shape = normalizeRow(record);
+        //
+        // Priced by the same rule a file is. One validator, whatever the
+        // channel, and that has to include what the validator is given.
+        const typedPrice = await withReadConnection((c) => modelPriceFor(c, record));
+        const shape = normalizeRow(record, { amount: typedPrice });
         if (!shape.ok) {
           throw new BadRequest(shape.hint ? `${shape.reason}. ${shape.hint}` : shape.reason);
         }
@@ -1281,13 +1383,38 @@ serve(async (req) => {
             // serials exist. One query for the whole batch rather than one per
             // row, which at 20,000 rows is the difference between seconds and
             // an afternoon.
+            /*
+             * The price table, read once for the batch rather than once per row.
+             *
+             * modelPriceFor is the rule and is what the single-record paths
+             * call; a file of four hundred rows would ask the same question
+             * four hundred times, so the answer is cached here. Same table,
+             * same matching, one place to change either.
+             */
+            const priceRow = await conn.queryObject<{ value: unknown }>({
+              text: `select value from data_center.workflow_config
+                      where key = 'import.model_amounts'`,
+            });
+            const prices = new Map<string, number>();
+            const rawPrices = priceRow.rows[0]?.value;
+            if (rawPrices && typeof rawPrices === "object") {
+              for (const [model, amount] of Object.entries(rawPrices as Record<string, unknown>)) {
+                const n = Number(amount);
+                if (Number.isFinite(n) && n > 0) prices.set(model.trim().toLowerCase(), n);
+              }
+            }
+            const priceOf = (raw: Record<string, unknown>) => {
+              const model = field(raw, "salesModel").trim().toLowerCase();
+              return model ? (prices.get(model) ?? null) : null;
+            };
+
             const shaped = pending.rows.map((r) => ({
               id: r.id,
               rowNumber: Number(r.row_number),
               // Kept, because the columns the system filled in are checked
               // against the stove ID below and normalizeRow does not carry them.
               raw: r.raw,
-              result: normalizeRow(r.raw),
+              result: normalizeRow(r.raw, { amount: priceOf(r.raw) }),
             }));
             const serials = shaped
               .filter((s) => s.result.ok)
@@ -1419,7 +1546,7 @@ serve(async (req) => {
             // above cannot see because neither row is a sale yet.
             const seenPhone = new Map<string, string[]>();
 
-            let valid = 0, rejected = 0, exception = 0, linked = 0;
+            let valid = 0, rejected = 0, exception = 0, linked = 0, noted = 0;
 
             for (const s of shaped) {
               if (!s.result.ok) {
@@ -1515,20 +1642,49 @@ serve(async (req) => {
               const stockRef = transferBySerial.get(row.stoveSerialNo.toUpperCase()) ?? null;
               const stockRep = repBySerial.get(row.stoveSerialNo.toUpperCase()) ?? null;
 
+              /*
+               * The partner check blocks only on a sheet this module wrote.
+               *
+               * On our own sheet the Partner column is filled BY US from the
+               * stove ID, so a disagreement means the row moved and blocking is
+               * right. On somebody else's sheet it is a human's shorthand for
+               * the same partner, and blocking it is refusing correct data over
+               * a naming convention.
+               *
+               * Measured on the real digitisation file before this existed:
+               * 580 of 983 rows refused, 17 agreed. "Amina Sales Model Kajuru"
+               * against "Kajuru". "Solar Sisters" against "SOLAR SISTER
+               * IBADAN". Not one was an error.
+               *
+               * The transfer reference is the tell, because only our sheet
+               * carries it. It is also the column that actually identifies a
+               * consignment, so where it IS present it still blocks: that is a
+               * value the file was given rather than one somebody typed.
+               */
+              const ourSheet = sheetRef !== null;
+
               let columnMismatch: string | null = null;
+              let columnWarning: string | null = null;
               if (found && !agrees(sheetPartner, found.partner_name)) {
-                columnMismatch =
+                const said =
                   `The Partner column says "${sheetPartner}" but stove ${row.stoveSerialNo} ` +
-                  `belongs to "${found.partner_name ?? "no partner"}". ` +
-                  "Either the stove ID or the partner on this row is wrong.";
-              } else if (stockRef && !agrees(sheetRef, stockRef)) {
+                  `belongs to "${found.partner_name ?? "no partner"}".`;
+                if (ourSheet) {
+                  columnMismatch = `${said} Either the stove ID or the partner on this row is wrong.`;
+                } else {
+                  columnWarning =
+                    `${said} The stove ID decides, so this row is filed under ` +
+                    `"${found.partner_name ?? "no partner"}".`;
+                }
+              }
+              if (!columnMismatch && stockRef && !agrees(sheetRef, stockRef)) {
                 columnMismatch =
                   `The Transaction ID column says "${sheetRef}" but stove ${row.stoveSerialNo} ` +
                   `came on ${stockRef}. Either the stove ID or the reference on this row is wrong.`;
               }
 
               const repWarning =
-                !columnMismatch && stockRep && !agrees(sheetRep, stockRep)
+                !columnMismatch && !columnWarning && stockRep && !agrees(sheetRep, stockRep)
                   ? `The Sales Rep column says "${sheetRep}" and the consignment records ` +
                     `"${stockRep}". Imported as it stands.`
                   : null;
@@ -1596,12 +1752,28 @@ serve(async (req) => {
                  * server from stock and are only ever compared against stock
                  * again at commit, so the file cannot reach them either way.
                  */
+                /*
+                 * Warnings travel with the row.
+                 *
+                 * They were computed and dropped, which is worse than never
+                 * computing them: the code looked like it reported a sales-rep
+                 * mismatch and a partner shorthand, and nothing ever did. A
+                 * warning nobody can read is a comment, not a feature.
+                 *
+                 * On `normalized` rather than a new column, because the row
+                 * already carries this object and a migration for a note the
+                 * import writes and the panel reads would be a schema change
+                 * for a sentence.
+                 */
+                const importWarnings = [columnWarning, repWarning].filter(Boolean);
+                if (importWarnings.length) noted++;
                 const canonical = {
                   ...row,
                   stoveSerialNo: found!.stove_id,
                   resolvedOrganizationId: found!.organization_id ?? null,
                   resolvedPartnerId: found!.partner_id ?? null,
                   resolvedPartnerName: found!.partner_name ?? null,
+                  ...(importWarnings.length ? { importWarnings } : {}),
                 };
                 verdicts.push({
                   id: s.id,
@@ -1685,7 +1857,7 @@ serve(async (req) => {
             });
             await conn.queryObject("commit");
             return json(
-              { data: { valid, rejected, exception, linkedToTransfer: linked } },
+              { data: { valid, rejected, exception, linkedToTransfer: linked, noted } },
               200,
               cors,
             );
@@ -2678,7 +2850,13 @@ serve(async (req) => {
         const record = fromSheetValues(autoMapRow(fromSaleForm({ ...values, stoveSerialNo: stoveId })));
 
         // Finishing means it has to hold together. Half-typed does not.
-        const shape = complete ? normalizeRow(record) : null;
+        //
+        // Priced by the same rule as a file and a typed record, or the bench
+        // would refuse a receipt the other two accept.
+        const benchPrice = complete
+          ? await withReadConnection((c) => modelPriceFor(c, record))
+          : null;
+        const shape = complete ? normalizeRow(record, { amount: benchPrice }) : null;
         const finished = shape?.ok ? shape.row : null;
         if (complete) {
           if (shape && !shape.ok) {

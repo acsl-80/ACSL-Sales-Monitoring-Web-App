@@ -1371,6 +1371,8 @@ export const dataCenterImport = {
       valid: number;
       rejected: number;
       exception: number;
+      /** Rows that will land but carry something worth reading first. */
+      noted?: number;
       linkedToTransfer: number;
     }>("data-center-import", "validate", { batchId }),
 
