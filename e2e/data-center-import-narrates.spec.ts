@@ -1,5 +1,5 @@
 import { test, expect, type Page } from "@playwright/test";
-import { callEdgeFunction, signIn, USERS } from "./helpers";
+import { callEdgeFunction, commitAndDrain, signIn, USERS } from "./helpers";
 
 /**
  * An import says who did it, what it is doing, and what did not land.
@@ -62,11 +62,7 @@ test.describe("an import is credited and accounted for", () => {
     const batchId = (staged.body as { data: { batchId: string } }).data.batchId;
 
     await callEdgeFunction(page, "data-center-import", { action: "validate", batchId });
-    const committed = await callEdgeFunction(page, "data-center-import", {
-      action: "commit",
-      batchId,
-    });
-    expect(committed.status).toBe(200);
+    await commitAndDrain(page, batchId);
 
     const detail = await callEdgeFunction(page, "data-center-read", {
       action: "stove_detail",

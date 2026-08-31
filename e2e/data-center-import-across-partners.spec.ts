@@ -1,5 +1,5 @@
 import { test, expect, type Page } from "@playwright/test";
-import { callEdgeFunction, signIn, USERS } from "./helpers";
+import { callEdgeFunction, commitAndDrain, signIn, USERS } from "./helpers";
 
 /**
  * One sheet, several partners, and the stove ID decides which.
@@ -134,12 +134,9 @@ test.describe("a sheet may cover several partners", () => {
     });
     expect(validated.status).toBe(200);
 
-    // Commit runs in slices; two rows is one slice.
-    const committed = await callEdgeFunction(page, "data-center-import", {
-      action: "commit",
-      batchId,
-    });
-    expect(committed.status).toBe(200);
+    // Commit chains itself on the server now; the press answers 202 and the
+    // drain is what the assertion below must wait for.
+    await commitAndDrain(page, batchId);
 
     /*
      * The assertion the whole design exists for.

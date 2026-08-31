@@ -192,3 +192,39 @@ export async function signIn(page: Page, email: string) {
 export function dataCentreNavLink(page: Page) {
   return page.getByRole("link", { name: "Data Center", exact: true });
 }
+
+/**
+ * Kick the commit chain and wait for the server to drain the batch.
+ *
+ * Commit stopped being synchronous: one press answers 202 and the server
+ * works the batch link by link inside EdgeRuntime.waitUntil, whether anybody
+ * is watching or not. A spec that presses and immediately asserts sales exist
+ * is now asserting against a run that has barely started - so the press and
+ * the wait live together here, and the batch's own live counts are the truth
+ * being polled.
+ */
+export async function commitAndDrain(
+  page: Page,
+  batchId: string,
+  tries = 40,
+): Promise<Record<string, unknown>> {
+  const kick = await callEdgeFunction(page, "data-center-import", {
+    action: "commit",
+    batchId,
+  });
+  if (kick.status !== 202 && kick.status !== 200) {
+    throw new Error(`commit kick answered ${kick.status}: ${JSON.stringify(kick.body)}`);
+  }
+  for (let i = 0; i < tries; i++) {
+    await page.waitForTimeout(3000);
+    const r = await callEdgeFunction(page, "data-center-import", {
+      action: "batches",
+      batchId,
+    });
+    const b = ((r.body as { data?: Record<string, unknown>[] })?.data ?? []).find(
+      (x) => x.id === batchId,
+    );
+    if (b && (b.state === "committed" || b.valid_rows === 0)) return b;
+  }
+  throw new Error("the commit chain did not drain the batch in time");
+}

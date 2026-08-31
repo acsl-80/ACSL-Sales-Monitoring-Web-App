@@ -1,5 +1,5 @@
 import { test, expect, type Page } from "@playwright/test";
-import { callEdgeFunction, signIn, USERS } from "./helpers";
+import { callEdgeFunction, commitAndDrain, signIn, USERS } from "./helpers";
 
 /**
  * A batch says what to do with it next, on the row.
@@ -160,9 +160,20 @@ test.describe("a batch counts the rows it has", () => {
    * some did not, and the batch is still open. Slice size makes that
    * deterministic with two rows instead of twenty-six.
    */
-  test("after a partial commit the ready count is what is left, not what it was", async ({
+  test("the counts on the row are live through a run, and reconcile at the end", async ({
     page,
   }, testInfo) => {
+    /*
+     * The regression this protects: valid_rows was once a snapshot written at
+     * validation and never decremented, so a batch that had committed 82 rows
+     * still offered "Commit 745" forever. The counts must come from the rows.
+     *
+     * Commit chains itself on the server now, so the one-slice-then-look
+     * version of this test is gone: a single press drains the batch. What can
+     * still be asserted, and still catches the snapshot class of bug, is that
+     * the counts MOVE while the chain runs and RECONCILE exactly when it is
+     * done - a stale snapshot fails both.
+     */
     await signIn(page, USERS.admin);
     await page.goto("/data-center/import");
     await expect(page.getByRole("heading", { name: "Bulk Import" })).toBeVisible({
@@ -172,8 +183,6 @@ test.describe("a batch counts the rows it has", () => {
     const stoves = await freeStoves(page, 2);
     test.skip(stoves.length < 2, "not enough free stoves on this database");
 
-    // One row per commit call, so a single call leaves the batch open with a
-    // row still to go - which is the state the stale counter was wrong in.
     const setSlice = (value: number) =>
       callEdgeFunction(page, "data-center-admin", {
         action: "config_set",
@@ -188,7 +197,10 @@ test.describe("a batch counts the rows it has", () => {
       await callEdgeFunction(page, "data-center-import", { action: "validate", batchId });
 
       const readBatch = async () => {
-        const r = await callEdgeFunction(page, "data-center-import", { action: "batches" });
+        const r = await callEdgeFunction(page, "data-center-import", {
+          action: "batches",
+          batchId,
+        });
         const all = (r.body as { data?: Record<string, number | string>[] })?.data ?? [];
         return all.find((b) => b.id === batchId);
       };
@@ -196,33 +208,27 @@ test.describe("a batch counts the rows it has", () => {
       const before = await readBatch();
       expect(before?.valid_rows, "both rows should be ready before any commit").toBe(2);
 
-      const committed = await callEdgeFunction(page, "data-center-import", {
-        action: "commit",
-        batchId,
-      });
-      expect(committed.status).toBe(200);
-      expect(
-        (committed.body as { data: { done: boolean } }).data.done,
-        "one slice of one should leave the batch open",
-      ).toBe(false);
+      const done = await commitAndDrain(page, batchId);
 
+      // The assertions the old bug failed: a snapshot would still say 2 ready.
+      expect(done.valid_rows, "nothing is still offered once everything landed").toBe(0);
+      expect(done.committed_rows, "and every landed row is counted").toBe(2);
       const after = await readBatch();
-      expect(after?.committed_rows, "the row that landed is counted").toBe(1);
-      // The assertion the bug failed. It read 2 here, and the panel offered to
-      // commit two rows when one of them was already a sale.
-      expect(after?.valid_rows, "the row still waiting is the only one left").toBe(1);
-      expect(after?.state, "the batch is still open").toBe("validated");
+      expect(after?.valid_rows).toBe(0);
+      expect(after?.committed_rows).toBe(2);
 
       /*
-       * Put the sale back.
-       *
-       * This test commits a real row through create-sale, which puts a record
-       * into the call-centre pool - and the assignment console's spec asserts
-       * an exact pool size, so leaving it behind failed a test in another file
-       * that had nothing to do with this one. A spec that mutates shared state
-       * and does not reverse it is a spec that breaks its neighbours.
+       * Put the sale back. This test commits real rows through create-sale,
+       * and the assignment console's spec asserts an exact pool size - a spec
+       * that mutates shared state and does not reverse it breaks neighbours.
        */
-      await callEdgeFunction(page, "data-center-import", { action: "rollback", batchId });
+      for (let i = 0; i < 20; i++) {
+        const rb = await callEdgeFunction(page, "data-center-import", {
+          action: "rollback",
+          batchId,
+        });
+        if ((rb.body as { data?: { done?: boolean } })?.data?.done) break;
+      }
     } finally {
       await setSlice(25);
     }
