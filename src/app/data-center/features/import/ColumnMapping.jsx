@@ -1,4 +1,5 @@
 import { useMemo, useState } from "react";
+import { SearchableSelect } from "@/components/ui/searchable-select";
 import { plural } from "../../lib/plural";
 import { AlertTriangle, ArrowRight, CheckCircle2, X } from "lucide-react";
 
@@ -112,19 +113,23 @@ export default function ColumnMapping({ file, inspection, onCancel, onConfirm, b
                   <span className="min-w-0 flex-1 truncate text-sm text-gray-700" title={header}>
                     {header}
                   </span>
-                  <select
-                    aria-label={`Map column ${header}`}
-                    value={mapping[header] ?? ""}
-                    onChange={(e) =>
-                      setMapping((m) => ({ ...m, [header]: e.target.value }))
-                    }
-                    className="w-full shrink-0 rounded-md border sm:w-44 border-gray-300 px-2 py-1 text-sm focus:border-(--dc-accent) focus:outline-none"
-                  >
-                    <option value="">Ignore this column</option>
-                    {inspection.mappableFields.map((f) => (
-                      <option key={f} value={f}>{label(f)}</option>
-                    ))}
-                  </select>
+                  <div className="w-full shrink-0 sm:w-44">
+                    <SearchableSelect
+                      ariaLabel={`Map column ${header}`}
+                      value={mapping[header] ?? ""}
+                      onChange={(next) =>
+                        setMapping((m) => ({ ...m, [header]: next }))
+                      }
+                      placeholder="Ignore this column"
+                      searchPlaceholder="Type part of a field name"
+                      emptyLabel="No field matches that"
+                      pinned={{ value: "", label: "Ignore this column" }}
+                      options={inspection.mappableFields.map((f) => ({
+                        value: f,
+                        label: label(f),
+                      }))}
+                    />
+                  </div>
                 </li>
               ))}
             </ul>

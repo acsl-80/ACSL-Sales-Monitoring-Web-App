@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
+import { SearchableSelect } from "@/components/ui/searchable-select";
 import {
   dataCenterClient,
   dataCenterImport,
@@ -400,26 +401,37 @@ export default function CallSheet({ canCommit = false }) {
             >
               Whose records
             </label>
-            <select
-              id="dc-callsheet-partner"
-              value={orgId}
-              onChange={(e) => {
-                setOrgId(e.target.value);
-                setDownloaded(null);
-                setError("");
-              }}
-              disabled={busy === "download" || partners === null}
-              className="mt-1 block w-full max-w-md rounded-md border border-gray-300 bg-white px-2 py-1.5 text-sm disabled:bg-gray-50"
-            >
-              <option value="">
-                {partners === null ? "Loading partners..." : "Everything waiting to be called"}
-              </option>
-              {(partners ?? []).map((x) => (
-                <option key={x.id} value={x.id}>
-                  {[x.name ?? "Unnamed partner", x.branch, x.state].filter(Boolean).join(", ")}
-                </option>
-              ))}
-            </select>
+            <div className="mt-1 max-w-md">
+              <SearchableSelect
+                id="dc-callsheet-partner"
+                ariaLabel="Whose records"
+                value={orgId}
+                onChange={(next) => {
+                  setOrgId(next);
+                  setDownloaded(null);
+                  setError("");
+                }}
+                disabled={busy === "download" || partners === null}
+                placeholder={
+                  partners === null ? "Loading partners..." : "Everything waiting to be called"
+                }
+                searchPlaceholder="Type part of the partner's name"
+                emptyLabel="No partner you cover matches that"
+                pinned={{ value: "", label: "Everything waiting to be called" }}
+                options={(partners ?? []).map((x) => ({
+                  value: x.id,
+                  /*
+                    Branch and state are part of the label, not decoration.
+                    Several partners share a name - Solar Sister has two rows
+                    both called "Main Branch", in different states - so a name
+                    alone cannot be picked between.
+                  */
+                  label: [x.name ?? "Unnamed partner", x.branch, x.state]
+                    .filter(Boolean)
+                    .join(", "),
+                }))}
+              />
+            </div>
           </div>
 
           {partnersFailed && (
