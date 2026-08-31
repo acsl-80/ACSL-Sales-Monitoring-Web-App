@@ -253,6 +253,63 @@ function Steps({ steps }) {
   );
 }
 
+/**
+ * What to do with a batch next, in one sentence and one button.
+ *
+ * WHY THIS EXISTS
+ *
+ * A real 983-row import staged successfully and then sat there. The panel
+ * showed "staged", "Rows 983", "Ready 0", "Exceptions 0", and no next step
+ * anywhere: the actions were behind a chevron nobody had reason to click, and
+ * the one action that batch actually needed - checking the rows - did not exist
+ * as a button at all, because checking only ever happened automatically during
+ * upload. Staging had worked and the check had not, and there was no way back
+ * to it short of re-uploading the same file against a duplicate guard.
+ *
+ * Meanwhile the top of the page explained three steps the reader had already
+ * done. Explaining a process nobody is at the start of is not help.
+ *
+ * So: the state a batch is in decides the sentence and the button, and both sit
+ * on the row rather than inside it.
+ */
+function nextStep(b) {
+  const pending = Math.max(
+    0,
+    (b.total_rows ?? 0) - (b.valid_rows ?? 0) - (b.rejected_rows ?? 0) - (b.committed_rows ?? 0),
+  );
+  if (b.state === "rolled_back") {
+    return { say: "Rolled back. Nothing from this file is in the sales app.", action: null };
+  }
+  if (b.state === "committed") {
+    return { say: `Done. ${b.committed_rows} of ${b.total_rows} went in.`, action: null };
+  }
+  if (pending > 0 && (b.valid_rows ?? 0) === 0 && (b.rejected_rows ?? 0) === 0) {
+    return {
+      say: `${b.total_rows} rows are here and none has been checked yet.`,
+      action: { kind: "validate", label: "Check the rows", primary: true },
+    };
+  }
+  if ((b.valid_rows ?? 0) > 0) {
+    return {
+      say:
+        `${b.valid_rows} ready to go in` +
+        (b.exception_rows ? `, ${b.exception_rows} need a person first` : "") +
+        `. Nothing is written until you commit.`,
+      action: { kind: "commit", label: `Commit ${b.valid_rows}`, primary: true },
+    };
+  }
+  if (pending > 0) {
+    return {
+      say: `${pending} rows still to check.`,
+      action: { kind: "validate", label: "Check the rest", primary: true },
+    };
+  }
+  return {
+    say: "Nothing here can be written as it stands. Open it to see why.",
+    action: null,
+  };
+}
+
 export default function ImportPanel({ canUpload, canCommit, canResolve }) {
   const [batches, setBatches] = useState([]);
   // The history grows for as long as the module runs, so it pages.
@@ -557,6 +614,43 @@ export default function ImportPanel({ canUpload, canCommit, canResolve }) {
    * long and the operator can watch it move. A failure stops the loop with the
    * batch part-committed, which is recoverable: asking again resumes.
    */
+  /**
+   * Check a batch that is sitting unchecked.
+   *
+   * Checking used to happen only as the second half of an upload, so a batch
+   * whose upload staged and then failed had no way to be checked at all. It is
+   * the same call either way; it just needed a door.
+   */
+  const runValidate = async (batchId) => {
+    setBusy(true);
+    setError(null);
+    setUnlanded(null);
+    setSteps([
+      { key: "check", label: "Checking every row against the stove register", state: "running",
+        detail: null },
+    ]);
+    try {
+      const counts = await dataCenterImport.validate(batchId);
+      stepTo(
+        "check",
+        "done",
+        `${counts.valid} ready, ${counts.exception} need a look, ` +
+          `${counts.rejected} could not be read` +
+          (counts.noted ? `, ${counts.noted} with a note` : ""),
+      );
+      setUnlandedPhase("staged");
+      await collectUnlanded(batchId);
+      await refresh();
+    } catch (err) {
+      stepTo("check", "failed", "Stopped part way. Asking again picks up where it left off.");
+      setError(
+        err instanceof DataCenterError ? err.message : "The check did not finish. Try again.",
+      );
+    } finally {
+      setBusy(false);
+    }
+  };
+
   const runCommit = async (batchId, total) => {
     setBusy(true);
     setProgress({ done: 0, failed: 0 });
@@ -895,6 +989,48 @@ export default function ImportPanel({ canUpload, canCommit, canResolve }) {
                 </td>
               </tr>
 
+              {/*
+                The next step, on the row rather than inside it.
+
+                A batch that needs something from a person should say so where
+                the person is already looking, not behind a chevron they have no
+                reason to click.
+              */}
+              {(() => {
+                const step = nextStep(b);
+                if (!step.say) return null;
+                const may =
+                  step.action?.kind === "commit" ? canCommit : canUpload;
+                return (
+                  <tr className="border-b border-gray-100 bg-(--dc-accent-soft)/25">
+                    <td colSpan={8} className="px-3 py-2">
+                      <div className="flex flex-wrap items-center gap-3">
+                        <span className="text-sm text-gray-800">{step.say}</span>
+                        {step.action && may && (
+                          <button
+                            type="button"
+                            disabled={busy}
+                            onClick={() => {
+                              if (step.action.kind === "validate") runValidate(b.id);
+                              else setPending({ kind: "commit", batchId: b.id, count: b.valid_rows });
+                            }}
+                            className="inline-flex items-center gap-1.5 rounded-md bg-(--dc-accent) px-3 py-1.5 text-sm font-medium text-white transition hover:bg-(--dc-accent-strong) disabled:opacity-50"
+                          >
+                            {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : <Play className="h-4 w-4" />}
+                            {step.action.label}
+                          </button>
+                        )}
+                        {step.action && !may && (
+                          <span className="text-xs text-gray-600">
+                            Somebody with permission to {step.action.kind === "commit" ? "commit" : "run the check"} has to do this.
+                          </span>
+                        )}
+                      </div>
+                    </td>
+                  </tr>
+                );
+              })()}
+
               {open === b.id && (
                 <tr className="border-b border-gray-100 bg-(--dc-surface-muted)">
                   <td colSpan={8} className="px-4 py-3">
@@ -919,7 +1055,8 @@ export default function ImportPanel({ canUpload, canCommit, canResolve }) {
                         onClick={() => runDryRun(b.id)}
                         className="inline-flex items-center gap-1 rounded-md border border-gray-300 px-2.5 py-1.5 text-xs font-medium text-gray-700 hover:bg-gray-50 disabled:opacity-50"
                       >
-                        <Eye className="h-3.5 w-3.5" /> Dry run
+                        {/* "Dry run" is the code's word. This is what it does. */}
+                        <Eye className="h-3.5 w-3.5" /> Show what a commit would do
                       </button>
                     )}
                     {canCommit && b.valid_rows > 0 && b.state !== "committed" && (

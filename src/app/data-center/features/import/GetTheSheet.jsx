@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import { dataCenterImport, DataCenterError } from "../../lib/client";
 import DigitisationSheet from "../partner-records/DigitisationSheet";
 import {
-  FileSpreadsheet, Download, PenLine, Upload, ArrowRight, Info,
+  FileSpreadsheet, Download, PenLine, Upload, ArrowRight, Info, ChevronDown,
 } from "lucide-react";
 
 /**
@@ -68,6 +68,17 @@ function Step({ n, title, children, tone = "plain" }) {
 export default function GetTheSheet({ onGoToUpload }) {
   const [partners, setPartners] = useState(null);
   const [chosen, setChosen] = useState("");
+  /**
+   * Folded by default.
+   *
+   * Deciding this from whether the operator has work in flight was the obvious
+   * version and it flickers: the panel below is what knows, and it knows a beat
+   * later, so the block would open and then shut itself in front of the reader.
+   *
+   * Folded for everybody is calmer and costs a first-time reader one click on a
+   * heading that says exactly what is behind it.
+   */
+  const [showHow, setShowHow] = useState(false);
   const [error, setError] = useState(null);
   const [sheetOpen, setSheetOpen] = useState(false);
 
@@ -100,15 +111,37 @@ export default function GetTheSheet({ onGoToUpload }) {
 
   return (
     <div className="overflow-hidden rounded-xl border border-gray-200 border-t-[3px] border-t-(--dc-accent) bg-white shadow-sm">
-      <div className="flex items-center gap-2 border-b border-gray-100 bg-(--dc-accent-soft)/30 px-4 py-3">
-        <FileSpreadsheet className="h-4 w-4 text-(--dc-accent)" />
+      {/*
+        Folded away once somebody is past it.
+
+        This explains three steps: get the sheet, fill it in, upload it back.
+        Read on the way in, that is help. Read by somebody whose file is already
+        staged and waiting on a decision, it is three panels of instructions for
+        work they have finished, sitting above the thing they actually need.
+
+        It stays one click away, because the person doing this next month has
+        not done it before.
+      */}
+      <button
+        type="button"
+        onClick={() => setShowHow((v) => !v)}
+        aria-expanded={showHow}
+        className="flex w-full items-center gap-2 border-b border-gray-100 bg-(--dc-accent-soft)/30 px-4 py-3 text-left transition hover:bg-(--dc-accent-soft)/50"
+      >
+        <FileSpreadsheet className="h-4 w-4 shrink-0 text-(--dc-accent)" />
         <span className="text-sm font-semibold text-gray-900">
           How a bulk import works
         </span>
-        <span className="text-sm text-gray-500">
+        <span className="hidden text-sm text-gray-500 sm:inline">
           Many receipts in one pass, from a sheet the system builds for you
         </span>
-      </div>
+        <ChevronDown
+          className={`ml-auto h-4 w-4 shrink-0 text-gray-400 transition ${showHow ? "" : "-rotate-90"}`}
+          aria-hidden="true"
+        />
+      </button>
+      {showHow && (
+      <>
 
       <ol className="grid grid-cols-1 gap-3 p-4 lg:grid-cols-3">
         <Step n={1} title="Download the sheet for a partner" tone="active">
@@ -229,6 +262,9 @@ export default function GetTheSheet({ onGoToUpload }) {
         workbench, which walks a partner&apos;s stoves one at a time. It goes
         through exactly the same checks as a file.
       </p>
+
+      </>
+      )}
 
       {sheetOpen && chosen && (
         <DigitisationSheet
