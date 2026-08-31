@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
+import { SearchableSelect } from "@/components/ui/searchable-select";
 import { dataCenterAdmin, DataCenterError } from "../../lib/client";
 import { plural } from "../../lib/plural";
 import Pagination from "../../components/Pagination";
@@ -244,22 +245,26 @@ export default function SendBackRouting({ canEdit }) {
             <label htmlFor="dc-add-recipient" className="text-xs font-semibold uppercase tracking-wide text-gray-600">
               Add somebody
             </label>
-            <select
-              id="dc-add-recipient"
-              value={adding}
-              onChange={(e) => setAdding(e.target.value)}
-              className="min-w-[16rem] rounded-md border border-gray-300 px-2 py-1.5 text-sm focus:border-(--dc-accent) focus:outline-none"
-            >
-              <option value="">Choose a user</option>
-              {data.candidates
-                .filter((c) => !data.recipients.some((r) => r.user_id === c.id))
-                .map((c) => (
-                  <option key={c.id} value={c.id}>
-                    {c.full_name}
-                    {c.email ? ` — ${c.email}` : ""}
-                  </option>
-                ))}
-            </select>
+            <div className="min-w-[16rem]">
+              <SearchableSelect
+                id="dc-add-recipient"
+                ariaLabel="Add a recipient"
+                value={adding}
+                onChange={setAdding}
+                placeholder="Choose a user"
+                searchPlaceholder="Type part of a name or email"
+                emptyLabel="Nobody left to add matches that"
+                options={data.candidates
+                  .filter((c) => !data.recipients.some((r) => r.user_id === c.id))
+                  .map((c) => ({
+                    value: c.id,
+                    label: c.full_name,
+                    // Searchable as well as visible: two people share a name
+                    // more often than two people share an address.
+                    hint: c.email ?? null,
+                  }))}
+              />
+            </div>
             <button
               type="button"
               disabled={!adding || busy === adding}
@@ -381,32 +386,29 @@ export default function SendBackRouting({ canEdit }) {
                         <Link2Off className="h-3 w-3" /> not a person
                       </span>
                     ) : canEdit ? (
-                      <select
+                      <SearchableSelect
+                        className="min-w-[14rem]"
                         value={rep.user_id ?? ""}
                         disabled={busy === rep.rep_key}
-                        aria-label={`Account for ${rep.rep_name}`}
-                        onChange={(e) =>
+                        ariaLabel={`Account for ${rep.rep_name}`}
+                        placeholder="Not linked"
+                        searchPlaceholder="Type part of a name"
+                        emptyLabel="No account matches that"
+                        onChange={(next) =>
                           act(
                             rep.rep_key,
-                            () =>
-                              dataCenterAdmin.salesRepLink(
-                                rep.rep_key,
-                                e.target.value || null,
-                              ),
-                            e.target.value
+                            () => dataCenterAdmin.salesRepLink(rep.rep_key, next || null),
+                            next
                               ? `${rep.rep_name} is now linked.`
                               : `${rep.rep_name} is no longer linked.`,
                           )
                         }
-                        className="w-full min-w-[14rem] rounded-md border border-gray-300 px-2 py-1 text-sm focus:border-(--dc-accent) focus:outline-none"
-                      >
-                        <option value="">Not linked</option>
-                        {data.candidates.map((c) => (
-                          <option key={c.id} value={c.id}>
-                            {c.full_name}
-                          </option>
-                        ))}
-                      </select>
+                        pinned={{ value: "", label: "Not linked" }}
+                        options={data.candidates.map((c) => ({
+                          value: c.id,
+                          label: c.full_name,
+                        }))}
+                      />
                     ) : (
                       <span className="text-gray-700">{rep.account_name ?? "not linked"}</span>
                     )}

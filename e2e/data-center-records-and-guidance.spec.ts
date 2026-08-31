@@ -328,14 +328,29 @@ test.describe("bulk import leads with where the file comes from", () => {
     const options = await list.getByRole("option").count();
     test.skip(options < 2, "no partners available to this user");
 
-    // Typing narrows it, which is the whole reason this stopped being a select.
+    /*
+     * The threshold, asserted as a rule rather than as an assumption.
+     *
+     * Search appears once a list is long enough to need it, and not before: a
+     * search field over three options is a step nobody wanted. Production
+     * carries 422 partners and this preview carries a handful, so the test
+     * cannot assume which side of the line it is on - it asserts that whichever
+     * side it lands on is the correct one.
+     *
+     * The rendered count includes the pinned "every partner" row, which is not
+     * one of the options the threshold counts, hence the + 1.
+     */
     const search = page.getByPlaceholder("Type part of the partner's name");
-    await expect(search).toBeVisible();
-    const first = await list.getByRole("option").first().textContent();
-    await search.fill((first ?? "").trim().slice(0, 4));
-    await expect(list.getByRole("option")).not.toHaveCount(options);
+    if (options > 9) {
+      await expect(search).toBeVisible();
+      const first = await list.getByRole("option").first().textContent();
+      await search.fill((first ?? "").trim().slice(0, 4));
+      await expect(list.getByRole("option")).not.toHaveCount(options);
+      await search.fill("");
+    } else {
+      await expect(search).toHaveCount(0);
+    }
 
-    await search.fill("");
     await list.getByRole("option").nth(1).click();
     await expect(build).toBeEnabled();
 

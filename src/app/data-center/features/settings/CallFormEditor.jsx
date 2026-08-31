@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
+import { SearchableSelect } from "@/components/ui/searchable-select";
 import { dataCenterAdmin, DataCenterError } from "../../lib/client";
 import { usePaged } from "../../lib/usePaged";
 import Pagination from "../../components/Pagination";
@@ -96,15 +97,16 @@ function OptionListEditor({ lists, canEdit, onSaved, onError }) {
     <div>
       <div className="mb-3 flex flex-wrap items-end gap-3">
         <Field label="Dropdown">
-          <select
-            value={list.key}
-            onChange={(e) => setListKey(e.target.value)}
-            className={`${FIELD_CLASS} sm:w-64`}
-          >
-            {lists.map((l) => (
-              <option key={l.key} value={l.key}>{l.label}</option>
-            ))}
-          </select>
+          <div className="sm:w-64">
+            <SearchableSelect
+              ariaLabel="Dropdown"
+              value={list.key}
+              onChange={setListKey}
+              searchPlaceholder="Type part of a list name"
+              emptyLabel="No list matches that"
+              options={lists.map((l) => ({ value: l.key, label: l.label }))}
+            />
+          </div>
         </Field>
         <p className="pb-1.5 text-sm text-gray-600">
           {list.description || plural(values.length, "choice")}
@@ -369,16 +371,17 @@ function FieldEditor({ fields, lists, canEdit, onSaved, onError }) {
     <div>
       <div className="mb-3 flex flex-wrap items-end gap-3">
         <Field label="Section">
-          <select
-            value={section}
-            onChange={(e) => setSection(e.target.value)}
-            className={`${FIELD_CLASS} sm:w-56`}
-          >
-            <option value="all">Every section</option>
-            {sections.map((sec) => (
-              <option key={sec} value={sec}>{sec}</option>
-            ))}
-          </select>
+          <div className="sm:w-56">
+            <SearchableSelect
+              ariaLabel="Section"
+              value={section}
+              onChange={setSection}
+              searchPlaceholder="Type part of a section"
+              emptyLabel="No section matches that"
+              pinned={{ value: "all", label: "Every section" }}
+              options={sections.map((sec) => ({ value: sec, label: sec }))}
+            />
+          </div>
         </Field>
       </div>
 

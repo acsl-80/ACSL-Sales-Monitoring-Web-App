@@ -39,7 +39,17 @@ test.describe("the call form is editable", () => {
     });
 
     await page.getByRole("button", { name: "Dropdowns", exact: true }).click();
-    await page.getByLabel("Dropdown").selectOption("call_outcome");
+    /*
+     * A combobox rather than a native select now, so the option is clicked in
+     * the popover instead of chosen by value. The list is small enough to sit
+     * below the search threshold, which is why there is nothing to type into.
+     */
+    await page.getByRole("combobox", { name: "Dropdown" }).click();
+    await page
+      .getByRole("listbox")
+      .getByRole("option", { name: /outcome/i })
+      .first()
+      .click();
 
     // The nine seeded outcomes came from a closed list. This is the tenth, and
     // it exists so an agent stops inventing one in a constrained column.

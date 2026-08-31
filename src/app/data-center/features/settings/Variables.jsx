@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
+import { SearchableSelect } from "@/components/ui/searchable-select";
 import { dataCenterAdmin, DataCenterError } from "../../lib/client";
 import { Loader2, SlidersHorizontal, Check, RotateCcw } from "lucide-react";
 
@@ -85,16 +86,22 @@ function Row({ setting, canEdit, onSaved, onError }) {
       </td>
       <td className="px-3 py-2">
         {kind === "boolean" ? (
-          <select
+          /*
+            Converted for one look across the app, not for the search. Two
+            options is far below the threshold, so this renders as a plain
+            list - which is the point of having a threshold rather than a
+            search box on everything.
+          */
+          <SearchableSelect
             value={draft}
+            onChange={setDraft}
             disabled={!canEdit || busy}
-            onChange={(e) => setDraft(e.target.value)}
-            aria-label={setting.key}
-            className={FIELD_CLASS}
-          >
-            <option value="true">Yes</option>
-            <option value="false">No</option>
-          </select>
+            ariaLabel={setting.key}
+            options={[
+              { value: "true", label: "Yes" },
+              { value: "false", label: "No" },
+            ]}
+          />
         ) : kind === "json" ? (
           <textarea
             rows={2}
