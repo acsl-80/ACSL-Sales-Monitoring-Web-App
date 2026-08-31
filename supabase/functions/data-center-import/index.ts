@@ -2952,10 +2952,27 @@ serve(async (req) => {
               args: [userId],
             });
 
+            /*
+             * One open bench batch per typist per partner, whatever state it
+             * is in.
+             *
+             * This asked for `state = 'staged'`, which meant the moment a
+             * typist's batch was validated or dry-run, the next receipt they
+             * typed started a fresh one. A day of work fragmented into a row
+             * per session in the confirmation queue, which is the opposite of
+             * the aggregation the bench is built around - and production
+             * already held the empty `staged` batch that proves it, sitting
+             * beside the `dry_run` batch holding that typist's actual row.
+             *
+             * Committed and rolled-back batches are excluded because they are
+             * finished: adding a row to either would reopen something the
+             * sales app has already been told about.
+             */
             const open = await conn.queryObject<{ id: string }>({
               text: `select id from data_center.import_batches
                       where source = 'workbench' and uploaded_by = $1
-                        and organization_id = $2 and state = 'staged'
+                        and organization_id = $2
+                        and state not in ('committed', 'rolled_back')
                       order by uploaded_at desc limit 1`,
               args: [userId, organizationId],
             });
@@ -3003,9 +3020,39 @@ serve(async (req) => {
             const status = complete ? "valid" : "draft";
             if (existing.rows[0]) {
               await conn.queryObject({
+                /*
+                 * A draft save keeps the typing and leaves the verdict alone.
+                 *
+                 * It used to overwrite both, and the bench's own autosave then
+                 * undid every finish: a receipt saved as finished was written
+                 * back to `draft` with its finished shape nulled seconds
+                 * later, so it read as "still being typed" and could not be
+                 * confirmed. Production carried two such rows, both with
+                 * `normalized` NULL, which is what that collision looks like
+                 * afterwards.
+                 *
+                 * The bench has been fixed not to send that save. This is the
+                 * invariant underneath it, because the bench is not the only
+                 * caller and a rule enforced only in a component is a rule
+                 * that holds until the next component.
+                 *
+                 * Finishing still downgrades nothing: `complete` sets status
+                 * and shape outright. Only the incomplete path defers, and
+                 * only to a row that is already valid - a rejected or
+                 * excepted row still moves back to draft when it is reworked.
+                 */
                 text: `update data_center.import_rows
-                          set draft_values = $2::jsonb, status = $3,
-                              normalized = case when $3 = 'valid' then $4::jsonb else null end,
+                          set draft_values = $2::jsonb,
+                              status = case
+                                         when $3 = 'valid' then 'valid'
+                                         when status = 'valid' then 'valid'
+                                         else $3
+                                       end,
+                              normalized = case
+                                             when $3 = 'valid' then $4::jsonb
+                                             when status = 'valid' then normalized
+                                             else null
+                                           end,
                               last_edited_by = $5, last_edited_at = now(),
                               rejection_reason = null, rejection_hint = null
                         where id = $1`,

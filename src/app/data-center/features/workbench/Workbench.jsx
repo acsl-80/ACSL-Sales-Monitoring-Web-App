@@ -403,8 +403,24 @@ const STOVE_COLUMNS = [
  * one is being typed, and the one thing that does change (a stove becoming
  * recorded) is applied locally on save.
  */
-function StoveList({ batch, stoves, error, onPick, label = "stoves" }) {
+/**
+ * The stove list, over a consignment or over a whole partner.
+ *
+ * `server` is what tells the two apart. Absent, the rows handed in are the
+ * whole set - a consignment, forty of them - and filtering and paging happen
+ * here, instantly, which is right.
+ *
+ * Present, the rows are ONE PAGE of a partner that may hold thousands, and
+ * every number and every filter has to come from the server or it is a
+ * statement about the page dressed up as a statement about the partner. That
+ * was the actual defect: the bench loaded two hundred behind a "Load more",
+ * showed "Still to type (37)" meaning 37 of those two hundred, and told a
+ * typist a partner had 200 stoves when it had far more.
+ */
+function StoveList({ batch, stoves, error, onPick, label = "stoves", server = null }) {
   const [only, setOnly] = useState("todo");
+  const filter = server ? server.filter : only;
+  const setFilter = server ? server.onFilter : setOnly;
 
   const shown = useMemo(() => {
     const all = stoves ?? [];
@@ -412,10 +428,13 @@ function StoveList({ batch, stoves, error, onPick, label = "stoves" }) {
     // typed in this sitting leaves the "still to type" list immediately
     // instead of on the next refetch.
     const done = (s) => Boolean(s.sale_id || s.just_recorded);
+    // On the server path the rows already ARE the filtered set, bar the local
+    // just-recorded mark, which the server cannot know about yet.
+    if (server) return filter === "todo" ? all.filter((x) => !x.just_recorded) : all;
     if (only === "todo") return all.filter((s) => !done(s));
     if (only === "done") return all.filter(done);
     return all;
-  }, [stoves, only]);
+  }, [stoves, only, server, filter]);
 
   const paged = usePaged(shown, 25);
 
@@ -428,11 +447,16 @@ function StoveList({ batch, stoves, error, onPick, label = "stoves" }) {
     );
   }
 
-  const counts = {
-    todo: stoves.filter((s) => !(s.sale_id || s.just_recorded)).length,
-    done: stoves.filter((s) => s.sale_id || s.just_recorded).length,
-    all: stoves.length,
-  };
+  // Counted by whoever can count honestly. On the server path only the total
+  // for the CURRENT filter is known, so the other two say nothing rather than
+  // saying something about one page.
+  const counts = server
+    ? { todo: null, done: null, all: null, [server.filter]: server.total }
+    : {
+        todo: stoves.filter((s) => !(s.sale_id || s.just_recorded)).length,
+        done: stoves.filter((s) => s.sale_id || s.just_recorded).length,
+        all: stoves.length,
+      };
 
   return (
     <div>
@@ -445,15 +469,18 @@ function StoveList({ batch, stoves, error, onPick, label = "stoves" }) {
           <button
             key={f.key}
             type="button"
-            aria-pressed={only === f.key}
-            onClick={() => setOnly(f.key)}
+            aria-pressed={filter === f.key}
+            onClick={() => setFilter(f.key)}
             className={`rounded-full border px-3 py-1 text-xs font-medium transition ${
-              only === f.key
+              filter === f.key
                 ? "border-(--dc-accent) bg-(--dc-accent) text-white"
                 : "border-gray-300 text-gray-700 hover:border-(--dc-accent)/40 hover:bg-(--dc-accent-soft)/50"
             }`}
           >
-            {f.label} ({counts[f.key]})
+            {f.label}
+            {counts[f.key] === null || counts[f.key] === undefined
+              ? ""
+              : ` (${counts[f.key]})`}
           </button>
         ))}
         <div className="ml-auto">
@@ -469,8 +496,10 @@ function StoveList({ batch, stoves, error, onPick, label = "stoves" }) {
 
       {shown.length === 0 ? (
         <div className="rounded-lg border border-dashed border-(--dc-accent)/40 bg-(--dc-accent-soft)/20 px-4 py-8 text-center text-sm text-gray-600">
-          {only === "todo"
-            ? "Every stove in this consignment has been recorded. Nothing left to type here."
+          {filter === "todo"
+            ? server
+              ? "Nothing left to type here. Every stove matching this has been recorded."
+              : "Every stove in this consignment has been recorded. Nothing left to type here."
             : "Nothing to show under that filter."}
         </div>
       ) : (
@@ -480,6 +509,18 @@ function StoveList({ batch, stoves, error, onPick, label = "stoves" }) {
               <thead>
                 <tr className="bg-(--dc-accent-soft) text-left text-xs uppercase tracking-wide text-(--dc-accent-strong)">
                   <th className="px-3 py-2 font-semibold">Stove ID</th>
+                  {/*
+                    Which consignment it came on, and when.
+
+                    Inside a consignment you already know both, so they would
+                    be the same value repeated down the page. Searching a whole
+                    partner they are the only things that tell two similar
+                    serials apart, and without them a search result was a
+                    number you had to take on trust before committing to type a
+                    receipt against it.
+                  */}
+                  {server && <th className="px-3 py-2 font-semibold">Consignment</th>}
+                  {server && <th className="px-3 py-2 font-semibold">Dated</th>}
                   <th className="px-3 py-2 font-semibold">Stock</th>
                   <th className="px-3 py-2 font-semibold">Buyer</th>
                   <th className="w-8 px-3 py-2" />
@@ -495,6 +536,16 @@ function StoveList({ batch, stoves, error, onPick, label = "stoves" }) {
                     <td className="px-3 py-2 font-mono text-xs font-medium text-(--dc-accent)">
                       {s.stove_id}
                     </td>
+                    {server && (
+                      <td className="px-3 py-2 font-mono text-xs text-gray-700">
+                        {s.transaction_id ?? "-"}
+                      </td>
+                    )}
+                    {server && (
+                      <td className="px-3 py-2 text-gray-700">
+                        {s.consignment_sales_date ?? "-"}
+                      </td>
+                    )}
                     <td className="px-3 py-2 text-gray-700">{s.stock_status ?? "-"}</td>
                     <td className="px-3 py-2 text-gray-700">
                       {s.end_user_name ?? (
@@ -510,11 +561,11 @@ function StoveList({ batch, stoves, error, onPick, label = "stoves" }) {
             </table>
           </div>
           <Pagination
-            page={paged.page}
-            pageSize={paged.pageSize}
-            total={paged.total}
-            onPage={paged.setPage}
-            onPageSize={paged.setPageSize}
+            page={server ? server.page : paged.page}
+            pageSize={server ? server.pageSize : paged.pageSize}
+            total={server ? server.total : paged.total}
+            onPage={server ? server.onPage : paged.setPage}
+            onPageSize={server ? server.onPageSize : paged.setPageSize}
             noun="stove"
           />
         </div>
@@ -659,10 +710,33 @@ function Bench({ stoveId, onSaved, onBack, onNext, nextLabel }) {
       setError(null);
       setHint(null);
       try {
-        // The contact defaults are applied before saving, so what is stored is
-        // what the validator judged rather than a shape only the screen had.
+        /*
+         * The contact defaults are applied before saving, so what is stored is
+         * what the validator judged rather than a shape only the screen had.
+         *
+         * And they are put back on the form, which is the part that was
+         * missing. `lastSaved` is what the autosave compares the live form
+         * against; it used to be set from the DEFAULTED body while the form
+         * still held the blanks the defaults filled. The two could then never
+         * match again, so the form read as dirty forever and the twenty-second
+         * timer - and the unmount handler - fired `save(false)` seconds after
+         * a finish, writing the row back to `status='draft'` with its finished
+         * shape nulled.
+         *
+         * That is not a cosmetic bug: a receipt typed and finished at the
+         * bench sat in "still being typed" and could not be confirmed at all,
+         * and production carried two of them. Both had `normalized` NULL,
+         * which is the fingerprint of a draft save landing on top of a finish.
+         *
+         * So the screen, the saved body and the dirty check now agree on one
+         * value rather than three.
+         */
         const body = complete ? withDefaults(valuesRef.current) : valuesRef.current;
         const out = await dataCenterImport.workbenchSave(stoveId, body, complete);
+        if (complete) {
+          valuesRef.current = body;
+          setValues(body);
+        }
         lastSaved.current = JSON.stringify(body);
         setSavedAt(new Date().toISOString());
         if (complete) onSaved?.(out);
@@ -949,18 +1023,7 @@ function Bench({ stoveId, onSaved, onBack, onNext, nextLabel }) {
  * count is what is loaded rather than what exists, and a search covers the
  * whole partner rather than the page.
  */
-function PartnerSweep({
-  partner,
-  label,
-  stoves,
-  error,
-  search,
-  onSearch,
-  hasMore,
-  loadingMore,
-  onLoadMore,
-  onPick,
-}) {
+function PartnerSweep({ partner, label, stoves, error, search, onSearch, server, onPick }) {
   const [term, setTerm] = useState(search ?? "");
 
   // Debounced for the same reason the rail is: each keystroke is a round trip
@@ -991,16 +1054,21 @@ function PartnerSweep({
       </div>
 
       {/*
-        Said out loud, because the number below is not the number that exists.
-        A count that silently means "loaded so far" is how somebody concludes a
-        partner has 200 stoves when it has three thousand.
+        The number is now the number that exists, so it can be said plainly.
+        It used to read "200 stoves loaded", which is a count of what had been
+        fetched wearing the clothes of a count of what is there - and how
+        somebody concluded a partner held 200 stoves when it held thousands.
       */}
       {stoves !== null && (
         <p className="text-xs text-gray-600">
-          {plural(stoves.length, "stove")} loaded
-          {hasMore ? ", and there are more" : ""}
-          {search ? `, matching "${search}"` : ""}. The search covers every stove this partner
-          holds, not only the ones on this page.
+          {plural(server.total, "stove")}
+          {search ? ` matching "${search}"` : ""}
+          {server.filter === "todo"
+            ? " still to type"
+            : server.filter === "done"
+            ? " already recorded"
+            : ""}
+          . The search covers every stove this partner holds, not only the ones on this page.
         </p>
       )}
 
@@ -1008,19 +1076,9 @@ function PartnerSweep({
         stoves={stoves}
         error={error}
         onPick={onPick}
+        server={server}
         label={`${partner?.partner_id ?? "partner"}-${label ?? "all"}`}
       />
-
-      {hasMore && (
-        <button
-          type="button"
-          onClick={onLoadMore}
-          disabled={loadingMore}
-          className="rounded-md border border-gray-300 px-3 py-1.5 text-sm font-medium text-gray-700 transition hover:border-(--dc-accent)/40 hover:bg-(--dc-accent-soft)/40 disabled:opacity-50"
-        >
-          {loadingMore ? "Loading..." : "Load more"}
-        </button>
-      )}
     </div>
   );
 }
@@ -1037,9 +1095,25 @@ export default function Workbench() {
    */
   const [sweep, setSweep] = useState(null);
   const [sweepSearch, setSweepSearch] = useState("");
-  const [sweepCursor, setSweepCursor] = useState(null);
-  const [sweepMore, setSweepMore] = useState(false);
-  const [loadingMore, setLoadingMore] = useState(false);
+  /*
+   * Paged, not accumulated.
+   *
+   * `partner_stoves` is keyset paginated - each page hands back the cursor for
+   * the next - so going FORWARD is free and going BACK needs the cursor that
+   * opened each page remembered. `sweepCursors[n]` is the cursor that opens
+   * page n, and page 0 opens with none. That is the whole of the stack, and it
+   * is what lets the module's ordinary Pagination control sit over a keyset
+   * source without knowing it is one.
+   *
+   * This replaced a "Load more" that appended two hundred rows at a time into
+   * one ever-growing list, which is the reason every count on the screen was a
+   * count of what had been fetched rather than of what exists.
+   */
+  const [sweepPage, setSweepPage] = useState(0);
+  const [sweepSize, setSweepSize] = useState(25);
+  const [sweepCursors, setSweepCursors] = useState([null]);
+  const [sweepTotal, setSweepTotal] = useState(0);
+  const [sweepFilter, setSweepFilter] = useState("todo");
   const [stove, setStove] = useState(null);
   const [queue, setQueue] = useState(null);
   const [stoves, setStoves] = useState(null);
@@ -1105,20 +1179,30 @@ export default function Workbench() {
     let live = true;
     setStoves(null);
     setStovesError(null);
-    setSweepCursor(null);
-    setSweepMore(false);
     dataCenterClient
       .partnerStoves({
         organizationId: orgId,
         period: sweep.kind === "month" ? sweep.period : null,
         search: sweepSearch || null,
-        limit: 200,
+        recorded: sweepFilter === "todo" ? "no" : sweepFilter === "done" ? "yes" : null,
+        cursor: sweepCursors[sweepPage] ?? null,
+        limit: sweepSize,
       })
       .then((r) => {
         if (!live) return;
         setStoves(r.stoves);
-        setSweepCursor(r.nextCursor);
-        setSweepMore(r.hasMore);
+        setSweepTotal(r.total ?? r.stoves.length);
+        // Remember the cursor that opens the NEXT page, so paging forward is
+        // one step and paging back is a lookup rather than a refetch from the
+        // top.
+        if (r.nextCursor) {
+          setSweepCursors((c) => {
+            if (c[sweepPage + 1] === r.nextCursor) return c;
+            const next = c.slice(0, sweepPage + 1);
+            next[sweepPage + 1] = r.nextCursor;
+            return next;
+          });
+        }
       })
       .catch(
         (err) =>
@@ -1130,30 +1214,27 @@ export default function Workbench() {
     return () => {
       live = false;
     };
-  }, [batch, sweep, sweepSearch, orgId]);
+  }, [batch, sweep, sweepSearch, sweepFilter, sweepPage, sweepSize, sweepCursors, orgId]);
 
-  const loadMore = useCallback(async () => {
-    if (!sweep || !sweepCursor || !orgId) return;
-    setLoadingMore(true);
-    try {
-      const r = await dataCenterClient.partnerStoves({
-        organizationId: orgId,
-        period: sweep.kind === "month" ? sweep.period : null,
-        search: sweepSearch || null,
-        cursor: sweepCursor,
-        limit: 200,
-      });
-      setStoves((list) => [...(list ?? []), ...r.stoves]);
-      setSweepCursor(r.nextCursor);
-      setSweepMore(r.hasMore);
-    } catch (err) {
-      setStovesError(
-        err instanceof DataCenterError ? err.message : "Could not load more stoves.",
-      );
-    } finally {
-      setLoadingMore(false);
-    }
-  }, [sweep, sweepCursor, sweepSearch, orgId]);
+  /*
+   * Anything that changes WHAT is being paged sends you back to page one and
+   * throws the cursor stack away. A cursor is a position in one particular
+   * ordered set; kept across a change of search or filter it points into a set
+   * that no longer exists, and the page it opens is somebody else's.
+   */
+  const restart = useCallback(() => {
+    setSweepPage(0);
+    setSweepCursors([null]);
+  }, []);
+  const changeSearch = useCallback((term) => {
+    setSweepSearch((prev) => {
+      if (prev !== term) {
+        setSweepPage(0);
+        setSweepCursors([null]);
+      }
+      return term;
+    });
+  }, []);
 
   /** What this way in is called, wherever it needs naming. */
   const sweepLabel = sweep
@@ -1312,17 +1393,21 @@ export default function Workbench() {
               title={batch ? "This consignment" : `${partner?.partner_name ?? "Partner"}: ${sweepLabel}`}
               // Only a sweep searches the server. A consignment is fully
               // loaded, so its filter is instant and stays where it was.
-              onSearch={sweep ? setSweepSearch : null}
+              onSearch={sweep ? changeSearch : null}
               footer={
-                sweep && sweepMore ? (
-                  <button
-                    type="button"
-                    onClick={loadMore}
-                    disabled={loadingMore}
-                    className="w-full rounded-md border border-gray-300 px-2 py-1 text-xs font-medium text-gray-700 transition hover:border-(--dc-accent)/40 disabled:opacity-50"
-                  >
-                    {loadingMore ? "Loading..." : "Load more"}
-                  </button>
+                /*
+                 * Where you are in the partner, not how much has been fetched.
+                 *
+                 * This was a "Load more" that grew the rail without bound. A
+                 * typist searching a serial wants to know the rail is showing
+                 * the whole partner, which is what the count says now.
+                 */
+                sweep ? (
+                  <p className="text-center text-xs text-gray-600">
+                    {sweepSearch
+                      ? `${plural(sweepTotal, "match", "matches")} across the whole partner`
+                      : `Page ${sweepPage + 1} of ${Math.max(1, Math.ceil(sweepTotal / sweepSize))}, ${plural(sweepTotal, "stove")} in all`}
+                  </p>
                 ) : null
               }
             />
@@ -1361,10 +1446,22 @@ export default function Workbench() {
           stoves={stoves}
           error={stovesError}
           search={sweepSearch}
-          onSearch={setSweepSearch}
-          hasMore={sweepMore}
-          loadingMore={loadingMore}
-          onLoadMore={loadMore}
+          onSearch={changeSearch}
+          server={{
+            page: sweepPage,
+            pageSize: sweepSize,
+            total: sweepTotal,
+            filter: sweepFilter,
+            onPage: setSweepPage,
+            onPageSize: (n) => {
+              setSweepSize(n);
+              restart();
+            },
+            onFilter: (f) => {
+              setSweepFilter(f);
+              restart();
+            },
+          }}
           onPick={setStove}
         />
       ) : partner ? (

@@ -447,10 +447,14 @@ export const dataCenterClient = {
     search?: string | null;
     cursor?: string | null;
     limit?: number;
+    /** "no" for still to type, "yes" for already recorded, null for both. */
+    recorded?: string | null;
   }) =>
     call<{
       stoves: Record<string, unknown>[];
       hasMore: boolean;
+      /** How many match, not how many were fetched. The bench pages on this. */
+      total: number;
       nextCursor: string | null;
       scope: string;
     }>("data-center-read", "partner_stoves", params),

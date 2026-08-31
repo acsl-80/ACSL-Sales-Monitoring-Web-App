@@ -143,3 +143,88 @@ test.describe("a staged batch says what to do next", () => {
     await expect(page.getByRole("button", { name: /^Dry run$/ })).toHaveCount(0);
   });
 });
+
+test.describe("a batch counts the rows it has", () => {
+  /**
+   * The count on the row is read from the rows, not from a snapshot.
+   *
+   * A real 983-row import committed 82 rows and then, on every refresh after,
+   * still offered "Commit 745". `valid_rows` was written once at validation and
+   * never decremented, so the button promised 745 rows that were no longer
+   * there while `committed_rows` beside it, which was live, said 82. The true
+   * remaining was 659. Nothing in the suite noticed, because a batch that
+   * commits in one go flips to `committed` and the next-step line short-circuits
+   * on the state before it ever reads the number.
+   *
+   * So the shape that has to be tested is the partial commit: some rows landed,
+   * some did not, and the batch is still open. Slice size makes that
+   * deterministic with two rows instead of twenty-six.
+   */
+  test("after a partial commit the ready count is what is left, not what it was", async ({
+    page,
+  }, testInfo) => {
+    await signIn(page, USERS.admin);
+    await page.goto("/data-center/import");
+    await expect(page.getByRole("heading", { name: "Bulk Import" })).toBeVisible({
+      timeout: 30_000,
+    });
+
+    const stoves = await freeStoves(page, 2);
+    test.skip(stoves.length < 2, "not enough free stoves on this database");
+
+    // One row per commit call, so a single call leaves the batch open with a
+    // row still to go - which is the state the stale counter was wrong in.
+    const setSlice = (value: number) =>
+      callEdgeFunction(page, "data-center-admin", {
+        action: "config_set",
+        config: { key: "import.slice_size", value },
+      });
+    const restore = await setSlice(1);
+    expect(restore.status, "the slice size should be settable for this test").toBe(200);
+
+    try {
+      const marker = `count${testInfo.workerIndex}-${Date.now()}`;
+      const batchId = await stageOnly(page, marker, stoves);
+      await callEdgeFunction(page, "data-center-import", { action: "validate", batchId });
+
+      const readBatch = async () => {
+        const r = await callEdgeFunction(page, "data-center-import", { action: "batches" });
+        const all = (r.body as { data?: Record<string, number | string>[] })?.data ?? [];
+        return all.find((b) => b.id === batchId);
+      };
+
+      const before = await readBatch();
+      expect(before?.valid_rows, "both rows should be ready before any commit").toBe(2);
+
+      const committed = await callEdgeFunction(page, "data-center-import", {
+        action: "commit",
+        batchId,
+      });
+      expect(committed.status).toBe(200);
+      expect(
+        (committed.body as { data: { done: boolean } }).data.done,
+        "one slice of one should leave the batch open",
+      ).toBe(false);
+
+      const after = await readBatch();
+      expect(after?.committed_rows, "the row that landed is counted").toBe(1);
+      // The assertion the bug failed. It read 2 here, and the panel offered to
+      // commit two rows when one of them was already a sale.
+      expect(after?.valid_rows, "the row still waiting is the only one left").toBe(1);
+      expect(after?.state, "the batch is still open").toBe("validated");
+
+      /*
+       * Put the sale back.
+       *
+       * This test commits a real row through create-sale, which puts a record
+       * into the call-centre pool - and the assignment console's spec asserts
+       * an exact pool size, so leaving it behind failed a test in another file
+       * that had nothing to do with this one. A spec that mutates shared state
+       * and does not reverse it is a spec that breaks its neighbours.
+       */
+      await callEdgeFunction(page, "data-center-import", { action: "rollback", batchId });
+    } finally {
+      await setSlice(25);
+    }
+  });
+});

@@ -7,6 +7,19 @@
  */
 const NUMBER = new Intl.NumberFormat("en-NG");
 
-export function plural(n: number, one: string, many = `${one}s`): string {
+/**
+ * Words ending in a sibilant take -es.
+ *
+ * "1-2 of 2 batchs" shipped, on the confirmation queue, because the default
+ * plural was `${one}s` and nothing told it otherwise. Fixing it at the two call
+ * sites would have left the next one to find it again, so the rule lives here:
+ * -ch, -sh, -s, -x and -z take -es, and everything else keeps the plain -s.
+ * Deliberately not -h on its own, or "month" would become "monthes".
+ */
+function defaultPlural(one: string): string {
+  return /(ch|sh|[sxz])$/i.test(one) ? `${one}es` : `${one}s`;
+}
+
+export function plural(n: number, one: string, many = defaultPlural(one)): string {
   return `${NUMBER.format(n)} ${n === 1 ? one : many}`;
 }

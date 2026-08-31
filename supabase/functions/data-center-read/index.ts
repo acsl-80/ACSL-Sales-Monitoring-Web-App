@@ -1417,6 +1417,7 @@ serve(async (req) => {
           search?: string | null;
           cursor?: string | null;
           limit?: number;
+          recorded?: string | null;
         };
 
         const organizationId = String(b.organizationId ?? "");
@@ -1439,6 +1440,27 @@ serve(async (req) => {
 
         const cursor = typeof b.cursor === "string" && b.cursor ? b.cursor : null;
         const limit = Math.min(Math.max(Number(b.limit) || 200, 1), 500);
+
+        /*
+         * "Still to type" has to be decided here, not on the page.
+         *
+         * The bench filtered the loaded rows, which was true while a whole
+         * consignment fitted on screen and became a lie the moment a partner's
+         * three thousand stoves arrived a page at a time: the chip said "Still
+         * to type (37)" meaning 37 on this page, and paging past them showed
+         * more of what it had just said there were none of.
+         *
+         * A recorded stove is one with a sale against it. That is the same
+         * definition the list already draws its "Already recorded" mark from,
+         * moved to where it can be counted honestly.
+         */
+        const recorded = b.recorded === "yes" ? "yes" : b.recorded === "no" ? "no" : null;
+        const recordedSql =
+          recorded === "yes"
+            ? " and sb.sale_id is not null"
+            : recorded === "no"
+            ? " and sb.sale_id is null"
+            : "";
 
         const scopeInput = await resolveScope(
           supabase,
@@ -1484,10 +1506,41 @@ serve(async (req) => {
                            or (f.sales_date ~ '^[0-9]{4}-[0-9]{2}'
                                and left(f.sales_date, 7) = $1))
                       and ($2::text = '' or b.stove_id like $2)
-                      and ($3::text is null or b.stove_id > $3)
+                      and ($3::text is null or b.stove_id > $3)${recordedSql}
                     order by b.stove_id
                     limit $4`,
             args: [period, like, cursor, limit + 1, ...scope.args],
+          });
+
+          /*
+           * How many there are, not how many are loaded.
+           *
+           * The bench used to load two hundred and offer "Load more", so the
+           * only number on screen was the number fetched so far. A typist
+           * reading it concluded a partner held 200 stoves when it held
+           * thousands. Page controls need a real denominator, and the module's
+           * own rule - proved by its records table - is that the count answers
+           * the filter rather than the page.
+           *
+           * Same predicates as the page query minus the cursor, so the total
+           * and the rows can never disagree about what is being counted.
+           */
+          const countScope = buildTransferScopeSql(
+            { ...scopeInput, requestedOrgId: organizationId },
+            3,
+            "f",
+          );
+          const counted = await connection.queryObject<{ n: number }>({
+            text: `select count(*)::int as n
+                     from data_center.v_transfer_stoves b
+                     join data_center.transfer_funnel f on f.transfer_id = b.transfer_id
+                     left join public.stove_ids_base sb on sb.stove_id = b.stove_id
+                    where ${countScope.sql}
+                      and ($1::text is null
+                           or (f.sales_date ~ '^[0-9]{4}-[0-9]{2}'
+                               and left(f.sales_date, 7) = $1))
+                      and ($2::text = '' or b.stove_id like $2)${recordedSql}`,
+            args: [period, like, ...countScope.args],
           });
 
           const all = rows.rows as { stove_id: string }[];
@@ -1498,6 +1551,7 @@ serve(async (req) => {
               data: {
                 stoves,
                 hasMore,
+                total: counted.rows[0]?.n ?? 0,
                 nextCursor: hasMore ? stoves[stoves.length - 1].stove_id : null,
                 scope: scope.description,
               },
