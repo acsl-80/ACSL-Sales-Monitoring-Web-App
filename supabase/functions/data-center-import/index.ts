@@ -1015,53 +1015,6 @@ serve(async (req) => {
 
     switch (body.action) {
       /**
-       * SPIKE - REMOVED BEFORE MERGE.
-       *
-       * Answers one question on the preview: does this runtime's
-       * EdgeRuntime.waitUntil keep the isolate alive long enough for a chained
-       * self-invocation to be delivered AFTER the response has returned? The
-       * whole commit-chain design forks on the answer, so it is proven before
-       * anything is built on it. Each link stamps workflow_config and fires
-       * the next; the caller polls the stamp.
-       */
-      case "chain_probe": {
-        const link = Number(body.link ?? 1);
-        const hasWaitUntil =
-          // deno-lint-ignore no-explicit-any
-          typeof (globalThis as any).EdgeRuntime?.waitUntil === "function";
-        await withConnection(async (conn) => {
-          await conn.queryObject({
-            text: `insert into data_center.workflow_config (key, value, description)
-                   values ('probe.chain', $1::jsonb, 'waitUntil spike marker')
-                   on conflict (key) do update set value = excluded.value`,
-            args: [JSON.stringify({ link, hasWaitUntil, at: new Date().toISOString() })],
-          });
-        });
-        if (link < 3 && hasWaitUntil) {
-          const next = (async () => {
-            const r = await fetch(
-              `${Deno.env.get("SUPABASE_URL")}/functions/v1/data-center-import`,
-              {
-                method: "POST",
-                headers: {
-                  "Content-Type": "application/json",
-                  Authorization: authHeader ?? "",
-                  apikey: Deno.env.get("SUPABASE_ANON_KEY") ?? "",
-                },
-                body: JSON.stringify({ action: "chain_probe", link: link + 1 }),
-              },
-            );
-            // Awaited to the response, inside waitUntil - the delivery
-            // guarantee the real chain will rely on.
-            await r.text();
-          })();
-          // deno-lint-ignore no-explicit-any
-          (globalThis as any).EdgeRuntime.waitUntil(next);
-        }
-        return json({ data: { link, hasWaitUntil } }, 202, cors);
-      }
-
-      /**
        * Stage a parsed file. The client does the CSV parsing, so an unreadable
        * file is a problem the operator sees immediately rather than a batch
        * that fails server-side minutes later.
@@ -2024,269 +1977,382 @@ serve(async (req) => {
         requireFeature("import.commit");
         const batchId = String(body.batchId ?? "");
         if (!batchId) throw new BadRequest("batchId is required");
+        /*
+         * Which link of the chain this is. 1 is a person pressing the button;
+         * everything after is the server continuing itself. `zeroRuns` counts
+         * consecutive links that achieved nothing, carried in the payload so a
+         * fresh press naturally resets it.
+         */
+        const link = Number(body.link ?? 1) || 1;
+        const zeroRuns = Number(body.zeroRuns ?? 0) || 0;
 
-        const sliceSize = Number(
-          await withReadConnection((c) => readConfig(c, "import.slice_size", 25)),
-        ) || 25;
+        const settings = await withReadConnection(async (c) => ({
+          // slice_size is a CAP now, not the governor. Measured per-sale
+          // latency swings 4s to 30s within one day, so the budget below is
+          // what decides how much one link takes on.
+          cap: Number(await readConfig(c, "import.slice_size", 25)) || 25,
+          budgetMs: Number(await readConfig(c, "import.slice_budget_ms", 15000)) || 15000,
+        }));
 
-        const slice = await withReadConnection(async (conn) => {
-          const r = await conn.queryObject<{
-            id: string;
-            stove_serial_no: string;
-            normalized: NormalizedRow;
-            // What the row carried beyond the spine. Without these two the
-            // passthrough has nothing to read and every extra field the bench
-            // collects is dropped between the row and the sale.
-            draft_values: Record<string, unknown> | null;
-            raw: Record<string, unknown> | null;
-            stock_org_id: string | null;
-            stock_partner_name: string | null;
-          }>({
-            /*
-             * The partner is resolved here, from stock, per row.
-             *
-             * A lateral with limit 1 rather than a plain join: one stove ID
-             * still exists as two stock rows at two different partners, and a
-             * join would return that row twice, which in this loop means
-             * committing it twice.
-             */
-            text: `select r.id, r.stove_serial_no, r.normalized, r.draft_values, r.raw,
-                          k.organization_id::text as stock_org_id,
-                          k.partner_name as stock_partner_name
-                     from data_center.import_rows r
-                     left join lateral (
-                       select sb.organization_id, o.partner_name
-                         from public.stove_ids_base sb
-                         left join public.organizations o on o.id = sb.organization_id
-                        where upper(sb.stove_id) = upper(r.stove_serial_no)
-                        order by sb.organization_id
-                        limit 1
-                     ) k on true
-                    where r.batch_id = $1 and r.status = 'valid'
-                    order by r.row_number limit $2`,
-            args: [batchId, sliceSize],
-          });
-          return r.rows;
-        });
-
-        if (slice.length === 0) {
-          await withConnection(async (conn) => {
-            await conn.queryObject({
+        // Runaway guard. This must never ration real work - at the slow end a
+        // link commits ONE row, so a thousand-row file needs a thousand
+        // productive links. 2500 exists only to stop a recursion bug.
+        if (link > 2500) {
+          await withConnection((conn) =>
+            conn.queryObject({
               text: `update data_center.import_batches
-                     set state = 'committed', committed_at = now(), committed_by = $2
-                     where id = $1 and state <> 'committed'`,
-              args: [batchId, userId],
-            });
-          });
-          return json({ data: { done: true, committed: 0 } }, 200, cors);
+                        set commit_lease_until = null,
+                            last_error = 'Commit stopped at the chain cap. Press Commit to continue.'
+                      where id = $1`,
+              args: [batchId],
+            })
+          );
+          return json({ data: { started: false, stopped: "chain_cap" } }, 200, cors);
         }
 
-        // create-sale requires partnerName as well as organizationId, so both
-        // come from one lookup rather than the name being guessed from the file.
-        const org = await withReadConnection(async (conn) => {
-          const r = await conn.queryObject<{ organization_id: string; partner_name: string }>({
-            text: `select b.organization_id, o.partner_name
-                   from data_center.import_batches b
-                   left join public.organizations o on o.id = b.organization_id
-                   where b.id = $1`,
-            args: [batchId],
-          });
-          return r.rows[0] ?? null;
-        });
         /*
-         * A batch with no partner is normal now: it means the file covered
-         * several, and each row carries its own. What is not normal is a row
-         * that resolves to neither, and that is refused per row below rather
-         * than failing the whole batch.
+         * PHASE 1 - synchronous, so the response can tell the truth.
+         *
+         * One connection, one transaction: take the lease, sweep dead claims,
+         * claim a slice, read the claimed rows. The lease is a CAS on the
+         * batch row rather than an advisory lock because this module opens a
+         * connection per statement and an advisory lock dies with its
+         * connection - it could guard these few milliseconds but not the
+         * minutes of create-sale work that follow. A timestamp holds exactly
+         * as long as it says, across any number of connections.
+         *
+         * Everything slow happens AFTER the response, inside waitUntil - but
+         * the lease and the claims happen BEFORE it, because "two rapid
+         * presses, the second answers busy" has to be a fact, not a race.
          */
-        const batchOrgId = org?.organization_id ?? null;
-
-        let committed = 0;
-        const failures: { rowId: string; reason: string }[] = [];
-
-        /** Refuse one row without touching the rest of the batch. */
-        const refuseRow = async (rowId: string, why: string) => {
-          await withConnection(async (conn) => {
-            await conn.queryObject({
-              text: `update data_center.import_rows
-                     set status = 'exception', exception_reason = $2 where id = $1`,
-              args: [rowId, why],
-            });
-          });
-          failures.push({ rowId, reason: why });
+        type ClaimedRow = {
+          id: string;
+          stove_serial_no: string;
+          normalized: NormalizedRow;
+          draft_values: Record<string, unknown> | null;
+          raw: Record<string, unknown> | null;
+          stock_org_id: string | null;
+          stock_partner_name: string | null;
         };
 
-        for (const row of slice) {
-          /*
-           * Whose sale this is, decided by stock rather than by the file.
-           *
-           * The batch's partner is only a fallback now, for the bench and for
-           * single-partner files. What decides is the stove ID, because it is
-           * the one column in a spreadsheet that can be checked against
-           * something the writer of the spreadsheet does not control.
-           *
-           * This matters more than it sounds. Several partner names cover more
-           * than one organization: four are called LAPO, four Solar Sister, and
-           * two Solar Sister rows are both "Main Branch" in different states.
-           * A sheet that named its partner would land those rows under
-           * whichever row the name happened to match first. The stove ID lands
-           * them under the branch that actually holds the stove.
-           */
-          const rowOrgId = row.stock_org_id ?? batchOrgId;
-          const rowPartnerName = row.stock_partner_name ?? org?.partner_name ?? null;
+        const phase1 = await withConnection(async (conn) => {
+          await conn.queryObject("begin");
+          try {
+            const lease = await conn.queryObject<{ id: string }>({
+              text: `update data_center.import_batches
+                        set commit_lease_until = now() + interval '7 minutes'
+                      where id = $1
+                        and state in ('staged','validated','dry_run')
+                        and (commit_lease_until is null or commit_lease_until < now())
+                      returning id`,
+              args: [batchId],
+            });
+            if (lease.rows.length === 0) {
+              await conn.queryObject("rollback");
+              return { held: false as const };
+            }
 
-          if (!rowOrgId) {
-            await refuseRow(
-              row.id,
-              `Stove ${row.stove_serial_no} is not in stock against any partner, so there is ` +
-                "nobody to record this sale for.",
-            );
-            continue;
-          }
+            /*
+             * Sweep claims nobody can be holding. A link's whole life is
+             * bounded by the isolate's ~400s wall clock, so a claim ten
+             * minutes old with no sale attached belongs to a crashed link.
+             * Global, not batch-scoped: batch B must be able to clear crashed
+             * batch A's claim on a serial they share.
+             */
+            await conn.queryObject({
+              text: `delete from data_center.import_claims
+                      where claimed_at < now() - interval '10 minutes'
+                        and sale_id is null`,
+            });
 
-          /*
-           * The answer the operator was shown, checked against the answer now.
-           *
-           * Staging previewed a partner per row and somebody approved it. If
-           * the stove has been transferred since, committing under the partner
-           * they were shown would be wrong and committing under the new one
-           * silently would be worse. Refusing the row says which, and the rest
-           * of the batch still lands.
-           */
-          const stagedOrgId =
-            (row.normalized as unknown as Record<string, unknown>).resolvedOrganizationId ?? null;
-          if (
-            typeof stagedOrgId === "string" &&
-            row.stock_org_id &&
-            stagedOrgId !== row.stock_org_id
-          ) {
-            await refuseRow(
-              row.id,
-              `Stove ${row.stove_serial_no} has moved to a different partner since this file was ` +
-                "checked. Re-validate the batch so the change is on screen before it is committed.",
-            );
-            continue;
-          }
-
-          // Claim first. The primary key is the lock: a second batch asking for
-          // the same serial gets a conflict here rather than a duplicate sale.
-          const claimed = await withConnection(async (conn) => {
-            const r = await conn.queryObject({
-              text: `insert into data_center.import_claims (stove_serial_no, batch_id, row_id, claimed_by)
-                     values ($1, $2, $3, $4)
+            /*
+             * Claim the slice in one statement. Only rows whose claim THIS
+             * link wins are worked; a conflict means another batch holds the
+             * serial right now, and the row simply stays valid for a later
+             * pass - the old behaviour burned it into a permanent exception,
+             * and production carried the proof.
+             */
+            const claimed = await conn.queryObject<{ row_id: string }>({
+              text: `insert into data_center.import_claims
+                       (stove_serial_no, batch_id, row_id, claimed_by)
+                     select r.stove_serial_no, r.batch_id, r.id, $2
+                       from data_center.import_rows r
+                      where r.batch_id = $1 and r.status = 'valid'
+                      order by r.row_number
+                      limit $3
                      on conflict (stove_serial_no) do nothing
-                     returning stove_serial_no`,
-              args: [row.stove_serial_no, batchId, row.id, userId],
+                     returning row_id`,
+              args: [batchId, userId, settings.cap],
             });
-            return r.rows.length > 0;
-          });
+            const claimedIds = claimed.rows.map((r) => r.row_id);
 
-          if (!claimed) {
-            failures.push({ rowId: row.id, reason: "Another import is already committing this stove" });
-            await withConnection(async (conn) => {
-              await conn.queryObject({
-                text: `update data_center.import_rows
-                       set status = 'exception', exception_reason = $2 where id = $1`,
-                args: [row.id, "Another import is already committing this stove"],
-              });
-            });
-            continue;
-          }
-
-          // Through create-sale, never around it. The caller's own token is
-          // forwarded so the sale is attributed to them and org scoping is
-          // enforced by the same code the Sell Stove form goes through.
-          // create-sale's own field names, not this module's. Anything it does
-          // not name is omitted rather than guessed: a receipt does not carry a
-          // payment model, a drawn signature or an uploaded photo, and
-          // create-sale requires none of them.
-          const n = row.normalized;
-          const extras = (row.draft_values ?? row.raw ?? null) as
-            | Record<string, unknown>
-            | null;
-          const payload = {
-            stoveSerialNo: n.stoveSerialNo,
-            salesDate: n.salesDate,
-            endUserName: n.endUserName,
-            aka: n.aka,
-            phone: n.phone,
-            otherPhone: n.otherPhone,
-            contactPerson: n.contactPerson,
-            contactPhone: n.contactPhone,
-            amount: n.amount,
-            amountReceived: n.amountReceived,
-            stateBackup: n.state,
-            lgaBackup: n.lga,
-            // The bench already holds a full addressData with coordinates when
-            // the address came off a map; a spreadsheet row has only the three
-            // strings. Keep the richer one where it exists.
-            addressData: (extras?.addressData &&
-                typeof extras.addressData === "object" &&
-                (extras.addressData as Record<string, unknown>).fullAddress)
-              ? extras.addressData
-              : { fullAddress: n.fullAddress, state: n.state, city: n.lga },
-            organizationId: rowOrgId,
-            partnerName: rowPartnerName,
-            // Everything the row carried beyond the spine. A bench row brings
-            // the signature, the photographs and the rest of the form; a
-            // spreadsheet row brings none of it and the object is empty.
-            ...passthroughFrom(extras),
-            termsAccepted: termsFrom(extras),
-          };
-
-          let saleId: string | null = null;
-          let sharesPhoneWith: { sale_id: string }[] = [];
-          let reason = "";
-          // Three attempts, but only for a transaction ID collision. Any other
-          // refusal is a fact about the row and retrying would just produce the
-          // same answer more slowly.
-          for (let attempt = 0; attempt < 3 && !saleId; attempt++) {
-            try {
-              const res = await fetch(`${Deno.env.get("SUPABASE_URL")}/functions/v1/create-sale`, {
-                method: "POST",
-                headers: {
-                  "Content-Type": "application/json",
-                  Authorization: authHeader,
-                  apikey: Deno.env.get("SUPABASE_ANON_KEY") ?? "",
-                },
-                /**
-                 * The digitalisation path means it about a shared number.
-                 *
-                 * create-sale refuses a phone already on a live sale, which is
-                 * right in front of a customer and wrong over a stack of
-                 * receipts where a man bought stoves for two wives on one
-                 * number. The flag does not skip the check; it turns the
-                 * refusal into a report, and the answer comes back naming the
-                 * sales already on the number so the sharing can be recorded
-                 * rather than discovered later.
-                 *
-                 * Only this path sends it. The Sell Stove form and the mobile
-                 * app never do, so nothing about them changes.
+            const rows = claimedIds.length
+              ? await conn.queryObject<ClaimedRow>({
+                /*
+                 * The partner is resolved here, from stock, per row. A lateral
+                 * with limit 1 rather than a plain join: one stove ID still
+                 * exists as two stock rows at two different partners, and a
+                 * join would return that row twice.
                  */
-                body: JSON.stringify({
-                  ...payload,
-                  transactionId: newTransactionId(),
-                  allowSharedPhone: true,
-                }),
+                text: `select r.id, r.stove_serial_no, r.normalized, r.draft_values, r.raw,
+                              k.organization_id::text as stock_org_id,
+                              k.partner_name as stock_partner_name
+                         from data_center.import_rows r
+                         left join lateral (
+                           select sb.organization_id, o.partner_name
+                             from public.stove_ids_base sb
+                             left join public.organizations o on o.id = sb.organization_id
+                            where upper(sb.stove_id) = upper(r.stove_serial_no)
+                            order by sb.organization_id
+                            limit 1
+                         ) k on true
+                        where r.id = any($1::uuid[])
+                        order by r.row_number`,
+                args: [claimedIds],
+              })
+              : { rows: [] as ClaimedRow[] };
+
+            const org = await conn.queryObject<{
+              organization_id: string | null;
+              partner_name: string | null;
+              uploaded_at: string;
+            }>({
+              text: `select b.organization_id, o.partner_name, b.uploaded_at::text
+                       from data_center.import_batches b
+                       left join public.organizations o on o.id = b.organization_id
+                      where b.id = $1`,
+              args: [batchId],
+            });
+
+            const remaining = await conn.queryObject<{ n: number }>({
+              text: `select count(*)::int n from data_center.import_rows
+                      where batch_id = $1 and status = 'valid'`,
+              args: [batchId],
+            });
+
+            await conn.queryObject("commit");
+            return {
+              held: true as const,
+              rows: rows.rows,
+              claimedIds,
+              org: org.rows[0] ?? null,
+              remaining: remaining.rows[0]?.n ?? 0,
+            };
+          } catch (err) {
+            await conn.queryObject("rollback");
+            throw err;
+          }
+        });
+
+        if (!phase1.held) {
+          // Say WHICH refusal this is: a running chain, or a batch that has
+          // moved on. Both are 200s the panel renders, not errors.
+          const why = await withReadConnection(async (conn) => {
+            const r = await conn.queryObject<{ state: string; leased: boolean }>({
+              text: `select state, (commit_lease_until is not null
+                                    and commit_lease_until > now()) as leased
+                       from data_center.import_batches where id = $1`,
+              args: [batchId],
+            });
+            return r.rows[0] ?? null;
+          });
+          if (why?.leased) {
+            return json({ data: { busy: true, state: why.state } }, 200, cors);
+          }
+          return json(
+            {
+              error: `This batch is ${why?.state ?? "missing"} and cannot be committed.`,
+              code: "not_committable",
+            },
+            409,
+            cors,
+          );
+        }
+
+        // Nothing left at all: finish the batch here and now.
+        if (phase1.remaining === 0 && phase1.rows.length === 0) {
+          await withConnection((conn) =>
+            conn.queryObject({
+              text: `update data_center.import_batches
+                        set state = 'committed', committed_at = now(), committed_by = $2,
+                            commit_lease_until = null
+                      where id = $1 and state <> 'committed'`,
+              args: [batchId, userId],
+            })
+          );
+          return json({ data: { done: true, committed: 0, remaining: 0 } }, 200, cors);
+        }
+
+        const batchOrgId = phase1.org?.organization_id ?? null;
+        const batchPartnerName = phase1.org?.partner_name ?? null;
+        const batchUploadedAt = phase1.org?.uploaded_at ?? null;
+
+        /*
+         * PHASE 2 + 3 - the slow work, behind the response.
+         *
+         * The spike proved this runtime's EdgeRuntime.waitUntil carries a
+         * chained self-invocation past its response (probe reached link 3 in
+         * under 2.5s). So the person who pressed Commit gets their answer in
+         * about a second, and the chain works the batch on the server until
+         * nothing is left - tab open or not.
+         */
+        const workSlice = async () => {
+          const t0 = Date.now();
+          const okRows: {
+            rowId: string;
+            saleId: string;
+            sharedSaleIds: string[];
+          }[] = [];
+          const failRows: { rowId: string; reason: string }[] = [];
+          let processed = 0;
+
+          for (const row of phase1.rows) {
+            /*
+             * The budget, not the cap, decides when this link stops taking on
+             * new rows. One in-flight sale may overrun it; the next link picks
+             * up whatever this one released.
+             */
+            if (processed > 0 && Date.now() - t0 > settings.budgetMs) break;
+            processed++;
+
+            const rowOrgId = row.stock_org_id ?? batchOrgId;
+            const rowPartnerName = row.stock_partner_name ?? batchPartnerName;
+
+            if (!rowOrgId) {
+              failRows.push({
+                rowId: row.id,
+                reason:
+                  `Stove ${row.stove_serial_no} is not in stock against any partner, so there is ` +
+                  "nobody to record this sale for.",
               });
-              const out = await res.json().catch(() => ({}));
-              // create-sale answers { success, sale_id, data: { id } }.
-              const created = out?.data?.id ?? out?.sale_id ?? out?.saleId ?? null;
-              if (res.ok && created) {
-                saleId = created;
-                sharesPhoneWith = Array.isArray(out?.shares_phone_with)
-                  ? (out.shares_phone_with as { sale_id: string }[])
-                  : [];
+              continue;
+            }
+
+            /*
+             * The answer the operator was shown, checked against the answer
+             * now. If the stove moved partners since staging, refusing the row
+             * says so; committing silently under either partner would be worse.
+             */
+            const stagedOrgId =
+              (row.normalized as unknown as Record<string, unknown>).resolvedOrganizationId ??
+                null;
+            if (
+              typeof stagedOrgId === "string" && row.stock_org_id &&
+              stagedOrgId !== row.stock_org_id
+            ) {
+              failRows.push({
+                rowId: row.id,
+                reason:
+                  `Stove ${row.stove_serial_no} has moved to a different partner since this file ` +
+                  "was checked. Re-validate the batch so the change is on screen before it is committed.",
+              });
+              continue;
+            }
+
+            // Through create-sale, never around it. The caller's own token is
+            // forwarded so the sale is attributed to them and org scoping is
+            // enforced by the same code the Sell Stove form goes through.
+            const n = row.normalized;
+            const extras = (row.draft_values ?? row.raw ?? null) as
+              | Record<string, unknown>
+              | null;
+            const payload = {
+              stoveSerialNo: n.stoveSerialNo,
+              salesDate: n.salesDate,
+              endUserName: n.endUserName,
+              aka: n.aka,
+              phone: n.phone,
+              otherPhone: n.otherPhone,
+              contactPerson: n.contactPerson,
+              contactPhone: n.contactPhone,
+              amount: n.amount,
+              amountReceived: n.amountReceived,
+              stateBackup: n.state,
+              lgaBackup: n.lga,
+              addressData: (extras?.addressData &&
+                  typeof extras.addressData === "object" &&
+                  (extras.addressData as Record<string, unknown>).fullAddress)
+                ? extras.addressData
+                : { fullAddress: n.fullAddress, state: n.state, city: n.lga },
+              organizationId: rowOrgId,
+              partnerName: rowPartnerName,
+              ...passthroughFrom(extras),
+              termsAccepted: termsFrom(extras),
+            };
+
+            let saleId: string | null = null;
+            let sharedSaleIds: string[] = [];
+            let reason = "";
+            // Three attempts, but only for a transaction ID collision. Any
+            // other refusal is a fact about the row.
+            for (let attempt = 0; attempt < 3 && !saleId; attempt++) {
+              try {
+                const res = await fetch(
+                  `${Deno.env.get("SUPABASE_URL")}/functions/v1/create-sale`,
+                  {
+                    method: "POST",
+                    headers: {
+                      "Content-Type": "application/json",
+                      Authorization: authHeader,
+                      apikey: Deno.env.get("SUPABASE_ANON_KEY") ?? "",
+                    },
+                    /*
+                     * allowSharedPhone: the digitalisation path means it about
+                     * a shared number - the refusal becomes a report naming
+                     * the sales already on the number, recorded below.
+                     *
+                     * The timeout is new: create-sale had NONE, so one hung
+                     * call could eat the whole isolate and orphan the slice's
+                     * outcome write. Two minutes is far past its slowest
+                     * observed run.
+                     */
+                    signal: AbortSignal.timeout(120_000),
+                    body: JSON.stringify({
+                      ...payload,
+                      transactionId: newTransactionId(),
+                      allowSharedPhone: true,
+                    }),
+                  },
+                );
+                const out = await res.json().catch(() => ({}));
+                const created = out?.data?.id ?? out?.sale_id ?? out?.saleId ?? null;
+                if (res.ok && created) {
+                  saleId = created;
+                  sharedSaleIds = Array.isArray(out?.shares_phone_with)
+                    ? (out.shares_phone_with as { sale_id: string }[]).map((x) => x.sale_id)
+                    : [];
+                  break;
+                }
+                reason = out?.message ?? out?.error ??
+                  `create-sale refused this row (${res.status})`;
+                if (!/transaction id/i.test(reason)) break;
+              } catch (err) {
+                reason = `create-sale could not be reached: ${
+                  err instanceof Error ? err.message : "unknown"
+                }`;
                 break;
               }
-              reason = out?.message ?? out?.error ?? `create-sale refused this row (${res.status})`;
-              if (!/transaction id/i.test(reason)) break;
-            } catch (err) {
-              reason = `create-sale could not be reached: ${err instanceof Error ? err.message : "unknown"}`;
-              break;
             }
+
+            if (saleId) okRows.push({ rowId: row.id, saleId, sharedSaleIds });
+            else failRows.push({ rowId: row.id, reason });
           }
 
+          /*
+           * PHASE 3 - every outcome, one transaction.
+           *
+           * This used to be 2-3 fresh connections PER ROW at ~650ms of
+           * connection cost each, which is most of what made slices blow the
+           * client's 20s budget. Now it is one connection however many rows
+           * the link processed - the same jsonb/unnest cure validate already
+           * received.
+           *
+           * It also releases the claims of EVERY claimed row - committed,
+           * excepted, and the ones the budget never reached. Unreleased,
+           * those unprocessed claims would shadow their own rows from the
+           * next link for ten minutes and the chain would crawl.
+           */
+          let adoptedCount = 0;
           await withConnection(async (conn) => {
             await conn.queryObject("begin");
             try {
@@ -2294,54 +2360,78 @@ serve(async (req) => {
                 text: "select set_config('data_center.actor', $1, true)",
                 args: [userId],
               });
-              if (saleId) {
-                await conn.queryObject({
-                  // confirmed_by is recorded apart from resolved_by on purpose.
-                  // "Who typed this" and "who let it through" are different
-                  // answers and are often different people, which is the whole
-                  // of the control: a row reaches public.sales because somebody
-                  // released it, not because somebody typed it.
-                  text: `update data_center.import_rows
-                         set status = 'committed', sale_id = $2,
-                             resolved_by = $3, resolved_at = now(),
-                             confirmed_by = $3, confirmed_at = now()
-                         where id = $1`,
-                  args: [row.id, saleId, userId],
+
+              /*
+               * Adopt the orphans before writing exceptions. The crash window
+               * is real: a link can die between create-sale succeeding and
+               * this transaction running, and the retry then gets refused
+               * "already sold" for a sale WE made. If a sale for this serial
+               * exists, is referenced by no import row, was created by this
+               * same user, and postdates this batch's upload - it is ours:
+               * adopt it instead of excepting the row.
+               */
+              const failIds = failRows.map((f) => f.rowId);
+              let adoptedIds: string[] = [];
+              if (failIds.length > 0 && batchUploadedAt) {
+                const adopted = await conn.queryObject<{ id: string }>({
+                  text: `update data_center.import_rows r
+                            set status = 'committed', sale_id = adopt.sale_id,
+                                exception_reason = null,
+                                resolved_by = $2, resolved_at = now(),
+                                confirmed_by = $2, confirmed_at = now()
+                           from lateral (
+                             select sb.sale_id
+                               from public.stove_ids_base sb
+                               join public.sales s on s.id = sb.sale_id
+                              where upper(sb.stove_id) = upper(r.stove_serial_no)
+                                and s.created_by = $2
+                                and s.created_at >= $3::timestamptz
+                                and not exists (select 1 from data_center.import_rows ir
+                                                 where ir.sale_id = s.id)
+                              limit 1
+                           ) adopt
+                          where r.id = any($1::uuid[])
+                            and adopt.sale_id is not null
+                          returning r.id`,
+                  args: [failIds, userId, batchUploadedAt],
                 });
-                /*
-                 * Release the claim now the sale exists.
-                 *
-                 * The claim is a lock held WHILE a batch commits, which is
-                 * what its own table comment says, and the lock's job is done
-                 * the moment public.sales has the row. From here the real
-                 * guard is stock: create-sale refuses a stove already marked
-                 * sold, so nothing depends on this row surviving.
-                 *
-                 * It used to be updated with the sale id and left behind, and
-                 * that quietly made an import once-ever. Delete the sale
-                 * through the sales app later and the stove returns to
-                 * available, but the claim stayed - so re-importing that
-                 * receipt was refused with "Another import is already
-                 * committing this stove", which by then was neither true nor
-                 * something anybody could act on.
-                 */
+                adoptedIds = adopted.rows.map((r) => r.id);
+                adoptedCount = adoptedIds.length;
+              }
+              const realFails = failRows.filter((f) => !adoptedIds.includes(f.rowId));
+
+              if (okRows.length > 0) {
+                // confirmed_by is recorded apart from resolved_by on purpose:
+                // "who typed this" and "who let it through" are different
+                // answers, and that difference is the whole of the control.
                 await conn.queryObject({
-                  text: "delete from data_center.import_claims where row_id = $1",
-                  args: [row.id],
+                  text: `update data_center.import_rows r
+                            set status = 'committed', sale_id = u.sale_id,
+                                exception_reason = null,
+                                resolved_by = $3, resolved_at = now(),
+                                confirmed_by = $3, confirmed_at = now()
+                           from unnest($1::uuid[], $2::uuid[]) as u(id, sale_id)
+                          where r.id = u.id`,
+                  args: [
+                    okRows.map((r) => r.rowId),
+                    okRows.map((r) => r.saleId),
+                    userId,
+                  ],
                 });
 
-                /**
-                 * A number holding more than one stove goes on the register.
-                 *
-                 * Both ends of it: the sale just created, and every sale that
-                 * already held the number - because a person opening either
-                 * record should see the other, and a row written for only one
-                 * side makes the second stove invisible from the first.
-                 *
-                 * In the same transaction as the commit, so a number can never
-                 * be shared without the register saying so.
+                /*
+                 * Numbers holding more than one stove go on the register -
+                 * both ends of each pair, in the same transaction as the
+                 * commit, so a number can never be shared without the register
+                 * saying so.
                  */
-                if (sharesPhoneWith.length > 0) {
+                const sharedAll = [
+                  ...new Set(
+                    okRows.filter((r) => r.sharedSaleIds.length > 0)
+                      .flatMap((r) => [r.saleId, ...r.sharedSaleIds]),
+                  ),
+                ];
+                if (sharedAll.length > 0) {
                   await conn.queryObject({
                     text: `insert into data_center.shared_phones
                              (phone_tail, sale_id, stove_id, phone_as_written,
@@ -2356,60 +2446,127 @@ serve(async (req) => {
                               set stove_id = excluded.stove_id,
                                   phone_as_written = excluded.phone_as_written,
                                   updated_at = now(), updated_by = excluded.updated_by`,
-                    args: [
-                      [saleId, ...sharesPhoneWith.map((r) => r.sale_id)],
-                      userId,
-                    ],
+                    args: [sharedAll, userId],
                   });
                 }
-              } else {
-                // Release the claim: the sale did not happen, so nothing should
-                // be holding the stove.
+              }
+
+              if (realFails.length > 0) {
                 await conn.queryObject({
-                  text: "delete from data_center.import_claims where row_id = $1",
-                  args: [row.id],
-                });
-                await conn.queryObject({
-                  text: `update data_center.import_rows
-                         set status = 'exception', exception_reason = $2 where id = $1`,
-                  args: [row.id, reason],
+                  text: `update data_center.import_rows r
+                            set status = 'exception', exception_reason = u.reason
+                           from unnest($1::uuid[], $2::text[]) as u(id, reason)
+                          where r.id = u.id`,
+                  args: [realFails.map((f) => f.rowId), realFails.map((f) => f.reason)],
                 });
               }
+
+              // Every claim this link took, gone - including the rows the
+              // budget never reached, which simply return to the pool.
+              await conn.queryObject({
+                text: `delete from data_center.import_claims where row_id = any($1::uuid[])`,
+                args: [phase1.claimedIds],
+              });
+
+              const remaining = await conn.queryObject<{ n: number }>({
+                text: `select count(*)::int n from data_center.import_rows
+                        where batch_id = $1 and status = 'valid'`,
+                args: [batchId],
+              });
+              const left = remaining.rows[0]?.n ?? 0;
+              const outcomes = okRows.length + failRows.length;
+              const nextZeroRuns = outcomes === 0 ? zeroRuns + 1 : 0;
+              const breaker = left > 0 && nextZeroRuns >= 3;
+
+              await conn.queryObject({
+                text: `update data_center.import_batches
+                          set committed_rows = (select count(*) from data_center.import_rows
+                                                 where batch_id = $1 and status = 'committed'),
+                              state = case when $2 = 0 then 'committed' else 'validated' end,
+                              committed_at = case when $2 = 0 then now() else committed_at end,
+                              committed_by = case when $2 = 0 then $3 else committed_by end,
+                              commit_lease_until = null,
+                              last_error = $4
+                        where id = $1`,
+                args: [
+                  batchId,
+                  left,
+                  userId,
+                  breaker
+                    ? "Commit paused: three passes in a row made no progress. Press Commit to try again."
+                    : realFails[0]?.reason ?? null,
+                ],
+              });
+
               await conn.queryObject("commit");
+              return { left, nextZeroRuns, breaker };
             } catch (err) {
               await conn.queryObject("rollback");
               throw err;
             }
+          }).then(async (tail) => {
+            /*
+             * The next link. Awaited to its response inside waitUntil - a
+             * fire-and-forgotten fetch can be dropped at worker teardown, and
+             * a dropped link is a chain that silently stops.
+             */
+            if (tail && tail.left > 0 && !tail.breaker) {
+              try {
+                const res = await fetch(
+                  `${Deno.env.get("SUPABASE_URL")}/functions/v1/data-center-import`,
+                  {
+                    method: "POST",
+                    headers: {
+                      "Content-Type": "application/json",
+                      Authorization: authHeader ?? "",
+                      apikey: Deno.env.get("SUPABASE_ANON_KEY") ?? "",
+                    },
+                    body: JSON.stringify({
+                      action: "commit",
+                      batchId,
+                      link: link + 1,
+                      zeroRuns: tail.nextZeroRuns,
+                    }),
+                  },
+                );
+                await res.text();
+              } catch {
+                /*
+                 * The chain link could not be delivered. The lease is already
+                 * cleared, so the batch is resumable: the panel's stall
+                 * detection offers Continue and a press picks up exactly here.
+                 */
+              }
+            }
           });
+        };
 
-          if (saleId) committed++;
-          else failures.push({ rowId: row.id, reason });
-        }
-
-        const remaining = await withConnection(async (conn) => {
-          const r = await conn.queryObject<{ n: number }>({
-            text: `select count(*)::int n from data_center.import_rows
-                   where batch_id = $1 and status = 'valid'`,
-            args: [batchId],
-          });
-          const left = r.rows[0]?.n ?? 0;
-          await conn.queryObject({
-            text: `update data_center.import_batches
-                   set committed_rows = (select count(*) from data_center.import_rows
-                                          where batch_id = $1 and status = 'committed'),
-                       state = case when $2 = 0 then 'committed' else 'validated' end,
-                       committed_at = case when $2 = 0 then now() else committed_at end,
-                       committed_by = case when $2 = 0 then $3 else committed_by end,
-                       last_error = $4
-                   where id = $1`,
-            args: [batchId, left, userId, failures.length ? failures[0].reason : null],
-          });
-          return left;
-        });
+        // deno-lint-ignore no-explicit-any
+        (globalThis as any).EdgeRuntime.waitUntil(
+          workSlice().catch(async () => {
+            // A thrown slice must not leave the batch wedged: clear the lease
+            // so the next press (or the stall CTA) can take over. Claims left
+            // behind fall to the ten-minute sweep.
+            await withConnection((conn) =>
+              conn.queryObject({
+                text:
+                  `update data_center.import_batches set commit_lease_until = null where id = $1`,
+                args: [batchId],
+              })
+            ).catch(() => {});
+          }),
+        );
 
         return json(
-          { data: { committed, failed: failures.length, remaining, done: remaining === 0, failures } },
-          200,
+          {
+            data: {
+              started: true,
+              link,
+              claimed: phase1.rows.length,
+              remaining: phase1.remaining,
+            },
+          },
+          202,
           cors,
         );
       }
@@ -2425,6 +2582,35 @@ serve(async (req) => {
         requireFeature("import.commit");
         const batchId = String(body.batchId ?? "");
         if (!batchId) throw new BadRequest("batchId is required");
+
+        /*
+         * Not while a commit chain is working the batch. Rollback resets rows
+         * to valid and bulk-releases claims - doing that under a live link's
+         * feet un-guards its in-flight rows and re-arms rows it is mid-way
+         * through selling. The commit side fences the other direction: its
+         * lease CAS requires state 'validated', which rollback has moved on.
+         */
+        const leased = await withReadConnection(async (conn) => {
+          const r = await conn.queryObject<{ live: boolean }>({
+            text: `select (commit_lease_until is not null
+                           and commit_lease_until > now()) as live
+                     from data_center.import_batches where id = $1`,
+            args: [batchId],
+          });
+          return r.rows[0]?.live ?? false;
+        });
+        if (leased) {
+          return json(
+            {
+              error:
+                "A commit is running on this batch right now. Wait for it to finish " +
+                "or stall, then roll back.",
+              code: "commit_in_progress",
+            },
+            409,
+            cors,
+          );
+        }
 
         /*
          * Refuse if the call centre has already worked these records.
@@ -3243,9 +3429,19 @@ serve(async (req) => {
          * receipts inside it carry.
          */
         const ISO = /^\d{4}-\d{2}-\d{2}$/;
-        const bf = (body as { dateFrom?: string; dateTo?: string });
+        const bf = (body as { dateFrom?: string; dateTo?: string; batchId?: string });
         const args: unknown[] = [];
         const where: string[] = [];
+        /*
+         * One batch, for the commit progress poll. The panel asks every five
+         * seconds while a chain runs; re-counting the rows of two hundred
+         * batches to answer for one is how a progress bar becomes load.
+         */
+        const uuidish = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+        if (typeof bf.batchId === "string" && uuidish.test(bf.batchId)) {
+          args.push(bf.batchId);
+          where.push(`b.id = $${args.length}`);
+        }
         if (typeof bf.dateFrom === "string" && ISO.test(bf.dateFrom)) {
           args.push(bf.dateFrom);
           where.push(`b.uploaded_at >= $${args.length}::date`);
@@ -3297,7 +3493,16 @@ serve(async (req) => {
                                and r2.normalized ? 'resolvedOrganizationId'
                           ) end as partner_count,
                           p.full_name as uploaded_by_name,
-                          counts.exception_now::int as exception_rows
+                          counts.exception_now::int as exception_rows,
+                          /*
+                           * Whether a commit chain is working this batch right
+                           * now. A refreshed page reads this to render
+                           * "running on the server" instead of an armed Commit
+                           * button, and the stall detector reads it to know a
+                           * quiet minute is a stall rather than a link mid-work.
+                           */
+                          (b.commit_lease_until is not null
+                           and b.commit_lease_until > now()) as committing
                    from data_center.import_batches b
                    left join lateral (
                      select count(*) filter (where r.status = 'valid')     as valid_now,
@@ -3345,7 +3550,7 @@ serve(async (req) => {
                      and ($3::boolean is not true
                           or (shared_phone_with is not null
                               and array_length(shared_phone_with, 1) > 0))
-                   order by row_number limit 300`,
+                   order by row_number limit 1000`,
             args: [batchId, status, body.sharedOnly === true],
           });
           return json({ data: r.rows }, 200, cors);

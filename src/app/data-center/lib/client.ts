@@ -1176,6 +1176,8 @@ export type ImportBatch = {
   id: string;
   filename: string | null;
   state: "staged" | "validated" | "dry_run" | "committed" | "rolled_back" | "failed";
+  /** True while a commit chain holds this batch's lease on the server. */
+  committing: boolean;
   total_rows: number;
   valid_rows: number;
   rejected_rows: number;
@@ -1385,13 +1387,28 @@ export const dataCenterImport = {
     call<DryRunSummary>("data-center-import", "dry_run", { batchId }),
 
   /** One slice. Call until `done`, so no single request runs long. */
+  /**
+   * Kick the commit chain. One press is the whole ask: the server answers in
+   * about a second and then works the batch link by link on its own -
+   * EdgeRuntime.waitUntil carries each slice past its response, and each link
+   * fires the next. Progress is read by polling `batches({ batchId })`, whose
+   * `committing` flag is the server's lease.
+   *
+   * `busy` means a chain already holds the batch - which the panel treats as
+   * "watch it", never as an error. `done` comes back only when there was
+   * nothing left to do at all.
+   */
   commit: (batchId: string) =>
     call<{
-      committed: number;
-      failed: number;
-      remaining: number;
-      done: boolean;
-      failures: { rowId: string; reason: string }[];
+      started?: boolean;
+      link?: number;
+      claimed?: number;
+      remaining?: number;
+      busy?: boolean;
+      state?: string;
+      done?: boolean;
+      committed?: number;
+      stopped?: string;
     }>("data-center-import", "commit", { batchId }),
 
   /** Also sliced. Each sale goes back through delete-sale, which frees the stove. */
@@ -1413,8 +1430,13 @@ export const dataCenterImport = {
   partners: () =>
     call<{ id: string; partner_name: string }[]>("data-center-import", "partners"),
 
-  /** The history, narrowed by the shared period control on upload date. */
-  batches: (range: { dateFrom?: string; dateTo?: string } = {}) =>
+  /**
+   * The history, narrowed by the shared period control on upload date - or
+   * one batch by id, which is what the commit progress poll asks every few
+   * seconds. Counting the rows of two hundred batches to answer for one is
+   * how a progress bar becomes load.
+   */
+  batches: (range: { dateFrom?: string; dateTo?: string; batchId?: string } = {}) =>
     call<ImportBatch[]>("data-center-import", "batches", range),
 
   /** Every stove in this batch that shares a phone number with another. */

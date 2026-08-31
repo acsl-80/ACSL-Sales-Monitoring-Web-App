@@ -328,7 +328,6 @@ export default function ImportPanel({ canUpload, canCommit, canResolve }) {
   const [error, setError] = useState(null);
   const [notice, setNotice] = useState(null);
   const [busy, setBusy] = useState(false);
-  const [progress, setProgress] = useState(null);
   /** What the import is doing now, and what it did. Survives `busy` clearing. */
   const [steps, setSteps] = useState(null);
   const [unlanded, setUnlanded] = useState(null);
@@ -660,27 +659,81 @@ export default function ImportPanel({ canUpload, canCommit, canResolve }) {
     }
   };
 
+  /**
+   * One press, then the truth.
+   *
+   * The old loop lived here - one HTTP call per slice, the whole run inside
+   * one try, so the FIRST slow slice aborted everything with "took too long"
+   * while the server kept working. Measured per-sale latency swings 4s to 30s
+   * within a day, so that abort was routine, and a 655-row file needed the
+   * tab babysat for up to five hours.
+   *
+   * Now the press kicks the server's own chain (it answers in about a
+   * second), and this function only WATCHES: poll the batch's live counts
+   * every five seconds, narrate movement, and stop when the server says
+   * committed. Closing the page changes nothing - the chain does not know or
+   * care that anybody is looking.
+   */
   const runCommit = async (batchId, total) => {
     setBusy(true);
-    setProgress({ done: 0, failed: 0 });
     setUnlanded(null);
     setUnlandedPhase("committed");
     setSteps([
-      { key: "write", label: "Writing the sales", state: "running", detail: `0 of ${total}` },
+      { key: "write", label: "Writing the sales", state: "running",
+        detail: "Starting on the server..." },
       { key: "settled", label: "Finished", state: "pending", detail: null },
     ]);
     let done = 0;
     try {
-      for (;;) {
-        const out = await dataCenterImport.commit(batchId);
-        done += out.committed;
-        setProgress((p) => ({
-          done: (p?.done ?? 0) + out.committed,
-          failed: (p?.failed ?? 0) + out.failed,
-        }));
-        stepTo("write", "running", `${done} of ${total}`);
-        if (out.done) break;
-        if (out.committed === 0 && out.failed === 0) break;
+      const kick = await dataCenterImport.commit(batchId);
+      if (kick.done && !kick.started) {
+        // Nothing left to write - the batch was already drained.
+        done = 0;
+      } else if (kick.stopped) {
+        throw new DataCenterError(
+          "The run hit its safety cap. Press Commit to continue.", 200, "chain_cap",
+        );
+      } else {
+        // started, or busy: either way a chain is working the batch. Watch it.
+        stepTo(
+          "write", "running",
+          kick.busy
+            ? "Already running on the server. Watching it."
+            : "Running on the server. You can leave this page - it keeps going.",
+        );
+        let lastMoved = Date.now();
+        let lastCount = -1;
+        for (;;) {
+          await new Promise((r) => setTimeout(r, 5000));
+          const rows = await dataCenterImport.batches({ batchId });
+          const b = rows.find((x) => x.id === batchId);
+          if (!b) throw new DataCenterError("The batch disappeared.", 404, "gone");
+          done = b.committed_rows;
+          stepTo(
+            "write", "running",
+            `${b.committed_rows} of ${total} written, ${b.valid_rows} to go - ` +
+              "running on the server. You can leave this page.",
+          );
+          if (b.committed_rows !== lastCount) {
+            lastCount = b.committed_rows;
+            lastMoved = Date.now();
+          }
+          if (b.state === "committed" || b.valid_rows === 0) break;
+          /*
+           * A stall is a quiet ninety seconds with no lease held. A lease with
+           * no movement is a slow link (create-sale at its worst is ~30s a
+           * sale); no lease and no movement is a chain that died - a logout
+           * mid-run does this, since every link re-validates the session.
+           */
+          if (!b.committing && Date.now() - lastMoved > 90_000) {
+            throw new DataCenterError(
+              b.last_error ??
+                "The run stopped - a sign-out mid-run does this. Press Commit to continue from where it reached.",
+              408,
+              "stalled",
+            );
+          }
+        }
       }
       stepTo("write", "done", `${plural(done, "sale")} written`);
 
@@ -704,9 +757,9 @@ export default function ImportPanel({ canUpload, canCommit, canResolve }) {
       setNotice(missed ? null : `Commit finished. ${plural(done, "sale")} written.`);
       await refresh();
     } catch (err) {
-      stepTo("write", "failed", "Stopped part way. Asking again resumes where it left off.");
+      stepTo("write", "failed", "Paused. Pressing Commit continues from where it reached.");
       await collectUnlanded(batchId);
-      setError(err instanceof DataCenterError ? err.message : "Commit stopped early. Ask again to resume.");
+      setError(err instanceof DataCenterError ? err.message : "Commit paused. Press Commit to continue.");
     } finally {
       setBusy(false);
     }
@@ -714,17 +767,37 @@ export default function ImportPanel({ canUpload, canCommit, canResolve }) {
 
   const runRollback = async (batchId, committed) => {
     setBusy(true);
-    setProgress({ done: 0, failed: 0 });
+    let reversed = 0;
     try {
+      /*
+       * Still client-driven - rollbacks are small and rare - but each slice is
+       * its own try now, so one slow slice pauses the run instead of dressing
+       * a resumable state as a failure. The server refuses outright while a
+       * commit chain holds the batch (409 commit_in_progress), and that
+       * message is shown as-is.
+       */
       for (;;) {
-        const out = await dataCenterImport.rollback(batchId);
-        setProgress((p) => ({ done: (p?.done ?? 0) + out.reversed, failed: p?.failed ?? 0 }));
+        let out;
+        try {
+          out = await dataCenterImport.rollback(batchId);
+        } catch (err) {
+          if (err instanceof DataCenterError && err.code === "timeout") {
+            // The server is still reversing; ask again rather than abandon.
+            continue;
+          }
+          throw err;
+        }
+        reversed += out.reversed;
         if (out.done || out.reversed === 0) break;
       }
-      setNotice("Rolled back.");
+      setNotice(`Rolled back. ${plural(reversed, "sale")} reversed.`);
       await refresh();
     } catch (err) {
-      setError(err instanceof DataCenterError ? err.message : "Rollback stopped early.");
+      setError(
+        err instanceof DataCenterError
+          ? err.message
+          : `Rollback paused after ${plural(reversed, "sale")}. Press it again to continue.`,
+      );
     } finally {
       setBusy(false);
     }
