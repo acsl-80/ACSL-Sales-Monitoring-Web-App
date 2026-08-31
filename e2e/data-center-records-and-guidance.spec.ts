@@ -224,7 +224,14 @@ test.describe("the register can be narrowed rather than scrolled", () => {
     // hidden: a control that vanishes is a control somebody hunts for.
     const lga = page.getByLabel("Buyer's LGA");
     await expect(lga).toBeDisabled();
-    await page.getByLabel("Buyer's state").selectOption("Gombe");
+    /*
+     * A combobox rather than a native select. The label's text is injected as
+     * the accessible name, which is what makes "Buyer's state" nameable at all
+     * - a button's name is otherwise computed from its contents, so this field
+     * would answer to "Gombe" once Gombe was chosen.
+     */
+    await page.getByRole("combobox", { name: "Buyer's state" }).click();
+    await page.getByRole("listbox").getByRole("option", { name: "Gombe", exact: true }).click();
     await expect(lga).toBeEnabled();
 
     // Every active filter says its own name and comes off on its own. A filter

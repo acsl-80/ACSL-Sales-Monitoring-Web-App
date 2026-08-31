@@ -66,8 +66,19 @@ export type SearchableSelectProps = {
   emptyLabel?: string;
   disabled?: boolean;
   id?: string;
-  /** Accessible name. Use when there is no visible <label> pointing at `id`. */
+  /**
+   * Accessible name.
+   *
+   * The trigger is a <button>, so without this its name is computed from its
+   * contents - which is whichever option happens to be selected. A field
+   * labelled "Buyer's state" would answer to "Gombe".
+   *
+   * Both spellings are accepted because callers that clone props onto either a
+   * DOM element or this component (the records filter panel does exactly that)
+   * can only inject one attribute name for both.
+   */
   ariaLabel?: string;
+  "aria-label"?: string;
   className?: string;
   /** Rendered above the options and never filtered away. */
   pinned?: SearchableOption | null;
@@ -85,6 +96,7 @@ export function SearchableSelect({
   disabled = false,
   id,
   ariaLabel,
+  "aria-label": ariaLabelAttr,
   className,
   pinned = null,
   searchAfter = 8,
@@ -110,7 +122,7 @@ export function SearchableSelect({
           variant="outline"
           role="combobox"
           aria-expanded={open}
-          aria-label={ariaLabel}
+          aria-label={ariaLabel ?? ariaLabelAttr}
           disabled={disabled}
           className={cn("w-full justify-between font-normal", className)}
         >

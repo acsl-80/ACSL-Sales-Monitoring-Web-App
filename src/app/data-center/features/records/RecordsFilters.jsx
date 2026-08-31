@@ -1,4 +1,5 @@
 import { cloneElement, useId, useMemo, useState } from "react";
+import { SearchableSelect } from "@/components/ui/searchable-select";
 import { Search, X, SlidersHorizontal, ArrowDownWideNarrow, ArrowUpWideNarrow } from "lucide-react";
 
 /**
@@ -78,7 +79,14 @@ function Field({ label, children }) {
       >
         {label}
       </label>
-      {cloneElement(children, { id })}
+      {/*
+        The label's text is injected as the accessible name as well as pointing
+        at the control by id. The searchable dropdowns render a <button>, whose
+        name would otherwise be computed from whichever option is selected - so
+        "Buyer's state" would answer to "Gombe" and no test or screen reader
+        could name the field.
+      */}
+      {cloneElement(children, { id, "aria-label": label })}
     </div>
   );
 }
@@ -226,143 +234,123 @@ export default function RecordsFilters({
       {open && (
         <div className="grid grid-cols-1 gap-3 border-t border-gray-100 bg-(--dc-accent-soft)/25 px-4 py-3 sm:grid-cols-2 lg:grid-cols-4">
           <Field label="Partner">
-            <select
-              className={SELECT}
+            <SearchableSelect
               value={draft.organizationId ?? ""}
-              onChange={(e) => set("organizationId", e.target.value)}
-            >
-              <option value="">Any partner</option>
-              {facets.partners.map((p) => (
-                <option key={p.id} value={p.id}>
-                  {p.name ?? "unnamed"}
-                </option>
-              ))}
-            </select>
+              onChange={(next) => set("organizationId", next)}
+              placeholder="Any partner"
+              pinned={{ value: "", label: "Any partner" }}
+              options={facets.partners.map((p) => ({
+                value: p.id,
+                label: p.name ?? "unnamed",
+              }))}
+            />
           </Field>
 
           <Field label="Sales rep on the transfer">
-            <select
-              className={SELECT}
+            <SearchableSelect
               value={draft.transferSalesRep ?? ""}
-              onChange={(e) => set("transferSalesRep", e.target.value)}
-            >
-              <option value="">Any rep</option>
-              {facets.salesReps.map((r) => (
-                <option key={r.name} value={r.name}>
-                  {r.name}
-                </option>
-              ))}
-            </select>
+              onChange={(next) => set("transferSalesRep", next)}
+              placeholder="Any rep"
+              pinned={{ value: "", label: "Any rep" }}
+              options={facets.salesReps.map((r) => ({
+                value: r.name,
+                label: r.name,
+              }))}
+            />
           </Field>
 
           <Field label="Buyer's state">
-            <select
-              className={SELECT}
+            <SearchableSelect
               value={draft.userState ?? ""}
-              onChange={(e) => setState(e.target.value)}
-            >
-              <option value="">Any state</option>
-              {facets.states.map((st) => (
-                <option key={st} value={st}>
-                  {st}
-                </option>
-              ))}
-            </select>
+              onChange={(next) => setState(next)}
+              placeholder="Any state"
+              pinned={{ value: "", label: "Any state" }}
+              options={facets.states.map((st) => ({
+                value: st,
+                label: st,
+              }))}
+            />
           </Field>
 
           <Field label="Buyer's LGA">
-            <select
-              className={SELECT}
+            <SearchableSelect
               value={draft.userLga ?? ""}
+              onChange={(next) => set("userLga", next)}
               disabled={!draft.userState}
-              onChange={(e) => set("userLga", e.target.value)}
-            >
-              {/* Disabled rather than hidden, so the reason it is unavailable
-                  is on screen instead of being something to work out. */}
-              <option value="">
-                {draft.userState ? "Any LGA" : "Choose a state first"}
-              </option>
-              {lgas.map((l) => (
-                <option key={l} value={l}>
-                  {l}
-                </option>
-              ))}
-            </select>
+              /* Disabled rather than hidden, so the reason it is unavailable is
+                 on screen instead of being something to work out. */
+              placeholder={draft.userState ? "Any LGA" : "Choose a state first"}
+              pinned={{ value: "", label: draft.userState ? "Any LGA" : "Choose a state first" }}
+              options={lgas.map((l) => ({
+                value: l,
+                label: l,
+              }))}
+            />
           </Field>
 
           <Field label="Sold by">
-            <select
-              className={SELECT}
+            <SearchableSelect
               value={draft.saleAgent ?? ""}
-              onChange={(e) => set("saleAgent", e.target.value)}
-            >
-              <option value="">Anybody</option>
-              {facets.salesAgents.map((a) => (
-                <option key={a.id} value={a.id}>
-                  {a.name}
-                </option>
-              ))}
-            </select>
+              onChange={(next) => set("saleAgent", next)}
+              placeholder="Anybody"
+              pinned={{ value: "", label: "Anybody" }}
+              options={facets.salesAgents.map((a) => ({
+                value: a.id,
+                label: a.name,
+              }))}
+            />
           </Field>
 
           <Field label="Sales model">
-            <select
-              className={SELECT}
+            <SearchableSelect
               value={draft.salesModel ?? ""}
-              onChange={(e) => set("salesModel", e.target.value)}
-            >
-              <option value="">Any model</option>
-              {facets.salesModels.map((m) => (
-                <option key={m.id} value={m.id}>
-                  {m.name}
-                </option>
-              ))}
-            </select>
+              onChange={(next) => set("salesModel", next)}
+              placeholder="Any model"
+              pinned={{ value: "", label: "Any model" }}
+              options={facets.salesModels.map((m) => ({
+                value: m.id,
+                label: m.name,
+              }))}
+            />
           </Field>
 
           <Field label="Sale status">
-            <select
-              className={SELECT}
+            <SearchableSelect
               value={draft.saleStatus ?? ""}
-              onChange={(e) => set("saleStatus", e.target.value)}
-            >
-              <option value="">Any status</option>
-              {SALE_STATUSES.map((v) => (
-                <option key={v} value={v}>
-                  {words(v)}
-                </option>
-              ))}
-            </select>
+              onChange={(next) => set("saleStatus", next)}
+              placeholder="Any status"
+              pinned={{ value: "", label: "Any status" }}
+              options={SALE_STATUSES.map((v) => ({
+                value: v,
+                label: words(v),
+              }))}
+            />
           </Field>
 
           <Field label="Payment">
-            <select
-              className={SELECT}
+            <SearchableSelect
               value={draft.paymentStatus ?? ""}
-              onChange={(e) => set("paymentStatus", e.target.value)}
-            >
-              <option value="">Any payment</option>
-              {PAYMENT_STATUSES.map((v) => (
-                <option key={v} value={v}>
-                  {words(v)}
-                </option>
-              ))}
-            </select>
+              onChange={(next) => set("paymentStatus", next)}
+              placeholder="Any payment"
+              pinned={{ value: "", label: "Any payment" }}
+              options={PAYMENT_STATUSES.map((v) => ({
+                value: v,
+                label: words(v),
+              }))}
+            />
           </Field>
 
           <Field label="Came in through">
-            <select
-              className={SELECT}
+            <SearchableSelect
               value={draft.platform ?? ""}
-              onChange={(e) => set("platform", e.target.value)}
-            >
-              <option value="">Either app</option>
-              {PLATFORMS.map((v) => (
-                <option key={v.value} value={v.value}>
-                  {v.label}
-                </option>
-              ))}
-            </select>
+              onChange={(next) => set("platform", next)}
+              placeholder="Either app"
+              pinned={{ value: "", label: "Either app" }}
+              options={PLATFORMS.map((v) => ({
+                value: v.value,
+                label: v.label,
+              }))}
+            />
           </Field>
 
           <Field label="Sold on or after">
