@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { TriangleAlert } from "lucide-react";
-import SearchableSelect from "./SearchableSelect";
+import { SearchableSelect } from "@/components/ui/searchable-select";
 import { getGeoData } from "@/lib/geoDataService";
 
 /**
@@ -92,9 +92,24 @@ export default function StateLgaSelect({
 
   return (
     <>
+      <div>
+      {/*
+        The label lives here rather than inside the control.
+
+        The shared component follows the shadcn convention of not rendering its
+        own label, and `ariaLabel` is passed as well as the visible one because
+        the trigger is a button: its accessible name would otherwise be computed
+        from its contents, which is whatever option happens to be chosen.
+      */}
+      <label
+        htmlFor={`${idPrefix}-state`}
+        className="mb-1 block text-[11px] font-semibold uppercase tracking-wide text-gray-600"
+      >
+        {stateLabel}
+      </label>
       <SearchableSelect
         id={`${idPrefix}-state`}
-        label={stateLabel}
+        ariaLabel={stateLabel}
         value={state ?? ""}
         onChange={(next) => {
           onState(next);
@@ -111,10 +126,18 @@ export default function StateLgaSelect({
         emptyLabel="No state matches that"
         options={stateOptions}
       />
+      </div>
 
+      <div>
+      <label
+        htmlFor={`${idPrefix}-lga`}
+        className="mb-1 block text-[11px] font-semibold uppercase tracking-wide text-gray-600"
+      >
+        {lgaLabel}
+      </label>
       <SearchableSelect
         id={`${idPrefix}-lga`}
-        label={lgaLabel}
+        ariaLabel={lgaLabel}
         value={lga ?? ""}
         onChange={onLga}
         disabled={disabled || !state}
@@ -123,6 +146,7 @@ export default function StateLgaSelect({
         emptyLabel="No LGA in this state matches that"
         options={lgaOptions}
       />
+      </div>
 
       {(stateOffList || lgaOffList) && (
         <p className="sm:col-span-2 lg:col-span-3 flex items-start gap-2 rounded-md border border-amber-200 bg-amber-50 px-2.5 py-1.5 text-xs text-amber-900">

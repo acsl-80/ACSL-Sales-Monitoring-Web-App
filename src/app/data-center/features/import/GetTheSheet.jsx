@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { dataCenterImport, DataCenterError } from "../../lib/client";
 import DigitisationSheet from "../partner-records/DigitisationSheet";
-import SearchableSelect from "../../components/SearchableSelect";
+import { SearchableSelect } from "@/components/ui/searchable-select";
 import {
   FileSpreadsheet, Download, PenLine, Upload, ArrowRight, Info, ChevronDown,
 } from "lucide-react";
@@ -180,6 +180,7 @@ export default function GetTheSheet({ onGoToUpload }) {
             */}
             <SearchableSelect
               id="dc-sheet-partner"
+              ariaLabel="Whose stoves"
               value={chosen}
               onChange={setChosen}
               disabled={partners === null}

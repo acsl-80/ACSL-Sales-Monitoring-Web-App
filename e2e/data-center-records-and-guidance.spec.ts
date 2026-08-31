@@ -310,7 +310,17 @@ test.describe("bulk import leads with where the file comes from", () => {
      * starting with that letter and then forgetting it, so finding one partner
      * meant scrolling a list four hundred long.
      */
-    const picker = page.getByLabel("Whose stoves");
+    /*
+     * A combobox, not a native select. It was a `<select>` over 422
+     * organizations, which answers a keystroke by jumping to the first name
+     * starting with that letter and then forgetting it, so finding one partner
+     * meant scrolling a list four hundred long.
+     *
+     * The trigger is a button; the search field inside the popover is a second
+     * combobox, which is why both are addressed by their own accessible name
+     * rather than by role alone.
+     */
+    const picker = page.getByRole("combobox", { name: "Whose stoves" });
     await expect(picker).toBeEnabled({ timeout: 20_000 });
     await picker.click();
     const list = page.getByRole("listbox");
@@ -319,11 +329,13 @@ test.describe("bulk import leads with where the file comes from", () => {
     test.skip(options < 2, "no partners available to this user");
 
     // Typing narrows it, which is the whole reason this stopped being a select.
-    const box = page.getByRole("combobox", { name: "Whose stoves" });
-    await box.fill("a");
-    await expect(page.getByText(/of \d+ match "a"/)).toBeVisible();
-    await box.fill("");
+    const search = page.getByPlaceholder("Type part of the partner's name");
+    await expect(search).toBeVisible();
+    const first = await list.getByRole("option").first().textContent();
+    await search.fill((first ?? "").trim().slice(0, 4));
+    await expect(list.getByRole("option")).not.toHaveCount(options);
 
+    await search.fill("");
     await list.getByRole("option").nth(1).click();
     await expect(build).toBeEnabled();
 

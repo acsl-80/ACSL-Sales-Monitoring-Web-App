@@ -212,7 +212,8 @@ test.describe("where the buyer lives is chosen, not typed", () => {
     const state = page.getByRole("combobox", { name: "State" });
     await state.click();
     const stateList = page.getByRole("listbox");
-    await page.getByRole("combobox", { name: "State" }).fill("Kogi");
+    // 37 states is past the threshold, so the search field is rendered.
+    await page.getByPlaceholder("Type part of the state").fill("Kogi");
     await stateList.getByRole("option", { name: "Kogi", exact: true }).click();
 
     await expect(lga).toBeEnabled();
