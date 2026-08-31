@@ -304,11 +304,27 @@ test.describe("bulk import leads with where the file comes from", () => {
      * exist without one, while a filled-in sheet carries stove IDs that already
      * say whose it is.
      */
+    /*
+     * A combobox, not a native select. It was a `<select>` over 422
+     * organizations, which answers a keystroke by jumping to the first name
+     * starting with that letter and then forgetting it, so finding one partner
+     * meant scrolling a list four hundred long.
+     */
     const picker = page.getByLabel("Whose stoves");
     await expect(picker).toBeEnabled({ timeout: 20_000 });
-    const options = await picker.locator("option").count();
+    await picker.click();
+    const list = page.getByRole("listbox");
+    await expect(list).toBeVisible();
+    const options = await list.getByRole("option").count();
     test.skip(options < 2, "no partners available to this user");
-    await picker.selectOption({ index: 1 });
+
+    // Typing narrows it, which is the whole reason this stopped being a select.
+    const box = page.getByRole("combobox", { name: "Whose stoves" });
+    await box.fill("a");
+    await expect(page.getByText(/of \d+ match "a"/)).toBeVisible();
+    await box.fill("");
+
+    await list.getByRole("option").nth(1).click();
     await expect(build).toBeEnabled();
 
     await build.click();

@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { dataCenterImport, DataCenterError } from "../../lib/client";
 import DigitisationSheet from "../partner-records/DigitisationSheet";
+import SearchableSelect from "../../components/SearchableSelect";
 import {
   FileSpreadsheet, Download, PenLine, Upload, ArrowRight, Info, ChevronDown,
 } from "lucide-react";
@@ -165,37 +166,37 @@ export default function GetTheSheet({ onGoToUpload }) {
             >
               Whose stoves
             </label>
-            <div>
-              <select
-                id="dc-sheet-partner"
-                value={chosen}
-                onChange={(e) => setChosen(e.target.value)}
-                disabled={partners === null}
-                className="w-full rounded-md border border-gray-300 bg-white px-2.5 py-1.5 text-sm focus:border-(--dc-accent) focus:outline-none"
-              >
-                <option value="">
-                  {partners === null ? "Loading partners..." : "Choose a partner"}
-                </option>
-                {/*
-                  One sheet for the lot.
+            {/*
+              Typed into, not scrolled.
 
-                  The import used to refuse a file covering more than one
-                  partner, so a sheet had to be one partner's and a person
-                  holding receipts from four of them downloaded four files.
-                  Each row's partner now comes from its stove ID, so the sheet
-                  can carry them all and still land each row under the right
-                  one.
-                */}
-                {partners !== null && partners.length > 1 && (
-                  <option value="all">Every partner you cover</option>
-                )}
-                {(partners ?? []).map((p) => (
-                  <option key={p.id} value={p.id}>
-                    {p.partner_name}
-                  </option>
-                ))}
-              </select>
-            </div>
+              This was a native select over 422 organizations, which answers a
+              keystroke by jumping to the first name starting with that letter
+              and then forgetting it. Finding one partner meant scrolling a
+              list four hundred long while knowing its name the whole time.
+
+              "Every partner you cover" stays pinned above the matches rather
+              than being something you can type your way past: it is not a
+              partner, it is the other kind of answer to the question.
+            */}
+            <SearchableSelect
+              id="dc-sheet-partner"
+              value={chosen}
+              onChange={setChosen}
+              disabled={partners === null}
+              placeholder={partners === null ? "Loading partners..." : "Choose a partner"}
+              searchPlaceholder="Type part of the partner's name"
+              emptyLabel="No partner you cover matches that"
+              pinned={
+                partners !== null && partners.length > 1
+                  ? { value: "all", label: "Every partner you cover" }
+                  : null
+              }
+              options={(partners ?? []).map((p) => ({
+                value: p.id,
+                label: p.partner_name,
+                hint: p.state ?? null,
+              }))}
+            />
 
             <button
               type="button"
