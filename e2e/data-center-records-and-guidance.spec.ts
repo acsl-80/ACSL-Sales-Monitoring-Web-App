@@ -255,7 +255,24 @@ test.describe("bulk import leads with where the file comes from", () => {
       timeout: 30_000,
     });
 
-    await expect(page.getByText("How a bulk import works")).toBeVisible();
+    /*
+     * Folded, then opened.
+     *
+     * This block used to be open on arrival, on the reasoning that the page
+     * should read in the order the job happens rather than starting in the
+     * middle of it. That reasoning holds for somebody arriving at step one and
+     * fails for everybody else: an operator whose file is already staged and
+     * waiting on a decision met three panels of instructions for work they had
+     * finished, above the thing they needed.
+     *
+     * So it is one click instead of none. What this test protects is unchanged:
+     * the guidance exists, and it still names all three steps including the one
+     * that happens in Excel.
+     */
+    const how = page.getByRole("button", { name: /How a bulk import works/ });
+    await expect(how).toBeVisible();
+    await how.click();
+
     for (const step of [
       "Download the sheet for a partner",
       // Named even though it happens in Excel. Somebody who has never
@@ -274,6 +291,9 @@ test.describe("bulk import leads with where the file comes from", () => {
     await expect(page.getByRole("heading", { name: "Bulk Import" })).toBeVisible({
       timeout: 30_000,
     });
+
+    // The sheet builder lives inside the guidance block, which is folded now.
+    await page.getByRole("button", { name: /How a bulk import works/ }).click();
 
     const build = page.getByRole("button", { name: "Build the sheet" });
     await expect(build).toBeDisabled();
