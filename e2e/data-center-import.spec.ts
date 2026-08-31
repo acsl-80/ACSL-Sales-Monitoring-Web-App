@@ -206,8 +206,17 @@ test.describe("import hardening", () => {
       ["Phone number", "textbox"],
       ["Sale date", "textbox"],
       ["Amount", "spinbutton"],
-      ["State", "textbox"],
-      ["LGA", "textbox"],
+      /*
+       * State and LGA are comboboxes now, not free text.
+       *
+       * They were the only two fields on this form where a value could be
+       * misspelt with nothing to be wrong against, while the 37 states and 774
+       * LGAs sat in this same database already. The role changing is the point
+       * of the change, so the test asserts the new one rather than being
+       * loosened to accept either.
+       */
+      ["State", "combobox"],
+      ["LGA", "combobox"],
       ["Address", "textbox"],
     ] as const) {
       await expect(
