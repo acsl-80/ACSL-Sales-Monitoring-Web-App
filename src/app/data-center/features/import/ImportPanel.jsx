@@ -281,26 +281,32 @@ function nextStep(b) {
     return { say: "Rolled back. Nothing from this file is in the sales app.", action: null };
   }
   if (b.state === "committed") {
-    return { say: `Done. ${b.committed_rows} of ${b.total_rows} went in.`, action: null };
+    return {
+      say: `Done. ${b.committed_rows} of ${plural(b.total_rows, "row")} went in.`,
+      action: null,
+    };
   }
   if (pending > 0 && (b.valid_rows ?? 0) === 0 && (b.rejected_rows ?? 0) === 0) {
     return {
-      say: `${b.total_rows} rows are here and none has been checked yet.`,
+      say: `${plural(b.total_rows, "row is", "rows are")} here and none has been checked yet.`,
       action: { kind: "validate", label: "Check the rows", primary: true },
     };
   }
   if ((b.valid_rows ?? 0) > 0) {
     return {
       say:
-        `${b.valid_rows} ready to go in` +
-        (b.exception_rows ? `, ${b.exception_rows} need a person first` : "") +
+        `${plural(b.valid_rows, "row is", "rows are")} ready to go in` +
+        // "1 needs a person first", "232 need a person first".
+        (b.exception_rows
+          ? `, ${plural(b.exception_rows, "needs", "need")} a person first`
+          : "") +
         `. Nothing is written until you commit.`,
       action: { kind: "commit", label: `Commit ${b.valid_rows}`, primary: true },
     };
   }
   if (pending > 0) {
     return {
-      say: `${pending} rows still to check.`,
+      say: `${plural(pending, "row", "rows")} still to check.`,
       action: { kind: "validate", label: "Check the rest", primary: true },
     };
   }
