@@ -885,6 +885,43 @@ async function organizationInScope(
   return r.rows[0]?.ok === true;
 }
 
+/**
+ * Which of these partners is this caller NOT allowed to import for?
+ *
+ * The singular version asked once per partner, and each ask opened its own
+ * connection. The first real digitisation file covers fifty partners, so the
+ * upload made fifty sequential connections and hit the client's twenty-second
+ * timeout before a single row was staged.
+ *
+ * The module's own notes say it plainly: a round trip from an edge function to
+ * Postgres costs far more than the query does, so the number of statements per
+ * request is the thing worth minimising. Fifty partners is one question.
+ *
+ * Returns the ids out of scope, because that is what the caller has to say out
+ * loud, and an empty array is the answer that lets the import proceed.
+ */
+async function organizationsOutOfScope(
+  conn: PoolClient,
+  userId: string,
+  ownOrganizationId: string | null,
+  organizationIds: string[],
+): Promise<string[]> {
+  if (organizationIds.length === 0) return [];
+  const r = await conn.queryObject<{ id: string }>({
+    text: `select o.id::text as id
+             from unnest($3::uuid[]) as o(id)
+            where not exists (
+              select 1 from public.organizations x
+               where x.id = o.id
+                 and (x.id = $2
+                      or x.id in (select organization_id
+                                    from public.acsl_agent_org_scope(array[$1::uuid])))
+            )`,
+    args: [userId, ownOrganizationId, organizationIds],
+  });
+  return r.rows.map((x) => x.id);
+}
+
 async function readConfig(conn: PoolClient, key: string, fallback: unknown) {
   const r = await conn.queryObject<{ value: unknown }>({
     text: "select value from data_center.workflow_config where key = $1",
@@ -1112,8 +1149,30 @@ serve(async (req) => {
            * do not cover must be refused, and checking only the majority
            * partner would let that row through.
            */
-          for (const p of resolution.partners) {
-            await requireOrganization(p.organizationId);
+          //
+          // ONE question for all of them. This was a loop calling the singular
+          // check, and each call opened its own connection: the first real file
+          // covers fifty partners, so the upload made fifty sequential
+          // connections and hit the client's twenty-second timeout before a
+          // single row was staged.
+          const found = resolution.partners;
+          if (!superAdmin) {
+            const ids = found.map((x) => x.organizationId);
+            const denied: string[] = await withReadConnection((c) =>
+              organizationsOutOfScope(c, userId, profile.organization_id ?? null, ids)
+            );
+            if (denied.length > 0) {
+              const named = found
+                .filter((x) => denied.includes(x.organizationId))
+                .map((x) => [x.partnerName, x.branch].filter(Boolean).join(", "))
+                .slice(0, 5);
+              throw new BadRequest(
+                `This file covers ${denied.length === 1 ? "a partner" : `${denied.length} partners`} ` +
+                  `you cannot import for: ${named.join("; ")}` +
+                  (denied.length > named.length ? ", and others" : "") +
+                  ". Remove those rows, or ask for the partner to be assigned to you.",
+              );
+            }
           }
 
           /*
