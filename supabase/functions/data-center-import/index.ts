@@ -3147,8 +3147,24 @@ serve(async (req) => {
         const filter = where.length > 0 ? `where ${where.join(" and ")}` : "";
         return await withReadConnection(async (conn) => {
           const r = await conn.queryObject({
-            text: `select b.id, b.filename, b.state, b.total_rows, b.valid_rows,
-                          b.rejected_rows, b.committed_rows, b.uploaded_at, b.dry_run_at,
+            /*
+             * The counts are what the rows say now, not what validation said.
+             *
+             * `valid_rows` was written once, when the batch was checked, and
+             * never decremented as rows committed. So a real 983-row import that
+             * had already written 82 sales still offered "Commit 745" - the
+             * panel disagreeing with the database, which is the one failure this
+             * module keeps having and the one an operator cannot correct.
+             *
+             * `exception_rows` was already read live, in its own subquery. All
+             * four now come from one lateral, so this is one scan of the batch's
+             * rows rather than two, and no count can drift from another.
+             */
+            text: `select b.id, b.filename, b.state, b.total_rows,
+                          counts.valid_now::int      as valid_rows,
+                          counts.rejected_now::int   as rejected_rows,
+                          counts.committed_now::int  as committed_rows,
+                          b.uploaded_at, b.dry_run_at,
                           b.committed_at, b.last_error,
                           o.partner_name,
                           /*
@@ -3171,9 +3187,16 @@ serve(async (req) => {
                                and r2.normalized ? 'resolvedOrganizationId'
                           ) end as partner_count,
                           p.full_name as uploaded_by_name,
-                          (select count(*)::int from data_center.import_rows r
-                            where r.batch_id = b.id and r.status = 'exception') as exception_rows
+                          counts.exception_now::int as exception_rows
                    from data_center.import_batches b
+                   left join lateral (
+                     select count(*) filter (where r.status = 'valid')     as valid_now,
+                            count(*) filter (where r.status = 'rejected')  as rejected_now,
+                            count(*) filter (where r.status = 'exception') as exception_now,
+                            count(*) filter (where r.status = 'committed') as committed_now
+                       from data_center.import_rows r
+                      where r.batch_id = b.id
+                   ) counts on true
                    left join public.organizations o on o.id = b.organization_id
                    left join public.profiles p on p.id = b.uploaded_by
                    ${filter}
