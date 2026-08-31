@@ -48,7 +48,15 @@ async function importSalesCSV(supabase, organizationId, csvFile) {
 // Get import history for admin
 async function getImportHistory(supabase, page = 1, limit = 20) {
   try {
-    const authToken = await getAuthToken(supabase);
+    /*
+     * `getAuthToken` was never defined or imported in this file, so both
+     * functions that called it threw a ReferenceError before reaching the
+     * network. Found by turning on `no-undef` for .jsx, which nothing had
+     * been linting.
+     *
+     * `tokenManager.getValidToken()` is what the rest of this file uses.
+     */
+    const authToken = await tokenManager.getValidToken();
     const response = await fetch(
       `${import.meta.env.VITE_API_URL}/sales/import/history?page=${page}&limit=${limit}`,
       {
@@ -76,7 +84,15 @@ async function getImportHistory(supabase, page = 1, limit = 20) {
 // Get import details by ID
 async function getImportDetails(supabase, importId) {
   try {
-    const authToken = await getAuthToken(supabase);
+    /*
+     * `getAuthToken` was never defined or imported in this file, so both
+     * functions that called it threw a ReferenceError before reaching the
+     * network. Found by turning on `no-undef` for .jsx, which nothing had
+     * been linting.
+     *
+     * `tokenManager.getValidToken()` is what the rest of this file uses.
+     */
+    const authToken = await tokenManager.getValidToken();
     const response = await fetch(
       `${import.meta.env.VITE_API_URL}/sales/import/${importId}`,
       {

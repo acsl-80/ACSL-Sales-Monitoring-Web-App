@@ -27,14 +27,23 @@ const StoveDetailModal = ({ open, onClose, stove }) => {
   const [loadingSale, setLoadingSale] = useState(false);
   const [showFullSale, setShowFullSale] = useState(false);
 
-  if (!stove) return null;
-
+  /*
+   * The early return moved BELOW the effect.
+   *
+   * `if (!stove) return null` sat above it, so this component called four
+   * hooks with a stove and three without. React counts hooks by call order, so
+   * the render where `stove` goes null throws "rendered fewer hooks than
+   * expected" and takes the modal down with it. Surfaced by turning on the
+   * react-hooks rules for .jsx, which nothing had been linting.
+   */
   // Fetch full sale details when modal opens and stove is sold
   useEffect(() => {
-    if (open && stove.status === "sold" && stove.sale_id && !saleDetails) {
+    if (open && stove?.status === "sold" && stove.sale_id && !saleDetails) {
       fetchSaleDetails();
     }
   }, [open, stove]);
+
+  if (!stove) return null;
 
   const fetchSaleDetails = async () => {
     setLoadingSale(true);

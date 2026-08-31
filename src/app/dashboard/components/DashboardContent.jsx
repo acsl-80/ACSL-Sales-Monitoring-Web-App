@@ -1,5 +1,6 @@
 
 import React from "react";
+import { lgaAndStates } from "@/app/constants";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import {
   Select,
