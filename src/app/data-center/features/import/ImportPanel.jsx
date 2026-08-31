@@ -273,6 +273,20 @@ function Steps({ steps }) {
  * on the row rather than inside it.
  */
 function nextStep(b) {
+  /*
+   * A batch the server is writing RIGHT NOW says so, before anything else.
+   * Without this, a refreshed page rendered an armed "Commit N" button over a
+   * batch a chain was mid-way through - and pressing it answered busy, which
+   * read as an error rather than as the truth.
+   */
+  if (b.committing) {
+    return {
+      say:
+        `Being written on the server right now: ${b.committed_rows} in, ` +
+        `${b.valid_rows} to go. This continues on its own - leaving the page is fine.`,
+      action: null,
+    };
+  }
   const pending = Math.max(
     0,
     (b.total_rows ?? 0) - (b.valid_rows ?? 0) - (b.rejected_rows ?? 0) - (b.committed_rows ?? 0),
@@ -602,6 +616,21 @@ export default function ImportPanel({ canUpload, canCommit, canResolve }) {
       setBusy(false);
     }
   };
+
+  /*
+   * While any batch is being written server-side, keep the list fresh.
+   *
+   * The chain does not need this - it runs regardless - but a person looking
+   * at the page deserves numbers that move. Five seconds matches the commit
+   * watcher's own cadence, and the poll asks only when a lease is live.
+   */
+  useEffect(() => {
+    if (!batches?.some((b) => b.committing)) return undefined;
+    const t = setInterval(() => {
+      refresh();
+    }, 5000);
+    return () => clearInterval(t);
+  }, [batches, refresh]);
 
   const runDryRun = async (batchId) => {
     setBusy(true);

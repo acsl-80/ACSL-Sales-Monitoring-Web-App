@@ -215,15 +215,30 @@ export default function ConfirmationQueue({ canConfirm }) {
     setBusy(true);
     setNotice(null);
     try {
-      let done = 0;
-      // The server commits in slices so a large batch does not run inside one
-      // request. Asking again until it says it is finished is how the existing
-      // commit button works, and this is the same act.
-      for (let pass = 0; pass < 200; pass++) {
-        const out = await dataCenterImport.commit(batch.batch_id);
-        done += out.committed ?? 0;
-        if (out.done) break;
-        if ((out.committed ?? 0) === 0 && (out.failed ?? 0) === 0) break;
+      /*
+       * Same driver as the import panel: kick once, the server chains itself,
+       * and this watches the batch's live counts. This used to be a second,
+       * independent commit loop - two drivers over one batch is exactly the
+       * overlap that used to burn rows into exceptions.
+       */
+      const kick = await dataCenterImport.commit(batch.batch_id);
+      let done = kick.committed ?? 0;
+      if (!(kick.done && !kick.started)) {
+        for (;;) {
+          await new Promise((r) => setTimeout(r, 4000));
+          const rows = await dataCenterImport.batches({ batchId: batch.batch_id });
+          const b = rows.find((x) => x.id === batch.batch_id);
+          if (!b) break;
+          done = b.committed_rows;
+          if (b.state === "committed" || b.valid_rows === 0) break;
+          if (!b.committing) {
+            throw new DataCenterError(
+              b.last_error ?? "The write paused. Confirm again to continue.",
+              408,
+              "stalled",
+            );
+          }
+        }
       }
       setNotice(
         `${plural(done, "record")} confirmed and sent to the sales app` +
