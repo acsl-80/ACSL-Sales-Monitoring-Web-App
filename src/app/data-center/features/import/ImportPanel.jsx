@@ -625,7 +625,17 @@ export default function ImportPanel({ canUpload, canCommit, canResolve }) {
    * watcher's own cadence, and the poll asks only when a lease is live.
    */
   useEffect(() => {
-    if (!batches?.some((b) => b.committing)) return undefined;
+    /*
+     * Poll while a chain holds a lease - AND while a batch sits part-committed
+     * without one. Between links the lease clears for a breath, and a page
+     * that mounts inside that breath would otherwise freeze on stale numbers
+     * forever, showing an armed Commit over a running chain. Part-committed
+     * and open is exactly the state worth watching either way.
+     */
+    const watchable = (b) =>
+      b.committing ||
+      (b.state === "validated" && b.valid_rows > 0 && b.committed_rows > 0);
+    if (!batches?.some(watchable)) return undefined;
     const t = setInterval(() => {
       refresh();
     }, 5000);

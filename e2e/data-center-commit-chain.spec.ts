@@ -83,6 +83,14 @@ async function waitDrained(page: Page, batchId: string, tries = 40) {
 }
 
 test.describe("one press is the whole ask", () => {
+  /*
+   * These run REAL chains: stage, validate, several server-side links at a
+   * few seconds each, then a slice-by-slice rollback to give the seeded
+   * stoves back. Playwright's default 60s is calibrated for pages, not for
+   * watching a batch drain.
+   */
+  test.describe.configure({ timeout: 240_000 });
+
   test("the chain drains the batch with the page CLOSED, and the racer is told busy", async ({
     browser,
   }, testInfo) => {
@@ -272,7 +280,8 @@ test.describe("one press is the whole ask", () => {
         .locator("tr", { hasText: `ui${testInfo.workerIndex}` })
         .locator("xpath=following-sibling::tr[1]");
       await row.getByRole("button", { name: /^Commit \d+$/ }).click();
-      await page.getByRole("button", { name: /^Commit$/ }).click();
+      // The confirm is a shadcn AlertDialog whose CTA repeats the count.
+      await page.getByRole("alertdialog").getByRole("button", { name: /^Commit \d+$/ }).click();
 
       await expect(
         page.getByText(/running on the server/i).first(),
@@ -284,8 +293,16 @@ test.describe("one press is the whole ask", () => {
        * refreshed page reads the lease and says what is happening instead.
        */
       await page.reload();
+      /*
+       * Either the truthful mid-run sentence, or - on a fast chain - the
+       * finished one. What must NEVER show over a running chain is an armed
+       * Commit button, and the sentence assertions are how that is caught:
+       * nextStep only renders these two texts when the button is withheld.
+       */
       await expect(
-        page.getByText(/Being written on the server right now/).first(),
+        page
+          .getByText(/Being written on the server right now|went in\.$/)
+          .first(),
       ).toBeVisible({ timeout: 30_000 });
 
       const done = await waitDrained(page, batchId);

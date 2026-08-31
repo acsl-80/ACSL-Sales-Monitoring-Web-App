@@ -2373,25 +2373,34 @@ serve(async (req) => {
               const failIds = failRows.map((f) => f.rowId);
               let adoptedIds: string[] = [];
               if (failIds.length > 0 && batchUploadedAt) {
+                /*
+                 * A CTE rather than UPDATE..FROM LATERAL: Postgres refuses a
+                 * lateral reference to the update target, and that refusal
+                 * only fires on the refusal path - which is exactly the path
+                 * no happy-run proof exercises. Found by the spec.
+                 */
                 const adopted = await conn.queryObject<{ id: string }>({
-                  text: `update data_center.import_rows r
-                            set status = 'committed', sale_id = adopt.sale_id,
+                  text: `with adoptable as (
+                           select r.id,
+                                  (select sb.sale_id
+                                     from public.stove_ids_base sb
+                                     join public.sales s on s.id = sb.sale_id
+                                    where upper(sb.stove_id) = upper(r.stove_serial_no)
+                                      and s.created_by = $2
+                                      and s.created_at >= $3::timestamptz
+                                      and not exists (select 1 from data_center.import_rows ir
+                                                       where ir.sale_id = s.id)
+                                    limit 1) as sale_id
+                             from data_center.import_rows r
+                            where r.id = any($1::uuid[])
+                         )
+                         update data_center.import_rows r
+                            set status = 'committed', sale_id = a.sale_id,
                                 exception_reason = null,
                                 resolved_by = $2, resolved_at = now(),
                                 confirmed_by = $2, confirmed_at = now()
-                           from lateral (
-                             select sb.sale_id
-                               from public.stove_ids_base sb
-                               join public.sales s on s.id = sb.sale_id
-                              where upper(sb.stove_id) = upper(r.stove_serial_no)
-                                and s.created_by = $2
-                                and s.created_at >= $3::timestamptz
-                                and not exists (select 1 from data_center.import_rows ir
-                                                 where ir.sale_id = s.id)
-                              limit 1
-                           ) adopt
-                          where r.id = any($1::uuid[])
-                            and adopt.sale_id is not null
+                           from adoptable a
+                          where a.id = r.id and a.sale_id is not null
                           returning r.id`,
                   args: [failIds, userId, batchUploadedAt],
                 });
