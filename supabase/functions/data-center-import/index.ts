@@ -1015,6 +1015,53 @@ serve(async (req) => {
 
     switch (body.action) {
       /**
+       * SPIKE - REMOVED BEFORE MERGE.
+       *
+       * Answers one question on the preview: does this runtime's
+       * EdgeRuntime.waitUntil keep the isolate alive long enough for a chained
+       * self-invocation to be delivered AFTER the response has returned? The
+       * whole commit-chain design forks on the answer, so it is proven before
+       * anything is built on it. Each link stamps workflow_config and fires
+       * the next; the caller polls the stamp.
+       */
+      case "chain_probe": {
+        const link = Number(body.link ?? 1);
+        const hasWaitUntil =
+          // deno-lint-ignore no-explicit-any
+          typeof (globalThis as any).EdgeRuntime?.waitUntil === "function";
+        await withConnection(async (conn) => {
+          await conn.queryObject({
+            text: `insert into data_center.workflow_config (key, value, description)
+                   values ('probe.chain', $1::jsonb, 'waitUntil spike marker')
+                   on conflict (key) do update set value = excluded.value`,
+            args: [JSON.stringify({ link, hasWaitUntil, at: new Date().toISOString() })],
+          });
+        });
+        if (link < 3 && hasWaitUntil) {
+          const next = (async () => {
+            const r = await fetch(
+              `${Deno.env.get("SUPABASE_URL")}/functions/v1/data-center-import`,
+              {
+                method: "POST",
+                headers: {
+                  "Content-Type": "application/json",
+                  Authorization: authHeader ?? "",
+                  apikey: Deno.env.get("SUPABASE_ANON_KEY") ?? "",
+                },
+                body: JSON.stringify({ action: "chain_probe", link: link + 1 }),
+              },
+            );
+            // Awaited to the response, inside waitUntil - the delivery
+            // guarantee the real chain will rely on.
+            await r.text();
+          })();
+          // deno-lint-ignore no-explicit-any
+          (globalThis as any).EdgeRuntime.waitUntil(next);
+        }
+        return json({ data: { link, hasWaitUntil } }, 202, cors);
+      }
+
+      /**
        * Stage a parsed file. The client does the CSV parsing, so an unreadable
        * file is a problem the operator sees immediately rather than a batch
        * that fails server-side minutes later.
