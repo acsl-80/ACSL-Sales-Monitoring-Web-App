@@ -277,15 +277,18 @@ function nextStep(b) {
     0,
     (b.total_rows ?? 0) - (b.valid_rows ?? 0) - (b.rejected_rows ?? 0) - (b.committed_rows ?? 0),
   );
-  if (b.state === "rolled_back") {
-    return { say: "Rolled back. Nothing from this file is in the sales app.", action: null };
-  }
-  if (b.state === "committed") {
-    return {
-      say: `Done. ${b.committed_rows} of ${plural(b.total_rows, "row")} went in.`,
-      action: null,
-    };
-  }
+  /*
+   * A finished batch says nothing.
+   *
+   * The state chip already reads "committed" or "rolled back" and the Committed
+   * column already carries the number, so a sentence repeating them earns
+   * nothing and costs a row. On a history that only grows, every settled batch
+   * would push the one still waiting on somebody further down the page.
+   *
+   * This row exists for work that needs a person. When there is none, there is
+   * no row.
+   */
+  if (b.state === "rolled_back" || b.state === "committed") return null;
   if (pending > 0 && (b.valid_rows ?? 0) === 0 && (b.rejected_rows ?? 0) === 0) {
     return {
       say: `${plural(b.total_rows, "row is", "rows are")} here and none has been checked yet.`,
@@ -1004,7 +1007,7 @@ export default function ImportPanel({ canUpload, canCommit, canResolve }) {
               */}
               {(() => {
                 const step = nextStep(b);
-                if (!step.say) return null;
+                if (!step) return null;
                 const may =
                   step.action?.kind === "commit" ? canCommit : canUpload;
                 return (
