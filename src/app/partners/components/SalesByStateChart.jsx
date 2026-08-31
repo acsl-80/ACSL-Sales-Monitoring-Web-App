@@ -1,4 +1,5 @@
 import React, { useEffect, useMemo, useState } from "react";
+import { lgaAndStates } from "@/app/constants";
 import {
   ResponsiveContainer,
   BarChart,
@@ -22,13 +23,9 @@ import {
 import { Button } from "@/components/ui/button";
 import salesAdvancedService from "../../services/salesAdvancedAPIService";
 
-const NIGERIAN_STATES = [
-  "Abia","Adamawa","Akwa Ibom","Anambra","Bauchi","Bayelsa","Benue","Borno",
-  "Cross River","Delta","Ebonyi","Edo","Ekiti","Enugu","FCT","Gombe","Imo",
-  "Jigawa","Kaduna","Kano","Katsina","Kebbi","Kogi","Kwara","Lagos","Nasarawa",
-  "Niger","Ogun","Ondo","Osun","Oyo","Plateau","Rivers","Sokoto","Taraba",
-  "Yobe","Zamfara",
-];
+// The 37 states, from the one place they are defined. See DashboardContent
+// for why this is the bundled constant and not the async geo service.
+const NIGERIAN_STATES = Object.keys(lgaAndStates).sort();
 
 const STATE_LOOKUP = NIGERIAN_STATES.reduce((acc, s) => {
   acc[s.toLowerCase()] = s;

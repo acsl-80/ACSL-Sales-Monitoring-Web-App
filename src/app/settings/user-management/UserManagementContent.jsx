@@ -1,5 +1,6 @@
 
 import { supabaseFunctionsUrl } from "@/lib/supabaseConfig";
+import { lgaAndStates } from "@/app/constants";
 import { useState, useEffect, useRef } from "react";
 import { useRouter } from "@tanstack/react-router";
 
@@ -81,13 +82,9 @@ import profileService from "../../services/profileService";
 
 
 // Nigerian states (36 + FCT)
-const NIGERIAN_STATES = [
-  "Abia","Adamawa","Akwa Ibom","Anambra","Bauchi","Bayelsa","Benue","Borno",
-  "Cross River","Delta","Ebonyi","Edo","Ekiti","Enugu","FCT","Gombe","Imo",
-  "Jigawa","Kaduna","Kano","Katsina","Kebbi","Kogi","Kwara","Lagos","Nasarawa",
-  "Niger","Ogun","Ondo","Osun","Oyo","Plateau","Rivers","Sokoto","Taraba",
-  "Yobe","Zamfara",
-];
+// The 37 states, from the one place they are defined. See DashboardContent
+// for why this is the bundled constant and not the async geo service.
+const NIGERIAN_STATES = Object.keys(lgaAndStates).sort();
 
 
 
