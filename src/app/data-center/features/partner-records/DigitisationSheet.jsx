@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
+import { SearchableSelect } from "@/components/ui/searchable-select";
 import { dataCenterClient, DataCenterError } from "../../lib/client";
 import { toCsv, downloadCsv } from "../../lib/export";
 import { buildWorkbook, downloadWorkbook } from "../../lib/xlsx";
@@ -162,18 +163,22 @@ export default function DigitisationSheet({
                   <span className="mb-1 block text-xs font-medium uppercase tracking-wide text-gray-600">
                     Month transferred
                   </span>
-                  <select
-                    value={month}
-                    onChange={(e) => setMonth(e.target.value)}
-                    className="w-56 rounded-md border border-gray-300 px-2.5 py-1.5 text-sm focus:border-(--dc-accent) focus:outline-none"
-                  >
-                    <option value="">Every month</option>
-                    {(data?.months ?? []).map((m) => (
-                      <option key={m.month} value={m.month}>
-                        {m.month} ({plural(m.transfers, "transfer")})
-                      </option>
-                    ))}
-                  </select>
+                  <div className="w-56">
+                    <SearchableSelect
+                      ariaLabel="Month transferred"
+                      value={month}
+                      onChange={setMonth}
+                      placeholder="Every month"
+                      searchPlaceholder="Type a month"
+                      emptyLabel="No month matches that"
+                      pinned={{ value: "", label: "Every month" }}
+                      options={(data?.months ?? []).map((m) => ({
+                        value: m.month,
+                        label: m.month,
+                        hint: plural(m.transfers, "transfer"),
+                      }))}
+                    />
+                  </div>
                 </label>
               </div>
 

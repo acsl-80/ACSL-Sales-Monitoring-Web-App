@@ -1,4 +1,5 @@
 import { useId } from "react";
+import { SearchableSelect } from "@/components/ui/searchable-select";
 import { rangeChoices, matchChoice, monthSpan } from "./lib/range";
 import { monthLabel } from "./lib/readAnalysis";
 
@@ -47,20 +48,22 @@ export default function RangePicker({ months, from, to, onChange, disabled }) {
         <label htmlFor={presetId} className="block text-xs font-medium text-gray-600">
           Period
         </label>
-        <select
-          id={presetId}
-          disabled={disabled}
-          value={active?.key ?? "custom"}
-          onChange={(e) => pick(e.target.value)}
-          className="mt-1 rounded-md border border-gray-300 bg-white px-2 py-1.5 text-sm focus:border-(--dc-accent) focus:outline-none"
-        >
-          {choices.map((c) => (
-            <option key={c.key} value={c.key}>
-              {c.key === "thisMonth" ? monthLabel(c.from) : c.label}
-            </option>
-          ))}
-          <option value="custom">Choose months</option>
-        </select>
+        <div className="mt-1 min-w-[11rem]">
+          <SearchableSelect
+            id={presetId}
+            ariaLabel="Period"
+            disabled={disabled}
+            value={active?.key ?? "custom"}
+            onChange={pick}
+            options={[
+              ...choices.map((c) => ({
+                value: c.key,
+                label: c.key === "thisMonth" ? monthLabel(c.from) : c.label,
+              })),
+              { value: "custom", label: "Choose months" },
+            ]}
+          />
+        </div>
       </div>
 
       {!active && (
@@ -69,37 +72,35 @@ export default function RangePicker({ months, from, to, onChange, disabled }) {
             <label htmlFor={fromId} className="block text-xs font-medium text-gray-600">
               From
             </label>
-            <select
-              id={fromId}
-              disabled={disabled}
-              value={from ?? ""}
-              onChange={(e) => onChange({ from: e.target.value, to })}
-              className="mt-1 rounded-md border border-gray-300 bg-white px-2 py-1.5 text-sm focus:border-(--dc-accent) focus:outline-none"
-            >
-              {sorted.map((m) => (
-                <option key={m} value={m}>
-                  {monthLabel(m)}
-                </option>
-              ))}
-            </select>
+            <div className="mt-1 min-w-[10rem]">
+              <SearchableSelect
+                id={fromId}
+                ariaLabel="From"
+                disabled={disabled}
+                value={from ?? ""}
+                onChange={(next) => onChange({ from: next, to })}
+                searchPlaceholder="Type a month"
+                emptyLabel="No month matches that"
+                options={sorted.map((m) => ({ value: m, label: monthLabel(m) }))}
+              />
+            </div>
           </div>
           <div>
             <label htmlFor={toId} className="block text-xs font-medium text-gray-600">
               To
             </label>
-            <select
-              id={toId}
-              disabled={disabled}
-              value={to ?? ""}
-              onChange={(e) => onChange({ from, to: e.target.value })}
-              className="mt-1 rounded-md border border-gray-300 bg-white px-2 py-1.5 text-sm focus:border-(--dc-accent) focus:outline-none"
-            >
-              {sorted.map((m) => (
-                <option key={m} value={m}>
-                  {monthLabel(m)}
-                </option>
-              ))}
-            </select>
+            <div className="mt-1 min-w-[10rem]">
+              <SearchableSelect
+                id={toId}
+                ariaLabel="To"
+                disabled={disabled}
+                value={to ?? ""}
+                onChange={(next) => onChange({ from, to: next })}
+                searchPlaceholder="Type a month"
+                emptyLabel="No month matches that"
+                options={sorted.map((m) => ({ value: m, label: monthLabel(m) }))}
+              />
+            </div>
           </div>
         </>
       )}

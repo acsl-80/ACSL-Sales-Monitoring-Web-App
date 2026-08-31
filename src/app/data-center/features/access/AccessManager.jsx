@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
+import { SearchableSelect } from "@/components/ui/searchable-select";
 import { dataCenterAdmin, DataCenterError } from "../../lib/client";
 import { invalidateModuleAccessCache } from "../../lib/useModuleAccess";
 import { ALL_DATA_CENTER_FEATURES, FEATURE_LABELS } from "../../lib/features";
@@ -340,17 +341,18 @@ export default function AccessManager() {
               {/* A select rather than a toggle. Two levels could swap; three
                   cannot, and a "make editor" link that cycles through call
                   agent on the way is a worse answer than a list. */}
-              <select
-                aria-label={`Access level for ${e.full_name || e.email}`}
-                value={e.access_role}
-                disabled={busy}
-                onChange={(event) => grant(e.user_id, event.target.value)}
-                className="rounded-md border border-gray-300 px-2 py-1 text-xs text-gray-700 focus:border-(--dc-accent) focus:outline-none disabled:opacity-50"
-              >
-                {ROLES.map((role) => (
-                  <option key={role} value={role}>{ROLE_META[role].label}</option>
-                ))}
-              </select>
+              <div className="min-w-[9rem]">
+                <SearchableSelect
+                  ariaLabel={`Access level for ${e.full_name || e.email}`}
+                  value={e.access_role}
+                  disabled={busy}
+                  onChange={(next) => grant(e.user_id, next)}
+                  options={ROLES.map((role) => ({
+                    value: role,
+                    label: ROLE_META[role].label,
+                  }))}
+                />
+              </div>
               <button
                 type="button"
                 disabled={busy}

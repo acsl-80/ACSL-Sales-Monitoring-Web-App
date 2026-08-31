@@ -1,4 +1,5 @@
 import { useMemo, useState } from "react";
+import { SearchableSelect } from "@/components/ui/searchable-select";
 import StateLgaSelect from "../../components/StateLgaSelect";
 import ImageUploadSection from "@/app/components/ui/ImageUploadSection";
 import SignatureCanvas from "@/app/components/ui/SignatureCanvas";
@@ -393,20 +394,18 @@ export default function SaleForm({ values, onChange, disabled, errors = {} }) {
 
       <Section title="Stove set">
         <Field label="Pots quantity" htmlFor="wb-potQuantity">
-          <select
+          <SearchableSelect
             id="wb-potQuantity"
-            className={INPUT}
+            ariaLabel="Pots"
             value={String(values.potQuantity ?? "")}
             disabled={disabled}
-            onChange={(e) => set("potQuantity", e.target.value)}
-          >
-            <option value="">Select</option>
-            {potOptions.map((n) => (
-              <option key={n} value={n}>
-                {n} {n === "1" ? "pot" : "pots"}
-              </option>
-            ))}
-          </select>
+            onChange={(next) => set("potQuantity", next)}
+            placeholder="Select"
+            options={potOptions.map((n) => ({
+              value: n,
+              label: `${n} ${n === "1" ? "pot" : "pots"}`,
+            }))}
+          />
         </Field>
         <Field label="Wonderbox (heat retention)" htmlFor="wb-heatRetentionDevice">
           <label className="flex items-center gap-2 py-1.5 text-sm text-gray-700">

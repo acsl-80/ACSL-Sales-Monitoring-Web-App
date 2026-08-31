@@ -484,28 +484,24 @@ function FieldEditor({ fields, lists, canEdit, onSaved, onError }) {
               </datalist>
             </Field>
             <Field label="Answered with">
-              <select
+              <SearchableSelect
+                ariaLabel="Answered with"
                 value={draft.inputType}
-                onChange={(e) => setDraft({ ...draft, inputType: e.target.value })}
-                className={FIELD_CLASS}
-              >
-                {INPUT_TYPES.map((t) => (
-                  <option key={t.value} value={t.value}>{t.label}</option>
-                ))}
-              </select>
+                onChange={(next) => setDraft({ ...draft, inputType: next })}
+                options={INPUT_TYPES.map((t) => ({ value: t.value, label: t.label }))}
+              />
             </Field>
             {needsList && (
               <Field label="From which dropdown">
-                <select
+                <SearchableSelect
+                  ariaLabel="From which dropdown"
                   value={draft.optionListKey}
-                  onChange={(e) => setDraft({ ...draft, optionListKey: e.target.value })}
-                  className={FIELD_CLASS}
-                >
-                  <option value="">Pick a list...</option>
-                  {lists.map((l) => (
-                    <option key={l.key} value={l.key}>{l.label}</option>
-                  ))}
-                </select>
+                  onChange={(next) => setDraft({ ...draft, optionListKey: next })}
+                  placeholder="Pick a list..."
+                  searchPlaceholder="Type part of a list name"
+                  emptyLabel="No list matches that"
+                  options={lists.map((l) => ({ value: l.key, label: l.label }))}
+                />
               </Field>
             )}
             <Field label="Order">

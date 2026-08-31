@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
+import { SearchableSelect } from "@/components/ui/searchable-select";
 import Link from "@/compat/Link";
 import PeriodFilter from "../../components/PeriodFilter";
 import { usePeriod } from "../../lib/usePeriod";
@@ -162,17 +163,18 @@ function QuickEdit({ row, outcomes, onDone }) {
           Log a call
         </label>
         <div className="flex gap-1.5">
-          <select
-            id={`qo-${row.sale_id}`}
-            value={outcomeId}
-            onChange={(e) => setOutcomeId(e.target.value)}
-            className="min-w-0 flex-1 rounded-md border border-gray-300 px-2 py-1.5 text-xs focus:border-(--dc-accent) focus:outline-none"
-          >
-            <option value="">Outcome...</option>
-            {outcomes.map((o) => (
-              <option key={o.id} value={o.id}>{o.label}</option>
-            ))}
-          </select>
+          <div className="min-w-0 flex-1">
+            <SearchableSelect
+              id={`qo-${row.sale_id}`}
+              ariaLabel="Log a call"
+              value={outcomeId}
+              onChange={setOutcomeId}
+              placeholder="Outcome..."
+              searchPlaceholder="Type part of an outcome"
+              emptyLabel="No outcome matches that"
+              options={outcomes.map((o) => ({ value: o.id, label: o.label }))}
+            />
+          </div>
           <button
             type="button"
             disabled={busy || (needsNote && !note.trim())}
@@ -496,23 +498,26 @@ export default function AssignmentLog({ canRun, canEdit = false }) {
         <label htmlFor="dc-log-agent" className="text-xs font-medium text-gray-700">
           Agent
         </label>
-        <select
-          id="dc-log-agent"
-          value={agentId}
-          onChange={(e) => {
-            setAgentId(e.target.value);
-            setChosen(new Set());
-          }}
-          className="rounded-md border border-gray-300 px-2 py-1 text-xs focus:border-(--dc-accent) focus:outline-none"
-        >
-          <option value="">Everyone</option>
-          {agents.map((a) => (
-            <option key={a.agent_id} value={a.agent_id}>
-              {a.full_name ?? a.email}
-              {a.records_held ? ` (${a.records_held} held)` : ""}
-            </option>
-          ))}
-        </select>
+        <div className="min-w-[12rem]">
+          <SearchableSelect
+            id="dc-log-agent"
+            ariaLabel="Agent"
+            value={agentId}
+            onChange={(next) => {
+              setAgentId(next);
+              setChosen(new Set());
+            }}
+            placeholder="Everyone"
+            searchPlaceholder="Type part of a name"
+            emptyLabel="No agent matches that"
+            pinned={{ value: "", label: "Everyone" }}
+            options={agents.map((a) => ({
+              value: a.agent_id,
+              label: a.full_name ?? a.email,
+              hint: a.records_held ? `${a.records_held} held` : null,
+            }))}
+          />
+        </div>
         <label className="inline-flex items-center gap-1.5 text-xs font-medium text-gray-700">
           <input
             type="checkbox"
@@ -525,17 +530,21 @@ export default function AssignmentLog({ canRun, canEdit = false }) {
         <label htmlFor="dc-log-state" className="text-xs font-medium text-gray-700">
           Batch state
         </label>
-        <select
-          id="dc-log-state"
-          value={batchState}
-          onChange={(e) => setBatchState(e.target.value)}
-          className="rounded-md border border-gray-300 px-2 py-1 text-xs focus:border-(--dc-accent) focus:outline-none"
-        >
-          <option value="">All</option>
-          <option value="open">Open</option>
-          <option value="completed">Completed</option>
-          <option value="reclaimed">Reclaimed</option>
-        </select>
+        <div className="min-w-[9rem]">
+          <SearchableSelect
+            id="dc-log-state"
+            ariaLabel="Batch state"
+            value={batchState}
+            onChange={setBatchState}
+            placeholder="All"
+            pinned={{ value: "", label: "All" }}
+            options={[
+              { value: "open", label: "Open" },
+              { value: "completed", label: "Completed" },
+              { value: "reclaimed", label: "Reclaimed" },
+            ]}
+          />
+        </div>
         {batchState && (
           <button
             type="button"
@@ -564,21 +573,23 @@ export default function AssignmentLog({ canRun, canEdit = false }) {
           <span className="text-sm font-medium text-(--dc-accent-strong)">
             {chosen.size} {chosen.size === 1 ? "record" : "records"} ticked
           </span>
-          <select
-            value={moveTo}
-            onChange={(e) => setMoveTo(e.target.value)}
-            aria-label="Move them to"
-            className="rounded-md border border-gray-300 px-2 py-1 text-xs focus:border-(--dc-accent) focus:outline-none"
-          >
-            <option value="">Move them to...</option>
-            {agents
-              .filter((a) => a.is_enabled)
-              .map((a) => (
-                <option key={a.agent_id} value={a.agent_id}>
-                  {a.full_name ?? a.email} ({a.records_held} held)
-                </option>
-              ))}
-          </select>
+          <div className="min-w-[12rem]">
+            <SearchableSelect
+              ariaLabel="Move them to"
+              value={moveTo}
+              onChange={setMoveTo}
+              placeholder="Move them to..."
+              searchPlaceholder="Type part of a name"
+              emptyLabel="No enabled agent matches that"
+              options={agents
+                .filter((a) => a.is_enabled)
+                .map((a) => ({
+                  value: a.agent_id,
+                  label: a.full_name ?? a.email,
+                  hint: `${a.records_held} held`,
+                }))}
+            />
+          </div>
           <button
             type="button"
             disabled={busy || !moveTo}

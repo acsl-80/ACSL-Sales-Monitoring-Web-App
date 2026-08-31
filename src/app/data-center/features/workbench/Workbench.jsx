@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { SearchableSelect } from "@/components/ui/searchable-select";
 import { dataCenterClient, dataCenterImport, DataCenterError } from "../../lib/client";
 import { usePaged } from "../../lib/usePaged";
 import Pagination from "../../components/Pagination";
@@ -114,16 +115,18 @@ function PartnerList({ onPick }) {
           <span className="mb-1 block text-xs font-medium uppercase tracking-wide text-gray-600">
             State
           </span>
-          <select
-            value={state}
-            onChange={(e) => setState(e.target.value)}
-            className="w-full rounded-md border border-gray-300 px-2.5 py-1.5 text-sm focus:border-(--dc-accent) focus:outline-none sm:w-48"
-          >
-            <option value="">Everywhere</option>
-            {states.map((st) => (
-              <option key={st} value={st}>{st}</option>
-            ))}
-          </select>
+          <div className="w-full sm:w-48">
+            <SearchableSelect
+              ariaLabel="State"
+              value={state}
+              onChange={setState}
+              placeholder="Everywhere"
+              searchPlaceholder="Type part of a state"
+              emptyLabel="No state matches that"
+              pinned={{ value: "", label: "Everywhere" }}
+              options={states.map((st) => ({ value: st, label: st }))}
+            />
+          </div>
         </label>
         <label className="block min-w-0 flex-1">
           <span className="mb-1 block text-xs font-medium uppercase tracking-wide text-gray-600">

@@ -11,6 +11,7 @@
  * A type needs a renderer, and pretending otherwise would mean silently
  * dropping questions the form cannot draw.
  */
+import { SearchableSelect } from "@/components/ui/searchable-select";
 
 const INPUT_CLASS =
   "w-full rounded-md border border-gray-300 px-3 py-1.5 text-sm focus:border-(--dc-accent) focus:outline-none disabled:bg-gray-50 disabled:text-gray-500";
@@ -93,18 +94,23 @@ export default function FieldRenderer({ field, value, options, disabled, onChang
 
     case "select":
       control = (
-        <select
-          {...common}
+        /*
+          `common` is not spread here. It carries a className written for an
+          <input>, and this control is a button; id and disabled are the parts
+          that mean the same thing to both.
+        */
+        <SearchableSelect
+          id={id}
+          ariaLabel={field.label}
+          disabled={disabled}
           value={value ?? ""}
-          onChange={(e) => onChange(field.key, e.target.value)}
-        >
-          <option value="">Not answered</option>
-          {(options ?? []).map((o) => (
-            <option key={o.id} value={o.value}>
-              {o.label}
-            </option>
-          ))}
-        </select>
+          onChange={(next) => onChange(field.key, next)}
+          placeholder="Not answered"
+          searchPlaceholder="Type to narrow the answers"
+          emptyLabel="No answer matches that"
+          pinned={{ value: "", label: "Not answered" }}
+          options={(options ?? []).map((o) => ({ value: o.value, label: o.label }))}
+        />
       );
       break;
 

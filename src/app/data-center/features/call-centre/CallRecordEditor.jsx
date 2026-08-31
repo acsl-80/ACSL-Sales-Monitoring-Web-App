@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { SearchableSelect } from "@/components/ui/searchable-select";
 import AgentBrief from "./AgentBrief";
 import SerialRematch from "./SerialRematch";
 import Link from "@/compat/Link";
@@ -476,17 +477,18 @@ export default function CallRecordEditor({ saleId, canEdit, onClose, onSaved }) 
                     <label htmlFor="dc-next-outcome" className="sr-only">
                       Outcome of this call
                     </label>
-                    <select
-                      className="min-w-0 flex-1 rounded-md border border-gray-300 px-2 py-1 text-xs focus:border-(--dc-accent) focus:outline-none sm:flex-none"
-                      value={nextOutcome}
-                      onChange={(e) => setNextOutcome(e.target.value)}
-                      id="dc-next-outcome"
-                    >
-                      <option value="">Outcome...</option>
-                      {callOutcomes.map((o) => (
-                        <option key={o.id} value={o.id}>{o.label}</option>
-                      ))}
-                    </select>
+                    <div className="min-w-0 flex-1 sm:flex-none sm:min-w-[12rem]">
+                      <SearchableSelect
+                        id="dc-next-outcome"
+                        ariaLabel="Outcome of this call"
+                        value={nextOutcome}
+                        onChange={setNextOutcome}
+                        placeholder="Outcome..."
+                        searchPlaceholder="Type part of an outcome"
+                        emptyLabel="No outcome matches that"
+                        options={callOutcomes.map((o) => ({ value: o.id, label: o.label }))}
+                      />
+                    </div>
                     <button
                       type="button"
                       disabled={saving || !canLog}
@@ -624,17 +626,16 @@ export default function CallRecordEditor({ saleId, canEdit, onClose, onSaved }) 
               ) : (
                 <div className="flex items-end gap-2">
                   <div className="flex-1">
-                    <select
+                    <SearchableSelect
+                      ariaLabel="Reason for sending it back"
                       disabled={!canEdit}
                       value={values.correction_reason_id ?? ""}
-                      onChange={(e) => setValue("correction_reason_id", e.target.value)}
-                      className="w-full rounded-md border border-gray-300 px-3 py-1.5 text-sm focus:border-(--dc-accent) focus:outline-none disabled:bg-gray-50"
-                    >
-                      <option value="">Reason...</option>
-                      {correctionReasons.map((o) => (
-                        <option key={o.id} value={o.id}>{o.label}</option>
-                      ))}
-                    </select>
+                      onChange={(next) => setValue("correction_reason_id", next)}
+                      placeholder="Reason..."
+                      searchPlaceholder="Type part of a reason"
+                      emptyLabel="No reason matches that"
+                      options={correctionReasons.map((o) => ({ value: o.id, label: o.label }))}
+                    />
                   </div>
                   {canEdit && (
                     <button
