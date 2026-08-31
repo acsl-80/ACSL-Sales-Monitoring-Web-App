@@ -294,16 +294,27 @@ test.describe("one press is the whole ask", () => {
        */
       await page.reload();
       /*
-       * Either the truthful mid-run sentence, or - on a fast chain - the
-       * finished one. What must NEVER show over a running chain is an armed
-       * Commit button, and the sentence assertions are how that is caught:
-       * nextStep only renders these two texts when the button is withheld.
+       * The invariant is not a sentence - it is the ABSENCE of a lie. A
+       * refreshed page must never render an armed Commit button over this
+       * batch: mid-run the row says "Being written on the server right now"
+       * with no button, and a finished batch says nothing at all (a settled
+       * batch renders no next step, by design). Which of the two the reload
+       * lands on depends on how fast the preview's create-sale runs, so the
+       * spec accepts either and forbids the button in both.
        */
+      const mainRow = page.locator("tr", { hasText: `ui${testInfo.workerIndex}` }).first();
+      await expect(async () => {
+        const midRun = await page
+          .getByText(/Being written on the server right now/)
+          .count();
+        const finished = await mainRow.locator("td", { hasText: "committed" }).count();
+        expect(midRun + finished).toBeGreaterThan(0);
+      }).toPass({ timeout: 30_000 });
       await expect(
-        page
-          .getByText(/Being written on the server right now|went in\.$/)
-          .first(),
-      ).toBeVisible({ timeout: 30_000 });
+        mainRow
+          .locator("xpath=following-sibling::tr[1]")
+          .getByRole("button", { name: /^Commit \d+$/ }),
+      ).toHaveCount(0);
 
       const done = await waitDrained(page, batchId);
       expect(done.committed_rows).toBe(4);
