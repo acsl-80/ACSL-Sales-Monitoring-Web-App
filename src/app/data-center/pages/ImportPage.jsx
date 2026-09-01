@@ -161,10 +161,22 @@ export default function ImportPage() {
       description="Paper receipts into records: a prepared sheet filled in and uploaded in bulk, or typed one at a time at the bench, then released on confirmation."
       breadcrumb="Bulk Import"
       area="import"
-      // Either way in opens it. The tabs then narrow to what the person
-      // actually holds, so somebody with only the bench does not land on an
-      // upload panel they cannot use.
-      feature={[DATA_CENTER_FEATURES.IMPORT_UPLOAD, DATA_CENTER_FEATURES.DIGITISATION_WORK]}
+      /*
+       * Any of the three ways in opens it. The tabs then narrow to what the
+       * person actually holds, so somebody with only the bench does not land
+       * on an upload panel they cannot use.
+       *
+       * `call_import.use` was missing from this list. It is granted to nobody
+       * by default and is deliberately not implied by `import.upload`, so an
+       * account holding exactly it - the intended shape for a call-centre
+       * supervisor - was refused the page that contains the only tab it
+       * unlocks.
+       */
+      feature={[
+        DATA_CENTER_FEATURES.IMPORT_UPLOAD,
+        DATA_CENTER_FEATURES.DIGITISATION_WORK,
+        DATA_CENTER_FEATURES.CALL_IMPORT,
+      ]}
     >
       <Inner />
     </DataCentreShell>

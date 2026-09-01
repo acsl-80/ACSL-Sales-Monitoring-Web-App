@@ -11,6 +11,8 @@ import { parseCsv } from "../../lib/csv";
 import { toCsv, downloadCsv } from "../../lib/export";
 import { plural } from "../../lib/plural";
 import Unlanded, { groupUnlanded } from "../../components/Unlanded";
+import CallBatches from "./CallBatches";
+import Steps, { advance } from "../../components/Steps";
 import {
   Download, PhoneCall, ArrowRight, Loader2, CircleAlert, CircleCheck, Undo2,
 } from "lucide-react";
@@ -112,6 +114,22 @@ function Step({ n, title, tone = "plain", children }) {
 }
 
 export default function CallSheet({ canCommit = false }) {
+  /*
+   * Bumped whenever this component lands something, so the list below reloads.
+   * A batch staged here has to appear there immediately: the whole point of
+   * the list is that work does not vanish when the tab closes, and a list that
+   * only refreshes on mount would prove the opposite on the very first upload.
+   */
+  const [reloadKey, setReloadKey] = useState(0);
+  /*
+   * Named stages rather than one spinner.
+   *
+   * An upload does three distinct things and any of them can be the one that
+   * failed. "reading and checking every row" told somebody a spinner was
+   * spinning; it did not tell them whether the file parsed, whether the
+   * partner resolved, or which stove IDs found no sale.
+   */
+  const [steps, setSteps] = useState(null);
   const [spec, setSpec] = useState(null);
   const [schema, setSchema] = useState(null);
   const [busy, setBusy] = useState("");
@@ -353,20 +371,62 @@ export default function CallSheet({ canCommit = false }) {
     try {
       // Both parsers answer { headers, rows, warnings }. Taking the wrapper
       // for the rows would stage one object and call it a spreadsheet.
+      setSteps([
+        { key: "read", label: `Reading ${file.name}`, state: "running" },
+        { key: "stage", label: "Putting the rows aside", state: "pending" },
+        { key: "check", label: "Matching every row to a sale", state: "pending" },
+        { key: "ready", label: "Ready", state: "pending" },
+      ]);
+      const step = (k, s, d) => setSteps((cur) => advance(cur ?? [], k, s, d));
+
       const parsed = (await looksLikeWorkbook(file))
         ? await parseWorkbook(file)
         : parseCsv(await file.text());
       const rows = parsed.rows ?? [];
 
       if (!rows.length) {
+        step("read", "failed", "There are no rows in it.");
         setError("That file has no rows in it.");
         return;
       }
+      /*
+       * The parser's warnings, said out loud.
+       *
+       * They were read and thrown away. That is where duplicate headers,
+       * blank columns and ragged rows are reported - and a duplicate header
+       * is the defect that once destroyed 971 of 983 phone numbers before
+       * the importer ever saw them. The fix for that has been running in the
+       * parser the whole time; only its warning was muted.
+       */
+      step("read", "done", `${plural(rows.length, "row")} read${
+        parsed.warnings?.length ? `. ${parsed.warnings.join(" ")}` : ""
+      }`);
+      if (parsed.warnings?.length) setError(parsed.warnings.join(" "));
+
+      step("stage", "running");
       const staged = await dataCenterImport.callStage(rows, file.name);
       setBatch(staged);
+      step("stage", "done");
+
+      step("check", "running");
       const summary = await dataCenterImport.callValidate(staged.batchId);
       setChecked(summary);
+      step("check", "done",
+        `${summary.valid} ready, ${summary.exceptions} need a person, ` +
+        `${summary.rejected} could not be read.`);
+      step("ready", "done");
+      setReloadKey((n) => n + 1);
     } catch (e) {
+      /*
+       * Mark whichever stage was running as failed, rather than leaving it
+       * spinning above an error banner. The useful question after a failure
+       * is which stage it got to, and a stage frozen on "running" answers
+       * the opposite of the truth.
+       */
+      setSteps((cur) => {
+        const at = (cur ?? []).find((s) => s.state === "running");
+        return at ? advance(cur, at.key, "failed") : cur;
+      });
       setError(e instanceof DataCenterError ? e.message : "That file could not be read");
     } finally {
       setBusy("");
@@ -442,6 +502,7 @@ export default function CallSheet({ canCommit = false }) {
 
       const groups = await groupUnlanded(batch.batchId);
       setResult({ committed: done, groups });
+      setReloadKey((n) => n + 1);
     } catch (e) {
       setError(e instanceof DataCenterError ? e.message : "The commit did not finish");
     } finally {
@@ -478,6 +539,7 @@ export default function CallSheet({ canCommit = false }) {
   };
 
   return (
+    <>
     <section className="rounded-xl border border-gray-200 border-t-[3px] border-t-(--dc-accent) bg-white p-4 shadow-sm">
       <div className="flex items-start gap-3">
         <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-(--dc-accent) text-white">
@@ -672,10 +734,10 @@ export default function CallSheet({ canCommit = false }) {
             disabled={busy !== ""}
             className="block w-full text-sm text-gray-700 file:mr-3 file:rounded-md file:border-0 file:bg-(--dc-accent-soft) file:px-3 file:py-1.5 file:text-sm file:font-semibold file:text-(--dc-accent-strong)"
           />
-          {busy === "upload" && (
-            <p className="mt-2 flex items-center gap-2 text-xs text-gray-500">
-              <Loader2 className="h-3 w-3 animate-spin" /> reading and checking every row
-            </p>
+          {steps && (
+            <div className="mt-2 overflow-hidden rounded-lg border border-gray-200">
+              <Steps steps={steps} />
+            </div>
           )}
         </Step>
       </ol>
@@ -806,5 +868,15 @@ export default function CallSheet({ canCommit = false }) {
         </div>
       )}
     </section>
+
+    {/*
+      Every sheet ever uploaded, and what each still needs.
+
+      This is what stops work vanishing. Before it, the batch lived in this
+      component's own state and nowhere else: close the tab after uploading and
+      the rows were still in the database with no screen that would show them.
+    */}
+    <CallBatches canCommit={canCommit} reloadKey={reloadKey} onChanged={() => setReloadKey((n) => n + 1)} />
+    </>
   );
 }
