@@ -25,6 +25,7 @@ import { featuresFor } from "../_shared/data-center-roles.ts";
 import {
   BadRequest,
   buildRecordsQuery,
+  SHEET_PAGE_SIZE,
   toPage,
   COUNT_CEILING,
 } from "./records-query.ts";
@@ -1097,6 +1098,113 @@ serve(async (req) => {
        * hide the reason a sheet is short; saying so lets the digitiser skip
        * them deliberately.
        */
+      /**
+       * The whole call sheet in ONE query, rather than four hundred.
+       *
+       * The download paged `call_queue` up to 400 times. It asked for 500 a
+       * page against a clamp of 200, so its stated ceiling of 200,000 was
+       * really 80,000, and every page cost two and a half times the round
+       * trips it meant to. At this module's measured cost - a request that
+       * runs one statement answers in about 650 ms, and the cost is the
+       * connection, not the query - that is minutes of wall clock for a file.
+       *
+       * `src/app/data-center/CLAUDE.md` already rules that work slower than
+       * about a second belongs in a batched job, and `digitisation_sheet` has
+       * answered the receipt sheet in one query since it was written. This is
+       * that, for the other sheet, with the one flaw of the original fixed:
+       * it says when it hit its ceiling instead of truncating in silence.
+       */
+      case "call_sheet_rows": {
+        const superAdmin = isSuperAdmin(profile.role);
+        const resolved = superAdmin
+          ? { accessRole: null, features: [] as string[] }
+          : await resolveAccess(userId);
+        if (!superAdmin && resolved.accessRole === null) {
+          return json({ error: "No Data Center access", code: "no_access" }, 403, cors);
+        }
+        // The sheet's own grant, not the queue's. Being able to read call
+        // records is not the same as being able to pull the backlog out as a
+        // file, which is the whole reason call_import.use exists separately.
+        if (!superAdmin && !resolved.features.includes("call_import.use")) {
+          return json({ error: "Not permitted", code: "no_feature" }, 403, cors);
+        }
+
+        const sb = body as { organizationId?: string; uncalledOnly?: boolean };
+        const orgId = String(sb.organizationId ?? "");
+        if (orgId && !UUID_RE.test(orgId)) {
+          return json({ error: "That is not a partner id", code: "bad_input" }, 400, cors);
+        }
+
+        const sheetScope = await resolveScope(
+          supabase,
+          userId,
+          profile.role,
+          profile.organization_id ?? null,
+        );
+
+        let sheetQuery;
+        try {
+          sheetQuery = buildRecordsQuery(
+            {
+              table: "call_center",
+              cursor: null as never,
+              limit: SHEET_PAGE_SIZE,
+              direction: "desc",
+              filters: {
+                ...(sb.uncalledOnly ? { hasCallRecord: false } : {}),
+                ...(orgId ? { organizationId: orgId } : {}),
+              } as never,
+            },
+            sheetScope,
+            SHEET_PAGE_SIZE,
+          );
+        } catch (err) {
+          if (err instanceof BadRequest) {
+            return json({ error: err.message, code: "bad_request" }, 400, cors);
+          }
+          throw err;
+        }
+
+        return await withReadConnection(async (connection) => {
+          // The same two-statement split the queue uses, for the same reason:
+          // as one query the call queue took 25.8 seconds at 500,000 rows.
+          const picked = await connection.queryObject<{ id: string; sales_date: string | null }>({
+            text: sheetQuery.pick.text,
+            args: sheetQuery.pick.args,
+          });
+          const page = toPage(picked.rows, sheetQuery.pageSize);
+
+          let rows: Record<string, unknown>[] = [];
+          if (page.ids.length > 0) {
+            const hydrate = sheetQuery.hydrate(page.ids);
+            const result = await connection.queryObject<Record<string, unknown>>({
+              text: hydrate.text,
+              args: hydrate.args,
+            });
+            rows = result.rows;
+          }
+
+          return json(
+            {
+              data: {
+                rows,
+                cap: SHEET_PAGE_SIZE,
+                /*
+                 * Said, never silent. `digitisation_sheet` truncates at 20,000
+                 * with nothing on screen to show for it, and for a backlog
+                 * file that is the worst kind of wrong: the rows it quietly
+                 * omits are exactly the ones nobody then chases.
+                 */
+                truncated: page.hasMore,
+                scope: sheetQuery.scopeDescription,
+              },
+            },
+            200,
+            cors,
+          );
+        });
+      }
+
       case "digitisation_sheet": {
         const superAdmin = isSuperAdmin(profile.role);
         const resolved = superAdmin
