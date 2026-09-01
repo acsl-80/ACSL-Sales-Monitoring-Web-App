@@ -37,6 +37,13 @@ import {
 } from "../_shared/data-center-db.ts";
 import { featuresFor } from "../_shared/data-center-roles.ts";
 import {
+  BREAKER_MESSAGE,
+  breakerFor,
+  chainNext,
+  clearCommitLease,
+  takeCommitLease,
+} from "../_shared/import-chain.ts";
+import {
   CALL_SOURCE,
   callSheetSpec,
   commitCallRows,
@@ -2164,16 +2171,8 @@ serve(async (req) => {
         const phase1 = await withConnection(async (conn) => {
           await conn.queryObject("begin");
           try {
-            const lease = await conn.queryObject<{ id: string }>({
-              text: `update data_center.import_batches
-                        set commit_lease_until = now() + interval '7 minutes'
-                      where id = $1
-                        and state in ('staged','validated','dry_run')
-                        and (commit_lease_until is null or commit_lease_until < now())
-                      returning id`,
-              args: [batchId],
-            });
-            if (lease.rows.length === 0) {
+            const held = await takeCommitLease(conn, batchId);
+            if (!held) {
               await conn.queryObject("rollback");
               return { held: false as const };
             }
@@ -2666,8 +2665,7 @@ serve(async (req) => {
               });
               const left = remaining.rows[0]?.n ?? 0;
               const outcomes = okRows.length + failRows.length;
-              const nextZeroRuns = outcomes === 0 ? zeroRuns + 1 : 0;
-              const breaker = left > 0 && nextZeroRuns >= 3;
+              const { nextZeroRuns, breaker } = breakerFor(outcomes, zeroRuns, left);
 
               await conn.queryObject({
                 text: `update data_center.import_batches
@@ -2683,9 +2681,7 @@ serve(async (req) => {
                   batchId,
                   left,
                   userId,
-                  breaker
-                    ? "Commit paused: three passes in a row made no progress. Press Commit to try again."
-                    : realFails[0]?.reason ?? null,
+                  breaker ? BREAKER_MESSAGE : realFails[0]?.reason ?? null,
                 ],
               });
 
@@ -2702,32 +2698,14 @@ serve(async (req) => {
              * a dropped link is a chain that silently stops.
              */
             if (tail && tail.left > 0 && !tail.breaker) {
-              try {
-                const res = await fetch(
-                  `${Deno.env.get("SUPABASE_URL")}/functions/v1/data-center-import`,
-                  {
-                    method: "POST",
-                    headers: {
-                      "Content-Type": "application/json",
-                      Authorization: authHeader ?? "",
-                      apikey: Deno.env.get("SUPABASE_ANON_KEY") ?? "",
-                    },
-                    body: JSON.stringify({
-                      action: "commit",
-                      batchId,
-                      link: link + 1,
-                      zeroRuns: tail.nextZeroRuns,
-                    }),
-                  },
-                );
-                await res.text();
-              } catch {
-                /*
-                 * The chain link could not be delivered. The lease is already
-                 * cleared, so the batch is resumable: the panel's stall
-                 * detection offers Continue and a press picks up exactly here.
-                 */
-              }
+              await chainNext({
+                slug: "data-center-import",
+                action: "commit",
+                batchId,
+                link,
+                zeroRuns: tail.nextZeroRuns,
+                authHeader,
+              });
             }
           });
         };
@@ -2738,13 +2716,8 @@ serve(async (req) => {
             // A thrown slice must not leave the batch wedged: clear the lease
             // so the next press (or the stall CTA) can take over. Claims left
             // behind fall to the ten-minute sweep.
-            await withConnection((conn) =>
-              conn.queryObject({
-                text:
-                  `update data_center.import_batches set commit_lease_until = null where id = $1`,
-                args: [batchId],
-              })
-            ).catch(() => {});
+            await withConnection((conn) => clearCommitLease(conn, batchId))
+              .catch(() => {});
           }),
         );
 
