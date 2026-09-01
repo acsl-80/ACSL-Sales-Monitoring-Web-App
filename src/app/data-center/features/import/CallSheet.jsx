@@ -6,7 +6,13 @@ import {
   dataCenterWrite,
   DataCenterError,
 } from "../../lib/client";
-import { buildWorkbook, downloadWorkbook, parseWorkbook, looksLikeWorkbook } from "../../lib/xlsx";
+import {
+  buildWorkbook,
+  canReadWorkbooks,
+  downloadWorkbook,
+  looksLikeWorkbook,
+  parseWorkbook,
+} from "../../lib/xlsx";
 import { parseCsv } from "../../lib/csv";
 import { toCsv, downloadCsv } from "../../lib/export";
 import { plural } from "../../lib/plural";
@@ -379,9 +385,25 @@ export default function CallSheet({ canCommit = false }) {
       ]);
       const step = (k, s, d) => setSteps((cur) => advance(cur ?? [], k, s, d));
 
-      const parsed = (await looksLikeWorkbook(file))
-        ? await parseWorkbook(file)
-        : parseCsv(await file.text());
+      /*
+       * Say which browser cannot do it, rather than which file cannot be read.
+       *
+       * Reading an .xlsx needs DecompressionStream. Without it, parseWorkbook
+       * throws and the catch below reported "That file could not be read",
+       * which points at the sheet - the one thing that is not the problem, and
+       * the thing somebody would then waste an afternoon re-exporting.
+       */
+      const isWorkbook = await looksLikeWorkbook(file);
+      if (isWorkbook && !canReadWorkbooks()) {
+        step("read", "failed", "This browser cannot open .xlsx.");
+        setError(
+          "This browser cannot open .xlsx files. Download the sheet as CSV instead, " +
+            "or open it in a spreadsheet program and save a CSV - the columns are the same.",
+        );
+        return;
+      }
+
+      const parsed = isWorkbook ? await parseWorkbook(file) : parseCsv(await file.text());
       const rows = parsed.rows ?? [];
 
       if (!rows.length) {
