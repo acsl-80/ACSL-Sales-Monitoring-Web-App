@@ -46,6 +46,45 @@ const LOCKED_FROM_QUEUE = {
   phone: (r) => r.primary_phone ?? r.phone ?? "",
   partnerName: (r) => r.partner_name ?? "",
   salesDate: (r) => r.sales_date ?? "",
+  /*
+   * The version this sheet was built from.
+   *
+   * Blank for a record nobody has called, because there is nothing to
+   * disagree with yet. On a record that HAS been called it is what stops a
+   * sheet filled in over three days from silently overwriting whatever an
+   * agent did in the app on day two - the import compares it and refuses
+   * rather than guessing.
+   */
+  recordVersion: (r) => (r.call_record_version ?? "") === "" ? "" : String(r.call_record_version),
+};
+
+/**
+ * What the sheet already knows about a record somebody has worked.
+ *
+ * Update mode is only usable if a person can see what the record currently
+ * says before they change it. Every one of these is already in the Table 2
+ * projection the queue returns, so filling them in costs nothing extra.
+ *
+ * Not locked: the whole point is that these are editable. The version column
+ * above is what makes editing them safe.
+ */
+const PREFILL_FROM_QUEUE = {
+  verification: (r) => r.verification_outcome ?? "",
+  callOutcome: (r) => r.call_outcome ?? "",
+  callAgent: (r) => r.call_agent ?? "",
+  callDate1: (r) => r.call_date_1 ?? "",
+  callDate2: (r) => r.call_date_2 ?? "",
+  callDate3: (r) => r.call_date_3 ?? "",
+  correctedName: (r) => r.corrected_end_user_name ?? "",
+  correctedPhone: (r) => r.corrected_phone ?? "",
+  correctedAltPhone: (r) => r.corrected_alt_phone ?? "",
+  correctedAddress: (r) => r.corrected_address ?? "",
+  correctedState: (r) => r.corrected_state ?? "",
+  correctedLga: (r) => r.corrected_lga ?? "",
+  ward: (r) => r.ward ?? "",
+  landmark: (r) => r.landmark ?? "",
+  statedSerial: (r) => r.stated_serial ?? "",
+  comments: (r) => r.other_comments ?? "",
 };
 
 function Step({ n, title, tone = "plain", children }) {
@@ -82,6 +121,8 @@ export default function CallSheet({ canCommit = false }) {
   const [partnersFailed, setPartnersFailed] = useState(false);
   /** "" is everything this person may see. Otherwise an organization id. */
   const [orgId, setOrgId] = useState("");
+  /** Narrow to records nobody has called. Off by default under update mode. */
+  const [uncalledOnly, setUncalledOnly] = useState(false);
   const [downloaded, setDownloaded] = useState(null); // { rows, partner }
   const [batch, setBatch] = useState(null); // { batchId, staged }
   const [checked, setChecked] = useState(null); // validate summary
@@ -179,8 +220,19 @@ export default function CallSheet({ canCommit = false }) {
        * rather than merged, so offering it here would hand somebody rows that
        * cannot land and let them find out after they had filled them in.
        */
+      /*
+       * Every record, or only the ones nobody has called.
+       *
+       * This used to be `hasCallRecord: false` with no way round it, which
+       * made the sheet single-use: a mis-typed outcome could only ever be
+       * corrected one record at a time in the app. Update mode changed that,
+       * so the default is now everything, and the narrowing is a choice.
+       *
+       * The partner filter matters more than it did, for the same reason: at
+       * 500,000 records "everything" is not a sheet anybody can open.
+       */
       const filters = {
-        hasCallRecord: false,
+        ...(uncalledOnly ? { hasCallRecord: false } : {}),
         ...(orgId ? { organizationId: orgId } : {}),
       };
 
@@ -197,8 +249,16 @@ export default function CallSheet({ canCommit = false }) {
        * runaway guard rather than a business rule; it is far above any real
        * partner and it says so out loud if it is ever reached.
        */
-      const PAGE_LIMIT = 500;
-      const MAX_PAGES = 400; // 200,000 records
+      /*
+       * 200, because that is what the server actually grants.
+       *
+       * This asked for 500 and the comment claimed a 200,000-record ceiling.
+       * `records-query.ts` clamps every request to MAX_PAGE_SIZE = 200, so the
+       * real ceiling was 80,000 and each page cost 2.5x the round trips it
+       * meant to. Asking for what is granted makes the arithmetic below true.
+       */
+      const PAGE_LIMIT = 200;
+      const MAX_PAGES = 400; // 80,000 records
       const collected = [];
       let cursor = null;
       let pages = 0;
@@ -221,9 +281,17 @@ export default function CallSheet({ canCommit = false }) {
 
       const rows = collected.map((r) => {
         const out = {};
+        const answers = r.answers ?? {};
         for (const c of columns) {
-          const fill = LOCKED_FROM_QUEUE[c.field];
-          out[c.header] = fill ? fill(r) : "";
+          const locked = LOCKED_FROM_QUEUE[c.field];
+          const prefill = PREFILL_FROM_QUEUE[c.field];
+          if (locked) out[c.header] = locked(r);
+          else if (prefill) out[c.header] = prefill(r);
+          // The 13 registry questions, whose answers live in one jsonb blob
+          // rather than in columns of their own.
+          else if (answers[c.field] !== undefined && answers[c.field] !== null) {
+            out[c.header] = String(answers[c.field]);
+          } else out[c.header] = "";
         }
         return out;
       });
@@ -231,8 +299,8 @@ export default function CallSheet({ canCommit = false }) {
       if (rows.length === 0) {
         setError(
           orgId
-            ? "Nothing is waiting to be called for that partner, so the sheet would be empty."
-            : "There is nothing waiting to be called, so the sheet would be empty.",
+            ? "There are no records for that partner, so the sheet would be empty."
+            : "There are no records to bring down, so the sheet would be empty.",
         );
         return;
       }
@@ -264,8 +332,8 @@ export default function CallSheet({ canCommit = false }) {
       // is wrong with the assumption behind MAX_PAGES, not with the sheet.
       if (truncated) {
         setError(
-          `The sheet stopped at ${rows.length.toLocaleString()} records, which is this download's ceiling. ` +
-            "Pick a single partner to bring the rest in.",
+          `The sheet stopped at ${rows.length.toLocaleString()} records, which is this ` +
+            "download's ceiling. Pick a single partner to bring the rest in.",
         );
       }
     } catch (e) {
@@ -434,9 +502,11 @@ export default function CallSheet({ canCommit = false }) {
       <ol className="mt-4 space-y-2">
         <Step n={1} title="Get the sheet" tone={!batch ? "active" : "plain"}>
           <p>
-            One row per record waiting to be called, with the stove ID, the buyer and the number
-            we hold already filled in and locked. Records already called are left out: the import
-            refuses them rather than overwriting what the first call found.
+            One row per record, with the stove ID, the buyer and the number we hold already
+            filled in and locked. A record somebody has already worked comes down with what it
+            currently says, so the sheet can correct it as well as fill it in. Its Record
+            Version comes with it, and an upload is refused if the record changed in the app
+            after you downloaded, rather than quietly overwriting that work.
           </p>
 
           {/*
@@ -496,6 +566,27 @@ export default function CallSheet({ canCommit = false }) {
               />
             </div>
           </div>
+
+          <label className="mt-2 flex items-start gap-2 text-sm text-gray-700">
+            <input
+              type="checkbox"
+              checked={uncalledOnly}
+              onChange={(ev) => {
+                setUncalledOnly(ev.target.checked);
+                setDownloaded(null);
+                setError("");
+              }}
+              disabled={busy === "download"}
+              className="mt-0.5 h-4 w-4 rounded border-gray-300"
+            />
+            <span>
+              Only records nobody has called yet
+              <span className="block text-xs text-gray-500">
+                Leave this off to bring down everything, which is what makes correcting a
+                record possible. Turn it on for a plain backlog run.
+              </span>
+            </span>
+          </label>
 
           {partnersFailed && (
             <p className="mt-1 flex items-start gap-2 text-sm text-amber-800">
