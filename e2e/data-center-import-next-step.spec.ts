@@ -145,6 +145,16 @@ test.describe("a staged batch says what to do next", () => {
 });
 
 test.describe("a batch counts the rows it has", () => {
+  /*
+   * This drives a REAL commit chain: two rows at slice size one, so two
+   * server-side links, each spending a create-sale that has been measured
+   * between four and thirty seconds on the same day. Playwright's default
+   * sixty is calibrated for pages, not for watching a batch drain - it passed
+   * on a fast afternoon and failed on a slow one, which is the worst kind of
+   * green.
+   */
+  test.describe.configure({ timeout: 240_000 });
+
   /**
    * The count on the row is read from the rows, not from a snapshot.
    *
