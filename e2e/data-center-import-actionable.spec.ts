@@ -149,18 +149,25 @@ test.describe("an exception says what would change it", () => {
       timeout: 30_000,
     });
 
+    const real = await freeStoves(page, 1);
+    test.skip(real.length < 1, "no free stove");
     const marker = `exc${testInfo.workerIndex}-${Date.now()}`;
+    /*
+     * One REAL serial, because staging refuses a file in which nothing
+     * resolves - it cannot tell whose sheet it is. The bogus ones then become
+     * the exceptions this spec is about.
+     */
     const staged = await callEdgeFunction(page, "data-center-import", {
       action: "stage",
       filename: `${marker}.csv`,
       rows: [
-        // A serial that matches nothing: the fixable kind.
-        { ...row("999000111222", marker, "08017770003") },
-        // The same serial twice: also fixable.
-        { ...row("999000111333", marker, "08017770004") },
+        { ...row(real[0], marker, "08017770003") },
+        { ...row("999000111222", marker, "08017770004") },
         { ...row("999000111333", marker, "08017770005") },
+        { ...row("999000111333", marker, "08017770006") },
       ],
     });
+    expect(staged.status, "the file stages because one serial resolves").toBe(200);
     const batchId = (staged.body as { data: { batchId: string } }).data.batchId;
     await callEdgeFunction(page, "data-center-import", { action: "validate", batchId });
     await page.reload();
@@ -196,21 +203,26 @@ test.describe("an exception says what would change it", () => {
       timeout: 30_000,
     });
 
+    const real = await freeStoves(page, 2);
+    test.skip(real.length < 2, "need two free stoves");
     const marker = `fix${testInfo.workerIndex}-${Date.now()}`;
+    // real[0] anchors the file so it stages; real[1] is what the bogus row is
+    // corrected TO.
     const staged = await callEdgeFunction(page, "data-center-import", {
       action: "stage",
       filename: `${marker}.csv`,
-      rows: [{ ...row("999000444555", marker, "08017770006") }],
+      rows: [
+        { ...row(real[0], marker, "08017770007") },
+        { ...row("999000444555", marker, "08017770008") },
+      ],
     });
+    expect(staged.status).toBe(200);
     const batchId = (staged.body as { data: { batchId: string } }).data.batchId;
     await callEdgeFunction(page, "data-center-import", { action: "validate", batchId });
     await page.reload();
 
     await page.getByText(`${marker}.csv`).click();
     await page.getByText("The stove ID matches nothing in stock").click();
-
-    const stoves = await freeStoves(page, 1);
-    test.skip(stoves.length < 1, "no free stove to correct to");
 
     // Press Fix with the field exactly as it came - the case that did nothing.
     const fix = page.getByRole("button", { name: "Fix" }).first();
@@ -226,14 +238,14 @@ test.describe("an exception says what would change it", () => {
 
     // And a real correction resolves it.
     const box = page.getByRole("textbox", { name: /Corrected stove ID/ }).first();
-    await box.fill(stoves[0]);
+    await box.fill(real[1]);
     await page.getByRole("button", { name: "Fix" }).first().click();
     await expect
       .poll(async () => {
         const b = await batchOf(page, batchId);
         return Number(b?.valid_rows ?? 0);
       }, { timeout: 30_000 })
-      .toBe(1);
+      .toBe(2);
 
     await callEdgeFunction(page, "data-center-import", { action: "discard", batchId });
   });
