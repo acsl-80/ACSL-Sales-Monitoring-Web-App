@@ -46,8 +46,9 @@ import {
 import {
   CALL_SOURCE,
   callSheetSpec,
-  commitCallRows,
+  commitCallSlice,
   rollbackCallRows,
+  stageCallRows,
   validateCallRows,
 } from "./call-import.ts";
 
@@ -100,7 +101,7 @@ class BadRequest extends Error {}
  * receipt payload, and a call row's normalized is `{values, attempts}`.
  *
  * `resolve_exception` was the worst of them: pointed at a call row it set
- * status 'valid' and left sale_id null, and `commitCallRows` selects
+ * status 'valid' and left sale_id null, and `commitCallSlice` selects
  * `status = 'valid' and sale_id is not null`. The row became permanently
  * unlandable AND invisible to every list, which is the one failure class this
  * module's rules single out as unacceptable.
@@ -3171,7 +3172,7 @@ serve(async (req) => {
             /*
              * The one that mattered most. Without this, a Fix pressed on a
              * call row set status 'valid' and left sale_id null, and
-             * commitCallRows selects `status = 'valid' and sale_id is not
+             * commitCallSlice selects `status = 'valid' and sale_id is not
              * null` - so the row was neither committed nor listed as an
              * exception. It simply stopped existing.
              */
@@ -3262,19 +3263,110 @@ serve(async (req) => {
         });
       }
 
+      /**
+       * What the headers feed, before a single row is staged.
+       *
+       * The receipt path has had `inspect` since a workbook whose phone column
+       * read "Mobile No." imported cleanly with no phone numbers in it. This
+       * side staged blind. It matters more now than it did: under update mode
+       * a person edits the sheet, and a renamed or deleted column is the
+       * easiest thing in the world to do by accident.
+       *
+       * Reports rather than refuses. The sheet's own headers are the contract
+       * and `pick` already matches case and spacing, so the only thing worth
+       * saying is which understood columns nothing in the file feeds.
+       */
+      case "call_inspect": {
+        requireFeature("call_import.use");
+        const headers = (body.headers as string[] | undefined) ?? [];
+        if (!Array.isArray(headers) || headers.length === 0) {
+          throw new BadRequest("No headers to inspect");
+        }
+        return await withReadConnection(async (conn) => {
+          const spec = await callSheetSpec(conn);
+          const seen = new Set(headers.map((h) => String(h).trim().toLowerCase()));
+          const known = [
+            ...spec.columns.map((c) => ({ field: c.field, header: c.header, locked: !!c.locked })),
+            ...spec.questions.map((q) => ({ field: q.key, header: q.label, locked: false })),
+          ];
+          const recognised = known.filter((k) => seen.has(k.header.trim().toLowerCase()));
+          const missing = known.filter(
+            (k) => !seen.has(k.header.trim().toLowerCase()),
+          );
+          const unrecognised = headers.filter(
+            (h) => !known.some((k) => k.header.trim().toLowerCase() === String(h).trim().toLowerCase()),
+          );
+          const maxRows = Number(await readConfig(conn, "import.max_rows", 20000)) || 20000;
+          return json({
+            data: {
+              recognised: recognised.map((r) => ({ header: r.header, field: r.field })),
+              unrecognised,
+              /*
+               * Only the LOCKED ones are worth naming. A sheet legitimately
+               * arrives with half the question columns blank - that is what an
+               * agent filling in what the call told them looks like. A missing
+               * Stove ID or Record Version column is a different thing: it
+               * breaks matching or forces every existing record to refuse.
+               */
+              missingKeyColumns: missing.filter((m) => m.locked).map((m) => m.header),
+              maxRows,
+            },
+          }, 200, cors);
+        });
+      }
+
       case "call_stage": {
         requireFeature("call_import.use");
         const incoming = body.rows as Record<string, unknown>[] | undefined;
         if (!Array.isArray(incoming) || incoming.length === 0) {
           throw new BadRequest("No rows to import");
         }
-        const maxRows = Number(
-          await withReadConnection((c) => readConfig(c, "import.max_rows", 20000)),
-        ) || 20000;
-        if (incoming.length > maxRows) {
+        const settings = await withReadConnection(async (c) => ({
+          maxRows: Number(await readConfig(c, "import.max_rows", 20000)) || 20000,
+          warnDuplicate: (await readConfig(c, "import.warn_on_duplicate_upload", true)) !== false,
+        }));
+        if (incoming.length > settings.maxRows) {
           throw new BadRequest(
-            `That sheet has ${incoming.length} rows and the limit is ${maxRows}. Split it.`,
+            `That sheet has ${incoming.length} rows and the limit is ${settings.maxRows}. Split it.`,
           );
+        }
+
+        /*
+         * The same sheet twice.
+         *
+         * An ordinary mistake: two people clear the same week, or somebody is
+         * not sure the first attempt worked. Hashed over the PARSED rows with
+         * sorted keys, not over the file, so re-saving a spreadsheet without
+         * changing its contents still matches. Warns and offers to proceed
+         * rather than blocking, because a corrected sheet legitimately carries
+         * the same stove IDs as the one it corrects.
+         */
+        const hash = await contentHash(incoming);
+        if (settings.warnDuplicate && body.confirmDuplicate !== true) {
+          const prior = await withReadConnection((c) =>
+            c.queryObject<{ id: string; uploaded_at: string; filename: string | null; state: string }>({
+              text: `select id::text, uploaded_at::text, filename, state
+                       from data_center.import_batches
+                      where content_hash = $1 and source = $2
+                      order by uploaded_at desc limit 1`,
+              args: [hash, CALL_SOURCE],
+            })
+          );
+          if (prior.rows.length > 0) {
+            const p = prior.rows[0];
+            return json(
+              {
+                error:
+                  `This looks like the same sheet that was uploaded on ` +
+                  `${p.uploaded_at.slice(0, 10)}${p.filename ? ` as ${p.filename}` : ""}. ` +
+                  "Upload it again only if you mean to.",
+                code: "duplicate_upload",
+                data: { previousBatchId: p.id, previousState: p.state },
+              },
+              409,
+              cors,
+            );
+          }
         }
 
         const batchId = await withConnection(async (conn) => {
@@ -3286,13 +3378,14 @@ serve(async (req) => {
             });
             const b = await conn.queryObject<{ id: string }>({
               text: `insert into data_center.import_batches
-                       (source, filename, uploaded_by, state, total_rows)
-                     values ($1, $2, $3, 'staged', $4) returning id::text`,
+                       (source, filename, uploaded_by, state, total_rows, content_hash)
+                     values ($1, $2, $3, 'staged', $4, $5) returning id::text`,
               args: [
                 CALL_SOURCE,
                 String(body.filename ?? "call-centre sheet"),
                 userId,
                 incoming.length,
+                hash,
               ],
             });
             const id = b.rows[0].id;
@@ -3301,16 +3394,10 @@ serve(async (req) => {
              * one partner's paperwork; a call-centre week is whoever the
              * agents happened to reach, and forcing a partner onto it would
              * either be a lie or split a real day's work into twelve batches.
-             * Scope still holds at the row: every row resolves to a sale, and
-             * a sale carries its own organization.
+             * Scope holds at the row instead: validate resolves each row to a
+             * sale and refuses one whose partner this caller does not cover.
              */
-            for (let i = 0; i < incoming.length; i++) {
-              await conn.queryObject({
-                text: `insert into data_center.import_rows (batch_id, row_number, raw, status)
-                       values ($1, $2, $3::jsonb, 'pending')`,
-                args: [id, i + 1, JSON.stringify(incoming[i])],
-              });
-            }
+            await stageCallRows(conn, id, incoming);
             await conn.queryObject("commit");
             return id;
           } catch (err) {
@@ -3327,34 +3414,191 @@ serve(async (req) => {
         const batchId = String(body.batchId ?? "");
         if (!batchId) throw new BadRequest("batchId is required");
         return await withConnection(async (conn) => {
-          await conn.queryObject({
-            text: "select set_config('data_center.actor', $1, true)",
-            args: [userId],
-          });
-          const summary = await validateCallRows(conn, batchId);
-          return json({ data: summary }, 200, cors);
+          await conn.queryObject("begin");
+          try {
+            await conn.queryObject({
+              text: "select set_config('data_center.actor', $1, true)",
+              args: [userId],
+            });
+            /*
+             * Locked, checked, and checked for source - none of which this
+             * action did before. Validating a batch id that does not exist
+             * reported 0/0/0 and then wrote `state = 'validated'` to nothing,
+             * which is a success message about a batch nobody has.
+             */
+            const batch = await conn.queryObject<{ source: string }>({
+              text: `select source from data_center.import_batches
+                      where id = $1 for update`,
+              args: [batchId],
+            });
+            if (batch.rows.length === 0) throw new BadRequest("No such batch");
+            if (batch.rows[0].source !== CALL_SOURCE) {
+              await conn.queryObject("rollback");
+              return json(
+                {
+                  error:
+                    "That batch came from the receipt import, not the call sheet. " +
+                    "Check it on the Bulk Import tab.",
+                  code: "wrong_source",
+                  data: { source: batch.rows[0].source },
+                },
+                409,
+                cors,
+              );
+            }
+
+            const updateExisting =
+              (await readConfig(conn, "call_import.update_existing", true)) !== false;
+
+            const summary = await validateCallRows(conn, {
+              batchId,
+              userId,
+              ownOrganizationId: profile.organization_id ?? null,
+              superAdmin,
+              updateExisting,
+            });
+            await conn.queryObject("commit");
+            return json({ data: summary }, 200, cors);
+          } catch (err) {
+            await conn.queryObject("rollback");
+            throw err;
+          }
         });
       }
 
+      /**
+       * Attach the calls, and keep going without the tab.
+       *
+       * This was a plain slice with the client looping up to 200 times in one
+       * `try`, so the first aborted slice killed the whole run. Each row is a
+       * `save_call_record` plus up to three `log_attempt` posts, every one a
+       * separate edge-function invocation paying ~650ms of connection setup,
+       * so a 25-row slice was 16 to 65 seconds against a 20-second client
+       * abort. It could not finish a real sheet, and had only ever been proved
+       * on six rows.
+       *
+       * Now it answers 202 and the server works through the batch on its own,
+       * using the same three primitives the receipt chain uses.
+       */
       case "call_commit": {
-        // Both. Seeing the sheet and landing it are separate privileges, the
-        // same split the receipt import makes between upload and commit.
+        // All three. Seeing the sheet, landing it, and being allowed to write
+        // a call record are separate privileges. The third is checked here
+        // rather than discovered per row: without it every single post to
+        // data-center-write answers 403 and the whole batch turns into
+        // exceptions that describe a permissions problem as a data problem.
         requireFeature("call_import.use");
         requireFeature("import.commit");
+        requireFeature("call_records.edit");
+
         const batchId = String(body.batchId ?? "");
         if (!batchId) throw new BadRequest("batchId is required");
-        const sliceSize = Number(
-          await withReadConnection((c) => readConfig(c, "import.slice_size", 25)),
-        ) || 25;
+        const link = Number(body.link ?? 1) || 1;
+        const zeroRuns = Number(body.zeroRuns ?? 0) || 0;
+
+        if (link > 2500) {
+          await withConnection((conn) =>
+            conn.queryObject({
+              text: `update data_center.import_batches
+                        set commit_lease_until = null,
+                            last_error = 'Commit stopped at the chain cap. Press Continue.'
+                      where id = $1`,
+              args: [batchId],
+            })
+          );
+          return json({ data: { started: false, stopped: "chain_cap" } }, 200, cors);
+        }
+
+        const settings = await withReadConnection(async (c) => ({
+          cap: Number(await readConfig(c, "import.slice_size", 25)) || 25,
+          budgetMs: Number(await readConfig(c, "import.slice_budget_ms", 15000)) || 15000,
+        }));
+
+        // Phase 1, synchronous, so the response can tell the truth about
+        // whether this press or another one is doing the work.
+        const phase1 = await withConnection(async (conn) => {
+          await conn.queryObject("begin");
+          try {
+            const held = await takeCommitLease(conn, batchId, undefined, [CALL_SOURCE]);
+            if (!held) {
+              await conn.queryObject("rollback");
+              return { held: false as const };
+            }
+            const left = await conn.queryObject<{ n: number }>({
+              text: `select count(*)::int n from data_center.import_rows
+                      where batch_id = $1 and status = 'valid' and sale_id is not null`,
+              args: [batchId],
+            });
+            await conn.queryObject("commit");
+            return { held: true as const, remaining: left.rows[0]?.n ?? 0 };
+          } catch (err) {
+            await conn.queryObject("rollback");
+            throw err;
+          }
+        });
+
+        if (!phase1.held) {
+          const why = await withReadConnection(async (conn) => {
+            const r = await conn.queryObject<
+              { state: string; source: string; leased: boolean }
+            >({
+              text: `select state, source, (commit_lease_until is not null
+                                    and commit_lease_until > now()) as leased
+                       from data_center.import_batches where id = $1`,
+              args: [batchId],
+            });
+            return r.rows[0] ?? null;
+          });
+          if (why && why.source !== CALL_SOURCE) {
+            return json(
+              {
+                error:
+                  "That batch came from the receipt import, not the call sheet. " +
+                  "Commit it on the Bulk Import tab.",
+                code: "wrong_source",
+                data: { source: why.source },
+              },
+              409,
+              cors,
+            );
+          }
+          if (why?.leased) {
+            return json({ data: { busy: true, state: why.state } }, 200, cors);
+          }
+          return json(
+            {
+              error: `This batch is ${why?.state ?? "missing"} and cannot be committed.`,
+              code: "not_committable",
+            },
+            409,
+            cors,
+          );
+        }
+
+        if (phase1.remaining === 0) {
+          await withConnection(async (conn) => {
+            await clearCommitLease(conn, batchId);
+            await conn.queryObject({
+              text: `update data_center.import_batches
+                        set state = 'committed', committed_at = coalesce(committed_at, now())
+                      where id = $1`,
+              args: [batchId],
+            });
+          });
+          return json({ data: { done: true, committed: 0, remaining: 0 } }, 200, cors);
+        }
 
         /*
          * Out through data-center-write, not straight into the table.
          *
-         * Exactly the rule the receipt import follows with create-sale, on
-         * this side of the module: field visibility, the answers-versus-column
-         * routing in splitPayload, the writable-column allowlist and the audit
-         * trigger all stay in one place. The caller's own bearer token goes
-         * with it, so a person cannot import past their own permissions.
+         * Exactly the rule the receipt import follows with create-sale: field
+         * visibility, the answers-versus-column routing in splitPayload, the
+         * writable-column allowlist and the audit trigger all stay in one
+         * place. The caller's own bearer token goes with it, so a person
+         * cannot import past their own permissions.
+         *
+         * The timeout is new. This fetch had none, which breaks the module's
+         * own rule that every outbound call carries one, and a hung write
+         * would have hung the whole link until the isolate was reaped.
          */
         const post = async (action: string, payload: Record<string, unknown>) => {
           try {
@@ -3368,6 +3612,7 @@ serve(async (req) => {
                   apikey: Deno.env.get("SUPABASE_ANON_KEY") ?? "",
                 },
                 body: JSON.stringify({ action, ...payload }),
+                signal: AbortSignal.timeout(60_000),
               },
             );
             if (res.ok) return { ok: true, detail: "" };
@@ -3386,14 +3631,58 @@ serve(async (req) => {
           }
         };
 
-        return await withConnection(async (conn) => {
-          await conn.queryObject({
-            text: "select set_config('data_center.actor', $1, true)",
-            args: [userId],
+        const workSlice = async () => {
+          // No connection wrapper here: commitCallSlice opens one for the
+          // read and another for the write, and holds neither across the
+          // posts in between.
+          const out = await commitCallSlice({
+            batchId,
+            userId,
+            budgetMs: settings.budgetMs,
+            cap: settings.cap,
+            post,
           });
-          const out = await commitCallRows(conn, batchId, userId, sliceSize, post);
-          return json({ data: out }, 200, cors);
-        });
+
+          const { nextZeroRuns, breaker } = breakerFor(
+            out.committed + out.failed,
+            zeroRuns,
+            out.left,
+          );
+
+          await withConnection(async (conn) => {
+            await clearCommitLease(conn, batchId);
+            if (breaker) {
+              await conn.queryObject({
+                text: `update data_center.import_batches set last_error = $2 where id = $1`,
+                args: [batchId, BREAKER_MESSAGE],
+              });
+            }
+          });
+
+          if (out.left > 0 && !breaker) {
+            await chainNext({
+              slug: "data-center-import",
+              action: "call_commit",
+              batchId,
+              link,
+              zeroRuns: nextZeroRuns,
+              authHeader,
+            });
+          }
+        };
+
+        // deno-lint-ignore no-explicit-any
+        (globalThis as any).EdgeRuntime.waitUntil(
+          workSlice().catch(async () => {
+            await withConnection((conn) => clearCommitLease(conn, batchId)).catch(() => {});
+          }),
+        );
+
+        return json(
+          { data: { started: true, link, remaining: phase1.remaining } },
+          202,
+          cors,
+        );
       }
 
       case "call_rollback": {
@@ -3401,9 +3690,156 @@ serve(async (req) => {
         requireFeature("import.commit");
         const batchId = String(body.batchId ?? "");
         if (!batchId) throw new BadRequest("batchId is required");
+
+        /*
+         * Not while a chain is working the batch. This guard did not exist,
+         * which was harmless only because there was no chain to race. Undo
+         * resets rows to valid under a live link's feet, and the link then
+         * writes outcomes for rows that have moved.
+         */
+        const fence = await withReadConnection(async (conn) => {
+          const r = await conn.queryObject<{ live: boolean; source: string; state: string }>({
+            text: `select source, state, (commit_lease_until is not null
+                           and commit_lease_until > now()) as live
+                     from data_center.import_batches where id = $1`,
+            args: [batchId],
+          });
+          return r.rows[0] ?? null;
+        });
+        if (!fence) throw new BadRequest("No such batch");
+        if (fence.source !== CALL_SOURCE) {
+          return json(
+            {
+              error:
+                "That batch came from the receipt import. Roll it back on the " +
+                "Bulk Import tab, where undoing it removes the sales properly.",
+              code: "wrong_source",
+              data: { source: fence.source },
+            },
+            409,
+            cors,
+          );
+        }
+        if (fence.live) {
+          return json(
+            {
+              error:
+                "A commit is running on this batch right now. Wait for it to finish " +
+                "or stall, then undo it.",
+              code: "commit_in_progress",
+            },
+            409,
+            cors,
+          );
+        }
+        // Idempotence, which it also did not have: a second press re-ran the
+        // delete and re-stamped the batch.
+        if (fence.state === "rolled_back") {
+          return json(
+            { data: { reversed: 0, notReversed: 0, remaining: 0, done: true, already: true } },
+            200,
+            cors,
+          );
+        }
+
         return await withConnection(async (conn) => {
           const out = await rollbackCallRows(conn, batchId, userId);
           return json({ data: out }, 200, cors);
+        });
+      }
+
+      /**
+       * Clear away a call batch that never landed anything.
+       *
+       * The same affordance the receipt path got, for the same reason: a sheet
+       * staged and abandoned sits in the list forever otherwise. The guard is
+       * `sale_id`, not the status label - a batch holding committed rows goes
+       * through undo, where the records it created come off properly.
+       */
+      case "call_discard": {
+        requireFeature("call_import.use");
+        requireFeature("import.commit");
+        const batchId = String(body.batchId ?? "");
+        if (!batchId) throw new BadRequest("batchId is required");
+
+        return await withConnection(async (conn) => {
+          const state = await conn.queryObject<{
+            committed: number;
+            rows: number;
+            leased: boolean;
+            source: string;
+            filename: string | null;
+          }>({
+            text: `select
+                     (select count(*) from data_center.import_rows r
+                       where r.batch_id = b.id and r.status = 'committed')::int as committed,
+                     (select count(*) from data_center.import_rows r
+                       where r.batch_id = b.id)::int as rows,
+                     (b.commit_lease_until is not null
+                      and b.commit_lease_until > now()) as leased,
+                     b.source, b.filename
+                   from data_center.import_batches b where b.id = $1`,
+            args: [batchId],
+          });
+          const b = state.rows[0];
+          if (!b) throw new BadRequest("That batch no longer exists.");
+          if (b.source !== CALL_SOURCE) {
+            return json(
+              {
+                error: "That batch came from the receipt import. Discard it on the Bulk Import tab.",
+                code: "wrong_source",
+                data: { source: b.source },
+              },
+              409,
+              cors,
+            );
+          }
+          if (b.leased) {
+            return json(
+              {
+                error:
+                  "A commit is running on this batch right now. Wait for it to finish, " +
+                  "then discard it.",
+                code: "commit_in_progress",
+              },
+              409,
+              cors,
+            );
+          }
+          if (b.committed > 0) {
+            return json(
+              {
+                error:
+                  `This batch has attached ${b.committed} call record` +
+                  `${b.committed === 1 ? "" : "s"}. Undo it first - that removes the ` +
+                  "records it created - and then it can be discarded.",
+                code: "has_records",
+              },
+              409,
+              cors,
+            );
+          }
+
+          await conn.queryObject("begin");
+          try {
+            await conn.queryObject({
+              text: "select set_config('data_center.actor', $1, true)",
+              args: [userId],
+            });
+            await conn.queryObject({
+              text: `delete from data_center.import_batches where id = $1`,
+              args: [batchId],
+            });
+            await conn.queryObject("commit");
+          } catch (err) {
+            await conn.queryObject("rollback");
+            throw err;
+          }
+          return json(
+            { data: { discarded: true, rows: b.rows, filename: b.filename } },
+            200,
+            cors,
+          );
         });
       }
 

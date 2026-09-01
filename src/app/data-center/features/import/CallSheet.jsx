@@ -86,6 +86,7 @@ export default function CallSheet({ canCommit = false }) {
   const [batch, setBatch] = useState(null); // { batchId, staged }
   const [checked, setChecked] = useState(null); // validate summary
   const [result, setResult] = useState(null); // commit summary
+  const [progress, setProgress] = useState(null); // { done, total } while a chain runs
   const fileRef = useRef(null);
 
   useEffect(() => {
@@ -305,29 +306,79 @@ export default function CallSheet({ canCommit = false }) {
     }
   };
 
+  /**
+   * One press, then watch.
+   *
+   * This was a client-side loop of up to 200 blocking requests wrapped in ONE
+   * try, so the first slice to hit the twenty-second abort killed the whole
+   * run and reported whatever it had. Each row is a save plus up to three
+   * attempt writes, every one its own edge-function invocation, so a 25-row
+   * slice was comfortably past that abort. A real weekly sheet could not
+   * finish, and this had only ever been proved on six rows.
+   *
+   * Now the server holds a lease and works through the batch on its own. The
+   * client presses once and reads the batch's own counts back.
+   */
   const commit = async () => {
     if (!batch) return;
     setBusy("commit");
     setError("");
+    setProgress({ done: 0, total: checked?.valid ?? 0 });
     try {
-      let committed = 0;
-      const failures = [];
-      // Sliced by the server; loop until it says it is done, the same way the
-      // receipt commit does, so a long backlog never sits in one request.
-      for (let i = 0; i < 200; i++) {
-        const out = await dataCenterImport.callCommit(batch.batchId);
-        committed += out.committed;
-        failures.push(...(out.failures ?? []));
-        if (out.done) break;
+      const kick = await dataCenterImport.callCommit(batch.batchId);
+      if (kick.stopped) {
+        throw new DataCenterError(
+          "The run hit its safety cap. Press Attach again to carry on.",
+          200,
+          "chain_cap",
+        );
       }
-      // The reasons, read back and grouped. The failures array carries a
-      // reason per row and this used to report only how many there were.
+
+      let done = kick.committed ?? 0;
+      // `done` with nothing started means there was nothing left to do.
+      // Anything else - started, or busy because another link holds it -
+      // means a chain is working the batch and this watches it.
+      if (!(kick.done && !kick.started)) {
+        let lastMoved = Date.now();
+        let lastCount = -1;
+        for (;;) {
+          await new Promise((r) => setTimeout(r, 5000));
+          const rows = await dataCenterImport.batches({ batchId: batch.batchId });
+          const b = rows.find((x) => x.id === batch.batchId);
+          if (!b) throw new DataCenterError("The batch is no longer there.", 404, "gone");
+
+          done = b.committed_rows;
+          setProgress({ done, total: checked?.valid ?? 0 });
+          if (b.committed_rows !== lastCount) {
+            lastCount = b.committed_rows;
+            lastMoved = Date.now();
+          }
+          if (b.state === "committed" || b.valid_rows === 0) break;
+
+          /*
+           * A lease with no movement is a slow link, not a stall. No lease
+           * AND no movement is a chain that died - a sign-out mid-run does
+           * exactly that, because every link re-checks the session.
+           */
+          if (!b.committing && Date.now() - lastMoved > 90_000) {
+            throw new DataCenterError(
+              b.last_error ??
+                "It stopped before finishing. Signing out mid-run does this. " +
+                  "Press Attach again and it picks up where it left off.",
+              408,
+              "stalled",
+            );
+          }
+        }
+      }
+
       const groups = await groupUnlanded(batch.batchId);
-      setResult({ committed, failures, groups });
+      setResult({ committed: done, groups });
     } catch (e) {
       setError(e instanceof DataCenterError ? e.message : "The commit did not finish");
     } finally {
       setBusy("");
+      setProgress(null);
     }
   };
 
@@ -339,6 +390,18 @@ export default function CallSheet({ canCommit = false }) {
       const out = await dataCenterImport.callRollback(batch.batchId);
       setResult(null);
       setChecked((c) => (c ? { ...c, valid: out.reversed } : c));
+      /*
+       * Rows that UPDATED a record cannot be undone by deleting it: the record
+       * was not this batch's to remove. Said out loud, because "reversed 40"
+       * on a 60-row batch otherwise reads as all of it.
+       */
+      if (out.notReversed > 0) {
+        setError(
+          `${plural(out.reversed, "call record")} removed. ` +
+            `${plural(out.notReversed, "row")} updated a record that already existed, ` +
+            "and those cannot be undone this way - the record was not this sheet's to remove.",
+        );
+      }
     } catch (e) {
       setError(e instanceof DataCenterError ? e.message : "The rollback did not finish");
     } finally {
@@ -544,6 +607,20 @@ export default function CallSheet({ canCommit = false }) {
             ))}
           </dl>
 
+          {/*
+            What "Ready" is about to do, split.
+            Attaching a new record and rewriting one somebody already worked
+            are different acts, and a single "Ready: 52" hides which this is.
+          */}
+          {checked.valid > 0 && (checked.updating ?? 0) > 0 && (
+            <p className="mt-2 text-xs text-gray-700">
+              Of those, {plural(checked.creating ?? 0, "row")} attaches a new record and{" "}
+              <strong>{plural(checked.updating, "row")} updates one that already exists</strong>.
+              A row whose record changed in the app after you downloaded the sheet is not in
+              this count; it is waiting for a person instead.
+            </p>
+          )}
+
           {checked.exceptions > 0 && (
             <p className="mt-2 text-xs text-gray-600">
               Rows needing a person are usually stoves whose receipt has not been digitalised yet.
@@ -571,6 +648,12 @@ export default function CallSheet({ canCommit = false }) {
                   Somebody with the commit grant releases these.
                 </span>
               )}
+              {progress && (
+                <span className="text-xs text-gray-600">
+                  {progress.done} of {progress.total} attached. This continues on the
+                  server, so you can leave this page.
+                </span>
+              )}
             </div>
           )}
         </div>
@@ -587,14 +670,14 @@ export default function CallSheet({ canCommit = false }) {
         */
         <div
           className={`mt-3 rounded-xl border p-4 ${
-            result.failures.length > 0
+            result.groups?.length > 0
               ? "border-amber-200 bg-amber-50"
               : "border-emerald-200 bg-emerald-50"
           }`}
         >
           <p
             className={`flex items-center gap-2 text-sm font-semibold ${
-              result.failures.length > 0 ? "text-amber-900" : "text-emerald-900"
+              result.groups?.length > 0 ? "text-amber-900" : "text-emerald-900"
             }`}
           >
             <CircleCheck className="h-4 w-4" /> {plural(result.committed, "call record")} attached
@@ -604,11 +687,7 @@ export default function CallSheet({ canCommit = false }) {
               <Unlanded groups={result.groups} />
             </div>
           )}
-          {result.failures.length > 0 && !result.groups?.length && (
-            <p className="mt-1 text-xs text-amber-900">
-              {plural(result.failures.length, "row")} did not go through. Open the batch to see why.
-            </p>
-          )}
+
           {canCommit && (
             <button
               type="button"
