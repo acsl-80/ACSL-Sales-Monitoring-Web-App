@@ -140,7 +140,10 @@ function Inner() {
         </>
       )}
       {current?.key === "calls" && (
-        <CallSheet canCommit={can(DATA_CENTER_FEATURES.IMPORT_COMMIT)} />
+        <CallSheet
+          canCommit={can(DATA_CENTER_FEATURES.IMPORT_COMMIT)}
+          canResolve={can(DATA_CENTER_FEATURES.IMPORT_EXCEPTIONS)}
+        />
       )}
       {(benchLive || current?.key === "bench") && (
         <div className={current?.key === "bench" ? undefined : "hidden"}>

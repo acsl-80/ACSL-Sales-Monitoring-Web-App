@@ -19,7 +19,15 @@ import {
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
 import {
-  Loader2, ChevronDown, ChevronRight, Download, Undo2, Trash2, PhoneCall, CircleAlert,
+  Loader2,
+  ChevronDown,
+  ChevronRight,
+  Download,
+  Undo2,
+  Trash2,
+  PhoneCall,
+  CircleAlert,
+  Wrench,
 } from "lucide-react";
 
 /**
@@ -77,9 +85,7 @@ export function callNextStep(b) {
     return {
       say:
         `${plural(b.valid_rows, "row is", "rows are")} ready to attach` +
-        (b.exception_rows
-          ? `, ${plural(b.exception_rows, "needs", "need")} a person first`
-          : "") +
+        (b.exception_rows ? `, ${plural(b.exception_rows, "needs", "need")} a person first` : "") +
         ". Nothing is written until you attach them.",
       action: { kind: "commit", label: `Attach ${b.valid_rows}` },
     };
@@ -91,23 +97,70 @@ export function callNextStep(b) {
 }
 
 /** The exceptions on one batch, grouped by what is actually wrong. */
-function CallExceptions({ batchId }) {
+function CallExceptions({ batchId, canResolve = false, onResolved }) {
   const [rows, setRows] = useState(null);
   const [open, setOpen] = useState(null);
   const [note, setNote] = useState("");
+  const [drafts, setDrafts] = useState({});
+  const [fixing, setFixing] = useState(null);
+  const [rowNote, setRowNote] = useState(null);
+
+  const load = useCallback(async () => {
+    const [exc, rej] = await Promise.all([
+      dataCenterImport.rows(batchId, "exception"),
+      dataCenterImport.rows(batchId, "rejected"),
+    ]);
+    setRows([...exc, ...rej]);
+  }, [batchId]);
 
   useEffect(() => {
     let live = true;
-    Promise.all([
-      dataCenterImport.rows(batchId, "exception"),
-      dataCenterImport.rows(batchId, "rejected"),
-    ])
-      .then(([e, r]) => live && setRows([...e, ...r]))
-      .catch(() => live && setRows([]));
+    load().catch(() => live && setRows([]));
     return () => {
       live = false;
     };
-  }, [batchId]);
+  }, [load]);
+
+  /**
+   * Correct one row's stove ID.
+   *
+   * Reads the value the INPUT is showing, not a separate one. The receipt
+   * panel shipped this reading `drafts[id]` while the input rendered
+   * `drafts[id] ?? row.stove_serial_no`, so pressing Fix without first editing
+   * the box sent an empty string and hit a silent return - the field looked
+   * filled and the button did nothing at all, which was the single most
+   * reported thing about that screen.
+   */
+  const resolve = async (row) => {
+    const serial = (drafts[row.id] ?? row.stove_serial_no ?? "").trim();
+    if (!serial) {
+      setRowNote({ id: row.id, text: "Type the correct stove ID first." });
+      return;
+    }
+    setFixing(row.id);
+    setRowNote(null);
+    try {
+      const out = await dataCenterImport.callResolveException(row.id, serial);
+      if (!out.resolved) {
+        // Say so here rather than letting the row look resolved and fail at
+        // attach. The reason it now carries is the new one, not the old.
+        setRows((rs) =>
+          rs.map((r) => (r.id === row.id ? { ...r, exception_reason: out.reason } : r)),
+        );
+        setRowNote({ id: row.id, text: out.reason ?? "That stove ID did not resolve it." });
+      } else {
+        await load();
+        onResolved?.();
+      }
+    } catch (err) {
+      setRowNote({
+        id: row.id,
+        text: err instanceof DataCenterError ? err.message : "That did not go through.",
+      });
+    } finally {
+      setFixing(null);
+    }
+  };
 
   const groups = useMemo(() => (rows ? groupByKind(rows, CALL_EXCEPTION_KINDS) : []), [rows]);
 
@@ -129,7 +182,7 @@ function CallExceptions({ batchId }) {
       setNote(
         out.truncated
           ? `${plural(out.rows, "row")} downloaded, which is this file's ceiling. ` +
-            "There are more; fix these, upload them, and download again for the rest."
+              "There are more; fix these, upload them, and download again for the rest."
           : `${plural(out.rows, "row")} downloaded as ${out.filename}.`,
       );
     } catch (err) {
@@ -193,12 +246,41 @@ function CallExceptions({ batchId }) {
               {isOpen && (
                 <ul className="space-y-1 bg-gray-50 px-3 pb-3 pl-9 text-xs text-gray-700">
                   {g.rows.slice(0, 50).map((r) => (
-                    <li key={r.id} className="flex flex-wrap gap-x-2">
-                      <span className="font-medium tabular-nums">Row {r.row_number}</span>
-                      <span className="font-mono">{r.stove_serial_no ?? "(no stove ID)"}</span>
-                      <span className="text-gray-600">
-                        {r.exception_reason ?? r.rejection_reason}
+                    <li key={r.id} className="py-1">
+                      <span className="flex flex-wrap gap-x-2">
+                        <span className="font-medium tabular-nums">Row {r.row_number}</span>
+                        <span className="font-mono">{r.stove_serial_no ?? "(no stove ID)"}</span>
+                        <span className="text-gray-600">
+                          {r.exception_reason ?? r.rejection_reason}
+                        </span>
                       </span>
+                      {g.fixable && canResolve && (
+                        <span className="mt-1 flex flex-wrap items-center gap-1.5">
+                          <input
+                            type="text"
+                            aria-label={`Corrected stove ID for row ${r.row_number}`}
+                            value={drafts[r.id] ?? r.stove_serial_no ?? ""}
+                            onChange={(ev) => setDrafts((d) => ({ ...d, [r.id]: ev.target.value }))}
+                            className="w-40 rounded border border-gray-300 px-2 py-1 font-mono text-xs"
+                          />
+                          <button
+                            type="button"
+                            disabled={fixing === r.id}
+                            onClick={() => resolve(r)}
+                            className="inline-flex items-center gap-1 rounded border border-(--dc-accent) px-2 py-1 text-xs font-semibold text-(--dc-accent) transition hover:bg-(--dc-accent-soft) disabled:opacity-50"
+                          >
+                            {fixing === r.id ? (
+                              <Loader2 className="h-3 w-3 animate-spin" />
+                            ) : (
+                              <Wrench className="h-3 w-3" />
+                            )}
+                            Fix
+                          </button>
+                          {rowNote?.id === r.id && (
+                            <span className="text-amber-800">{rowNote.text}</span>
+                          )}
+                        </span>
+                      )}
                     </li>
                   ))}
                   {g.rows.length > 50 && (
@@ -216,7 +298,7 @@ function CallExceptions({ batchId }) {
   );
 }
 
-export default function CallBatches({ canCommit, reloadKey = 0, onChanged }) {
+export default function CallBatches({ canCommit, canResolve = false, reloadKey = 0, onChanged }) {
   const [batches, setBatches] = useState(null);
   const [open, setOpen] = useState(null);
   const [busy, setBusy] = useState("");
@@ -252,9 +334,7 @@ export default function CallBatches({ canCommit, reloadKey = 0, onChanged }) {
    */
   useEffect(() => {
     const live = (batches ?? []).some(
-      (b) =>
-        b.committing ||
-        (b.state === "validated" && b.valid_rows > 0 && b.committed_rows > 0),
+      (b) => b.committing || (b.state === "validated" && b.valid_rows > 0 && b.committed_rows > 0),
     );
     if (!live) return undefined;
     const t = setInterval(refresh, 5000);
@@ -370,8 +450,8 @@ export default function CallBatches({ canCommit, reloadKey = 0, onChanged }) {
       )}
       {batches?.length === 0 && (
         <p className="p-4 text-sm text-gray-600">
-          No call sheets have been uploaded in this period. Uploading one above puts it here,
-          so it can be picked up again later.
+          No call sheets have been uploaded in this period. Uploading one above puts it here, so it
+          can be picked up again later.
         </p>
       )}
 
@@ -381,12 +461,24 @@ export default function CallBatches({ canCommit, reloadKey = 0, onChanged }) {
             <table className="w-full text-sm">
               <thead className="border-b border-gray-200 bg-(--dc-surface-muted) text-left text-xs uppercase tracking-wide text-gray-500">
                 <tr>
-                  <th scope="col" className="px-4 py-2 font-medium">State</th>
-                  <th scope="col" className="px-4 py-2 font-medium">File</th>
-                  <th scope="col" className="px-4 py-2 font-medium">Rows</th>
-                  <th scope="col" className="px-4 py-2 font-medium">Attached</th>
-                  <th scope="col" className="px-4 py-2 font-medium">Uploaded</th>
-                  <th scope="col" className="px-4 py-2 font-medium">By whom</th>
+                  <th scope="col" className="px-4 py-2 font-medium">
+                    State
+                  </th>
+                  <th scope="col" className="px-4 py-2 font-medium">
+                    File
+                  </th>
+                  <th scope="col" className="px-4 py-2 font-medium">
+                    Rows
+                  </th>
+                  <th scope="col" className="px-4 py-2 font-medium">
+                    Attached
+                  </th>
+                  <th scope="col" className="px-4 py-2 font-medium">
+                    Uploaded
+                  </th>
+                  <th scope="col" className="px-4 py-2 font-medium">
+                    By whom
+                  </th>
                   <th scope="col" className="px-4 py-2" />
                 </tr>
               </thead>
@@ -400,7 +492,9 @@ export default function CallBatches({ canCommit, reloadKey = 0, onChanged }) {
                         onClick={() => setOpen(isOpen ? null : b.id)}
                         className="cursor-pointer transition hover:bg-gray-50"
                       >
-                        <td className="px-4 py-2"><StateChip state={b.state} /></td>
+                        <td className="px-4 py-2">
+                          <StateChip state={b.state} />
+                        </td>
                         <td className="max-w-[16rem] truncate px-4 py-2 text-gray-800">
                           {b.filename ?? "(no file)"}
                         </td>
@@ -430,8 +524,7 @@ export default function CallBatches({ canCommit, reloadKey = 0, onChanged }) {
                                 <button
                                   type="button"
                                   disabled={
-                                    busy === b.id ||
-                                    (step.action.kind === "commit" && !canCommit)
+                                    busy === b.id || (step.action.kind === "commit" && !canCommit)
                                   }
                                   onClick={() =>
                                     step.action.kind === "commit"
@@ -460,13 +553,24 @@ export default function CallBatches({ canCommit, reloadKey = 0, onChanged }) {
                             <dl className="grid grid-cols-2 gap-2 sm:grid-cols-5">
                               <Stat label="Rows" value={b.total_rows} />
                               <Stat label="Ready" value={b.valid_rows} tone="text-emerald-700" />
-                              <Stat label="Need a person" value={b.exception_rows ?? 0} tone="text-amber-700" />
+                              <Stat
+                                label="Need a person"
+                                value={b.exception_rows ?? 0}
+                                tone="text-amber-700"
+                              />
                               <Stat
                                 label="Unreadable"
-                                value={Math.max(0, (b.rejected_rows ?? 0) - (b.exception_rows ?? 0))}
+                                value={Math.max(
+                                  0,
+                                  (b.rejected_rows ?? 0) - (b.exception_rows ?? 0),
+                                )}
                                 tone="text-red-700"
                               />
-                              <Stat label="Attached" value={b.committed_rows} tone="text-(--dc-accent)" />
+                              <Stat
+                                label="Attached"
+                                value={b.committed_rows}
+                                tone="text-(--dc-accent)"
+                              />
                             </dl>
 
                             {b.last_error && (
@@ -476,7 +580,11 @@ export default function CallBatches({ canCommit, reloadKey = 0, onChanged }) {
                             )}
 
                             <div className="mt-3 overflow-hidden rounded-lg border border-gray-200">
-                              <CallExceptions batchId={b.id} />
+                              <CallExceptions
+                                batchId={b.id}
+                                canResolve={canResolve}
+                                onResolved={refresh}
+                              />
                             </div>
 
                             {canCommit && (
@@ -539,7 +647,11 @@ export default function CallBatches({ canCommit, reloadKey = 0, onChanged }) {
                 if (p) run(p.kind, p.batch.id);
               }}
             >
-              {pending?.kind === "commit" ? "Attach them" : pending?.kind === "undo" ? "Undo" : "Clear it"}
+              {pending?.kind === "commit"
+                ? "Attach them"
+                : pending?.kind === "undo"
+                  ? "Undo"
+                  : "Clear it"}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>

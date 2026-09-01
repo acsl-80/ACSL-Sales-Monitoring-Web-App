@@ -39,11 +39,15 @@ export const CALL_EXCEPTION_KINDS = [
     test: (why) => /has no sale recorded yet/i.test(why),
     title: "The receipt has not been digitalised yet",
     selfHealing: true,
+    // Both are true at once, and the copy says so. Most of these clear
+    // themselves when the receipt lands; a few are a mistyped serial, and
+    // those are fixable here without touching the file.
+    fixable: true,
     what:
-      "This is the ordinary one, and it is not a mistake in the sheet. A call cannot " +
-      "attach to a sale that does not exist yet. Digitalise the receipt through Bulk " +
-      "Import, then press Check the rows again and these clear themselves. Nothing " +
-      "here needs editing.",
+      "Usually not a mistake in the sheet at all: a call cannot attach to a sale that " +
+      "does not exist yet. Digitalise the receipt through Bulk Import, then press Check " +
+      "the rows again and these clear themselves. If instead the stove ID was mistyped, " +
+      "correct it here and the row is re-checked on the spot.",
   },
   {
     key: "stale_version",
@@ -80,6 +84,7 @@ export const CALL_EXCEPTION_KINDS = [
     test: (why) => /already appears on row/i.test(why),
     title: "The same stove appears twice in this file",
     selfHealing: false,
+    fixable: true,
     what:
       "Only the first row for a stove is used. Delete the repeat, or merge the two rows " +
       "if each carries something the other does not.",

@@ -47,6 +47,7 @@ import {
   CALL_SOURCE,
   callSheetSpec,
   commitCallSlice,
+  resolveCallException,
   rollbackCallRows,
   stageCallRows,
   validateCallRows,
@@ -3840,6 +3841,71 @@ serve(async (req) => {
             200,
             cors,
           );
+        });
+      }
+
+      /**
+       * Correct the stove ID on one call row, and re-check just that row.
+       *
+       * Its own action rather than a branch of `resolve_exception`, which is
+       * source-guarded against exactly this. That guard exists because the
+       * receipt version, pointed at a call row, set status 'valid' and left
+       * sale_id null - and `commitCallSlice` selects on both, so the row was
+       * neither committed nor listed anywhere. It stopped existing.
+       */
+      case "call_resolve_exception": {
+        requireFeature("call_import.use");
+        requireFeature("import.exceptions");
+        const rowId = String(body.rowId ?? "");
+        const serial = String(body.correctedSerial ?? "").trim().toUpperCase();
+        if (!rowId) throw new BadRequest("rowId is required");
+        if (!serial) throw new BadRequest("A corrected stove ID is required");
+
+        return await withConnection(async (conn) => {
+          await conn.queryObject("begin");
+          try {
+            await conn.queryObject({
+              text: "select set_config('data_center.actor', $1, true)",
+              args: [userId],
+            });
+            const owner = await conn.queryObject<{ source: string }>({
+              text: `select b.source from data_center.import_rows r
+                       join data_center.import_batches b on b.id = r.batch_id
+                      where r.id = $1`,
+              args: [rowId],
+            });
+            if (owner.rows.length === 0) throw new BadRequest("No such row");
+            if (owner.rows[0].source !== CALL_SOURCE) {
+              await conn.queryObject("rollback");
+              return json(
+                {
+                  error:
+                    "That row came from the receipt import. Fix it on the Bulk Import tab.",
+                  code: "wrong_source",
+                  data: { source: owner.rows[0].source },
+                },
+                409,
+                cors,
+              );
+            }
+
+            const updateExisting =
+              (await readConfig(conn, "call_import.update_existing", true)) !== false;
+
+            const out = await resolveCallException(conn, {
+              rowId,
+              serial,
+              userId,
+              ownOrganizationId: profile.organization_id ?? null,
+              superAdmin,
+              updateExisting,
+            });
+            await conn.queryObject("commit");
+            return json({ data: { rowId, ...out } }, 200, cors);
+          } catch (err) {
+            await conn.queryObject("rollback");
+            throw err;
+          }
         });
       }
 
