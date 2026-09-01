@@ -1426,6 +1426,34 @@ export const dataCenterImport = {
       { rowId, correctedSerial },
     ),
 
+  /**
+   * Clear away a staging batch that never became sales.
+   *
+   * Removes staging state only - the server refuses outright if any row holds
+   * a sale, because undoing sales is rollback's job and it does it through
+   * delete-sale so each stove is released properly.
+   */
+  discard: (batchId: string) =>
+    call<{ discarded: boolean; rows: number; drafts: number; filename: string | null }>(
+      "data-center-import",
+      "discard",
+      { batchId },
+    ),
+
+  /**
+   * Clear away a staging batch that never became sales.
+   *
+   * Removes staging state only - the server refuses outright if any row holds
+   * a sale, because undoing sales is rollback's job and it does it through
+   * delete-sale so each stove is released properly.
+   */
+  discard: (batchId: string) =>
+    call<{ discarded: boolean; rows: number; drafts: number; filename: string | null }>(
+      "data-center-import",
+      "discard",
+      { batchId },
+    ),
+
   /** Partners this caller may import for. Scoped server-side. */
   partners: () =>
     call<{ id: string; partner_name: string }[]>("data-center-import", "partners"),

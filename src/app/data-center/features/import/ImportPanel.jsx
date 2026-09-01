@@ -23,7 +23,7 @@ import {
 } from "@/components/ui/alert-dialog";
 import {
   Upload, Loader2, AlertTriangle, CheckCircle2, FileText, Play,
-  Eye, Undo2, Wrench, X, PenLine, Copy, ChevronDown, ChevronRight,
+  Eye, Undo2, Wrench, X, PenLine, Copy, ChevronDown, ChevronRight, Trash2,
 } from "lucide-react";
 
 /**
@@ -124,11 +124,99 @@ function SharedPhoneRows({ batchId }) {
   );
 }
 
+/**
+ * What an exception is, and what would actually change it.
+ *
+ * Three hundred rows in one flat list, each with a "Fix" box beside it, is a
+ * wall nobody can work. Worse, most of those boxes could not have helped: a
+ * corrected serial fixes a serial that was mistyped, and does nothing at all
+ * for a partner the sales app has not been assigned a model for. The button
+ * was offered on every row regardless, and on the rows it could not help it
+ * was offered anyway.
+ *
+ * So exceptions are grouped by what is actually wrong, each group says how
+ * many rows it holds, and only the groups a serial correction can help get a
+ * serial correction. The rest say what WOULD change them, and where.
+ */
+const EXCEPTION_KINDS = [
+  {
+    key: "not_in_stock",
+    test: (why) => /is not in stock records/i.test(why),
+    title: "The stove ID matches nothing in stock",
+    fixable: true,
+    what:
+      "Either the serial was mistyped on the receipt or when it was digitised, or the " +
+      "stove was never transferred to a partner. Correct the serial here and the row is " +
+      "re-checked on the spot.",
+  },
+  {
+    key: "unassigned_model",
+    test: (why) => /is not assigned the/i.test(why),
+    title: "The partner has not been assigned this sales model",
+    fixable: false,
+    what:
+      "The sales app refuses a sale whose partner is not assigned that model, so these " +
+      "rows would fail at commit. The fix is one assignment per pair in the ERP " +
+      "(Partner Sales Models), not a change to the row. Assign them, then press " +
+      "Check the rows again and these clear themselves.",
+  },
+  {
+    key: "duplicate",
+    test: (why) => /already appears on row/i.test(why),
+    title: "The same stove ID appears twice in this file",
+    fixable: true,
+    what:
+      "One of the two rows has the wrong serial. Correct it here, or leave the row - " +
+      "the first occurrence still imports.",
+  },
+  {
+    key: "already_sold",
+    test: (why) => /already (recorded as sold|sold by the time)/i.test(why),
+    title: "The stove is already sold",
+    fixable: true,
+    what:
+      "Somebody has already recorded a sale for this stove. If the serial on this row is " +
+      "wrong, correct it; if the row is a duplicate of a sale already in the app, leave it.",
+  },
+  {
+    key: "moved_partner",
+    test: (why) => /moved to a different partner|belongs to a different partner/i.test(why),
+    title: "The stove belongs to a different partner",
+    fixable: true,
+    what:
+      "The stove ID resolves to a partner other than the one this row claims. Correct the " +
+      "serial if it was mistyped; otherwise the consignment records need looking at.",
+  },
+  {
+    key: "other",
+    test: () => true,
+    title: "Everything else",
+    fixable: true,
+    what: "One row at a time. The reason is printed against each.",
+  },
+];
+
+/** The distinct partner-and-model pairs behind a set of unassigned-model rows. */
+function assignmentsNeeded(rows) {
+  const pairs = new Map();
+  for (const r of rows) {
+    const why = r.exception_reason ?? "";
+    const partner = why.match(/Partner "([^"]+)"/)?.[1];
+    const model = why.match(/the "([^"]+)" sales model/)?.[1];
+    if (!partner || !model) continue;
+    const key = `${partner}\u0000${model}`;
+    pairs.set(key, { partner, model, rows: (pairs.get(key)?.rows ?? 0) + 1 });
+  }
+  return [...pairs.values()].sort((a, b) => b.rows - a.rows);
+}
+
 function ExceptionsQueue({ batchId, canResolve, onChanged }) {
   const [rows, setRows] = useState([]);
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(null);
   const [drafts, setDrafts] = useState({});
+  const [open, setOpen] = useState(null);
+  const [note, setNote] = useState(null);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -143,20 +231,48 @@ function ExceptionsQueue({ batchId, canResolve, onChanged }) {
     load();
   }, [load]);
 
-  const resolve = async (rowId) => {
-    const serial = (drafts[rowId] ?? "").trim();
-    if (!serial) return;
-    setBusy(rowId);
+  const groups = useMemo(() => {
+    const buckets = EXCEPTION_KINDS.map((k) => ({ ...k, rows: [] }));
+    for (const r of rows) {
+      const why = r.exception_reason ?? "";
+      (buckets.find((b) => b.test(why)) ?? buckets[buckets.length - 1]).rows.push(r);
+    }
+    return buckets.filter((b) => b.rows.length > 0);
+  }, [rows]);
+
+  const resolve = async (row) => {
+    /*
+     * The value the INPUT is showing, not a separate one.
+     *
+     * This read `drafts[rowId]` while the input rendered
+     * `drafts[rowId] ?? row.stove_serial_no`, so pressing Fix without first
+     * editing the box sent an empty string and hit a silent `return`. The
+     * field looked filled and the button did nothing at all - the single
+     * most reported thing about this screen.
+     */
+    const serial = (drafts[row.id] ?? row.stove_serial_no ?? "").trim();
+    if (!serial) {
+      setNote({ id: row.id, text: "Type the correct stove ID first." });
+      return;
+    }
+    setBusy(row.id);
+    setNote(null);
     try {
-      const out = await dataCenterImport.resolveException(rowId, serial);
+      const out = await dataCenterImport.resolveException(row.id, serial);
       if (!out.resolved) {
         // The correction did not fix it. Say so here rather than letting the
         // row look resolved and fail later at commit.
-        setRows((rs) => rs.map((r) => (r.id === rowId ? { ...r, exception_reason: out.reason } : r)));
+        setRows((rs) => rs.map((r) => (r.id === row.id ? { ...r, exception_reason: out.reason } : r)));
+        setNote({ id: row.id, text: out.reason ?? "That serial did not resolve it." });
       } else {
         await load();
         onChanged?.();
       }
+    } catch (err) {
+      setNote({
+        id: row.id,
+        text: err instanceof DataCenterError ? err.message : "That did not go through.",
+      });
     } finally {
       setBusy(null);
     }
@@ -174,37 +290,111 @@ function ExceptionsQueue({ batchId, canResolve, onChanged }) {
   }
 
   return (
-    <ul className="divide-y divide-gray-100">
-      {rows.map((r) => (
-        <li key={r.id} className="flex flex-wrap items-center gap-2 px-3 py-2 text-sm">
-          <span className="w-10 shrink-0 text-xs text-gray-400">#{r.row_number}</span>
-          <span className="min-w-[180px] flex-1 text-amber-800">{r.exception_reason}</span>
-          <span className="shrink-0 text-xs text-gray-500">
-            {r.raw?.["User First Name"] ?? r.raw?.end_user_name ?? r.raw?.name ?? ""}
-          </span>
-          {canResolve && (
-            <>
-              <input
-                type="text"
-                value={drafts[r.id] ?? r.stove_serial_no ?? ""}
-                onChange={(e) => setDrafts((d) => ({ ...d, [r.id]: e.target.value }))}
-                placeholder="Correct serial"
-                className="w-full min-w-0 rounded-md border sm:w-36 border-gray-300 px-2 py-1 text-sm focus:border-(--dc-accent) focus:outline-none"
-              />
-              <button
-                type="button"
-                disabled={busy === r.id}
-                onClick={() => resolve(r.id)}
-                className="inline-flex shrink-0 items-center gap-1 rounded-md border border-(--dc-primary)/30 px-2 py-1 text-xs font-medium text-(--dc-primary) hover:bg-(--dc-primary)/10 disabled:opacity-50"
-              >
-                {busy === r.id ? <Loader2 className="h-3 w-3 animate-spin" /> : <Wrench className="h-3 w-3" />}
-                Fix
-              </button>
-            </>
-          )}
-        </li>
-      ))}
-    </ul>
+    <div className="divide-y divide-gray-100">
+      {groups.map((g) => {
+        const isOpen = open === g.key;
+        const pairs = g.key === "unassigned_model" ? assignmentsNeeded(g.rows) : [];
+        return (
+          <div key={g.key}>
+            <button
+              type="button"
+              onClick={() => setOpen(isOpen ? null : g.key)}
+              aria-expanded={isOpen}
+              className="flex w-full items-start gap-2 px-3 py-2 text-left hover:bg-gray-50"
+            >
+              {isOpen
+                ? <ChevronDown className="mt-0.5 h-4 w-4 shrink-0 text-gray-400" />
+                : <ChevronRight className="mt-0.5 h-4 w-4 shrink-0 text-gray-400" />}
+              <span className="min-w-0 flex-1">
+                <span className="text-sm font-medium text-gray-900">{g.title}</span>
+                <span className="ml-2 text-xs text-gray-600">
+                  {plural(g.rows.length, "row")}
+                  {pairs.length > 0
+                    ? ` · ${plural(pairs.length, "assignment")} to make`
+                    : ""}
+                </span>
+                <span className="mt-0.5 block text-xs text-gray-600">{g.what}</span>
+              </span>
+            </button>
+
+            {isOpen && pairs.length > 0 && (
+              /*
+                The work, deduplicated.
+
+                122 rows on the real file were 14 assignments - Solar Sister
+                alone appears under five spellings. Listing the rows would be
+                the same wall in a different order; listing the PAIRS is the
+                actual worklist somebody takes to the ERP.
+              */
+              <div className="mx-3 mb-2 overflow-hidden rounded-md border border-amber-200 bg-amber-50">
+                <p className="border-b border-amber-200 px-3 py-1.5 text-xs font-medium text-amber-900">
+                  Assign these in the ERP, then check the batch again
+                </p>
+                <ul className="divide-y divide-amber-100">
+                  {pairs.map((p) => (
+                    <li
+                      key={`${p.partner}-${p.model}`}
+                      className="flex flex-wrap items-baseline gap-x-2 px-3 py-1.5 text-xs text-amber-900"
+                    >
+                      <span className="font-medium">{p.partner}</span>
+                      <span className="text-amber-700">needs</span>
+                      <span className="font-medium">{p.model}</span>
+                      <span className="ml-auto tabular-nums text-amber-700">
+                        {plural(p.rows, "row")}
+                      </span>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            )}
+
+            {isOpen && (
+              <ul className="divide-y divide-gray-100 border-t border-gray-100 bg-gray-50/50">
+                {g.rows.map((r) => (
+                  <li key={r.id} className="flex flex-wrap items-center gap-2 px-3 py-2 text-sm">
+                    <span className="w-10 shrink-0 text-xs text-gray-400">#{r.row_number}</span>
+                    <span className="min-w-[180px] flex-1 text-amber-800">
+                      {r.exception_reason}
+                      {note?.id === r.id && (
+                        <span className="mt-0.5 block text-xs font-medium text-red-700">
+                          {note.text}
+                        </span>
+                      )}
+                    </span>
+                    <span className="shrink-0 text-xs text-gray-500">
+                      {r.raw?.["User First Name"] ?? r.raw?.end_user_name ?? r.raw?.name ?? ""}
+                    </span>
+                    {canResolve && g.fixable && (
+                      <>
+                        <input
+                          type="text"
+                          value={drafts[r.id] ?? r.stove_serial_no ?? ""}
+                          onChange={(e) => setDrafts((d) => ({ ...d, [r.id]: e.target.value }))}
+                          placeholder="Correct serial"
+                          aria-label={`Corrected stove ID for row ${r.row_number}`}
+                          className="w-full min-w-0 rounded-md border sm:w-36 border-gray-300 px-2 py-1 text-sm focus:border-(--dc-accent) focus:outline-none"
+                        />
+                        <button
+                          type="button"
+                          disabled={busy === r.id}
+                          onClick={() => resolve(r)}
+                          className="inline-flex shrink-0 items-center gap-1 rounded-md border border-(--dc-primary)/30 px-2 py-1 text-xs font-medium text-(--dc-primary) hover:bg-(--dc-primary)/10 disabled:opacity-50"
+                        >
+                          {busy === r.id
+                            ? <Loader2 className="h-3 w-3 animate-spin" />
+                            : <Wrench className="h-3 w-3" />}
+                          Fix
+                        </button>
+                      </>
+                    )}
+                  </li>
+                ))}
+              </ul>
+            )}
+          </div>
+        );
+      })}
+    </div>
   );
 }
 
@@ -804,6 +994,36 @@ export default function ImportPanel({ canUpload, canCommit, canResolve }) {
     }
   };
 
+  /**
+   * Clear away a batch that never became sales.
+   *
+   * The list had no way to remove anything: a staged file nobody committed, a
+   * dry run somebody reconsidered, a bench batch a typist abandoned. Rollback
+   * does not appear for them - it exists to undo sales and these have none -
+   * so they accumulated with no exit at all.
+   */
+  const runDiscard = async (batchId) => {
+    setBusy(true);
+    setError(null);
+    try {
+      const out = await dataCenterImport.discard(batchId);
+      setNotice(
+        out.drafts > 0
+          ? `Discarded. ${plural(out.drafts, "part-typed record")} went with it.`
+          : "Discarded.",
+      );
+      setSteps([]);
+      setUnlanded(null);
+      await refresh();
+    } catch (err) {
+      setError(
+        err instanceof DataCenterError ? err.message : "That batch could not be discarded.",
+      );
+    } finally {
+      setBusy(false);
+    }
+  };
+
   const runRollback = async (batchId, committed) => {
     setBusy(true);
     let reversed = 0;
@@ -858,6 +1078,15 @@ export default function ImportPanel({ canUpload, canCommit, canResolve }) {
         plural(pending.count, "stove")} sold. The sales app's inventory figures will change.`,
       action: `Commit ${NUMBER.format(pending.count)}`,
     }
+    : pending?.kind === "discard"
+      ? {
+        title: "Discard this batch?",
+        body: pending.count > 0
+          ? `${plural(pending.count, "part-typed record")} will be thrown away. No sales are ` +
+            "affected - this batch never wrote any."
+          : "This clears the batch off the list. No sales are affected - it never wrote any.",
+        action: "Discard",
+      }
     : pending
       ? {
         title: `Roll back ${plural(pending.count, "record")}?`,
@@ -872,6 +1101,7 @@ export default function ImportPanel({ canUpload, canCommit, canResolve }) {
     const { kind, batchId, count } = pending;
     setPending(null);
     if (kind === "commit") runCommit(batchId, count);
+    else if (kind === "discard") runDiscard(batchId);
     else runRollback(batchId, count);
   };
 
@@ -1188,6 +1418,35 @@ export default function ImportPanel({ canUpload, canCommit, canResolve }) {
                         className="inline-flex items-center gap-1 rounded-md bg-(--dc-accent) px-2.5 py-1.5 text-xs font-medium text-white hover:bg-(--dc-accent-strong) disabled:opacity-50"
                       >
                         <Play className="h-3.5 w-3.5" /> Commit {b.valid_rows}
+                      </button>
+                    )}
+                    {/*
+                      Discard, for a batch that never wrote a sale.
+
+                      Deliberately NOT offered once anything has committed:
+                      that is rollback's job, and rollback removes each sale
+                      through delete-sale so its stove is released. The server
+                      enforces the same rule by the sale_id column rather than
+                      by the status label, so a crash-window row still routes
+                      to rollback.
+                    */}
+                    {canCommit && b.committed_rows === 0 && b.state !== "committed" && (
+                      <button
+                        type="button"
+                        disabled={busy}
+                        onClick={() =>
+                          setPending({
+                            kind: "discard",
+                            batchId: b.id,
+                            count: Math.max(
+                              0,
+                              (b.total_rows ?? 0) - (b.valid_rows ?? 0) -
+                                (b.rejected_rows ?? 0) - (b.exception_rows ?? 0),
+                            ),
+                          })}
+                        className="inline-flex items-center gap-1 rounded-md border border-gray-300 px-2.5 py-1.5 text-xs font-medium text-gray-600 hover:bg-gray-50 disabled:opacity-50"
+                      >
+                        <Trash2 className="h-3.5 w-3.5" /> Discard
                       </button>
                     )}
                     {canCommit && b.committed_rows > 0 && (

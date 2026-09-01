@@ -3000,6 +3000,111 @@ serve(async (req) => {
       }
 
       /** Fix the serial on an exception row and put it back in the queue. */
+      /**
+       * Clear away a staging batch that never became sales.
+       *
+       * The import page accumulates batches nobody can remove. A file staged
+       * and abandoned, a dry run somebody reconsidered, a bench batch opened
+       * by a typist who closed the tab - each one sits in the list forever,
+       * and production had five of them inside two days. Rollback is not the
+       * answer: it only appears once a batch has written sales, because its
+       * job is undoing sales, and these have none.
+       *
+       * So: discard, which removes STAGING STATE ONLY. The guard is the
+       * `sale_id` column, not the status label - a batch holding any sale,
+       * however it is labelled, must go through rollback where each sale is
+       * removed by `delete-sale` and its stove released. Nothing here can
+       * reach public.sales.
+       *
+       * Part-typed bench drafts ARE thrown away, which is why the count comes
+       * back for the confirmation to name before anybody presses it.
+       */
+      case "discard": {
+        requireFeature("import.commit");
+        const batchId = String(body.batchId ?? "");
+        if (!batchId) throw new BadRequest("batchId is required");
+
+        return await withConnection(async (conn) => {
+          const state = await conn.queryObject<{
+            sales: number;
+            drafts: number;
+            rows: number;
+            leased: boolean;
+            filename: string | null;
+          }>({
+            text: `select
+                     (select count(*) from data_center.import_rows r
+                       where r.batch_id = b.id and r.sale_id is not null)::int as sales,
+                     (select count(*) from data_center.import_rows r
+                       where r.batch_id = b.id and r.status = 'draft')::int as drafts,
+                     (select count(*) from data_center.import_rows r
+                       where r.batch_id = b.id)::int as rows,
+                     (b.commit_lease_until is not null
+                      and b.commit_lease_until > now()) as leased,
+                     b.filename
+                   from data_center.import_batches b where b.id = $1`,
+            args: [batchId],
+          });
+          const b = state.rows[0];
+          if (!b) throw new BadRequest("That batch no longer exists.");
+
+          if (b.leased) {
+            return json(
+              {
+                error:
+                  "A commit is running on this batch right now. Wait for it to finish, " +
+                  "then discard it.",
+                code: "commit_in_progress",
+              },
+              409,
+              cors,
+            );
+          }
+          if (b.sales > 0) {
+            return json(
+              {
+                error:
+                  `This batch has written ${b.sales} sale${b.sales === 1 ? "" : "s"} into the ` +
+                  "sales app. Roll it back first - that removes each sale properly and " +
+                  "releases its stove - and then it can be discarded.",
+                code: "has_sales",
+              },
+              409,
+              cors,
+            );
+          }
+
+          await conn.queryObject("begin");
+          try {
+            await conn.queryObject({
+              text: "select set_config('data_center.actor', $1, true)",
+              args: [userId],
+            });
+            // Claims first: import_claims cascades on batch delete, but a claim
+            // released explicitly is one a concurrent staging attempt can take
+            // immediately rather than waiting on the ten-minute sweep.
+            await conn.queryObject({
+              text: "select data_center.release_import_claims($1)",
+              args: [batchId],
+            });
+            await conn.queryObject({
+              text: "delete from data_center.import_batches where id = $1",
+              args: [batchId],
+            });
+            await conn.queryObject("commit");
+          } catch (err) {
+            await conn.queryObject("rollback");
+            throw err;
+          }
+
+          return json(
+            { data: { discarded: true, rows: b.rows, drafts: b.drafts, filename: b.filename } },
+            200,
+            cors,
+          );
+        });
+      }
+
       case "resolve_exception": {
         requireFeature("import.exceptions");
         const rowId = String(body.rowId ?? "");
