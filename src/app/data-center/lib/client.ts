@@ -1195,6 +1195,12 @@ export type ImportBatch = {
   id: string;
   filename: string | null;
   state: "staged" | "validated" | "dry_run" | "committed" | "rolled_back" | "failed";
+  /**
+   * Which import staged this batch. The receipt panel and the call panel read
+   * the same `batches` action, so each filters to its own; without it a call
+   * batch rendered as a receipt batch and offered receipt Rollback.
+   */
+  source: "receipt" | "call_center" | "manual" | "field" | "workbench";
   /** True while a commit chain holds this batch's lease on the server. */
   committing: boolean;
   total_rows: number;
@@ -1461,13 +1467,6 @@ export const dataCenterImport = {
    * a sale, because undoing sales is rollback's job and it does it through
    * delete-sale so each stove is released properly.
    */
-  discard: (batchId: string) =>
-    call<{ discarded: boolean; rows: number; drafts: number; filename: string | null }>(
-      "data-center-import",
-      "discard",
-      { batchId },
-    ),
-
   /**
    * Clear away a staging batch that never became sales.
    *
