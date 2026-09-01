@@ -1512,32 +1512,85 @@ export const dataCenterImport = {
    */
   callSheet: () => call<CallSheetSpec>("data-center-import", "call_sheet"),
 
-  callStage: (rows: Record<string, unknown>[], filename: string) =>
+  /** Which understood columns nothing in this file feeds, before staging. */
+  callInspect: (headers: string[]) =>
+    call<{
+      recognised: { header: string; field: string }[];
+      unrecognised: string[];
+      missingKeyColumns: string[];
+      maxRows: number;
+    }>("data-center-import", "call_inspect", { headers }),
+
+  callStage: (
+    rows: Record<string, unknown>[],
+    filename: string,
+    confirmDuplicate = false,
+  ) =>
     call<{ batchId: string; staged: number }>("data-center-import", "call_stage", {
       rows,
       filename,
+      confirmDuplicate,
     }),
 
+  /**
+   * `creating` and `updating` split the valid rows.
+   *
+   * A commit that attaches 40 new records and rewrites 12 existing ones is a
+   * different decision from one that only attaches, and the confirmation has
+   * to be able to say which this is.
+   */
   callValidate: (batchId: string) =>
-    call<{ total: number; valid: number; exceptions: number; rejected: number }>(
-      "data-center-import",
-      "call_validate",
-      { batchId },
-    ),
+    call<{
+      total: number;
+      valid: number;
+      exceptions: number;
+      rejected: number;
+      creating: number;
+      updating: number;
+    }>("data-center-import", "call_validate", { batchId }),
 
+  /**
+   * Starts the chain and answers at once; it does not wait for the work.
+   *
+   * A 202 with `started` means the server is working the batch and will keep
+   * going without this tab. `busy` means another link already holds it. `done`
+   * means there was nothing left. Poll `batches({batchId})` for progress - the
+   * old shape returned per-slice counts and the client looped, which is what
+   * made a real sheet impossible to finish.
+   */
   callCommit: (batchId: string) =>
     call<{
-      committed: number;
-      failed: number;
-      remaining: number;
-      done: boolean;
-      failures: { rowId: string; reason: string }[];
+      started?: boolean;
+      link?: number;
+      remaining?: number;
+      busy?: boolean;
+      state?: string;
+      done?: boolean;
+      committed?: number;
+      stopped?: string;
     }>("data-center-import", "call_commit", { batchId }),
 
+  /**
+   * `notReversed` counts rows that UPDATED a record rather than creating one.
+   *
+   * Those cannot be undone by deleting the record: it was not this batch's to
+   * remove, and deleting it would throw away what the first call found. Named
+   * rather than silently skipped, so "reversed 40" is not read as "all 60".
+   */
   callRollback: (batchId: string) =>
-    call<{ reversed: number; remaining: number; done: boolean }>(
+    call<{
+      reversed: number;
+      notReversed: number;
+      remaining: number;
+      done: boolean;
+      already?: boolean;
+    }>("data-center-import", "call_rollback", { batchId }),
+
+  /** Remove a call batch that never attached anything. */
+  callDiscard: (batchId: string) =>
+    call<{ discarded: boolean; rows: number; filename: string | null }>(
       "data-center-import",
-      "call_rollback",
+      "call_discard",
       { batchId },
     ),
 };

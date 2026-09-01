@@ -446,12 +446,29 @@ function firstSheet(parts: Map<string, Bytes>): Bytes | undefined {
   return undefined;
 }
 
+/**
+ * Is this row the guidance we wrote, rather than somebody's data?
+ *
+ * This used to short-circuit on the identity cell: `if (serial) return false`.
+ * That was the whole bug, and it broke BOTH sheets, because both put the stove
+ * column's own help text in exactly that cell. So the guidance row was staged
+ * as data on every xlsx round trip, its help text was uppercased into a
+ * serial, and it landed as an exception nobody could act on.
+ *
+ * The test is now what the row IS rather than what one cell is not: guidance
+ * is nothing but instruction strings, so two or more cells reading like
+ * instructions is the signal. A real row holds serials, names, phone numbers,
+ * dates and dropdown values; one of those might coincidentally contain the
+ * word "receipt", and requiring two makes that harmless.
+ */
+const GUIDANCE_PHRASES =
+  /^Pick one:|filled in already|do not change|leave empty|digits only|required\.|receipt|spreadsheet|from the call form/i;
+
 function looksLikeGuidance(row: Record<string, string>): boolean {
-  const serial = row["Stove ID"] ?? row["Stove Serial Number"] ?? "";
-  if (serial) return false;
   const values = Object.values(row).filter(Boolean);
   if (values.length === 0) return false;
-  return values.some((v) => /^Pick one:|receipt|spreadsheet|Digits only|Leave empty/i.test(v));
+  const hits = values.filter((v) => GUIDANCE_PHRASES.test(v)).length;
+  return hits >= 2;
 }
 
 function colIndex(ref: string): number {
