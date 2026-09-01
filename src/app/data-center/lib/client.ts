@@ -106,9 +106,11 @@ async function call<T>(
     }
 
     if (!response.ok) {
-      const detail = body as
-        | { error?: string; code?: string; data?: Record<string, unknown> }
-        | null;
+      const detail = body as {
+        error?: string;
+        code?: string;
+        data?: Record<string, unknown>;
+      } | null;
       throw new DataCenterError(
         detail?.error ?? `Request to ${fn} failed.`,
         response.status,
@@ -119,11 +121,7 @@ async function call<T>(
 
     // Block 13: validate the shape rather than trusting it.
     if (body === null || typeof body !== "object" || !("data" in body)) {
-      throw new DataCenterError(
-        `Malformed response from ${fn}.`,
-        502,
-        "malformed_response",
-      );
+      throw new DataCenterError(`Malformed response from ${fn}.`, 502, "malformed_response");
     }
 
     return (body as { data: T }).data;
@@ -514,12 +512,14 @@ export const dataCenterClient = {
       params,
     ),
 
-  getRecords: (params: {
-    cursor?: RecordsCursor | null;
-    limit?: number;
-    direction?: "asc" | "desc";
-    filters?: RecordsFilters;
-  } = {}) => call<RecordsPage>("data-center-read", "records", params),
+  getRecords: (
+    params: {
+      cursor?: RecordsCursor | null;
+      limit?: number;
+      direction?: "asc" | "desc";
+      filters?: RecordsFilters;
+    } = {},
+  ) => call<RecordsPage>("data-center-read", "records", params),
 
   /**
    * The reconciliation funnel, one row per transfer.
@@ -528,29 +528,31 @@ export const dataCenterClient = {
    * rather than a count over sales. The `computedAt` stamp is part of the
    * answer: these figures are as of the last compute run, not as of now.
    */
-  getTransferFunnel: (params: {
-    limit?: number;
-    filters?: {
-      organizationId?: string;
-      transferState?: string;
-      salesRep?: string;
-      outstandingOnly?: boolean;
-      search?: string;
-    };
-  } = {}) => call<TransferFunnelPage>("data-center-read", "transfer_funnel", params),
+  getTransferFunnel: (
+    params: {
+      limit?: number;
+      filters?: {
+        organizationId?: string;
+        transferState?: string;
+        salesRep?: string;
+        outstandingOnly?: boolean;
+        search?: string;
+      };
+    } = {},
+  ) => call<TransferFunnelPage>("data-center-read", "transfer_funnel", params),
 
   /**
    * The sheet the digitisers work from: one row per transferred stove, already
    * carrying the serial and the transfer reference so neither is typed.
    */
   /**
-    * The sheet for one partner, or for every partner the caller holds.
-    *
-    * An empty `organizationId` means everything. The import resolves each row's
-    * partner from its stove ID, so a sheet spanning partners lands correctly
-    * and somebody working a stack of receipts from several partners no longer
-    * downloads several files and reconciles them by hand.
-    */
+   * The sheet for one partner, or for every partner the caller holds.
+   *
+   * An empty `organizationId` means everything. The import resolves each row's
+   * partner from its stove ID, so a sheet spanning partners lands correctly
+   * and somebody working a stack of receipts from several partners no longer
+   * downloads several files and reconciles them by hand.
+   */
   digitisationSheet: (organizationId: string, month?: string | null) =>
     call<{
       rows: {
@@ -653,14 +655,15 @@ export const dataCenterClient = {
     return boundsCache;
   },
 
-
   /** Table 2. Same paging contract, plus the call centre's own filters. */
-  getCallQueue: (params: {
-    cursor?: RecordsCursor | null;
-    limit?: number;
-    direction?: "asc" | "desc";
-    filters?: RecordsFilters;
-  } = {}) => call<RecordsPage>("data-center-read", "call_queue", params),
+  getCallQueue: (
+    params: {
+      cursor?: RecordsCursor | null;
+      limit?: number;
+      direction?: "asc" | "desc";
+      filters?: RecordsFilters;
+    } = {},
+  ) => call<RecordsPage>("data-center-read", "call_queue", params),
 };
 
 /**
@@ -801,7 +804,15 @@ export type FieldDef = {
   key: string;
   label: string;
   section: string;
-  input_type: "text" | "textarea" | "number" | "date" | "select" | "multiselect" | "boolean" | "computed";
+  input_type:
+    | "text"
+    | "textarea"
+    | "number"
+    | "date"
+    | "select"
+    | "multiselect"
+    | "boolean"
+    | "computed";
   option_list_key: string | null;
   storage: "answers" | "column";
   sort_order: number;
@@ -888,11 +899,7 @@ export const dataCenterWrite = {
    * An empty `values` deletes the draft rather than storing an empty one, so
    * clearing the last field takes the record off the unfinished list.
    */
-  saveCallDraft: (
-    saleId: string,
-    values: Record<string, unknown>,
-    baseVersion: number | null,
-  ) =>
+  saveCallDraft: (saleId: string, values: Record<string, unknown>, baseVersion: number | null) =>
     call<{ saleId: string; kept: boolean; savedAt?: string; cleared?: boolean }>(
       "data-center-write",
       "save_call_draft",
@@ -901,11 +908,9 @@ export const dataCenterWrite = {
 
   /** Throw a draft away and start the form again. */
   discardCallDraft: (saleId: string) =>
-    call<{ saleId: string; discarded: boolean }>(
-      "data-center-write",
-      "discard_call_draft",
-      { saleId },
-    ),
+    call<{ saleId: string; discarded: boolean }>("data-center-write", "discard_call_draft", {
+      saleId,
+    }),
 
   /**
    * Save. `version` is the one read with the record: the server refuses a
@@ -920,13 +925,16 @@ export const dataCenterWrite = {
     }),
 
   /** The attempt number is assigned server-side, never sent. */
-  logAttempt: (saleId: string, attempt: {
-    attemptedAt?: string;
-    outcomeId?: string | null;
-    agentId?: string | null;
-    answeredById?: string | null;
-    note?: string | null;
-  }) => call<{ attemptNo: number }>("data-center-write", "log_attempt", { saleId, ...attempt }),
+  logAttempt: (
+    saleId: string,
+    attempt: {
+      attemptedAt?: string;
+      outcomeId?: string | null;
+      agentId?: string | null;
+      answeredById?: string | null;
+      note?: string | null;
+    },
+  ) => call<{ attemptNo: number }>("data-center-write", "log_attempt", { saleId, ...attempt }),
 
   /** Send back to Sales, or mark the correction done. */
   correction: (saleId: string, open: boolean, reasonId?: string | null, note?: string | null) =>
@@ -1182,8 +1190,7 @@ export const dataCenterAdmin = {
   setFeatureGrant: (userId: string, featureKey: string, granted: boolean) =>
     call("data-center-admin", "feature_grant_set", { userId, featureKey, granted }),
 
-  revokeAccess: (userId: string) =>
-    call("data-center-admin", "access_revoke", { userId }),
+  revokeAccess: (userId: string) => call("data-center-admin", "access_revoke", { userId }),
   changeLog: (limit = 25, category: ChangeCategory | "all" = "all") =>
     call<ChangeLogEntry[]>("data-center-admin", "change_log", { limit, category }),
 };
@@ -1417,8 +1424,7 @@ export const dataCenterImport = {
     }>("data-center-import", "validate", { batchId }),
 
   /** Reports what a commit would change. Writes nothing to public. */
-  dryRun: (batchId: string) =>
-    call<DryRunSummary>("data-center-import", "dry_run", { batchId }),
+  dryRun: (batchId: string) => call<DryRunSummary>("data-center-import", "dry_run", { batchId }),
 
   /** One slice. Call until `done`, so no single request runs long. */
   /**
@@ -1447,11 +1453,9 @@ export const dataCenterImport = {
 
   /** Also sliced. Each sale goes back through delete-sale, which frees the stove. */
   rollback: (batchId: string) =>
-    call<{ reversed: number; remaining: number; done: boolean }>(
-      "data-center-import",
-      "rollback",
-      { batchId },
-    ),
+    call<{ reversed: number; remaining: number; done: boolean }>("data-center-import", "rollback", {
+      batchId,
+    }),
 
   resolveException: (rowId: string, correctedSerial: string) =>
     call<{ rowId: string; resolved: boolean; reason: string | null }>(
@@ -1482,8 +1486,7 @@ export const dataCenterImport = {
     ),
 
   /** Partners this caller may import for. Scoped server-side. */
-  partners: () =>
-    call<{ id: string; partner_name: string }[]>("data-center-import", "partners"),
+  partners: () => call<{ id: string; partner_name: string }[]>("data-center-import", "partners"),
 
   /**
    * The history, narrowed by the shared period control on upload date - or
@@ -1521,11 +1524,7 @@ export const dataCenterImport = {
       maxRows: number;
     }>("data-center-import", "call_inspect", { headers }),
 
-  callStage: (
-    rows: Record<string, unknown>[],
-    filename: string,
-    confirmDuplicate = false,
-  ) =>
+  callStage: (rows: Record<string, unknown>[], filename: string, confirmDuplicate = false) =>
     call<{ batchId: string; staged: number }>("data-center-import", "call_stage", {
       rows,
       filename,
@@ -1585,6 +1584,20 @@ export const dataCenterImport = {
       done: boolean;
       already?: boolean;
     }>("data-center-import", "call_rollback", { batchId }),
+
+  /**
+   * Correct one call row's stove ID and re-check just that row.
+   *
+   * `resolved: false` means the correction did not fix it, and `reason` says
+   * what it now is. Saying so beats letting the row look resolved and fail
+   * later at attach.
+   */
+  callResolveException: (rowId: string, correctedSerial: string) =>
+    call<{ rowId: string; resolved: boolean; reason: string | null }>(
+      "data-center-import",
+      "call_resolve_exception",
+      { rowId, correctedSerial },
+    ),
 
   /** Remove a call batch that never attached anything. */
   callDiscard: (batchId: string) =>
@@ -1741,10 +1754,7 @@ export const dataCenterAssign = {
    * complaint is about particular records. Never both: the server would have
    * to decide which one you meant.
    */
-  reassign: (
-    toAgentId: string,
-    what: { batchId: string } | { saleIds: string[] },
-  ) =>
+  reassign: (toAgentId: string, what: { batchId: string } | { saleIds: string[] }) =>
     call<{ moved: number; toAgentId: string; batches: string[]; closedEmpty: number }>(
       "data-center-assign",
       "reassign",
@@ -1758,18 +1768,31 @@ export const dataCenterAssign = {
     call<{
       pool: { organization_id: string; partner_name: string; callable: number }[];
       open: {
-        batch_id: string; organization_id: string; partner_name: string;
-        agent_id: string; agent_name: string | null; assigned_at: string;
-        size: number; last_activity_at: string; remaining: number;
+        batch_id: string;
+        organization_id: string;
+        partner_name: string;
+        agent_id: string;
+        agent_name: string | null;
+        assigned_at: string;
+        size: number;
+        last_activity_at: string;
+        remaining: number;
       }[];
     }>("data-center-assign", "status"),
 
   myBatches: () =>
     call<{
       items: {
-        batch_id: string; partner_name: string; assigned_at: string; batch_size: number;
-        sale_id: string; position: number; stove_serial_no: string; sales_date: string | null;
-        verification_outcome: string | null; attempt_count: number | null;
+        batch_id: string;
+        partner_name: string;
+        assigned_at: string;
+        batch_size: number;
+        sale_id: string;
+        position: number;
+        stove_serial_no: string;
+        sales_date: string | null;
+        verification_outcome: string | null;
+        attempt_count: number | null;
         last_attempt_at: string | null;
         /** Resolved: a correction typed on an earlier call, else the receipt. */
         end_user_name: string | null;
@@ -1784,18 +1807,20 @@ export const dataCenterAssign = {
     }>("data-center-assign", "my_batches"),
 
   /** The log. Keyset paginated; pass back `nextCursor` for the next page. */
-  log: (options: {
-    limit?: number;
-    cursor?: AssignmentLogCursor | null;
-    filters?: {
-      organizationId?: string;
-      agentId?: string;
-      batchState?: string;
-      outcome?: string;
-      dateFrom?: string;
-      dateTo?: string;
-    };
-  } = {}) =>
+  log: (
+    options: {
+      limit?: number;
+      cursor?: AssignmentLogCursor | null;
+      filters?: {
+        organizationId?: string;
+        agentId?: string;
+        batchState?: string;
+        outcome?: string;
+        dateFrom?: string;
+        dateTo?: string;
+      };
+    } = {},
+  ) =>
     call<{
       rows: AssignmentLogRow[];
       scope: string;
@@ -1956,7 +1981,6 @@ export const dataCenterAnalysis = {
       to: to ?? null,
     }),
 };
-
 
 /**
  * Unsold stock sitting at a partner: what the ageing chart drills into.

@@ -35,7 +35,7 @@ import { PhoneCall, ArrowRight, Loader2, CircleAlert, CircleCheck, Undo2 } from 
  * agent types only what the call told them.
  */
 
-export default function CallSheet({ canCommit = false }) {
+export default function CallSheet({ canCommit = false, canResolve = false }) {
   /*
    * Bumped whenever this component lands something, so the list below reloads.
    * A batch staged here has to appear there immediately: the whole point of
@@ -461,6 +461,7 @@ export default function CallSheet({ canCommit = false }) {
     */}
       <CallBatches
         canCommit={canCommit}
+        canResolve={canResolve}
         reloadKey={reloadKey}
         onChanged={() => setReloadKey((n) => n + 1)}
       />

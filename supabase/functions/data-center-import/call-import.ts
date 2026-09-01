@@ -913,3 +913,168 @@ export async function rollbackCallRows(
     throw err;
   }
 }
+
+// ---------------------------------------------------------------------------
+// Fixing one row
+// ---------------------------------------------------------------------------
+
+/**
+ * Correct the stove ID on one exception row and re-check just that row.
+ *
+ * The receipt import has had this since it was written; this side never did,
+ * so the only way to fix a mistyped serial was to edit the file and upload it
+ * again. On a sheet where one exception is a typo and thirty are receipts that
+ * have not been digitalised yet, that is a round trip for one cell.
+ *
+ * IT MUST SET sale_id, AND THAT IS THE WHOLE POINT
+ *
+ * The receipt version, pointed at a call row, set `status = 'valid'` and left
+ * `sale_id` null - and `commitCallSlice` selects `status = 'valid' and sale_id
+ * is not null`. The row was then neither committed nor listed as an exception
+ * anywhere: it stopped existing. This one re-derives the match, so a row that
+ * goes valid is a row that can actually land.
+ *
+ * Re-normalised from `raw` rather than patched, because the corrected serial
+ * may point at a different sale with different attempts already logged, and
+ * carrying the old row's computed attempts across would re-log calls the new
+ * record already holds.
+ */
+export async function resolveCallException(
+  conn: PoolClient,
+  args: {
+    rowId: string;
+    serial: string;
+    userId: string;
+    ownOrganizationId: string | null;
+    superAdmin: boolean;
+    updateExisting: boolean;
+  },
+): Promise<{ resolved: boolean; reason: string | null }> {
+  const { rowId, serial, userId, ownOrganizationId, superAdmin, updateExisting } = args;
+
+  const row = await conn.queryObject<{ raw: Record<string, unknown>; batch_id: string }>({
+    text: `select raw, batch_id::text from data_center.import_rows
+            where id = $1 for update`,
+    args: [rowId],
+  });
+  if (row.rows.length === 0) throw new Error("No such row");
+
+  const spec = await callSheetSpec(conn);
+  const options = await optionIndex(conn);
+  const norm = normalizeCallRow(
+    { ...(row.rows[0].raw ?? {}), stoveSerialNo: serial },
+    spec,
+    options,
+  );
+
+  let reason: string | null = norm.problem;
+  let saleId: string | null = null;
+  let mode: "new" | "update" = "new";
+  let expectedVersion: number | null = null;
+  let attempts = norm.attempts;
+
+  if (!reason) {
+    const hits = await conn.queryObject<{ id: string; in_scope: boolean }>({
+      text: `select s.id::text as id,
+                    ($3::boolean
+                     or s.organization_id = $2
+                     or s.organization_id in (
+                          select organization_id
+                            from public.acsl_agent_org_scope(array[$1::uuid]))) as in_scope
+               from public.sales s
+              where upper(btrim(s.stove_serial_no)) = $4
+                and s.is_archived is not true`,
+      args: [userId, ownOrganizationId, superAdmin, serial],
+    });
+
+    if (hits.rows.length === 0) {
+      reason =
+        `Stove ${serial} has no sale recorded yet. The receipt has to be ` +
+        "digitalised before a call can be attached to it.";
+    } else if (hits.rows.length > 1) {
+      reason =
+        `Stove ${serial} matches ${hits.rows.length} live sales, so there is ` +
+        "no way to tell which one this call belongs to.";
+    } else if (!hits.rows[0].in_scope) {
+      reason =
+        `Stove ${serial} belongs to a partner you do not cover, so this call ` +
+        "cannot be attached to it.";
+    } else {
+      saleId = hits.rows[0].id;
+      const existing = await conn.queryObject<{ version: number }>({
+        text: `select version from data_center.call_records where sale_id = $1`,
+        args: [saleId],
+      });
+      if (existing.rows.length > 0) {
+        const current = Number(existing.rows[0].version);
+        if (!updateExisting) {
+          reason = `Stove ${serial} already has a call record in the system.`;
+          saleId = null;
+        } else if (norm.sheetVersion !== current) {
+          /*
+           * A corrected serial almost always lands on a record this sheet
+           * never saw, so its version cannot match. Refusing is the safe
+           * direction and the message says why rather than reading as a
+           * version bug: the row's answers were typed against one stove and
+           * are now being pointed at another that somebody has already worked.
+           */
+          reason =
+            `Stove ${serial} already has a call record, and this sheet was not built ` +
+            "from it, so attaching these answers would overwrite work you have not " +
+            "seen. Open that record in the call centre, or download a fresh sheet.";
+          saleId = null;
+        } else {
+          mode = "update";
+          expectedVersion = current;
+        }
+      }
+
+      if (saleId) {
+        const already = await conn.queryObject<{ on_day: string }>({
+          text: `select to_char(attempted_at, 'YYYY-MM-DD') as on_day
+                   from data_center.call_attempts where sale_id = $1`,
+          args: [saleId],
+        });
+        const have = new Set(already.rows.map((a) => a.on_day));
+        attempts = norm.attempts.filter((a) => !have.has(a.attemptedAt.slice(0, 10)));
+      }
+    }
+  }
+
+  await conn.queryObject({
+    text: `update data_center.import_rows
+              set corrected_serial  = $2,
+                  stove_serial_no   = $2,
+                  sale_id           = $3::uuid,
+                  normalized        = $4::jsonb,
+                  status            = case when $5::text is null then 'valid' else 'exception' end,
+                  exception_reason  = $5,
+                  rejection_reason  = null,
+                  rejection_hint    = null,
+                  resolved_by       = $6,
+                  resolved_at       = now()
+            where id = $1`,
+    args: [
+      rowId,
+      serial,
+      saleId,
+      JSON.stringify({ values: norm.values, attempts, mode, expectedVersion }),
+      reason,
+      userId,
+    ],
+  });
+
+  // Recount rather than adjust. A counter nudged by hand drifts the moment
+  // anything else touches the batch.
+  await conn.queryObject({
+    text: `update data_center.import_batches b
+              set valid_rows    = (select count(*) from data_center.import_rows r
+                                    where r.batch_id = b.id and r.status = 'valid'),
+                  rejected_rows = (select count(*) from data_center.import_rows r
+                                    where r.batch_id = b.id and r.status in ('rejected','exception'))
+            where b.id = $1`,
+    args: [row.rows[0].batch_id],
+  });
+
+  return { resolved: reason === null, reason };
+}
