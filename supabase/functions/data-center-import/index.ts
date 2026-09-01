@@ -2859,8 +2859,17 @@ serve(async (req) => {
 
         const slice = await withReadConnection(async (conn) => {
           const r = await conn.queryObject<{ id: string; sale_id: string }>({
+            /*
+             * ANY row holding a sale, whatever its status. Selecting only
+             * 'committed' left the crash-window orphans behind: a slice that
+             * died between create-sale succeeding and the row being marked
+             * left a valid-or-exception row still pointing at a live sale,
+             * and rollback walked straight past it. The first production
+             * rollback proved it - four sales survived, silently, and the
+             * batch still said rolled_back.
+             */
             text: `select id, sale_id from data_center.import_rows
-                   where batch_id = $1 and status = 'committed' and sale_id is not null
+                   where batch_id = $1 and sale_id is not null
                    order by row_number limit $2`,
             args: [batchId, sliceSize],
           });
@@ -2868,8 +2877,10 @@ serve(async (req) => {
         });
 
         let reversed = 0;
+        const failures: { rowId: string; reason: string }[] = [];
         for (const row of slice) {
           let ok = false;
+          let reason = "";
           try {
             const res = await fetch(`${Deno.env.get("SUPABASE_URL")}/functions/v1/delete-sale`, {
               method: "POST",
@@ -2878,13 +2889,26 @@ serve(async (req) => {
                 Authorization: authHeader,
                 apikey: Deno.env.get("SUPABASE_ANON_KEY") ?? "",
               },
+              signal: AbortSignal.timeout(60_000),
               body: JSON.stringify({ saleId: row.sale_id }),
             });
             ok = res.ok;
-          } catch {
+            if (!ok) {
+              const out = await res.json().catch(() => ({}));
+              reason = out?.message ?? out?.error ?? `delete-sale refused (${res.status})`;
+            }
+          } catch (err) {
             ok = false;
+            reason = `delete-sale could not be reached: ${
+              err instanceof Error ? err.message : "unknown"
+            }`;
           }
-          if (!ok) continue;
+          if (!ok) {
+            // Recorded, never swallowed. A rollback that says "done" over a
+            // sale it silently kept is the panel lying about the database.
+            failures.push({ rowId: row.id, reason });
+            continue;
+          }
 
           await withConnection(async (conn) => {
             await conn.queryObject("begin");
@@ -2913,26 +2937,42 @@ serve(async (req) => {
 
         const remaining = await withConnection(async (conn) => {
           const r = await conn.queryObject<{ n: number }>({
+            // The batch is reversed when NO row holds a sale - not when no row
+            // is labelled committed. The labels can lie after a crash; the
+            // sale_id column cannot.
             text: `select count(*)::int n from data_center.import_rows
-                   where batch_id = $1 and status = 'committed'`,
+                   where batch_id = $1 and sale_id is not null`,
             args: [batchId],
           });
           const left = r.rows[0]?.n ?? 0;
           if (left === 0) {
             await conn.queryObject({
               text: `update data_center.import_batches
-                     set state = 'rolled_back', committed_rows = 0 where id = $1`,
+                     set state = 'rolled_back', committed_rows = 0, last_error = null
+                     where id = $1`,
               args: [batchId],
             });
             await conn.queryObject({
               text: "select data_center.release_import_claims($1)",
               args: [batchId],
             });
+          } else if (failures.length > 0) {
+            await conn.queryObject({
+              text: `update data_center.import_batches set last_error = $2 where id = $1`,
+              args: [
+                batchId,
+                `Rollback could not remove ${failures.length} sale(s): ${failures[0].reason}`,
+              ],
+            });
           }
           return left;
         });
 
-        return json({ data: { reversed, remaining, done: remaining === 0 } }, 200, cors);
+        return json(
+          { data: { reversed, remaining, done: remaining === 0, failures } },
+          200,
+          cors,
+        );
       }
 
       /** Fix the serial on an exception row and put it back in the queue. */
