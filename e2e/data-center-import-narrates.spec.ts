@@ -32,6 +32,10 @@ const buyer = (serial: string, marker: string, phone: string) => ({
   phone,
   sales_date: "2026-01-04",
   amount: "25000",
+  // Full payment stated, no model: the one model-less shape a commit still
+  // accepts, through the outright door whose coercion is then a no-op. A
+  // model-less row with an unpaid balance is refused by name instead.
+  amount_received: "25000",
   state: "Kogi",
   lga: "Isanlu",
   address: `${marker} Road`,

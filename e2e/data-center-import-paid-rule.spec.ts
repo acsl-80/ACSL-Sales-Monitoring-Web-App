@@ -126,6 +126,66 @@ test.describe("paid is what the sheet said, never what the coercion assumed", ()
     }
   });
 
+  test("a model-less row commits only when paid in full, and is refused by name otherwise", async ({
+    page,
+  }, testInfo) => {
+    /*
+     * The bench and plain sheets state an amount and often no model at all -
+     * a contract that predates this rule. Full payment stated is the one
+     * model-less shape the outright door serves honestly (its coercion is a
+     * no-op). An unpaid balance without a model has nowhere truthful to go,
+     * so it is refused with the reason, never silently coerced.
+     */
+    await signIn(page, USERS.admin);
+    await page.goto("/data-center/import");
+
+    const stoves = await freeStoves(page, TWIN_A, 2);
+    test.skip(stoves.length < 2, "not enough free stoves");
+    const marker = `nomodel${testInfo.workerIndex}-${Date.now()}`;
+
+    const staged = await callEdgeFunction(page, "data-center-import", {
+      action: "stage",
+      filename: `${marker}.csv`,
+      rows: [
+        {
+          stove_serial_no: stoves[0],
+          first_name: "Full", last_name: "Paid", aka: marker,
+          phone: "08016660005", sales_date: "2026-01-07", state: "Kogi",
+          amount: "30000", amount_received: "30000",
+        },
+        {
+          stove_serial_no: stoves[1],
+          first_name: "Part", last_name: "Paid", aka: marker,
+          phone: "08016660006", sales_date: "2026-01-07", state: "Kogi",
+          amount: "30000", amount_received: "10000",
+        },
+      ],
+    });
+    const batchId = (staged.body as { data: { batchId: string } }).data.batchId;
+    await callEdgeFunction(page, "data-center-import", { action: "validate", batchId });
+    await commitAndDrain(page, batchId);
+
+    try {
+      const full = await saleOf(page, stoves[0]);
+      expect(full, "paid-in-full went through the outright door").toBeTruthy();
+      expect(Number(full!.total_paid)).toBe(30000);
+      expect(full!.payment_status).toBe("fully_paid");
+      expect(full!.is_installment).toBe(false);
+
+      const part = await saleOf(page, stoves[1]);
+      expect(part, "the part payment did NOT become a sale").toBeNull();
+      const rows = ((await callEdgeFunction(page, "data-center-import", {
+        action: "rows",
+        batchId,
+        status: "exception",
+      })).body as { data?: { exception_reason: string | null }[] })?.data ?? [];
+      expect(rows.length).toBe(1);
+      expect(rows[0].exception_reason ?? "").toContain("part payment needs a sales model");
+    } finally {
+      await rollback(page, batchId);
+    }
+  });
+
   test("a partner not assigned the model is told so at check time, by name", async ({
     page,
   }, testInfo) => {

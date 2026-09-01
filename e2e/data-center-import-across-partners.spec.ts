@@ -19,6 +19,8 @@ import { callEdgeFunction, commitAndDrain, signIn, USERS } from "./helpers";
 
 const TWIN_A = "a0000000-0000-4000-8000-00000000000a"; // Twin Name Partner, Kogi, ISANLU
 const TWIN_B = "a0000000-0000-4000-8000-00000000000b"; // Twin Name Partner, Kwara, ORO
+// Twin B is seeded with an explicit Amina-only model list (the scoping
+// fixture), so every row in this file names the one model both twins take.
 
 type Stove = { stove_id: string; sale_id: string | null };
 
@@ -79,7 +81,8 @@ test.describe("a sheet may cover several partners", () => {
       action: "stage",
       filename: `${marker}.csv`,
       rows: [a, b].map((serial) => ({
-        stove_serial_no: serial,
+        sales_model: "Amina Model",
+      stove_serial_no: serial,
         first_name: "Mixed",
         last_name: "Buyer",
         phone: "08012345678",
@@ -114,7 +117,8 @@ test.describe("a sheet may cover several partners", () => {
       action: "stage",
       filename: `${marker}.csv`,
       rows: [a, b].map((serial) => ({
-        stove_serial_no: serial,
+        sales_model: "Amina Model",
+      stove_serial_no: serial,
         first_name: "Mixed",
         last_name: "Buyer",
         phone: "08012345678",
@@ -182,7 +186,8 @@ test.describe("a sheet may cover several partners", () => {
       filename: `${marker}.csv`,
       rows: [
         {
-          stove_serial_no: mine!.stove_id,
+          sales_model: "Amina Model",
+      stove_serial_no: mine!.stove_id,
           // The reference is right, which makes this our sheet.
           transaction_id: mine!.transaction_id,
           // The partner is not. The stove belongs to Twin Name Partner.
@@ -242,7 +247,8 @@ test.describe("a sheet may cover several partners", () => {
       filename: `${marker}.csv`,
       rows: [
         {
-          stove_serial_no: a,
+          sales_model: "Amina Model",
+      stove_serial_no: a,
           // No transaction_id: this is not one of our sheets.
           partner_name: "Amina Sales Model Gombe",
           first_name: "Shorthand",
@@ -306,7 +312,8 @@ test.describe("a sheet may cover several partners", () => {
       action: "stage",
       filename: `${marker}.csv`,
       rows: [mine, theirs].map((serial) => ({
-        stove_serial_no: serial,
+        sales_model: "Amina Model",
+      stove_serial_no: serial,
         first_name: "Mixed",
         last_name: "Buyer",
         phone: "08012345678",

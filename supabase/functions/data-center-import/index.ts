@@ -2394,15 +2394,33 @@ serve(async (req) => {
              */
             const modelId =
               (row.normalized as unknown as Record<string, unknown>).paymentModelId ?? null;
-            if (typeof modelId !== "string" || !modelId) {
+            const statedPaid = n.amountReceived ?? null;
+            const paidInFull = statedPaid !== null && Number(statedPaid) === Number(n.amount);
+            /*
+             * A row with no model is still a legitimate record - the bench and
+             * plain sheets state an amount and often no model at all, and that
+             * contract predates this rule. What it cannot do is carry an
+             * UNPAID balance, because the only door where paid differs from
+             * expected is the installment door and that door needs a model.
+             *
+             * So: full payment stated -> the outright door, whose coercion is
+             * a no-op when paid already equals expected. Anything else without
+             * a model is refused BY NAME, never silently coerced.
+             */
+            if ((typeof modelId !== "string" || !modelId) && !paidInFull) {
               failRows.push({
                 rowId: row.id,
-                reason:
-                  "This row was checked before sales-model linking existed, so committing it " +
-                  "now would force paid = expected. Check the batch again, then commit.",
+                reason: statedPaid === null
+                  ? "This row names no sales model and states no amount received. Paid is " +
+                    "only ever what was stated - add the sales model (so the balance can be " +
+                    "tracked) or the amount received, then check the batch again."
+                  : "This row names no sales model but states a part payment, and a part " +
+                    "payment needs a sales model to be tracked against. Add the model, " +
+                    "then check the batch again.",
               });
               continue;
             }
+            const throughInstallment = typeof modelId === "string" && !!modelId;
             const extras = (row.draft_values ?? row.raw ?? null) as
               | Record<string, unknown>
               | null;
@@ -2416,15 +2434,21 @@ serve(async (req) => {
               contactPerson: n.contactPerson,
               contactPhone: n.contactPhone,
               amount: n.amount,
-              isInstallment: true,
-              paymentModelId: modelId,
               /*
                * Only what the sheet stated. Absent means zero paid so far -
                * partially_paid, treated case by case - never the full amount
                * assumed. Where the sheet states paid = expected, create-sale
-               * marks it fully_paid on its own.
+               * marks it fully_paid on its own. A model-less fully-paid row
+               * takes the outright door instead, where the coercion is a
+               * no-op by construction.
                */
-              initialPaymentAmount: n.amountReceived ?? 0,
+              ...(throughInstallment
+                ? {
+                  isInstallment: true,
+                  paymentModelId: modelId,
+                  initialPaymentAmount: statedPaid ?? 0,
+                }
+                : { amountReceived: statedPaid }),
               stateBackup: n.state,
               lgaBackup: n.lga,
               addressData: (extras?.addressData &&
