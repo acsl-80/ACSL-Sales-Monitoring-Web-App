@@ -2,18 +2,19 @@ import { test, expect, type Page } from "@playwright/test";
 import { callEdgeFunction, signIn, USERS } from "./helpers";
 
 /**
- * Three ways into the same partner's stoves.
+ * One way into a partner's stoves: all of them.
  *
- * The bench could only ever be entered through a consignment: partner, then
- * transfer batch, then type. That is the right default and it was the only
- * one, so a receipt whose batch nobody recorded had no way in at all, and
- * working a partner in date order was impossible.
+ * The bench used to route through a chooser - by consignment, by month, or
+ * everything - and the default hid whatever it did not cover. Clicking a
+ * partner now opens everything they hold, and the consignment and the month
+ * are narrowing filters over that one list (user decision, 2026-08-31), so
+ * nothing a typist holds a receipt for is behind a way in they did not pick.
  *
- * The part that needs proving is not the tabs. It is the search: the rail
- * filters the list it was handed, which across a whole partner is a page. A
- * filter that silently searched only the loaded page answers "not found" for a
- * stove that is there, which is the one answer a typist holding that stove's
- * receipt must never be given.
+ * The part that needs proving is the server side of it: the search, the
+ * filters and the totals across a partner that only ever loads a page. A
+ * filter that silently searched only the loaded page answers "not found" for
+ * a stove that is there, which is the one answer a typist holding that
+ * stove's receipt must never be given.
  */
 
 type Stove = { stove_id: string };
@@ -28,7 +29,7 @@ async function aPartner(page: Page): Promise<string | null> {
   return withStoves[0]?.id ?? null;
 }
 
-test.describe("the bench can be entered three ways", () => {
+test.describe("a partner's stoves are one list, narrowed on the server", () => {
   test("a partner's stoves can be listed without naming a consignment", async ({ page }) => {
     await signIn(page, USERS.admin);
     await page.goto("/data-center/import");
@@ -151,7 +152,63 @@ test.describe("the bench can be entered three ways", () => {
     expect((r.body as { data: Page1 }).data.stoves).toEqual([]);
   });
 
-  test("the three ways in are offered once a partner is open", async ({ page }) => {
+  test("a consignment narrows server-side, through the same list", async ({ page }) => {
+    await signIn(page, USERS.admin);
+    await page.goto("/data-center/import");
+    const orgId = await aPartner(page);
+    test.skip(!orgId, "no partner with stoves on this database");
+
+    // A real consignment this partner holds, from the same call the sweep's
+    // filter options are built from.
+    const detail = await callEdgeFunction(page, "data-center-read", {
+      action: "partner_detail",
+      organizationId: orgId,
+    });
+    const txn = (detail.body as { data?: { batches?: { transaction_id: string }[] } })?.data
+      ?.batches?.[0]?.transaction_id;
+    test.skip(!txn, "this partner has no consignments");
+
+    const r = await callEdgeFunction(page, "data-center-read", {
+      action: "partner_stoves",
+      organizationId: orgId,
+      transactionId: txn,
+      limit: 50,
+    });
+    expect(r.status).toBe(200);
+    const rows = (r.body as { data: { stoves: { transaction_id: string }[] } }).data.stoves;
+    expect(rows.length).toBeGreaterThan(0);
+    // Every row belongs to the consignment asked for. A filter that quietly
+    // did not apply would hand back the whole partner and look plausible.
+    expect(rows.every((s) => s.transaction_id === txn)).toBe(true);
+  });
+
+  test("all three chip totals come back in one call, and reconcile", async ({ page }) => {
+    await signIn(page, USERS.admin);
+    await page.goto("/data-center/import");
+    const orgId = await aPartner(page);
+    test.skip(!orgId, "no partner with stoves on this database");
+
+    // Asked with the todo filter on, because that is exactly when the other
+    // two numbers used to be unknowable - "done" sat at zero forever while
+    // the page showed todo rows.
+    const r = await callEdgeFunction(page, "data-center-read", {
+      action: "partner_stoves",
+      organizationId: orgId,
+      recorded: "no",
+      limit: 1,
+    });
+    expect(r.status).toBe(200);
+    const data = (
+      r.body as {
+        data: { total: number; totals: { all: number; todo: number; done: number } };
+      }
+    ).data;
+    expect(data.totals.todo + data.totals.done).toBe(data.totals.all);
+    // And the paging denominator answers the filter that was asked for.
+    expect(data.total).toBe(data.totals.todo);
+  });
+
+  test("a partner opens straight onto everything they hold", async ({ page }) => {
     await signIn(page, USERS.admin);
     await page.goto("/data-center/import");
     await expect(page.getByRole("heading", { name: "Bulk Import" })).toBeVisible({
@@ -163,15 +220,15 @@ test.describe("the bench can be entered three ways", () => {
     await expect(partners.first()).toBeVisible({ timeout: 30_000 });
     await partners.first().click();
 
-    await expect(page.getByRole("button", { name: /By consignment/ })).toBeVisible({
-      timeout: 20_000,
-    });
-    await expect(page.getByRole("button", { name: /By month/ })).toBeVisible();
-    await expect(page.getByRole("button", { name: /Everything this partner holds/ })).toBeVisible();
-
-    // Everything opens a list with a search that says what it covers.
-    await page.getByRole("button", { name: /Everything this partner holds/ }).click();
+    // No chooser in between: the search over everything is simply there, and
+    // the scope is spelled out rather than implied by a default.
     await expect(page.getByLabel("Find a stove ID")).toBeVisible({ timeout: 20_000 });
+    await expect(page.getByRole("button", { name: /By consignment/ })).toHaveCount(0);
+    await expect(page.getByText(/all consignments/).first()).toBeVisible({ timeout: 20_000 });
+
+    // The old chooser's two axes are narrowing filters on this one list now.
+    await expect(page.getByRole("combobox", { name: "Month" })).toBeVisible();
+    await expect(page.getByRole("combobox", { name: "Consignment" })).toBeVisible();
     await expect(page.getByText(/covers every stove this partner holds/)).toBeVisible();
   });
 });
@@ -197,8 +254,11 @@ test.describe("where the buyer lives is chosen, not typed", () => {
     const partners = page.locator("tbody tr");
     await expect(partners.first()).toBeVisible({ timeout: 30_000 });
     await partners.first().click();
-    await page.getByRole("button", { name: /Everything this partner holds/ }).click();
 
+    // The partner lands straight in the sweep; waiting on its search box is
+    // what proves the partner table underneath has been replaced, so the
+    // `tbody tr` below is a stove row and not a partner row re-clicked.
+    await expect(page.getByLabel("Find a stove ID")).toBeVisible({ timeout: 20_000 });
     const stove = page.locator("tbody tr").first();
     await expect(stove).toBeVisible({ timeout: 30_000 });
     await stove.click();
