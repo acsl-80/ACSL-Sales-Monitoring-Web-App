@@ -55,15 +55,17 @@ export async function takeCommitLease(
   conn: PoolClient,
   batchId: string,
   states: string[] = ["staged", "validated", "dry_run"],
+  sources: string[] | null = null,
 ): Promise<boolean> {
   const held = await conn.queryObject<{ id: string }>({
     text: `update data_center.import_batches
               set commit_lease_until = now() + interval '${LEASE_MINUTES} minutes'
             where id = $1
               and state = any($2::text[])
+              and ($3::text[] is null or source = any($3::text[]))
               and (commit_lease_until is null or commit_lease_until < now())
             returning id`,
-    args: [batchId, states],
+    args: [batchId, states, sources],
   });
   return held.rows.length > 0;
 }

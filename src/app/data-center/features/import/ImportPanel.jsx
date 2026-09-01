@@ -38,6 +38,9 @@ import {
  * front of them can usually fix it. That is the normal path.
  */
 
+/** The sources this panel owns. The call sheet has its own list. */
+const RECEIPT_SOURCES = ["receipt", "manual", "field", "workbench"];
+
 const NUMBER = new Intl.NumberFormat("en-NG");
 
 const STATE_TONE = {
@@ -580,10 +583,24 @@ export default function ImportPanel({ canUpload, canCommit, canResolve }) {
 
   const refresh = useCallback(async () => {
     try {
-      setBatches(await dataCenterImport.batches({
+      const all = await dataCenterImport.batches({
         ...(resolved.dateFrom ? { dateFrom: resolved.dateFrom } : {}),
         ...(resolved.dateTo ? { dateTo: resolved.dateTo } : {}),
-      }));
+      });
+      /*
+       * Receipt batches only.
+       *
+       * `batches` answers for every source, and a call-centre batch rendered
+       * here looked exactly like a receipt one: same counts, same state chip,
+       * same next-step button. Pressing it ran the RECEIPT validate or commit
+       * over rows whose `normalized` is `{values, attempts}`, which is not a
+       * sale. The server refuses that now, but a button that exists only to
+       * be refused is still the wrong button.
+       *
+       * Older batches predate the column, so a missing source reads as a
+       * receipt rather than vanishing from the history.
+       */
+      setBatches(all.filter((b) => !b.source || RECEIPT_SOURCES.includes(b.source)));
       setError(null);
     } catch (err) {
       setError(err instanceof DataCenterError ? err.message : "Could not load import batches.");

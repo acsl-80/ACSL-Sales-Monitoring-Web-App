@@ -89,6 +89,42 @@ function json(body: unknown, status: number, cors: Record<string, string>) {
 
 class BadRequest extends Error {}
 
+/**
+ * The batch sources the receipt actions own.
+ *
+ * `import_batches.source` has allowed 'call_center' since the first migration,
+ * and until now nothing on this side ever looked at it. That was not a
+ * theoretical gap: a call batch appeared in the receipt panel's history, in its
+ * next-step buttons and in the confirmation queue, each of which routed it into
+ * `validate`, `commit`, `rollback` or `discard`. Those read `normalized` as a
+ * receipt payload, and a call row's normalized is `{values, attempts}`.
+ *
+ * `resolve_exception` was the worst of them: pointed at a call row it set
+ * status 'valid' and left sale_id null, and `commitCallRows` selects
+ * `status = 'valid' and sale_id is not null`. The row became permanently
+ * unlandable AND invisible to every list, which is the one failure class this
+ * module's rules single out as unacceptable.
+ *
+ * Refused rather than filtered, and refused in the function rather than in the
+ * panel, because a hidden button is not a permission.
+ */
+const RECEIPT_SOURCES = ["receipt", "manual", "field", "workbench"];
+
+function foreignBatch(source: string, cors: Record<string, string>) {
+  return json(
+    {
+      error:
+        "This batch came from the call-centre sheet, not from a receipt sheet. " +
+        "Open it under \"Calls already made\" - the receipt actions would read " +
+        "its rows as something they are not.",
+      code: "wrong_source",
+      data: { source },
+    },
+    409,
+    cors,
+  );
+}
+
 // ---------------------------------------------------------------------------
 // Row validation
 //
@@ -1479,11 +1515,18 @@ serve(async (req) => {
               text: "select set_config('data_center.actor', $1, true)",
               args: [userId],
             });
-            const batchRow = await conn.queryObject<{ organization_id: string }>({
-              text: "select organization_id from data_center.import_batches where id = $1 for update",
+            const batchRow = await conn.queryObject<
+              { organization_id: string; source: string }
+            >({
+              text: `select organization_id, source from data_center.import_batches
+                      where id = $1 for update`,
               args: [batchId],
             });
             if (batchRow.rows.length === 0) throw new BadRequest("No such batch");
+            if (!RECEIPT_SOURCES.includes(batchRow.rows[0].source)) {
+              await conn.queryObject("rollback");
+              return foreignBatch(batchRow.rows[0].source, cors);
+            }
             const orgId = batchRow.rows[0].organization_id;
 
             const pending = await conn.queryObject<
@@ -2171,7 +2214,12 @@ serve(async (req) => {
         const phase1 = await withConnection(async (conn) => {
           await conn.queryObject("begin");
           try {
-            const held = await takeCommitLease(conn, batchId);
+            const held = await takeCommitLease(
+              conn,
+              batchId,
+              undefined,
+              RECEIPT_SOURCES,
+            );
             if (!held) {
               await conn.queryObject("rollback");
               return { held: false as const };
@@ -2273,14 +2321,22 @@ serve(async (req) => {
           // Say WHICH refusal this is: a running chain, or a batch that has
           // moved on. Both are 200s the panel renders, not errors.
           const why = await withReadConnection(async (conn) => {
-            const r = await conn.queryObject<{ state: string; leased: boolean }>({
-              text: `select state, (commit_lease_until is not null
+            const r = await conn.queryObject<
+              { state: string; leased: boolean; source: string }
+            >({
+              text: `select state, source, (commit_lease_until is not null
                                     and commit_lease_until > now()) as leased
                        from data_center.import_batches where id = $1`,
               args: [batchId],
             });
             return r.rows[0] ?? null;
           });
+          // Named before the state refusal, because "this batch is validated
+          // and cannot be committed" would be a true sentence about the wrong
+          // problem.
+          if (why && !RECEIPT_SOURCES.includes(why.source)) {
+            return foreignBatch(why.source, cors);
+          }
           if (why?.leased) {
             return json({ data: { busy: true, state: why.state } }, 200, cors);
           }
@@ -2754,16 +2810,19 @@ serve(async (req) => {
          * through selling. The commit side fences the other direction: its
          * lease CAS requires state 'validated', which rollback has moved on.
          */
-        const leased = await withReadConnection(async (conn) => {
-          const r = await conn.queryObject<{ live: boolean }>({
-            text: `select (commit_lease_until is not null
+        const fence = await withReadConnection(async (conn) => {
+          const r = await conn.queryObject<{ live: boolean; source: string }>({
+            text: `select source, (commit_lease_until is not null
                            and commit_lease_until > now()) as live
                      from data_center.import_batches where id = $1`,
             args: [batchId],
           });
-          return r.rows[0]?.live ?? false;
+          return r.rows[0] ?? null;
         });
-        if (leased) {
+        if (fence && !RECEIPT_SOURCES.includes(fence.source)) {
+          return foreignBatch(fence.source, cors);
+        }
+        if (fence?.live) {
           return json(
             {
               error:
@@ -3004,6 +3063,7 @@ serve(async (req) => {
             rows: number;
             leased: boolean;
             filename: string | null;
+            source: string;
           }>({
             text: `select
                      (select count(*) from data_center.import_rows r
@@ -3014,13 +3074,16 @@ serve(async (req) => {
                        where r.batch_id = b.id)::int as rows,
                      (b.commit_lease_until is not null
                       and b.commit_lease_until > now()) as leased,
-                     b.filename
+                     b.filename, b.source
                    from data_center.import_batches b where b.id = $1`,
             args: [batchId],
           });
           const b = state.rows[0];
           if (!b) throw new BadRequest("That batch no longer exists.");
 
+          if (!RECEIPT_SOURCES.includes(b.source)) {
+            return foreignBatch(b.source, cors);
+          }
           if (b.leased) {
             return json(
               {
@@ -3098,10 +3161,26 @@ serve(async (req) => {
             });
             if (r.rows.length === 0) throw new BadRequest("No such row");
 
-            const orgRow = await conn.queryObject<{ organization_id: string }>({
-              text: "select organization_id from data_center.import_batches where id = $1",
+            const orgRow = await conn.queryObject<
+              { organization_id: string; source: string }
+            >({
+              text: `select organization_id, source from data_center.import_batches
+                      where id = $1`,
               args: [r.rows[0].batch_id],
             });
+            /*
+             * The one that mattered most. Without this, a Fix pressed on a
+             * call row set status 'valid' and left sale_id null, and
+             * commitCallRows selects `status = 'valid' and sale_id is not
+             * null` - so the row was neither committed nor listed as an
+             * exception. It simply stopped existing.
+             */
+            if (
+              orgRow.rows[0] && !RECEIPT_SOURCES.includes(orgRow.rows[0].source)
+            ) {
+              await conn.queryObject("rollback");
+              return foreignBatch(orgRow.rows[0].source, cors);
+            }
             const stock = await conn.queryObject<{ stove_id: string; status: string; organization_id: string }>({
               text: `select stove_id, status, organization_id from public.stove_ids_base
                      where upper(stove_id) = $1`,
@@ -3775,7 +3854,7 @@ serve(async (req) => {
              * four now come from one lateral, so this is one scan of the batch's
              * rows rather than two, and no count can drift from another.
              */
-            text: `select b.id, b.filename, b.state, b.total_rows,
+            text: `select b.id, b.filename, b.state, b.source, b.total_rows,
                           counts.valid_now::int      as valid_rows,
                           counts.rejected_now::int   as rejected_rows,
                           counts.committed_now::int  as committed_rows,
