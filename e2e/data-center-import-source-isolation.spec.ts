@@ -42,6 +42,14 @@ async function callBatch(page: Page, serial: string): Promise<string> {
     action: "call_stage",
     rows: [{ "Stove ID": serial, Verification: "Fully verified" }],
     filename: "e2e-source-isolation.csv",
+    /*
+     * These fixtures repeat across the tests in this file by design - each one
+     * needs a call batch and any call batch will do. Brick 2 added a
+     * content hash over the parsed rows, so the second and third are correctly
+     * flagged as a repeat upload. That guard is not what is under test here;
+     * it has its own test in the chain spec.
+     */
+    confirmDuplicate: true,
   });
   expect(staged.status, "the call sheet should stage").toBe(200);
   const batchId = (staged.body as { data: { batchId: string } }).data.batchId;

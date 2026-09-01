@@ -37,8 +37,8 @@ async function freeStove(page: Page): Promise<string | null> {
     limit: 25,
   });
   const rows =
-    (q.body as { data?: { rows?: { stove_serial_no: string; has_call_record?: boolean }[] } })
-      ?.data?.rows ?? [];
+    (q.body as { data?: { rows?: { stove_serial_no: string; has_call_record?: boolean }[] } })?.data
+      ?.rows ?? [];
   const free = rows.find((r) => !r.has_call_record);
   return free?.stove_serial_no ?? null;
 }
@@ -49,9 +49,11 @@ test.describe("the call sheet knows what it is for", () => {
     const r = await callEdgeFunction(page, "data-center-import", { action: "call_sheet" });
     expect(r.status).toBe(200);
 
-    const data = (r.body as {
-      data: { columns: { field: string }[]; questions: { key: string }[] };
-    }).data;
+    const data = (
+      r.body as {
+        data: { columns: { field: string }[]; questions: { key: string }[] };
+      }
+    ).data;
 
     // The call-specific columns are configuration; the questions are appended
     // from field_defs. Retiring a question in Settings has to take it off the
@@ -70,9 +72,7 @@ test.describe("the call sheet knows what it is for", () => {
     expect(r.status).toBe(200);
   });
 
-  test("holding import.upload is no longer enough to pull the call backlog", async ({
-    page,
-  }) => {
+  test("holding import.upload is no longer enough to pull the call backlog", async ({ page }) => {
     /*
      * The point of the split, asserted from the side that used to pass.
      *
@@ -141,10 +141,10 @@ test.describe("a row that cannot land says why", () => {
     expect(stove, "the preview has no callable sale to test against").toBeTruthy();
 
     const staged = await stage(page, [
-      { "Stove ID": stove, "Verification": "Fully verified" },
-      { "Stove ID": "ZZZ999999", "Verification": "Fully verified" },
+      { "Stove ID": stove, Verification: "Fully verified" },
+      { "Stove ID": "ZZZ999999", Verification: "Fully verified" },
       { "Stove ID": stove, "Call Outcome": "Unreacheable" },
-      { "Verification": "Fully verified" },
+      { Verification: "Fully verified" },
     ]);
     expect(staged.status).toBe(200);
     const batchId = (staged.body as { data: { batchId: string } }).data.batchId;
@@ -154,9 +154,11 @@ test.describe("a row that cannot land says why", () => {
       batchId,
     });
     expect(checked.status).toBe(200);
-    const summary = (checked.body as {
-      data: { total: number; valid: number; exceptions: number; rejected: number };
-    }).data;
+    const summary = (
+      checked.body as {
+        data: { total: number; valid: number; exceptions: number; rejected: number };
+      }
+    ).data;
 
     expect(summary.total).toBe(4);
     expect(summary.valid).toBe(1);
@@ -177,10 +179,12 @@ test.describe("a row that cannot land says why", () => {
   });
 });
 
+// The commit is a real chain now, so a test that drives one needs longer than
+// the default 60s: that passes on a fast afternoon and fails on a slow one.
 test.describe("the calls land, and can be taken back off", () => {
-  test("the dates come across, so the record does not read as never called", async ({
-    page,
-  }) => {
+  test.describe.configure({ timeout: 240_000 });
+
+  test("the dates come across, so the record does not read as never called", async ({ page }) => {
     await signIn(page, USERS.admin);
 
     const stove = await freeStove(page);
@@ -191,19 +195,49 @@ test.describe("the calls land, and can be taken back off", () => {
         "Stove ID": stove,
         "Call 1 Date": "2026-07-02",
         "Call 2 Date": "2026-07-09",
-        "Verification": "Partially verified",
-        "Ward": "e2e ward",
+        Verification: "Partially verified",
+        Ward: "e2e ward",
       },
     ]);
     const batchId = (staged.body as { data: { batchId: string } }).data.batchId;
     await callEdgeFunction(page, "data-center-import", { action: "call_validate", batchId });
 
+    /*
+     * Press once, then watch.
+     *
+     * This asserted `200` with a count in the body, which was the synchronous
+     * contract: one request did a slice of work and reported it. That contract
+     * is gone deliberately - a 25-row slice was 25 to 100 sequential
+     * edge-function invocations against a 20-second client abort, so a real
+     * 359-row sheet could never finish. The commit now answers 202 and the
+     * server works the batch through on its own.
+     *
+     * The claim this test exists for is untouched: two dates in, two attempts
+     * out. Only how the work is started has changed.
+     */
     const committed = await callEdgeFunction(page, "data-center-import", {
       action: "call_commit",
       batchId,
     });
-    expect(committed.status).toBe(200);
-    expect((committed.body as { data: { committed: number } }).data.committed).toBe(1);
+    expect([200, 202], "the commit should start, or report nothing to do").toContain(
+      committed.status,
+    );
+
+    let landed = false;
+    for (let i = 0; i < 40; i++) {
+      const list = await callEdgeFunction(page, "data-center-import", {
+        action: "batches",
+        batchId,
+      });
+      const b = ((list.body as { data?: Record<string, unknown>[] })?.data ?? [])[0];
+      if (b && (b.state === "committed" || b.valid_rows === 0)) {
+        landed = true;
+        expect(b.committed_rows, "the row should have landed").toBe(1);
+        break;
+      }
+      await new Promise((r) => setTimeout(r, 3000));
+    }
+    expect(landed, "the chain did not drain the batch in time").toBe(true);
 
     // The assertion this file exists for. Two dates in, two attempts out.
     const record = await callEdgeFunction(page, "data-center-read", {
@@ -211,9 +245,11 @@ test.describe("the calls land, and can be taken back off", () => {
       limit: 200,
       filters: { search: stove },
     });
-    const row = (record.body as {
-      data: { rows: { stove_serial_no: string; attempt_count: number | null }[] };
-    }).data.rows.find((r) => r.stove_serial_no === stove);
+    const row = (
+      record.body as {
+        data: { rows: { stove_serial_no: string; attempt_count: number | null }[] };
+      }
+    ).data.rows.find((r) => r.stove_serial_no === stove);
     expect(row, "the imported record should be in the queue").toBeTruthy();
     expect(Number(row?.attempt_count ?? 0)).toBe(2);
 
@@ -230,9 +266,11 @@ test.describe("the calls land, and can be taken back off", () => {
       limit: 200,
       filters: { search: stove },
     });
-    const still = (after.body as {
-      data: { rows: { stove_serial_no: string }[] };
-    }).data.rows.some((r) => r.stove_serial_no === stove);
+    const still = (
+      after.body as {
+        data: { rows: { stove_serial_no: string }[] };
+      }
+    ).data.rows.some((r) => r.stove_serial_no === stove);
     expect(still, "rolling back a call import must not delete the sale").toBe(true);
   });
 });
