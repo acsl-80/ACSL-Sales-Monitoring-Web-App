@@ -440,6 +440,14 @@ function StoveList({ batch, stoves, error, onPick, label = "stoves", server = nu
   }, [stoves, only, server, filter]);
 
   const paged = usePaged(shown, 25);
+  /*
+   * On the server path the rows arrived already sliced to one page, so putting
+   * them through `usePaged` sliced them AGAIN: ask for 50 per page and the
+   * screen drew 25, because the local pager was still cutting at its own
+   * default. The hook stays called - hooks may not be conditional - but its
+   * slice is only used when the rows really are the whole set.
+   */
+  const visible = server ? shown : paged.slice;
 
   if (error) return <p className="text-sm text-red-600">{error}</p>;
   if (stoves === null) {
@@ -450,11 +458,11 @@ function StoveList({ batch, stoves, error, onPick, label = "stoves", server = nu
     );
   }
 
-  // Counted by whoever can count honestly. On the server path only the total
-  // for the CURRENT filter is known, so the other two say nothing rather than
-  // saying something about one page.
+  // Counted by whoever can count honestly. The server now sends all three
+  // totals from one scan, so every chip carries a real number whichever filter
+  // is selected - "done" used to be pinned at nothing while todo was shown.
   const counts = server
-    ? { todo: null, done: null, all: null, [server.filter]: server.total }
+    ? server.totals ?? { todo: null, done: null, all: null, [server.filter]: server.total }
     : {
         todo: stoves.filter((s) => !(s.sale_id || s.just_recorded)).length,
         done: stoves.filter((s) => s.sale_id || s.just_recorded).length,
@@ -530,7 +538,7 @@ function StoveList({ batch, stoves, error, onPick, label = "stoves", server = nu
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-100">
-                {paged.slice.map((s) => (
+                {visible.map((s) => (
                   <tr
                     key={s.stove_id}
                     onClick={() => onPick(s)}

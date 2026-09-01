@@ -1418,6 +1418,7 @@ serve(async (req) => {
           cursor?: string | null;
           limit?: number;
           recorded?: string | null;
+          transactionId?: string | null;
         };
 
         const organizationId = String(b.organizationId ?? "");
@@ -1431,6 +1432,14 @@ serve(async (req) => {
         if (period && !/^\d{4}-(0[1-9]|1[0-2])$/.test(period)) {
           return json({ error: "period must look like 2026-08", code: "bad_period" }, 400, cors);
         }
+
+        // One consignment out of everything the partner holds. An exact match
+        // on the reference, not a pattern: the value comes from a picker that
+        // was itself filled from partner_detail, so anything else is noise.
+        const transactionId =
+          typeof b.transactionId === "string" && b.transactionId.trim()
+            ? b.transactionId.trim().slice(0, 60)
+            : null;
 
         const raw = String(b.search ?? "").trim().slice(0, 60);
         // Escaped, so a serial containing % or _ searches for itself rather
@@ -1475,7 +1484,7 @@ serve(async (req) => {
          */
         const scope = buildTransferScopeSql(
           { ...scopeInput, requestedOrgId: organizationId },
-          5,
+          6,
           "f",
         );
 
@@ -1506,10 +1515,11 @@ serve(async (req) => {
                            or (f.sales_date ~ '^[0-9]{4}-[0-9]{2}'
                                and left(f.sales_date, 7) = $1))
                       and ($2::text = '' or b.stove_id like $2)
-                      and ($3::text is null or b.stove_id > $3)${recordedSql}
+                      and ($3::text is null or b.stove_id > $3)
+                      and ($5::text is null or b.transaction_id = $5)${recordedSql}
                     order by b.stove_id
                     limit $4`,
-            args: [period, like, cursor, limit + 1, ...scope.args],
+            args: [period, like, cursor, limit + 1, transactionId, ...scope.args],
           });
 
           /*
@@ -1522,16 +1532,26 @@ serve(async (req) => {
            * own rule - proved by its records table - is that the count answers
            * the filter rather than the page.
            *
-           * Same predicates as the page query minus the cursor, so the total
-           * and the rows can never disagree about what is being counted.
+           * Same predicates as the page query minus the cursor and minus the
+           * recorded filter - the one scan answers all three of the bench's
+           * chips at once with FILTER clauses, because a chip that only knows
+           * its own count when it is selected pins the other two to a guess.
+           * The bench showed "done 0" forever for exactly that reason: the todo
+           * page was all the server was ever asked about.
            */
           const countScope = buildTransferScopeSql(
             { ...scopeInput, requestedOrgId: organizationId },
-            3,
+            4,
             "f",
           );
-          const counted = await connection.queryObject<{ n: number }>({
-            text: `select count(*)::int as n
+          const counted = await connection.queryObject<{
+            total: number;
+            todo: number;
+            done: number;
+          }>({
+            text: `select count(*)::int as total,
+                          count(*) filter (where sb.sale_id is null)::int as todo,
+                          count(*) filter (where sb.sale_id is not null)::int as done
                      from data_center.v_transfer_stoves b
                      join data_center.transfer_funnel f on f.transfer_id = b.transfer_id
                      left join public.stove_ids_base sb on sb.stove_id = b.stove_id
@@ -1539,19 +1559,25 @@ serve(async (req) => {
                       and ($1::text is null
                            or (f.sales_date ~ '^[0-9]{4}-[0-9]{2}'
                                and left(f.sales_date, 7) = $1))
-                      and ($2::text = '' or b.stove_id like $2)${recordedSql}`,
-            args: [period, like, ...countScope.args],
+                      and ($2::text = '' or b.stove_id like $2)
+                      and ($3::text is null or b.transaction_id = $3)`,
+            args: [period, like, transactionId, ...countScope.args],
           });
 
           const all = rows.rows as { stove_id: string }[];
           const hasMore = all.length > limit;
           const stoves = hasMore ? all.slice(0, limit) : all;
+          const t = counted.rows[0] ?? { total: 0, todo: 0, done: 0 };
           return json(
             {
               data: {
                 stoves,
                 hasMore,
-                total: counted.rows[0]?.n ?? 0,
+                // The denominator for the CURRENT filter, which is what the
+                // page controls divide by. The three totals ride beside it so
+                // every chip can be honest whichever one is selected.
+                total: recorded === "yes" ? t.done : recorded === "no" ? t.todo : t.total,
+                totals: { all: t.total, todo: t.todo, done: t.done },
                 nextCursor: hasMore ? stoves[stoves.length - 1].stove_id : null,
                 scope: scope.description,
               },

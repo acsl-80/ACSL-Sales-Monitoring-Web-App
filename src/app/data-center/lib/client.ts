@@ -449,12 +449,19 @@ export const dataCenterClient = {
     limit?: number;
     /** "no" for still to type, "yes" for already recorded, null for both. */
     recorded?: string | null;
+    /** One consignment reference, narrowing server-side like everything else. */
+    transactionId?: string | null;
   }) =>
     call<{
       stoves: Record<string, unknown>[];
       hasMore: boolean;
-      /** How many match, not how many were fetched. The bench pages on this. */
+      /** How many match the CURRENT filter, not how many were fetched. The bench pages on this. */
       total: number;
+      /**
+       * All three chips from the same scan. Counted whatever `recorded` asks
+       * for, so "done" is a real number even while the page shows only todo.
+       */
+      totals: { all: number; todo: number; done: number };
       nextCursor: string | null;
       scope: string;
     }>("data-center-read", "partner_stoves", params),
