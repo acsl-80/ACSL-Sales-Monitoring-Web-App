@@ -284,9 +284,28 @@ export interface BuiltQuery {
   scopeDescription: string;
 }
 
+/**
+ * The sheet ceiling.
+ *
+ * A downloadable sheet is not a page, so 200 is the wrong bound for it - but
+ * it still needs one, and it still must not be the caller's to choose. Matches
+ * `digitisation_sheet`, whose own limit is 20,000, and matches
+ * `import.max_rows`, which is what the importer will accept back.
+ */
+export const SHEET_PAGE_SIZE = 20_000;
+
 export function buildRecordsQuery(
   request: RecordsRequest,
   scopeInput: ScopeInput,
+  /*
+   * The ceiling, raised by the SERVER for the one action that builds a file.
+   *
+   * Deliberately an argument to this function rather than a field on the
+   * request: the note below says the ceiling is enforced here rather than
+   * trusted from the caller, and a `limit` in the request body would be
+   * exactly that trust. This comes from the action, which is code.
+   */
+  pageSizeCeiling: number = MAX_PAGE_SIZE,
 ): BuiltQuery {
   const args: unknown[] = [];
   const p = (value: unknown) => {
@@ -298,10 +317,11 @@ export function buildRecordsQuery(
   const direction = request.direction === "asc" ? "asc" : "desc";
 
   // The ceiling is enforced here rather than trusted from the caller. Asking
-  // for 100,000 rows gets 200.
+  // for 100,000 rows gets 200 - or, for the sheet action alone, whatever
+  // ceiling that action passed in.
   const pageSize = Math.min(
     Math.max(Number(request.limit) || DEFAULT_PAGE_SIZE, 1),
-    MAX_PAGE_SIZE,
+    pageSizeCeiling,
   );
 
   const where: string[] = [];

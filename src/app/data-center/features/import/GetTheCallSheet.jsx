@@ -194,53 +194,27 @@ export default function GetTheCallSheet({ active = true }) {
        * The partner filter matters more than it did, for the same reason: at
        * 500,000 records "everything" is not a sheet anybody can open.
        */
-      const filters = {
-        ...(uncalledOnly ? { hasCallRecord: false } : {}),
+      /*
+       * One request, not four hundred.
+       *
+       * This paged `call_queue` up to 400 times to build a file. It asked for
+       * 500 a page against a clamp of 200, so its stated ceiling of 200,000
+       * was really 80,000 and every page cost two and a half times the round
+       * trips it intended. At this module's measured cost - the connection,
+       * not the query, is what a request pays for - that is minutes of wall
+       * clock to produce a spreadsheet.
+       *
+       * `call_sheet_rows` answers the whole thing in one query, the way
+       * `digitisation_sheet` has always answered the receipt sheet. The
+       * ceiling is the server's, not this component's, and it comes back
+       * saying whether it was reached.
+       */
+      const sheet = await dataCenterClient.callSheetRows({
         ...(orgId ? { organizationId: orgId } : {}),
-      };
-
-      /*
-       * Paged to the end, not capped.
-       *
-       * This asked for 500 and took whatever came back. A partner with more
-       * than that got a sheet that looked complete and was not, and nothing on
-       * it said so - which for a backlog import is the worst kind of wrong,
-       * because the rows that were silently missing are exactly the ones
-       * nobody then chases.
-       *
-       * PAGE_LIMIT bounds one request, not the download. The loop bound is a
-       * runaway guard rather than a business rule; it is far above any real
-       * partner and it says so out loud if it is ever reached.
-       */
-      /*
-       * 200, because that is what the server actually grants.
-       *
-       * This asked for 500 and the comment claimed a 200,000-record ceiling.
-       * `records-query.ts` clamps every request to MAX_PAGE_SIZE = 200, so the
-       * real ceiling was 80,000 and each page cost 2.5x the round trips it
-       * meant to. Asking for what is granted makes the arithmetic below true.
-       */
-      const PAGE_LIMIT = 200;
-      const MAX_PAGES = 400; // 80,000 records
-      const collected = [];
-      let cursor = null;
-      let pages = 0;
-      let truncated = false;
-      for (;;) {
-        const page = await dataCenterClient.getCallQueue({
-          limit: PAGE_LIMIT,
-          cursor,
-          filters,
-        });
-        collected.push(...(page.rows ?? []));
-        pages += 1;
-        if (!page.hasMore || !page.nextCursor) break;
-        if (pages >= MAX_PAGES) {
-          truncated = true;
-          break;
-        }
-        cursor = page.nextCursor;
-      }
+        ...(uncalledOnly ? { uncalledOnly: true } : {}),
+      });
+      const collected = sheet.rows ?? [];
+      const truncated = sheet.truncated;
 
       const rows = collected.map((r) => {
         const out = {};
@@ -302,7 +276,8 @@ export default function GetTheCallSheet({ active = true }) {
       if (truncated) {
         setError(
           `The sheet stopped at ${rows.length.toLocaleString()} records, which is this ` +
-            "download's ceiling. Pick a single partner to bring the rest in.",
+            "download's ceiling. Pick a single partner, or tick the box above, to bring " +
+            "the rest in.",
         );
       }
     } catch (e) {

@@ -664,6 +664,22 @@ export const dataCenterClient = {
       filters?: RecordsFilters;
     } = {},
   ) => call<RecordsPage>("data-center-read", "call_queue", params),
+
+  /**
+   * The whole call sheet in one request.
+   *
+   * The download used to page `call_queue` up to 400 times to build a file.
+   * A sheet is not a page, so it gets its own action with its own ceiling -
+   * set by the server, not asked for here - and it says when it hit it rather
+   * than truncating in silence.
+   */
+  callSheetRows: (params: { organizationId?: string; uncalledOnly?: boolean } = {}) =>
+    call<{
+      rows: Record<string, unknown>[];
+      cap: number;
+      truncated: boolean;
+      scope: string | null;
+    }>("data-center-read", "call_sheet_rows", params),
 };
 
 /**
