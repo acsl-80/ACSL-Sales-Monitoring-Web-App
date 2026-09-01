@@ -347,7 +347,17 @@ test.describe("what the file itself gets wrong", () => {
 
     const [stove] = await freeStoves(page, 1);
     expect(stove, "the preview has no uncalled sale to work with").toBeTruthy();
-    const rows = [{ "Stove ID": stove, Verification: "Fully verified" }];
+    /*
+     * Unique per run.
+     *
+     * The hash is over the parsed rows, and it persists on the batch. A
+     * previous run of this very test therefore makes the NEXT run's first
+     * upload a genuine repeat, which is the importer being right and the
+     * fixture being wrong. What is under test is detecting a repeat within a
+     * run, so the payload carries a nonce and the two uploads share it.
+     */
+    const nonce = `e2e-duplicate-${Date.now()}`;
+    const rows = [{ "Stove ID": stove, Verification: "Fully verified", "Other Comments": nonce }];
 
     const first = await callEdgeFunction(page, "data-center-import", {
       action: "call_stage",
