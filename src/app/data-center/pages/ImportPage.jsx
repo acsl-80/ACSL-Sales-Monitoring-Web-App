@@ -1,4 +1,4 @@
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import DataCentreShell from "../components/DataCentreShell";
 import ImportPanel from "../features/import/ImportPanel";
 import GetTheSheet from "../features/import/GetTheSheet";
@@ -71,6 +71,20 @@ function Inner() {
   const uploadRef = useRef(null);
   const current = available.find((t) => t.key === tab) ?? available[0];
 
+  /*
+   * Once the bench has been opened it stays mounted, hidden by CSS while
+   * another tab is up. Unmounting it threw away the open partner, the search
+   * term and the page every time somebody glanced at the confirmation queue -
+   * losing their place in the middle of a run of forty receipts. Mounted but
+   * hidden, its drafts also keep autosaving through the visit. It is not
+   * mounted before the first visit: somebody working bulk uploads all day
+   * should not pay for a workbench they never open.
+   */
+  const [benchLive, setBenchLive] = useState(false);
+  useEffect(() => {
+    if (current?.key === "bench") setBenchLive(true);
+  }, [current?.key]);
+
   return (
     <div className="space-y-4">
       <div className="rounded-xl border border-gray-200 border-t-[3px] border-t-(--dc-accent) bg-(--dc-accent-soft)/30 p-4 shadow-sm">
@@ -128,7 +142,11 @@ function Inner() {
       {current?.key === "calls" && (
         <CallSheet canCommit={can(DATA_CENTER_FEATURES.IMPORT_COMMIT)} />
       )}
-      {current?.key === "bench" && <Workbench />}
+      {(benchLive || current?.key === "bench") && (
+        <div className={current?.key === "bench" ? undefined : "hidden"}>
+          <Workbench />
+        </div>
+      )}
       {current?.key === "confirm" && (
         <ConfirmationQueue canConfirm={can(DATA_CENTER_FEATURES.IMPORT_COMMIT)} />
       )}

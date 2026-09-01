@@ -69,8 +69,19 @@ async function authHeader(): Promise<string> {
  *
  * The caller's grants are resolved server-side from this token on every
  * request. Nothing here is trusted to have gated anything.
+ *
+ * `keepalive` is for exactly one situation: a save fired from `beforeunload`,
+ * which the browser would otherwise cancel the moment the page goes away. It
+ * is not a general option - keepalive requests carry a small body budget and
+ * cannot be aborted reliably - so only the bench's parting draft save asks
+ * for it.
  */
-async function call<T>(fn: string, action: string, payload: unknown = {}): Promise<T> {
+async function call<T>(
+  fn: string,
+  action: string,
+  payload: unknown = {},
+  opts: { keepalive?: boolean } = {},
+): Promise<T> {
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
 
@@ -83,6 +94,7 @@ async function call<T>(fn: string, action: string, payload: unknown = {}): Promi
       },
       body: JSON.stringify({ action, ...(payload as object) }),
       signal: controller.signal,
+      keepalive: opts.keepalive ?? false,
     });
 
     let body: unknown = null;
@@ -1326,12 +1338,21 @@ export const dataCenterImport = {
   /**
    * Save what has been typed. `complete` is the typist saying they are done;
    * a draft is never judged, so half-typed work is never rejected.
+   *
+   * `keepalive` is passed only by the bench's beforeunload save, so the write
+   * can outlive the page that fired it.
    */
-  workbenchSave: (stoveId: string, values: Record<string, unknown>, complete: boolean) =>
+  workbenchSave: (
+    stoveId: string,
+    values: Record<string, unknown>,
+    complete: boolean,
+    opts: { keepalive?: boolean } = {},
+  ) =>
     call<{ batchId: string; stoveId: string; status: "draft" | "valid" }>(
       "data-center-import",
       "workbench_save",
       { stoveId, values, complete },
+      opts,
     ),
 
   /** What this person has on the bench, and what others have abandoned. */

@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { dataCenterImport, DataCenterError } from "../../lib/client";
 import { usePaged } from "../../lib/usePaged";
 import Pagination from "../../components/Pagination";
@@ -179,6 +179,10 @@ export default function ConfirmationQueue({ canConfirm }) {
   const [notice, setNotice] = useState(null);
   const [busy, setBusy] = useState(false);
   const [pending, setPending] = useState(null);
+  // Read by the event listeners below, which are bound once and would
+  // otherwise see the busy flag as it stood when they were bound.
+  const busyRef = useRef(busy);
+  busyRef.current = busy;
 
   const load = useCallback(async () => {
     try {
@@ -194,6 +198,34 @@ export default function ConfirmationQueue({ canConfirm }) {
 
   useEffect(() => {
     load();
+  }, [load]);
+
+  /**
+   * Refreshed when somebody comes back to look, not only when it mounts.
+   *
+   * This queue is the desk other people's work arrives at, so its numbers go
+   * stale by nature: a typist finishes receipts in another tab, an upload
+   * lands in another window, and a mount-time snapshot quietly stops being
+   * true. Focus and visibility cover coming back from anywhere; the bench's
+   * own finish event covers the tab switch that never blurs the window.
+   * Nothing refreshes mid-confirmation - the poll in `confirm` owns the
+   * screen while it runs.
+   */
+  useEffect(() => {
+    const refresh = () => {
+      if (!busyRef.current) load();
+    };
+    const onVisibility = () => {
+      if (document.visibilityState === "visible") refresh();
+    };
+    window.addEventListener("focus", refresh);
+    document.addEventListener("visibilitychange", onVisibility);
+    window.addEventListener("data-center:bench-finished", refresh);
+    return () => {
+      window.removeEventListener("focus", refresh);
+      document.removeEventListener("visibilitychange", onVisibility);
+      window.removeEventListener("data-center:bench-finished", refresh);
+    };
   }, [load]);
 
   const byStream = useMemo(() => {
