@@ -60,11 +60,21 @@ const AREAS = [
     blurb: "Every sold stove with the detail captured at the point of sale.",
   },
   {
-    // Either the uploader or the bench opens it, so the card unlocks on
-    // either. AreaCard names the first key when it is locked, which is the
-    // one most people are missing.
+    /*
+     * Three grants open this card, not one.
+     *
+     * The uploader, the bench, or the call-import grant. The third was
+     * missing, so somebody granted exactly `call_import.use` - the whole
+     * point of which is that it is NOT implied by the others - saw no card
+     * and was refused the page, even though the tab inside it is gated on
+     * their key. The suite proved the narrowing direction and nothing proved
+     * this one.
+     *
+     * AreaCard names the first key when locked, which is the one most people
+     * are missing.
+     */
     key: DATA_CENTER_FEATURES.IMPORT_UPLOAD,
-    altKey: DATA_CENTER_FEATURES.DIGITISATION_WORK,
+    altKeys: [DATA_CENTER_FEATURES.DIGITISATION_WORK, DATA_CENTER_FEATURES.CALL_IMPORT],
     href: "/data-center/import",
     area: "import",
     name: "Bulk Import",
@@ -177,7 +187,7 @@ export default function Explore() {
         <AreaCard
             key={area.href}
             area={area}
-            unlocked={can(area.key) || (area.altKey ? can(area.altKey) : false)}
+            unlocked={can(area.key) || (area.altKeys ?? []).some((k) => can(k))}
           />
         ))}
       </div>
