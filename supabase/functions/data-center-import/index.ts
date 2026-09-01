@@ -292,24 +292,74 @@ type Queryable = { queryObject: (...args: any[]) => Promise<{ rows: any[] }> };
  * Returns null when the model is unknown or unpriced, which is not an error.
  * The caller then refuses that one row with a reason naming the setting.
  */
+/**
+ * A sheet's sales model, resolved to the sales app's OWN payment model.
+ *
+ * `workflow_config.import.model_amounts` used to hold a hand-kept copy of the
+ * prices - a second source of truth for numbers `public.payment_models`
+ * already owns canonically ("Amina Sales Model" 42,000, "Hakimi Sales Model"
+ * 56,975, live-checked before this was written). The config now maps NAMES
+ * ("Amina Model", "Hakimi Partner", "Partner Sales") to the canonical model
+ * name, and the price comes from the model row itself. Rename a sheet
+ * convention: edit config. Change a price: change it where the sales app
+ * changes it.
+ *
+ * The id matters as much as the price now. The commit sends every imported
+ * sale through create-sale's installment door, and that door is what lets
+ * "paid" be what was actually received instead of being coerced to the full
+ * amount - the outright path forces paid = amount, by the sales app's own
+ * rule, which is exactly what a stack of part-paid paper receipts must not
+ * inherit.
+ */
+export type SalesModelResolution = {
+  paymentModelId: string;
+  canonicalName: string;
+  /** The model's fixed price, or null when the model prices at zero. */
+  price: number | null;
+};
+
+export async function modelFor(
+  conn: Queryable,
+  raw: Record<string, unknown>,
+): Promise<SalesModelResolution | null> {
+  const model = field(raw, "salesModel").trim();
+  if (!model) return null;
+  const mapRow = await conn.queryObject({
+    text: `select value from data_center.workflow_config where key = 'import.model_map'`,
+  }) as { rows: { value: unknown }[] };
+  let canonical = model;
+  const table = mapRow.rows[0]?.value;
+  if (table && typeof table === "object") {
+    for (const [name, target] of Object.entries(table as Record<string, unknown>)) {
+      if (name.trim().toLowerCase() === model.toLowerCase() && typeof target === "string") {
+        canonical = target;
+        break;
+      }
+    }
+  }
+  const pm = await conn.queryObject({
+    text: `select id::text as id, name, fixed_price
+             from public.payment_models
+            where lower(name) = lower($1) and is_active
+            limit 1`,
+    args: [canonical],
+  }) as { rows: { id: string; name: string; fixed_price: unknown }[] };
+  const hit = pm.rows[0];
+  if (!hit) return null;
+  const price = Number(hit.fixed_price);
+  return {
+    paymentModelId: hit.id,
+    canonicalName: hit.name,
+    price: Number.isFinite(price) && price > 0 ? price : null,
+  };
+}
+
+/** The price alone, for the callers that only fill an absent amount. */
 export async function modelPriceFor(
   conn: Queryable,
   raw: Record<string, unknown>,
 ): Promise<number | null> {
-  const model = field(raw, "salesModel").trim().toLowerCase();
-  if (!model) return null;
-  const r = await conn.queryObject({
-    text: `select value from data_center.workflow_config where key = 'import.model_amounts'`,
-  }) as { rows: { value: unknown }[] };
-  const table = r.rows[0]?.value;
-  if (!table || typeof table !== "object") return null;
-  for (const [name, amount] of Object.entries(table as Record<string, unknown>)) {
-    if (name.trim().toLowerCase() === model) {
-      const n = Number(amount);
-      return Number.isFinite(n) && n > 0 ? n : null;
-    }
-  }
-  return null;
+  return (await modelFor(conn, raw))?.price ?? null;
 }
 
 /** Which fields must be present for a row to be usable at all. */
@@ -1443,29 +1493,49 @@ serve(async (req) => {
             // row, which at 20,000 rows is the difference between seconds and
             // an afternoon.
             /*
-             * The price table, read once for the batch rather than once per row.
-             *
-             * modelPriceFor is the rule and is what the single-record paths
-             * call; a file of four hundred rows would ask the same question
-             * four hundred times, so the answer is cached here. Same table,
-             * same matching, one place to change either.
+             * Every model this batch could name, resolved once. The per-row
+             * work stays in memory - the same batching discipline as the
+             * verdict write below.
              */
-            const priceRow = await conn.queryObject<{ value: unknown }>({
+            const mapRow = await conn.queryObject({
               text: `select value from data_center.workflow_config
-                      where key = 'import.model_amounts'`,
+                      where key = 'import.model_map'`,
             });
-            const prices = new Map<string, number>();
-            const rawPrices = priceRow.rows[0]?.value;
-            if (rawPrices && typeof rawPrices === "object") {
-              for (const [model, amount] of Object.entries(rawPrices as Record<string, unknown>)) {
-                const n = Number(amount);
-                if (Number.isFinite(n) && n > 0) prices.set(model.trim().toLowerCase(), n);
+            const nameMap = new Map<string, string>();
+            const rawMap = mapRow.rows[0]?.value;
+            if (rawMap && typeof rawMap === "object") {
+              for (const [name, target] of Object.entries(rawMap as Record<string, unknown>)) {
+                if (typeof target === "string") {
+                  nameMap.set(name.trim().toLowerCase(), target);
+                }
               }
             }
-            const priceOf = (raw: Record<string, unknown>) => {
-              const model = field(raw, "salesModel").trim().toLowerCase();
-              return model ? (prices.get(model) ?? null) : null;
+            const pmRows = await conn.queryObject<{
+              id: string;
+              name: string;
+              fixed_price: unknown;
+            }>({
+              text: `select id::text as id, name, fixed_price
+                       from public.payment_models where is_active`,
+            });
+            const modelsByName = new Map(
+              pmRows.rows.map((m) => [m.name.trim().toLowerCase(), m]),
+            );
+            const resolveModel = (raw: Record<string, unknown>) => {
+              const model = field(raw, "salesModel").trim();
+              if (!model) return null;
+              const canonical = nameMap.get(model.toLowerCase()) ?? model;
+              const hit = modelsByName.get(canonical.trim().toLowerCase());
+              if (!hit) return null;
+              const price = Number(hit.fixed_price);
+              return {
+                paymentModelId: hit.id,
+                canonicalName: hit.name,
+                price: Number.isFinite(price) && price > 0 ? price : null,
+              };
             };
+            const priceOf = (raw: Record<string, unknown>) =>
+              resolveModel(raw)?.price ?? null;
 
             const shaped = pending.rows.map((r) => ({
               id: r.id,
@@ -1497,6 +1567,33 @@ serve(async (req) => {
               args: [[...new Set(serials)]],
             });
             const byStoveId = new Map(stock.rows.map((s) => [s.stove_id.toUpperCase(), s]));
+
+            /*
+             * Which partners restrict which sales models. create-sale enforces
+             * this at commit - a partner with an explicit list may only use the
+             * models on it - so checking it here turns 120 commit-time 403s
+             * (the measured count on the real file) into named, actionable
+             * exceptions the operator sees the moment the batch is checked.
+             * A partner with NO rows is unrestricted, mirroring create-sale.
+             */
+            const orgIds = [
+              ...new Set(stock.rows.map((s) => s.organization_id).filter(Boolean)),
+            ];
+            const modelLinks = orgIds.length
+              ? await conn.queryObject<{ organization_id: string; payment_model_id: string }>({
+                text: `select organization_id::text, payment_model_id::text
+                         from public.organization_payment_models
+                        where organization_id = any($1::uuid[])`,
+                args: [orgIds],
+              })
+              : { rows: [] as { organization_id: string; payment_model_id: string }[] };
+            const allowedModels = new Map<string, Set<string>>();
+            for (const l of modelLinks.rows) {
+              if (!allowedModels.has(l.organization_id)) {
+                allowedModels.set(l.organization_id, new Set());
+              }
+              allowedModels.get(l.organization_id)!.add(l.payment_model_id);
+            }
 
             // Which transfer each serial came from. The same chain the funnel
             // uses, asked once for the whole batch, so a record and Partner
@@ -1626,6 +1723,7 @@ serve(async (req) => {
               }
               const row = s.result.row;
               const found = byStoveId.get(row.stoveSerialNo);
+              const resolvedModel = resolveModel(s.raw as Record<string, unknown>);
               const transactionId = transferBySerial.get(row.stoveSerialNo) ?? null;
               const duplicateOf = firstSeen.get(row.stoveSerialNo) ?? null;
               if (duplicateOf === null) {
@@ -1778,6 +1876,22 @@ serve(async (req) => {
                 exceptionReason = `Stove serial "${row.stoveSerialNo}" belongs to a different partner`;
               } else if (found.status === "sold") {
                 exceptionReason = `Stove serial "${row.stoveSerialNo}" is already recorded as sold`;
+              } else if (
+                resolvedModel && found.organization_id &&
+                allowedModels.has(found.organization_id) &&
+                !allowedModels.get(found.organization_id)!.has(resolvedModel.paymentModelId)
+              ) {
+                /*
+                 * The partner's model list comes from the ERP's "Partner Sales
+                 * Models" sync, so the fix is there, not here - and saying so
+                 * is the difference between an exception somebody can act on
+                 * and one they stare at.
+                 */
+                exceptionReason =
+                  `Partner "${found.partner_name ?? found.organization_id}" is not assigned ` +
+                  `the "${resolvedModel.canonicalName}" sales model, so the sales app would ` +
+                  "refuse this sale. Assign the model to the partner (Partner Sales Models " +
+                  "in the ERP sync), then check this batch again.";
               }
 
               if (exceptionReason) {
@@ -1832,6 +1946,18 @@ serve(async (req) => {
                   resolvedOrganizationId: found!.organization_id ?? null,
                   resolvedPartnerId: found!.partner_id ?? null,
                   resolvedPartnerName: found!.partner_name ?? null,
+                  /*
+                   * The sales app's own model row, resolved here so commit
+                   * sends the id rather than re-deriving it - and so a price
+                   * change between check and commit cannot silently reprice
+                   * rows an operator already approved.
+                   */
+                  ...(resolvedModel
+                    ? {
+                      paymentModelId: resolvedModel.paymentModelId,
+                      salesModelName: resolvedModel.canonicalName,
+                    }
+                    : {}),
                   ...(importWarnings.length ? { importWarnings } : {}),
                 };
                 verdicts.push({
@@ -2253,6 +2379,30 @@ serve(async (req) => {
             // forwarded so the sale is attributed to them and org scoping is
             // enforced by the same code the Sell Stove form goes through.
             const n = row.normalized;
+            /*
+             * The installment door is the only way through create-sale where
+             * "paid" can be less than "expected": the outright path coerces
+             * paid to the full amount, by the sales app's own rule. A stack of
+             * paper receipts that states no paid figure must not inherit that
+             * coercion - expected comes from the sheet or the model, paid is
+             * ONLY what the sheet states, and an unpaid balance is a
+             * partially_paid sale the payments machinery treats case by case.
+             *
+             * A row validated before models were linked carries no
+             * paymentModelId. Sending it outright would silently coerce, so it
+             * is refused by name instead: re-checking the batch is one press.
+             */
+            const modelId =
+              (row.normalized as unknown as Record<string, unknown>).paymentModelId ?? null;
+            if (typeof modelId !== "string" || !modelId) {
+              failRows.push({
+                rowId: row.id,
+                reason:
+                  "This row was checked before sales-model linking existed, so committing it " +
+                  "now would force paid = expected. Check the batch again, then commit.",
+              });
+              continue;
+            }
             const extras = (row.draft_values ?? row.raw ?? null) as
               | Record<string, unknown>
               | null;
@@ -2266,7 +2416,15 @@ serve(async (req) => {
               contactPerson: n.contactPerson,
               contactPhone: n.contactPhone,
               amount: n.amount,
-              amountReceived: n.amountReceived,
+              isInstallment: true,
+              paymentModelId: modelId,
+              /*
+               * Only what the sheet stated. Absent means zero paid so far -
+               * partially_paid, treated case by case - never the full amount
+               * assumed. Where the sheet states paid = expected, create-sale
+               * marks it fully_paid on its own.
+               */
+              initialPaymentAmount: n.amountReceived ?? 0,
               stateBackup: n.state,
               lgaBackup: n.lga,
               addressData: (extras?.addressData &&
