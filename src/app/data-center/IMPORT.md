@@ -307,18 +307,27 @@ actions and a page change between every two records.
 
 ## What sits there now
 
-**The consignment is beside the form, not behind it.** Every stove ID in it, at
-a glance, with what has been done to each and one click to switch. The list is
-fetched once when the consignment opens and handed to both the table and the
-rail, so switching stoves costs no round trip at all.
+**The partner is beside the form, not behind it.** Clicking a partner opens
+everything they hold - all-time, said plainly as "2,250 stoves, all
+consignments" - and the consignment and the month are narrowing filters on
+that one list rather than separate ways in (user decision, 2026-08-31; the
+three-way chooser that preceded them is gone). The list is a server page of a
+partner that may hold thousands, so the search, the filters and every count
+run in SQL, and the rail pages with prev/next right in its footer.
 
 | | |
 |---|---|
-| **Progress** | "12 of 40 recorded", with a bar. Typing forty receipts with no sense of how many are left is the part people describe as endless |
-| **Search** | matches anywhere in the ID, because the stack of paper is not in the system's order and nobody reads a serial from the front |
-| **Save and next** | the whole back-find-click-wait sequence as one button, labelled with how many are left |
+| **Progress** | "12 of 2,250 recorded", with a bar, from the server's own totals - counted with FILTER clauses in the one scan, so "done" is a real number even while the page shows todo |
+| **Search** | matches anywhere in the ID across the whole partner, because the stack of paper is not in the system's order and nobody reads a serial from the front. The rail never unmounts mid-search: the term lives in the shell, the previous rows stay rendered while the next page loads, and focus stays in the box |
+| **Save and next** | the whole back-find-click-wait sequence as one button, labelled with the partner's remaining count - and it crosses pages: a spent page advances and opens the next page's first todo row, rounding to the top once before the run ends |
+| **The pill** | one sticky status: Saving, Saved HH:MM, Not saved yet, Could not save retrying (n), Offline. A failed draft retries on a 10s-20s-40s ladder, the online event saves at once, and beforeunload guards a dirty form with a keepalive save |
 | **Ctrl+S** | save a draft, stay here |
 | **Ctrl+Enter** | save as finished, open the next one |
+
+Switching stoves awaits the draft save through a flush handle, and the bench
+stays mounted (hidden) while another import tab is up, so a glance at the
+confirmation queue no longer costs the typist their place. The queue itself
+refreshes on focus, on visibility, and on a bench finish.
 
 The validation behind the button, the shortcut and "save and next" is one
 function. Two copies is how one route ends up accepting a record the other
@@ -334,7 +343,7 @@ The open record is pinned in the rail so that finishing it - which makes it
 from under the form.
 
 That pin does **not** apply to the search. A search is a deliberate act with a
-different question behind it: "is PRV000123 in this consignment". Pinning the
+different question behind it: "does this partner hold PRV000123". Pinning the
 open row through a search meant a term matching nothing still showed one row,
 so the rail could never answer no - which is the wrong answer for somebody
-holding a receipt for a stove that turns out to be in a different consignment.
+holding a receipt for a stove that turns out to belong to a different partner.

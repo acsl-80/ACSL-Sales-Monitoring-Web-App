@@ -270,3 +270,19 @@ Center follows without an edit.
 The preview seed models this: `callcentre@preview.acsl.test` is an `acsl_agent`
 assigned to every seeded partner, and `e2e/data-center-records.spec.ts` asserts
 it reads "assigned organizations" rather than "own sales".
+
+**2026-09-01.** The bench redesigned around three user decisions (2026-08-31)
+rather than tuned again. Clicking a partner opens EVERYTHING they hold, paged
+and searched server-side; consignment and month become narrowing filters on
+that one list and the three-way chooser goes; scope defaults to all-time and
+is always spelled out ("2,250 stoves, all consignments"). `partner_stoves`
+answers all three status chips from FILTER clauses in its one count scan and
+takes a `transactionId` predicate, because every number the bench shows has
+to answer the partner, not the loaded page - the sidebar disagreeing with the
+base of the list was counting 25 rows and calling it the partner. The rail
+never unmounts (rows kept under a loading flag, term owned by the shell, one
+debounce), pages from its footer, and a run crosses page boundaries. Sync is
+one sticky pill with backoff retries, offline detection, a beforeunload
+keepalive save, and an awaited flush on stove switches; the bench stays
+mounted behind the other import tabs so a run survives a glance at the
+confirmation queue.
