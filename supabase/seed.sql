@@ -844,21 +844,6 @@ insert into public.payment_models (name, description, duration_months, fixed_pri
   ('Institutional Sales - Flexible Payment',null,4,80000.00,0.00,true)
 on conflict do nothing;
 
--- Twin B is deliberately RESTRICTED to the Amina model only.
---
--- create-sale scopes a partner with an explicit organization_payment_models
--- list to exactly that list, and the import's validate step now pre-checks it
--- so an unassigned model surfaces as a named exception before commit rather
--- than as a 403 during it. On production 29 of 51 partners in the first real
--- file carry such a list. Without one partner restricted HERE, no spec can
--- prove the pre-check fires - previews would be all-unrestricted and the
--- check untestable. Twin A stays unrestricted, so the same pair covers both
--- sides of the rule.
-insert into public.organization_payment_models (organization_id, payment_model_id)
-select 'a0000000-0000-4000-8000-00000000000b'::uuid, pm.id
-  from public.payment_models pm
- where pm.name = 'Amina Sales Model'
-on conflict do nothing;
 
 -- ============ synthetic records, for preview branches only ============
 --
@@ -1141,6 +1126,24 @@ values
   ('a0000000-0000-4000-8000-00000000000a','TWIN-A','Twin Name Partner','Kogi','ISANLU','Preview Contact','08030000010','10 Preview Road, Isanlu','partner'),
   ('a0000000-0000-4000-8000-00000000000b','TWIN-B','Twin Name Partner','Kwara','ORO','Preview Contact','08030000011','11 Preview Road, Oro','partner')
 on conflict (id) do nothing;
+
+-- Twin B is deliberately RESTRICTED (placed AFTER the twins exist: this
+-- insert references Twin B's organization row, and seeding it earlier was a
+-- foreign-key abort that took every later statement down with it) to the Amina model only.
+--
+-- create-sale scopes a partner with an explicit organization_payment_models
+-- list to exactly that list, and the import's validate step now pre-checks it
+-- so an unassigned model surfaces as a named exception before commit rather
+-- than as a 403 during it. On production 29 of 51 partners in the first real
+-- file carry such a list. Without one partner restricted HERE, no spec can
+-- prove the pre-check fires - previews would be all-unrestricted and the
+-- check untestable. Twin A stays unrestricted, so the same pair covers both
+-- sides of the rule.
+insert into public.organization_payment_models (organization_id, payment_model_id)
+select 'a0000000-0000-4000-8000-00000000000b'::uuid, pm.id
+  from public.payment_models pm
+ where pm.name = 'Amina Sales Model'
+on conflict do nothing;
 
 insert into public.stove_ids_base (stove_id, organization_id, status, factory)
 select
