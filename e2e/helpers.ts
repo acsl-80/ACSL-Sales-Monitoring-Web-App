@@ -88,19 +88,38 @@ export async function branchSql<T = Record<string, unknown>>(sql: string): Promi
   if (!token) {
     throw new Error("branchSql needs SUPABASE_ACCESS_TOKEN from .supabase.local");
   }
-  const res = await fetch(
-    `https://api.supabase.com/v1/projects/${BRANCH_REF}/database/query`,
-    {
-      method: "POST",
-      headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
-      body: JSON.stringify({ query: sql }),
-    },
-  );
-  const body = await res.json();
-  if (!Array.isArray(body)) {
-    throw new Error(`branchSql failed: ${JSON.stringify(body).slice(0, 300)}`);
+  /*
+   * Retried on a transport failure only, never on an answer. A single
+   * `TypeError: fetch failed` from the Node process to the Management API took
+   * a spec down mid-run on 2026-09-02, sixty minutes into a suite, and left
+   * its finally unable to clean up. Every statement this helper is given is
+   * idempotent by construction (updates and deletes keyed by serial or id), so
+   * repeating one that never reached the server is safe. An HTTP answer that
+   * is not an array is a real refusal and is thrown at once.
+   */
+  let lastErr: unknown = null;
+  for (let attempt = 1; attempt <= 4; attempt++) {
+    try {
+      const res = await fetch(`https://api.supabase.com/v1/projects/${BRANCH_REF}/database/query`, {
+        method: "POST",
+        headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
+        body: JSON.stringify({ query: sql }),
+      });
+      const body = await res.json();
+      if (!Array.isArray(body)) {
+        throw new Error(`branchSql failed: ${JSON.stringify(body).slice(0, 300)}`);
+      }
+      return body as T[];
+    } catch (err) {
+      const transport =
+        err instanceof TypeError ||
+        /fetch failed|ECONNRESET|ETIMEDOUT|EAI_AGAIN/i.test(String(err));
+      if (!transport || attempt === 4) throw err;
+      lastErr = err;
+      await new Promise((r) => setTimeout(r, 1500 * attempt));
+    }
   }
-  return body as T[];
+  throw lastErr instanceof Error ? lastErr : new Error(String(lastErr));
 }
 
 /**
