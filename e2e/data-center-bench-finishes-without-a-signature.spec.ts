@@ -80,7 +80,12 @@ async function fillReceiptWithoutSigning(page: Page, marker: string) {
   await page.getByRole("listbox").getByRole("option", { name: "Kogi", exact: true }).click();
   const lga = page.getByRole("combobox", { name: "Local government area" });
   await expect(lga).toBeEnabled();
+  // Centred before opening: on a 720px viewport this control lands on the
+  // last visible row and its list opens below the fold. Same workaround as
+  // the model spec; the product-side fix is filed separately.
+  await lga.evaluate((el) => el.scrollIntoView({ block: "center" }));
   await lga.click();
+  await page.getByPlaceholder("Type part of the LGA").fill("Yagba West");
   await page.getByRole("listbox").getByRole("option", { name: "Yagba West", exact: true }).click();
   const terms = page
     .locator('label:has-text("The buyer agreed to all six") input[type="checkbox"]')
