@@ -47,6 +47,14 @@ async function openTwinSweep(page: Page): Promise<boolean> {
     .first();
   if ((await row.count()) === 0) return false;
   await row.click();
+  // The scope line only exists once the sweep has loaded its first page.
+  await expect(page.getByText(/all consignments/).first()).toBeVisible({ timeout: 30_000 });
+  /*
+   * Choosing the partner opens the sweep, not a receipt. The first stove in
+   * the sweep opens the bench; this is the click the first version of this
+   * helper left out, so the form was expected on the wrong screen.
+   */
+  await page.locator("tbody tr").first().click();
   await expect(page.locator("#wb-endUserName")).toBeVisible({ timeout: 30_000 });
   return true;
 }
