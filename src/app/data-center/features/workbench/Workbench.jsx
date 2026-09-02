@@ -513,6 +513,19 @@ function Bench({ stoveId, onSaved, onBack, onNext, nextLabel, api = null }) {
   const finishRef = useRef(null);
   const problemsRef = useRef({ count: 0, termsMissing: false, problems: {} });
   /*
+   * Saves run one at a time, in order.
+   *
+   * The buttons used to read `saving`, which every background autosave sets
+   * for the two to four seconds its round trip takes, once every twenty
+   * seconds while the form is dirty. A typist reaching for Save as finished
+   * in that window found it greyed out - "blurred out", in their words. Now
+   * only a finish takes the buttons, and a finish pressed during a draft save
+   * waits for it rather than racing it. `saveDepth` keeps the pill honest
+   * while one save is queued behind another.
+   */
+  const inFlight = useRef(null);
+  const saveDepth = useRef(0);
+  /*
    * The failure count as the retry logic sees it, and the pending retry
    * timer. Refs, because the count is read and bumped inside an async catch:
    * routed through a state updater the bump would be a side effect that
@@ -661,6 +674,13 @@ function Bench({ stoveId, onSaved, onBack, onNext, nextLabel, api = null }) {
       if (complete) setFinishing(true);
       setError(null);
       setHint(null);
+      saveDepth.current += 1;
+      const ahead = inFlight.current;
+      let release = () => {};
+      inFlight.current = new Promise((resolve) => {
+        release = resolve;
+      });
+      if (ahead) await ahead.catch(() => {});
       try {
         /*
          * The contact defaults are applied before saving, so what is stored is
@@ -750,8 +770,10 @@ function Bench({ stoveId, onSaved, onBack, onNext, nextLabel, api = null }) {
         }
         return false;
       } finally {
-        setSaving(false);
-        setFinishing(false);
+        saveDepth.current -= 1;
+        if (saveDepth.current === 0) setSaving(false);
+        if (complete) setFinishing(false);
+        release();
       }
     },
     [stoveId, onSaved, scheduleRetry],
@@ -1078,7 +1100,7 @@ function Bench({ stoveId, onSaved, onBack, onNext, nextLabel, api = null }) {
               put the surname in the first-name box. */}
           <button
             type="button"
-            disabled={saving}
+            disabled={finishing}
             onClick={async () => {
               try {
                 const { buildAgreementBlobUrl } = await import(
@@ -1097,7 +1119,7 @@ function Bench({ stoveId, onSaved, onBack, onNext, nextLabel, api = null }) {
           </button>
           <button
             type="button"
-            disabled={locked || saving}
+            disabled={locked || finishing}
             onClick={() => save(false)}
             className="inline-flex items-center gap-1.5 rounded-md border border-(--dc-accent)/30 px-3 py-1.5 text-sm font-medium text-(--dc-accent) transition hover:bg-(--dc-accent-soft)/60 disabled:opacity-40"
           >
@@ -1105,7 +1127,7 @@ function Bench({ stoveId, onSaved, onBack, onNext, nextLabel, api = null }) {
           </button>
           <button
             type="button"
-            disabled={locked || saving}
+            disabled={locked || finishing}
             onClick={() => finish(false)}
             title="Ctrl+S saves a draft without leaving"
             className="inline-flex items-center gap-1.5 rounded-md border border-(--dc-accent) px-3 py-1.5 text-sm font-medium text-(--dc-accent) transition hover:bg-(--dc-accent-soft)/60 disabled:opacity-40"
@@ -1123,12 +1145,12 @@ function Bench({ stoveId, onSaved, onBack, onNext, nextLabel, api = null }) {
           {onNext && (
             <button
               type="button"
-              disabled={locked || saving}
+              disabled={locked || finishing}
               onClick={() => finish(true)}
               title="Ctrl+Enter"
               className="inline-flex items-center gap-1.5 rounded-md bg-(--dc-accent) px-4 py-1.5 text-sm font-medium text-white transition hover:bg-(--dc-accent-strong) disabled:opacity-40"
             >
-              {saving ? (
+              {finishing ? (
                 <Loader2 className="h-4 w-4 animate-spin" />
               ) : (
                 <CheckCircle2 className="h-4 w-4" />
