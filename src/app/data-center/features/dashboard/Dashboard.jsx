@@ -530,6 +530,15 @@ export default function Dashboard({ canRun }) {
                   made optional, so counting on it would understate the work done. This
                   module counts the seven fields listed in workflow_config instead.
                 </p>
+                {/* The next action, in the notice itself. A number with no
+                    "so what" reads as an alarm nobody can switch off. */}
+                <p className="mt-1 text-sm text-amber-800">
+                  Nothing to do in this module: the counts above are the ones to use.
+                  This notice clears when the sales app&apos;s rule stops requiring the
+                  two images its own form made optional, which is a change in the sales
+                  app (one function, calculate_sale_status, and a recompute of the status
+                  column), not a change to any record.
+                </p>
                 <Link
                   to="/data-center/stove-records"
                   search={{ saleStatus: "incomplete", label: "Incomplete" }}

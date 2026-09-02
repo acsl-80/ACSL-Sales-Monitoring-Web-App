@@ -151,7 +151,13 @@ function Inner() {
         </div>
       )}
       {current?.key === "confirm" && (
-        <ConfirmationQueue canConfirm={can(DATA_CENTER_FEATURES.IMPORT_COMMIT)} />
+        <ConfirmationQueue
+          canConfirm={can(DATA_CENTER_FEATURES.IMPORT_COMMIT)}
+          // Only people who can work the bench are sent to it.
+          onOpenBench={
+            available.some((t) => t.key === "bench") ? () => setTab("bench") : null
+          }
+        />
       )}
     </div>
   );

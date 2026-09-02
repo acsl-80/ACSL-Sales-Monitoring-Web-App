@@ -68,11 +68,24 @@ const COLUMNS = [
   { key: "last_worked_on", label: "Last worked on" },
 ];
 
-function StreamTable({ stream, rows, canConfirm, onConfirm, busy }) {
+function StreamTable({ stream, rows, canConfirm, onConfirm, onOpenBench, busy }) {
   const paged = usePaged(rows, 10);
   const Icon = stream.icon;
   const waiting = rows.reduce((n, r) => n + Number(r.awaiting ?? 0), 0);
   const drafting = rows.reduce((n, r) => n + Number(r.still_drafting ?? 0), 0);
+  const refused = rows.reduce(
+    (n, r) => n + Number(r.refused ?? 0) + Number(r.exceptions ?? 0),
+    0,
+  );
+  /*
+   * The bench stream can point at the bench. A row with nothing waiting used
+   * to show a greyed "Confirm 0" and nothing else, and the person looking at
+   * twenty-seven drafts had no idea what to press next: a draft is finished
+   * at the bench, and so is a refused receipt. The action column exists when
+   * either action can be offered, not only for people who can confirm.
+   */
+  const canPoint = stream.key === "workbench" && typeof onOpenBench === "function";
+  const showActions = canConfirm || canPoint;
 
   return (
     <section className="overflow-hidden rounded-xl border border-gray-200 bg-white">
@@ -102,7 +115,7 @@ function StreamTable({ stream, rows, canConfirm, onConfirm, busy }) {
                   <th className="px-3 py-2 text-right">Drafting</th>
                   <th className="px-3 py-2 text-right">Needs a look</th>
                   <th className="px-3 py-2">Last worked on</th>
-                  {canConfirm && <th className="w-32 px-3 py-2" />}
+                  {showActions && <th className="w-36 px-3 py-2" />}
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-100">
@@ -141,17 +154,41 @@ function StreamTable({ stream, rows, canConfirm, onConfirm, busy }) {
                       <td className="whitespace-nowrap px-3 py-2 text-xs text-gray-600">
                         {whenOf(r.last_worked_on ?? r.uploaded_at)}
                       </td>
-                      {canConfirm && (
+                      {showActions && Number(r.awaiting) === 0 && canPoint &&
+                        (Number(r.still_drafting ?? 0) > 0 || needsLook > 0) && (
                         <td className="px-3 py-2 text-right">
                           <button
                             type="button"
-                            disabled={busy || Number(r.awaiting) === 0}
+                            onClick={() => onOpenBench(r)}
+                            title={
+                              needsLook > 0
+                                ? "Refused receipts are fixed at the bench, then saved as finished again."
+                                : "Drafts are finished at the bench by the person typing them."
+                            }
+                            className="inline-flex items-center gap-1 whitespace-nowrap rounded-md border border-(--dc-accent)/40 px-2.5 py-1 text-xs font-medium text-(--dc-accent-strong) transition hover:bg-(--dc-accent-soft)/50"
+                          >
+                            <PenLine className="h-3.5 w-3.5" /> Open the bench
+                          </button>
+                        </td>
+                      )}
+                      {showActions && Number(r.awaiting) === 0 && !(canPoint &&
+                        (Number(r.still_drafting ?? 0) > 0 || needsLook > 0)) && (
+                        <td className="px-3 py-2" />
+                      )}
+                      {showActions && Number(r.awaiting) > 0 && canConfirm && (
+                        <td className="px-3 py-2 text-right">
+                          <button
+                            type="button"
+                            disabled={busy}
                             onClick={() => onConfirm(r)}
                             className="inline-flex items-center gap-1 whitespace-nowrap rounded-md bg-(--dc-accent) px-2.5 py-1.5 text-xs font-medium text-white transition hover:bg-(--dc-accent-strong) disabled:opacity-40"
                           >
                             <CheckCircle2 className="h-3.5 w-3.5" /> Confirm {r.awaiting}
                           </button>
                         </td>
+                      )}
+                      {showActions && Number(r.awaiting) > 0 && !canConfirm && (
+                        <td className="px-3 py-2" />
                       )}
                     </tr>
                   );
@@ -167,13 +204,24 @@ function StreamTable({ stream, rows, canConfirm, onConfirm, busy }) {
             onPageSize={paged.setPageSize}
             noun="batch"
           />
+          {stream.key === "workbench" && (drafting > 0 || refused > 0) && (
+            <p className="border-t border-gray-100 px-4 py-2.5 text-xs text-gray-600">
+              Confirm releases finished receipts only.
+              {drafting > 0 &&
+                ` ${plural(drafting, "draft is", "drafts are")} still being typed and ${
+                  drafting === 1 ? "is" : "are"
+                } finished at the bench, by the person typing.`}
+              {refused > 0 &&
+                ` ${plural(refused, "receipt was", "receipts were")} refused; each is opened at the bench, where the reason is shown, fixed and saved as finished again.`}
+            </p>
+          )}
         </>
       )}
     </section>
   );
 }
 
-export default function ConfirmationQueue({ canConfirm }) {
+export default function ConfirmationQueue({ canConfirm, onOpenBench = null }) {
   const [rows, setRows] = useState(null);
   const [error, setError] = useState(null);
   const [notice, setNotice] = useState(null);
@@ -359,6 +407,7 @@ export default function ConfirmationQueue({ canConfirm }) {
           canConfirm={canConfirm}
           busy={busy}
           onConfirm={setPending}
+          onOpenBench={onOpenBench}
         />
       ))}
 
