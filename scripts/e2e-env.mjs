@@ -102,6 +102,12 @@ const child = spawn(
       PREVIEW_URL: previewUrl,
       VERCEL_AUTOMATION_BYPASS_SECRET: bypass,
       BRANCH_SUPABASE_REF: ref,
+      // For `branchSql` in e2e/helpers.ts. Some states a spec has to set up
+      // cannot be reached through the product: proving that the import refuses
+      // a stove which already has a sale means first making stock and sales
+      // disagree, which is precisely the thing no UI does on purpose. The
+      // helper refuses to run against anything but the branch ref above.
+      SUPABASE_ACCESS_TOKEN: supabaseToken,
     },
   },
 );
