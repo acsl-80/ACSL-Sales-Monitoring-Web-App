@@ -1621,6 +1621,42 @@ serve(async (req) => {
             const byStoveId = new Map(stock.rows.map((s) => [s.stove_id.toUpperCase(), s]));
 
             /*
+             * Does this stove already HAVE a sale? Asked of public.sales, not
+             * of the stock flag.
+             *
+             * The refusal used to rest on stove_ids_base.status = 'sold' and
+             * nothing else, which INFERS "this receipt is already digitised"
+             * from a mutable flag instead of observing the record. Whenever the
+             * two disagree the refusal silently stopped working and a second
+             * live sale was created for one stove. They can disagree: the sales
+             * app resets stock unscoped in two places
+             * (adminSalesService.jsx:730-733, deleteOptions.ts:39-42) and one
+             * serial exists as stock at two different partners.
+             *
+             * LIVE sales only. Cancelling archives the sale, and cancel-then-
+             * resell is a legitimate workflow this must not refuse. Measured on
+             * production: all 26 stoves whose sale was archived while stock
+             * returned to available were deliberately cancelled.
+             *
+             * One statement, on a call that is already batched.
+             * idx_sales_stove_serial_upper is a partial btree on exactly this
+             * expression with exactly this predicate.
+             */
+            const priorSales = await conn.queryObject<{
+              serial: string;
+              partner_name: string | null;
+              sales_date: string | null;
+            }>({
+              text: `select upper(btrim(stove_serial_no)) as serial,
+                            partner_name, sales_date::text as sales_date
+                       from public.sales
+                      where upper(btrim(stove_serial_no)) = any($1::text[])
+                        and is_archived is not true`,
+              args: [[...new Set(serials)]],
+            });
+            const saleBySerial = new Map(priorSales.rows.map((s) => [s.serial, s]));
+
+            /*
              * Which partners restrict which sales models. create-sale enforces
              * this at commit - a partner with an explicit list may only use the
              * models on it - so checking it here turns 120 commit-time 403s
@@ -1775,6 +1811,7 @@ serve(async (req) => {
               }
               const row = s.result.row;
               const found = byStoveId.get(row.stoveSerialNo);
+              const priorSale = saleBySerial.get(row.stoveSerialNo);
               const resolvedModel = resolveModel(s.raw as Record<string, unknown>);
               const transactionId = transferBySerial.get(row.stoveSerialNo) ?? null;
               const duplicateOf = firstSeen.get(row.stoveSerialNo) ?? null;
@@ -1906,6 +1943,18 @@ serve(async (req) => {
                 // Already set above. Named here so the order of causes reads in
                 // one place rather than one of them being invisible.
                 exceptionReason = columnMismatch;
+              } else if (priorSale) {
+                /*
+                 * Ahead of the stock check, because it is the true reason and
+                 * the actionable one. "Already recorded as sold" reads like a
+                 * stock problem and tells nobody where to go.
+                 */
+                exceptionReason = `Stove ${row.stoveSerialNo} already has a sale recorded` +
+                  (priorSale.partner_name ? ` for ${priorSale.partner_name}` : "") +
+                  (priorSale.sales_date ? ` on ${priorSale.sales_date}` : "") +
+                  ". A digitised receipt is imported once, so this row is not written " +
+                  "over it. Correct the existing record in the sales app, or cancel it " +
+                  "there first if this receipt replaces it.";
               } else if (!found) {
                 exceptionReason = `Stove serial "${row.stoveSerialNo}" is not in stock records`;
               } else if (orgId && found.organization_id !== orgId) {
@@ -1927,7 +1976,14 @@ serve(async (req) => {
                  */
                 exceptionReason = `Stove serial "${row.stoveSerialNo}" belongs to a different partner`;
               } else if (found.status === "sold") {
-                exceptionReason = `Stove serial "${row.stoveSerialNo}" is already recorded as sold`;
+                /*
+                 * Stock says sold and no live sale exists, which is drift
+                 * rather than a duplicate. Named separately so it is not read
+                 * as "this receipt is already in", which it is not.
+                 */
+                exceptionReason = `Stock says stove ${row.stoveSerialNo} is sold, but no live ` +
+                  "sale exists against it. The sale was removed without the stove being " +
+                  "released. Check the stove in the sales app before importing this row.";
               } else if (
                 resolvedModel && found.organization_id &&
                 allowedModels.has(found.organization_id) &&
@@ -2211,6 +2267,9 @@ serve(async (req) => {
           raw: Record<string, unknown> | null;
           stock_org_id: string | null;
           stock_partner_name: string | null;
+          has_prior_sale: boolean;
+          prior_sale_partner: string | null;
+          prior_sale_date: string | null;
         };
 
         const phase1 = await withConnection(async (conn) => {
@@ -2271,7 +2330,10 @@ serve(async (req) => {
                  */
                 text: `select r.id, r.stove_serial_no, r.normalized, r.draft_values, r.raw,
                               k.organization_id::text as stock_org_id,
-                              k.partner_name as stock_partner_name
+                              k.partner_name as stock_partner_name,
+                              (ps.id is not null) as has_prior_sale,
+                              ps.partner_name as prior_sale_partner,
+                              ps.sales_date::text as prior_sale_date
                          from data_center.import_rows r
                          left join lateral (
                            select sb.organization_id, o.partner_name
@@ -2281,6 +2343,29 @@ serve(async (req) => {
                             order by sb.organization_id
                             limit 1
                          ) k on true
+                         /*
+                          * Has a sale appeared since this batch was checked?
+                          *
+                          * Validate answers this too, but minutes earlier: a
+                          * sale keyed in the app between check and commit would
+                          * otherwise become a second live sale for one stove.
+                          * It rides in THIS statement rather than its own, so
+                          * commit gains no round trip - the number that matters
+                          * here is statements per request, and create-sale
+                          * already costs one HTTP call per row.
+                          *
+                          * Live sales only, so cancel-then-resell still
+                          * commits. idx_sales_stove_serial_upper is a partial
+                          * btree on exactly this expression with exactly this
+                          * predicate.
+                          */
+                         left join lateral (
+                           select s.id, s.partner_name, s.sales_date
+                             from public.sales s
+                            where upper(btrim(s.stove_serial_no)) = upper(btrim(r.stove_serial_no))
+                              and s.is_archived is not true
+                            limit 1
+                         ) ps on true
                         where r.id = any($1::uuid[])
                         order by r.row_number`,
                 args: [claimedIds],
@@ -2400,6 +2485,24 @@ serve(async (req) => {
 
             const rowOrgId = row.stock_org_id ?? batchOrgId;
             const rowPartnerName = row.stock_partner_name ?? batchPartnerName;
+
+            /*
+             * First, because once a sale exists there is nothing else to
+             * decide. This is the same refusal validate makes, re-asked at the
+             * only moment that can still be wrong.
+             */
+            if (row.has_prior_sale) {
+              failRows.push({
+                rowId: row.id,
+                reason: `Stove ${row.stove_serial_no} already has a sale recorded` +
+                  (row.prior_sale_partner ? ` for ${row.prior_sale_partner}` : "") +
+                  (row.prior_sale_date ? ` on ${row.prior_sale_date}` : "") +
+                  ". It was recorded after this batch was checked, so nothing was " +
+                  "written for this row. Correct the existing record in the sales app, " +
+                  "or cancel it there first if this receipt replaces it.",
+              });
+              continue;
+            }
 
             if (!rowOrgId) {
               failRows.push({
@@ -3189,15 +3292,45 @@ serve(async (req) => {
               args: [serial],
             });
 
-            // The same checks validate applies. A correction that does not
-            // resolve the problem stays an exception with the new reason,
-            // rather than becoming valid and failing later at commit.
+            /*
+             * Does the CORRECTED serial already have a sale? The batched
+             * version of this question lives in the validate path, with the
+             * reasoning; this is the single-row form. Without it a Fix could
+             * point a row at an already-sold stove, mark it valid, and leave
+             * the failure to commit - which is exactly what the comment above
+             * says this block exists to prevent.
+             */
+            const prior = await conn.queryObject<
+              { partner_name: string | null; sales_date: string | null }
+            >({
+              text: `select partner_name, sales_date::text as sales_date
+                       from public.sales
+                      where upper(btrim(stove_serial_no)) = $1
+                        and is_archived is not true
+                      limit 1`,
+              args: [serial],
+            });
+
+            // The same checks validate applies, in the same order. A correction
+            // that does not resolve the problem stays an exception with the new
+            // reason, rather than becoming valid and failing later at commit.
             let reason: string | null = null;
-            if (stock.rows.length === 0) reason = `Stove serial "${serial}" is not in stock records`;
-            else if (stock.rows[0].organization_id !== orgRow.rows[0]?.organization_id) {
+            const priorRow = prior.rows[0];
+            if (priorRow) {
+              reason = `Stove ${serial} already has a sale recorded` +
+                (priorRow.partner_name ? ` for ${priorRow.partner_name}` : "") +
+                (priorRow.sales_date ? ` on ${priorRow.sales_date}` : "") +
+                ". A digitised receipt is imported once, so this row is not written " +
+                "over it. Correct the existing record in the sales app, or cancel it " +
+                "there first if this receipt replaces it.";
+            } else if (stock.rows.length === 0) {
+              reason = `Stove serial "${serial}" is not in stock records`;
+            } else if (stock.rows[0].organization_id !== orgRow.rows[0]?.organization_id) {
               reason = `Stove serial "${serial}" belongs to a different partner`;
             } else if (stock.rows[0].status === "sold") {
-              reason = `Stove serial "${serial}" is already recorded as sold`;
+              reason = `Stock says stove ${serial} is sold, but no live sale exists ` +
+                "against it. The sale was removed without the stove being released. " +
+                "Check the stove in the sales app before importing this row.";
             }
 
             // Same rule as validate: downstream carries stock's own spelling.
