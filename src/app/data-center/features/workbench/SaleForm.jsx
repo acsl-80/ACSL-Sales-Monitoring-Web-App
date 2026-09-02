@@ -116,6 +116,42 @@ export function blankSale() {
 const BENCH_OPTIONAL = ["signature"];
 
 /**
+ * Where each thing the validator can refuse lives on the screen, and what a
+ * typist calls it. The key is the validator's, the id is the control's, the
+ * label is what the error box names. A refusal that only says "2 fields still
+ * to sort out" sends somebody hunting down a long form; a refusal that says
+ * "State, Amount" and scrolls to State does not.
+ */
+export const FIELD_META = {
+  // In the order the form reads, top to bottom, so the FIRST problem named
+  // is the first one a typist reaches.
+  stoveSerialNo: { id: "wb-endUserName", label: "Stove ID" },
+  endUserName: { id: "wb-endUserName", label: "First name" },
+  endUserSurname: { id: "wb-endUserSurname", label: "Surname" },
+  phone: { id: "wb-phone", label: "Telephone number" },
+  otherPhone: { id: "wb-otherPhone", label: "Other telephone number" },
+  contactPerson: { id: "wb-contactPerson", label: "Contact person" },
+  contactPhone: { id: "wb-contactPhone", label: "Contact phone" },
+  stateBackup: { id: "wb-stateBackup", label: "State" },
+  lgaBackup: { id: "wb-stateBackup", label: "Local government area" },
+  address: { id: "wb-address", label: "Residential address" },
+  salesDate: { id: "wb-salesDate", label: "Sales date" },
+  transactionId: { id: "wb-salesDate", label: "Transaction ID" },
+  amount: { id: "wb-amount", label: "Sale amount" },
+  amountReceived: { id: "wb-amountReceived", label: "Amount received" },
+  termsAccepted: { id: "wb-termsAccepted", label: "The six consents" },
+  signature: { id: "wb-signature", label: "Customer signature" },
+};
+
+/** The problems, in form order, as [key, message] pairs. */
+export function problemsInFormOrder(problems) {
+  const order = Object.keys(FIELD_META);
+  return Object.entries(problems ?? {}).sort(
+    ([a], [b]) => (order.indexOf(a) + 1 || 999) - (order.indexOf(b) + 1 || 999),
+  );
+}
+
+/**
  * What the sales app itself says is wrong with this record, less the fields a
  * paper receipt cannot answer (`BENCH_OPTIONAL`).
  *
@@ -151,7 +187,7 @@ export function withDefaults(values) {
 
 function Field({ label, htmlFor, required, help, error, children, wide }) {
   return (
-    <div className={wide ? "sm:col-span-2 lg:col-span-3" : ""}>
+    <div className={`scroll-mt-24 ${wide ? "sm:col-span-2 lg:col-span-3" : ""}`}>
       <label htmlFor={htmlFor} className="mb-1 block text-xs font-medium text-gray-700">
         {label}
         {required && (
@@ -160,7 +196,9 @@ function Field({ label, htmlFor, required, help, error, children, wide }) {
           </span>
         )}
       </label>
-      {children}
+      {/* The ring is the part a typist sees from across the form; the text
+          under it is the part they read once they get there. */}
+      <div className={error ? "rounded-md ring-2 ring-red-300 ring-offset-1" : ""}>{children}</div>
       {error ? (
         <p className="mt-1 text-xs text-red-600">{error}</p>
       ) : help ? (
@@ -322,20 +360,28 @@ export default function SaleForm({ values, onChange, disabled, errors = {} }) {
           function; the bench simply never asked for them.
         */}
         <div className="sm:col-span-2 lg:col-span-3 grid grid-cols-1 gap-3 sm:grid-cols-2">
-          <StateLgaSelect
-            idPrefix="wb"
-            state={values.stateBackup ?? ""}
-            lga={values.lgaBackup ?? ""}
-            disabled={disabled}
-            onState={(v) => {
-              set("stateBackup", v);
-              setAddress("state", v);
-            }}
-            onLga={(v) => {
-              set("lgaBackup", v);
-              setAddress("city", v);
-            }}
-          />
+          <div
+            id="wb-stateBackup"
+            tabIndex={-1}
+            className={`scroll-mt-24 rounded-md ${
+              errors.stateBackup || errors.lgaBackup ? "ring-2 ring-red-300 ring-offset-1" : ""
+            }`}
+          >
+            <StateLgaSelect
+              idPrefix="wb"
+              state={values.stateBackup ?? ""}
+              lga={values.lgaBackup ?? ""}
+              disabled={disabled}
+              onState={(v) => {
+                set("stateBackup", v);
+                setAddress("state", v);
+              }}
+              onLga={(v) => {
+                set("lgaBackup", v);
+                setAddress("city", v);
+              }}
+            />
+          </div>
         </div>
         {(errors.stateBackup || errors.lgaBackup) && (
           <p className="sm:col-span-2 lg:col-span-3 text-xs text-red-600">
@@ -508,7 +554,11 @@ export default function SaleForm({ values, onChange, disabled, errors = {} }) {
         </Field>
       </Section>
 
-      <section>
+      <section
+        id="wb-termsAccepted"
+        tabIndex={-1}
+        className={`scroll-mt-24 rounded-md ${errors.termsAccepted ? "ring-2 ring-red-300 ring-offset-1 p-2" : ""}`}
+      >
         <h4 className="mb-1 text-xs font-semibold uppercase tracking-wide text-(--dc-accent-strong)">
           Terms and conditions
         </h4>

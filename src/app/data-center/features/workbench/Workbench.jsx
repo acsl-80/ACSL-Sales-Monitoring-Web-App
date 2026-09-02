@@ -4,7 +4,14 @@ import { dataCenterClient, dataCenterImport, DataCenterError } from "../../lib/c
 import { usePaged } from "../../lib/usePaged";
 import Pagination from "../../components/Pagination";
 import ExportButton from "../../components/ExportButton";
-import SaleForm, { blankSale, saleProblems, withDefaults, TERMS } from "./SaleForm";
+import SaleForm, {
+  blankSale,
+  saleProblems,
+  withDefaults,
+  TERMS,
+  FIELD_META,
+  problemsInFormOrder,
+} from "./SaleForm";
 import BenchRail from "./BenchRail";
 import { plural } from "../../lib/plural";
 import {
@@ -467,6 +474,17 @@ function Bench({ stoveId, onSaved, onBack, onNext, nextLabel, api = null }) {
   const [saving, setSaving] = useState(false);
   const [savedAt, setSavedAt] = useState(null);
   const [showMissing, setShowMissing] = useState(false);
+  /*
+   * `saving` is true for every save, drafts included, and is what the buttons
+   * read. `finishing` is true only while a finish is in flight and is what the
+   * FORM reads. The form used to read `saving`, so every draft autosave - one
+   * per parent re-render, as it turned out - disabled every input for the
+   * length of a round trip and ate whatever the typist was typing. A draft
+   * save is bookkeeping; nothing about it should take the keyboard away.
+   */
+  const [finishing, setFinishing] = useState(false);
+  /** A refusal the SERVER made, shown under the field it names. */
+  const [serverProblem, setServerProblem] = useState(null);
   /**
    * How many draft saves in a row have failed, and whether the network is
    * gone. Between them they decide what the status pill says, because the two
@@ -493,7 +511,7 @@ function Bench({ stoveId, onSaved, onBack, onNext, nextLabel, api = null }) {
    */
   const saveRef = useRef(null);
   const finishRef = useRef(null);
-  const problemsRef = useRef({ count: 0, termsMissing: false });
+  const problemsRef = useRef({ count: 0, termsMissing: false, problems: {} });
   /*
    * The failure count as the retry logic sees it, and the pending retry
    * timer. Refs, because the count is read and bumped inside an async catch:
@@ -564,19 +582,56 @@ function Bench({ stoveId, onSaved, onBack, onNext, nextLabel, api = null }) {
    * exactly the same checks. Two copies of this is how one route ends up
    * accepting a record the other refuses, which is the module's own rule.
    */
+  /**
+   * The server refuses with a sentence, not a key. These are the sentences
+   * normalizeRow writes, mapped to the field each one is about. Best effort:
+   * an unmatched reason still shows in the error box, it just does not point.
+   */
+  const fieldForServerReason = (reason) => {
+    const r = String(reason ?? "");
+    if (/no state/i.test(r)) return "stateBackup";
+    if (/\bLGA\b|local government/i.test(r)) return "lgaBackup";
+    if (/no sale amount|sale amount/i.test(r)) return "amount";
+    if (/amount received/i.test(r)) return "amountReceived";
+    if (/no end user name|end user name/i.test(r)) return "endUserName";
+    if (/no sale date|sale date/i.test(r)) return "salesDate";
+    if (/contact phone/i.test(r)) return "contactPhone";
+    if (/phone/i.test(r)) return "phone";
+    if (/address/i.test(r)) return "address";
+    if (/serial/i.test(r)) return "stoveSerialNo";
+    return null;
+  };
+
+  /**
+   * Bring the control for a validator key into view and give it focus, so the
+   * refusal and the thing to fix are on the same screen.
+   */
+  const revealField = (key) => {
+    const id = FIELD_META[key]?.id;
+    const el = id ? document.getElementById(id) : null;
+    if (!el) return;
+    el.scrollIntoView({ behavior: "smooth", block: "center" });
+    if (typeof el.focus === "function") el.focus({ preventScroll: true });
+  };
+
   const finish = useCallback(
     async (thenNext) => {
       setShowMissing(true);
+      setServerProblem(null);
       if (problemsRef.current.count > 0 || problemsRef.current.termsMissing) {
-        setError(
-          problemsRef.current.count > 0
-            ? `${plural(problemsRef.current.count, "field")} still to sort out.`
-            : "The six terms all have to be ticked.",
-        );
+        const ordered = problemsInFormOrder({
+          ...problemsRef.current.problems,
+          ...(problemsRef.current.termsMissing ? { termsAccepted: true } : {}),
+        });
+        const names = ordered.map(([k]) => FIELD_META[k]?.label ?? k);
+        // Named, in the order they sit on the page, and the first one is
+        // brought into view. "2 fields still to sort out" sent people hunting.
+        setError(`Still to sort out: ${names.join(", ")}.`);
         setHint(
-          "What is wrong is written under each one. Save draft instead if you " +
-            "want to come back to it: nothing typed is lost either way.",
+          "Each one is marked in red below. Save draft instead if you want to come " +
+            "back to it: nothing typed is lost either way.",
         );
+        revealField(ordered[0]?.[0]);
         return false;
       }
       const ok = await saveRef.current(true);
@@ -589,6 +644,7 @@ function Bench({ stoveId, onSaved, onBack, onNext, nextLabel, api = null }) {
   const save = useCallback(
     async (complete) => {
       setSaving(true);
+      if (complete) setFinishing(true);
       setError(null);
       setHint(null);
       try {
@@ -654,6 +710,17 @@ function Bench({ stoveId, onSaved, onBack, onNext, nextLabel, api = null }) {
           if (err instanceof DataCenterError) {
             setError(err.message);
             setHint(err.data?.hint ?? null);
+            /*
+             * The server's refusal names a fact ("No state", "No sale amount");
+             * put it under the field that fact lives in and bring that field
+             * into view, the same as a refusal made here would be.
+             */
+            const key = fieldForServerReason(err.message);
+            if (key) {
+              setServerProblem({ [key]: err.message });
+              setShowMissing(true);
+              revealField(key);
+            }
           } else {
             setError("That did not save.");
           }
@@ -669,6 +736,7 @@ function Bench({ stoveId, onSaved, onBack, onNext, nextLabel, api = null }) {
         return false;
       } finally {
         setSaving(false);
+        setFinishing(false);
       }
     },
     [stoveId, onSaved, scheduleRetry],
@@ -793,13 +861,22 @@ function Bench({ stoveId, onSaved, onBack, onNext, nextLabel, api = null }) {
       // While saves are failing the backoff owns the cadence; the twenty
       // second timer joining in would defeat the point of backing off.
       if (failCountRef.current > 0) return;
-      if (JSON.stringify(valuesRef.current) !== lastSaved.current) save(false);
+      if (JSON.stringify(valuesRef.current) !== lastSaved.current) saveRef.current?.(false);
     }, 20_000);
     return () => {
       clearInterval(timer);
-      if (JSON.stringify(valuesRef.current) !== lastSaved.current) save(false);
+      if (JSON.stringify(valuesRef.current) !== lastSaved.current) saveRef.current?.(false);
     };
-  }, [state, save]);
+    /*
+     * Armed by the opened stove and nothing else. This used to depend on
+     * `save` as well, and `save` takes a new identity whenever the parent
+     * re-renders (onSaved is an inline function), so every parent render tore
+     * this effect down, ran the "save on the way out" above, and re-armed it.
+     * The bench was autosaving on the parent's schedule rather than its own,
+     * and each of those saves disabled the form. `saveRef` is kept current on
+     * every render, which is what lets this depend on `state` alone.
+     */
+  }, [state]);
 
   const setField = (key, value) => setValues((v) => ({ ...v, [key]: value }));
 
@@ -835,7 +912,7 @@ function Bench({ stoveId, onSaved, onBack, onNext, nextLabel, api = null }) {
   const termsMissing = !TERMS.every((t) => values.termsAccepted?.[t.key] === true);
   // Kept current every render, because the keyboard handler below is bound
   // once per stove and would otherwise judge a form several keystrokes stale.
-  problemsRef.current = { count: problemCount, termsMissing };
+  problemsRef.current = { count: problemCount, termsMissing, problems };
   saveRef.current = save;
   finishRef.current = finish;
   const dirty = JSON.stringify(values) !== lastSaved.current;
@@ -950,8 +1027,8 @@ function Bench({ stoveId, onSaved, onBack, onNext, nextLabel, api = null }) {
       <SaleForm
         values={values}
         onChange={setField}
-        disabled={locked || saving}
-        errors={showMissing ? problems : {}}
+        disabled={locked || finishing}
+        errors={showMissing ? { ...problems, ...(serverProblem ?? {}) } : {}}
       />
 
       <div className="flex flex-wrap items-center gap-2 border-t border-gray-100 pt-3">
