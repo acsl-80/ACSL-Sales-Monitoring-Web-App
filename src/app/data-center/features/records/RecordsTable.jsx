@@ -33,6 +33,10 @@ const COLUMNS = [
   { key: "end_user_name", label: "End User", width: "180px" },
   { key: "primary_phone", label: "Phone", width: "124px" },
   { key: "partner_name", label: "Partner", width: "160px" },
+  // Who sold it, from the parent transfer. NOT sale_agent_name, which is
+  // created_by and therefore names whoever ran the import on every
+  // digitised row. See records-query.ts REP_LATERAL.
+  { key: "sales_rep", label: "Sales rep", width: "148px" },
   { key: "user_state", label: "State", width: "104px" },
   { key: "user_lga", label: "LGA", width: "128px" },
   { key: "sales_model", label: "Model", width: "128px" },

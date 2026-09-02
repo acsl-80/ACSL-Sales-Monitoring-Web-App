@@ -712,7 +712,8 @@ export default function StoveRecord({ stoveId }) {
       meals_per_day: sale.meals_per_day,
       cooking_fuel: sale.cooking_fuel_source,
       cooking_location: sale.cooking_location,
-      sold_by: sale.created_by_name ?? s.sale_agent_name,
+      sold_by: s.sales_rep,
+      recorded_by: sale.created_by_name ?? s.sale_agent_name,
       channel: sale.platform ?? s.platform,
       sales_app_status: sale.status ?? s.sale_status,
       verification: e.verification_outcome ?? s.verification_outcome,
@@ -1022,8 +1023,19 @@ export default function StoveRecord({ stoveId }) {
                       : null
                 }
               />
-              <Detail label="Sold by" value={sale?.created_by_name ?? s.sale_agent_name} />
-              <Detail label="On behalf of" value={sale?.sold_on_behalf_of_name} />
+              {/*
+                Two different facts, and conflating them is what put one
+                uploader's name against 664 sales. "Sold by" is the rep on the
+                parent transfer. "Recorded by" is created_by, which on a
+                digitised receipt is whoever ran the import.
+
+                sold_on_behalf_of is preferred when it is set, because a sale
+                keyed by one person for another is a deliberate statement. It
+                is null on all 701 production sales today: create-sale accepts
+                no such argument, so nothing has ever written it.
+              */}
+              <Detail label="Sold by" value={sale?.sold_on_behalf_of_name ?? s.sales_rep} />
+              <Detail label="Recorded by" value={sale?.created_by_name ?? s.sale_agent_name} />
               <Detail label="Retailer branch" value={sale?.retailer_branch} />
               <Detail label="Channel" value={sale?.platform ?? s.platform} />
               <Detail label="Sales app status" value={words(sale?.status ?? s.sale_status)} />

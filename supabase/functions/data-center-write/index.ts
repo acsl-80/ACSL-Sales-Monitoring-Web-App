@@ -417,8 +417,28 @@ serve(async (req) => {
                    pot_quantity, heat_retention_device,
                    total_paid, payment_status, is_installment, platform,
                    factory, stove_stock_status, latitude, longitude,
-                   created_at::text as recorded_at
-                 from data_center.v_call_center_resolved where sale_id = $1`,
+                   created_at::text as recorded_at,
+                   /*
+                    * Who SOLD the stove, which is not who recorded the sale.
+                    * A digitised receipt is committed through create-sale by
+                    * whoever ran the import, so sale_agent_name above names the
+                    * uploader on every imported row - one name against 11 real
+                    * reps on the current backlog. The rep is on the parent
+                    * transfer. records-query.ts REP_LATERAL carries the full
+                    * reasoning; the two things that matter here are that the
+                    * subquery is limit 1 (one stove ID exists as two stock rows
+                    * at two partners) and that the join is plain equality on
+                    * stove_id, because upper(btrim(...)) cannot use
+                    * stove_ids_stove_id_organization_id_key and seq-scans the
+                    * stock table instead.
+                    */
+                   (select h.sales_rep
+                      from public.stove_ids_base b
+                      left join public.stove_transfer_history h
+                             on h.transaction_id = b.sales_reference
+                     where b.stove_id = v.stove_serial_no
+                     limit 1) as sales_rep
+                 from data_center.v_call_center_resolved v where v.sale_id = $1`,
           args: [saleId],
         });
         if (record.rows.length === 0) {
