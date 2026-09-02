@@ -27,6 +27,14 @@ async function stage(page: Page, rows: Row[]) {
     action: "call_stage",
     rows,
     filename: "e2e-call-sheet.csv",
+    /*
+     * These fixtures are fixed, and the hash is over the parsed rows and
+     * persists on the batch - so the SECOND run of this file makes its own
+     * first upload a genuine repeat. The importer is right and the fixture
+     * would be wrong. The duplicate guard has its own test in the chain spec;
+     * it is not what this file is about.
+     */
+    confirmDuplicate: true,
   });
 }
 
