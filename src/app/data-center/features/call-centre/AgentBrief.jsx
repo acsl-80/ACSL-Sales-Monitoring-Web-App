@@ -278,7 +278,8 @@ export default function AgentBrief({ record }) {
           }
         />
         <Fact label="Partner" value={r.partner_name} />
-        <Fact label="Sold by" value={r.sale_agent_name} />
+        <Fact label="Sold by" value={r.sales_rep} />
+        <Fact label="Recorded by" value={r.sale_agent_name} />
         <Fact label="Sales model" value={words(r.sales_model)} />
         <Fact label="Branch" value={r.retailer_branch ?? r.partner_branch} />
       </Group>

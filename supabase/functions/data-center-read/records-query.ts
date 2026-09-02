@@ -270,6 +270,49 @@ export class BadRequest extends Error {}
  */
 export const COUNT_CEILING = 10_000;
 
+/**
+ * The rep who sold the stove, which is not the person who recorded the sale.
+ *
+ * A digitised receipt is committed through create-sale by whoever ran the
+ * import, so `created_by` - and therefore `sale_agent_name` - names the
+ * uploader on every imported row. On the 664-row backlog that is one name
+ * against 39 partners and 11 actual reps. The person who sold the stove is on
+ * the parent transfer, reached by the chain CLAUDE.md names and the
+ * transferSalesRep filter below already walks: serial ->
+ * stove_ids_base.sales_reference -> stove_transfer_history.transaction_id.
+ *
+ * Derived here rather than stored on the sale, for two reasons. public.sales
+ * has no name-valued attribution column at all - created_by and
+ * sold_on_behalf_of are both uuid into profiles, and only 5 of the 11 reps have
+ * an account, so the largest of them (262 sales) could not be named by a uuid
+ * even if this module were allowed to write one. And deriving it means every
+ * row already committed is correct without a backfill that could later drift.
+ *
+ * Two things about the shape, both measured rather than assumed.
+ *
+ * A LATERAL with `limit 1`, never a plain join. One stove ID still exists as
+ * two stock rows at two different partners, and a plain join would return that
+ * sale twice; data-center-import/index.ts:2267-2271 documents the same hazard
+ * for the same reason. A page that silently doubles a row is far worse than one
+ * missing a column, because every count downstream of it is then wrong.
+ *
+ * And PLAIN equality on stove_id, not upper(btrim(...)). The normalised form
+ * cannot use stove_ids_stove_id_organization_id_key, so it seq-scans the whole
+ * stock table once per row: measured on production at 2,907 ms for a 200-row
+ * page, against 15 ms for the plain form. Both sides are already stored
+ * normalised (0 of 22,032 stock rows and 0 of 701 sales differ from their
+ * upper/btrim form) and v_sold_stoves itself joins these two columns plainly.
+ */
+const REP_LATERAL = `
+        left join lateral (
+          select h.sales_rep
+            from public.stove_ids_base b
+            left join public.stove_transfer_history h
+                   on h.transaction_id = b.sales_reference
+           where b.stove_id = v.stove_serial_no
+           limit 1
+        ) rep on true`;
+
 export interface BuiltQuery {
   /** Step one: find this page's sale ids. Runs against the base tables. */
   pick: { text: string; args: unknown[] };
@@ -687,8 +730,8 @@ export function buildRecordsQuery(
     scopeDescription: scope.description,
     hydrate: (ids: string[]) => ({
       text: `
-        select ${selected.map((c) => `v.${c}`).join(", ")}
-        from ${view} v
+        select ${selected.map((c) => `v.${c}`).join(", ")}, rep.sales_rep
+        from ${view} v${REP_LATERAL}
         where v.sale_id = any($1::uuid[])
         order by v.sales_date ${direction}, v.sale_id ${direction}
       `,

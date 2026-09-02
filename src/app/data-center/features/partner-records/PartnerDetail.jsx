@@ -510,7 +510,8 @@ function StoveLevel({ stoveId }) {
             <Detail label="Amount" value={s.amount != null ? n(s.amount) : null} />
             <Detail label="Paid" value={s.total_paid != null ? n(s.total_paid) : null} />
             <Detail label="Payment status" value={s.payment_status} />
-            <Detail label="Sold by" value={s.sale_agent_name} />
+            <Detail label="Sold by" value={s.sales_rep} />
+            <Detail label="Recorded by" value={s.sale_agent_name} />
             <Detail label="Sales model" value={s.sales_model} />
             <Detail label="Channel" value={s.platform} />
             <Detail label="Sales app status" value={s.sale_status} />
