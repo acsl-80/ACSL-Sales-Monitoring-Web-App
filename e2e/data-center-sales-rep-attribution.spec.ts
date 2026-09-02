@@ -97,28 +97,41 @@ test.describe("a sale is attributed to the rep who sold it", () => {
     await signIn(page, USERS.admin);
 
     const rows = await readRecords(page, 50);
-    const target = rows.find((r) => r.sales_rep) ?? rows[0];
-    expect(target, "the preview has no sale to open a call record for").toBeTruthy();
+    const target = rows.find((r) => r.sales_rep);
+    expect(
+      target,
+      "no sale in the preview resolves a rep, so this cannot tell whether the brief carries one",
+    ).toBeTruthy();
 
     const r = await callEdgeFunction(page, "data-center-write", {
       action: "call_record",
-      saleId: String(target.sale_id),
+      saleId: String(target!.sale_id),
     });
     expect(r.status, "the call record read should answer").toBe(200);
 
     const record = (r.body as { data?: { record?: Record<string, unknown> } })?.data?.record ?? {};
+    /*
+     * The VALUE, not the key. A projection that returns the column as null
+     * would satisfy a key check while telling the agent nothing, and this sale
+     * was chosen precisely because the records read resolves a rep for it.
+     */
     expect(
-      Object.keys(record),
-      "the brief an agent reads while the buyer is on the phone should carry the rep",
-    ).toContain("sales_rep");
+      record.sales_rep,
+      "the brief an agent reads while the buyer is on the phone should name the rep",
+    ).toBe(target!.sales_rep);
   });
 
   test("the records table offers the rep as a column", async ({ page }) => {
     await signIn(page, USERS.admin);
     await page.goto("/data-center/stove-records");
 
+    /*
+     * RecordsTable is a virtualised list of divs, not a <table>, so there is no
+     * columnheader role to ask for. The header row is `hidden ... sm:flex`,
+     * which the default 1280px viewport satisfies.
+     */
     await expect(
-      page.getByRole("columnheader", { name: "Sales rep" }),
+      page.getByText("Sales rep", { exact: true }).first(),
       "Table 1 showed no attribution at all before this",
     ).toBeVisible({ timeout: 30_000 });
   });
