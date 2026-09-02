@@ -297,7 +297,23 @@ test.describe("the assignment log can be worked from", () => {
      * means "every row containing any matching button", which on a page of
      * twenty-five assignments is twenty-five rows and a strict-mode violation.
      */
-    await quick.locator("xpath=ancestor::tr[1]").click();
+    /*
+     * A CELL, not the row.
+     *
+     * `.click()` on the <tr> targets its geometric centre, and the sixth
+     * column is the stove serial - a Link whose onClick calls
+     * stopPropagation, deliberately, so that opening the stove's history and
+     * opening the call record are different gestures. When the data makes the
+     * columns wide enough that the row's centre lands on that link, the click
+     * navigates to the stove record and no dialog ever appears.
+     *
+     * It passed for months because the seeded rows happened to be narrow. It
+     * started failing when new specs changed which rows the log draws, which
+     * is the test being fragile rather than the product being wrong. The first
+     * cell holds a state chip and can never hold a link, and a click on it
+     * still bubbles to the row.
+     */
+    await quick.locator("xpath=ancestor::tr[1]").locator("td").first().click();
     await expect(page.getByRole("dialog")).toBeVisible({ timeout: 20_000 });
     await page.keyboard.press("Escape");
     await expect(page.getByRole("dialog")).toHaveCount(0);
