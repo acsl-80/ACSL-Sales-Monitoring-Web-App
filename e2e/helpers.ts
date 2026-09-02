@@ -59,6 +59,51 @@ export async function callEdgeFunction(
 }
 
 /**
+ * Run SQL against the PREVIEW BRANCH database. Never against production.
+ *
+ * Most setup belongs in the product: a spec that stages a batch through
+ * `data-center-import` is testing the thing users touch. This exists for the
+ * states the product cannot reach on purpose. The refusal this suite now makes
+ * when a stove already has a sale only misbehaves when `stove_ids_base.status`
+ * and `public.sales` DISAGREE, and nothing in the app creates that state
+ * deliberately - it arrives through an unscoped stock reset. Without a way to
+ * arrange it, the spec for that defect would pass against the broken code too,
+ * which this repo has already shipped once.
+ *
+ * Three guards, because the header of this file names touching production as
+ * the single most important thing the suite prevents:
+ *
+ *  - it throws when BRANCH_REF is empty, rather than falling back to anything
+ *  - it throws when BRANCH_REF is the production ref, whatever set it
+ *  - it never runs in the browser, so no token reaches the page
+ */
+export async function branchSql<T = Record<string, unknown>>(sql: string): Promise<T[]> {
+  const token = process.env.SUPABASE_ACCESS_TOKEN ?? "";
+  if (!BRANCH_REF) {
+    throw new Error("branchSql needs BRANCH_SUPABASE_REF; refusing to guess a database");
+  }
+  if (BRANCH_REF === PRODUCTION_REF) {
+    throw new Error("branchSql was pointed at PRODUCTION; refusing");
+  }
+  if (!token) {
+    throw new Error("branchSql needs SUPABASE_ACCESS_TOKEN from .supabase.local");
+  }
+  const res = await fetch(
+    `https://api.supabase.com/v1/projects/${BRANCH_REF}/database/query`,
+    {
+      method: "POST",
+      headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
+      body: JSON.stringify({ query: sql }),
+    },
+  );
+  const body = await res.json();
+  if (!Array.isArray(body)) {
+    throw new Error(`branchSql failed: ${JSON.stringify(body).slice(0, 300)}`);
+  }
+  return body as T[];
+}
+
+/**
  * Records every backend origin the page talks to, so a test can assert the app
  * reached the branch and never production.
  */
