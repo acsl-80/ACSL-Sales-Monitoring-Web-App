@@ -95,13 +95,38 @@ export function blankSale() {
 }
 
 /**
- * What the sales app itself says is wrong with this record.
+ * The fields the sales app's validator demands that a digitised paper receipt
+ * cannot supply, and that nothing downstream requires.
+ *
+ * The signature is the one. Sell Stove captures a live customer on a pad; a
+ * receipt typed here was signed on paper weeks ago, and the paper is the
+ * record. The Data Center's own validator (`normalizeRow`), the file import
+ * path and `create-sale` all carry `signature` as an optional passthrough and
+ * never refuse for its absence; the agreement PDF prints it only when present.
+ *
+ * Left in force, this one rule stopped every receipt typed at the bench on
+ * 2026-09-02 from finishing: ten of ten rows blocked in the browser on
+ * "1 field still to sort out", eight of which the server would have accepted
+ * as they stood. The typists moved on, autosave wrote drafts, and the
+ * confirmation queue truthfully reported "0 waiting, 8 still being typed".
+ *
+ * Exempted here rather than by copying the validator, so every other rule
+ * still comes from the one place the sales app keeps it.
+ */
+const BENCH_OPTIONAL = ["signature"];
+
+/**
+ * What the sales app itself says is wrong with this record, less the fields a
+ * paper receipt cannot answer (`BENCH_OPTIONAL`).
  *
  * Its validator, not a second opinion. A rule that disagreed would mean a
- * record accepted here and refused there, or worse the other way round.
+ * record accepted here and refused there, or worse the other way round. The
+ * exemption list is the whole of the disagreement, and it is written down.
  */
 export function saleProblems(values) {
-  return validateSalesForm(withDefaults(values)) ?? {};
+  const problems = { ...(validateSalesForm(withDefaults(values)) ?? {}) };
+  for (const key of BENCH_OPTIONAL) delete problems[key];
+  return problems;
 }
 
 /**
@@ -547,12 +572,19 @@ export default function SaleForm({ values, onChange, disabled, errors = {} }) {
         {/* The sales app's own canvas: draw, upload a photograph of the paper
             signature, or use the camera. Not reimplemented, so a signature
             captured here is the same object as one captured in Sell Stove and
-            prints identically on the agreement. */}
+            prints identically on the agreement.
+
+            Optional at the bench, and said so in the label: the receipt on the
+            desk already carries the customer's signature. See BENCH_OPTIONAL. */}
+        <p className="mb-2 text-xs text-gray-500">
+          The paper receipt carries the customer's signature, so this is optional here.
+          Photograph it or draw it if the agreement printout should show one.
+        </p>
         <SignatureCanvas
           signature={values.signature ?? ""}
           onSignatureChange={(sig) => set("signature", sig)}
           error={errors.signature}
-          label="Customer signature"
+          label="Customer signature (optional)"
         />
       </section>
 

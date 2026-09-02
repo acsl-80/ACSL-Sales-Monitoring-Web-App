@@ -513,6 +513,29 @@ function nextStep(b) {
    * no row.
    */
   if (b.state === "rolled_back" || b.state === "committed") return null;
+  /*
+   * A bench batch whose rows are all still drafts is being typed, not waiting
+   * to be checked. `validate` selects staged, valid, rejected and exception
+   * rows and never a draft, so the "Check the rows" this used to offer did
+   * nothing except flip the batch to `validated` with zero valid rows, which
+   * then read as a stuck batch. The row becomes valid when the typist presses
+   * Save as finished, and the confirmation queue picks it up from there.
+   *
+   * A workbench row that is not yet valid, rejected or committed can only be a
+   * draft, so `pending` is the draft count for this source without the batches
+   * read having to say so.
+   */
+  if (
+    b.source === "workbench" && pending > 0 && (b.valid_rows ?? 0) === 0 &&
+    (b.rejected_rows ?? 0) === 0
+  ) {
+    return {
+      say:
+        `${plural(pending, "receipt is", "receipts are")} still being typed at the bench. ` +
+        "Each one is finished there, then confirmed from the queue.",
+      action: null,
+    };
+  }
   if (pending > 0 && (b.valid_rows ?? 0) === 0 && (b.rejected_rows ?? 0) === 0) {
     return {
       say: `${plural(b.total_rows, "row is", "rows are")} here and none has been checked yet.`,
