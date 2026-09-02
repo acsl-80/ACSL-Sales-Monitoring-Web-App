@@ -100,6 +100,58 @@ async function rowsOf(page: Page, batchId: string) {
   return (r.body as { data?: Record<string, unknown>[] })?.data ?? [];
 }
 
+/**
+ * Undo a fixture batch, and say so out loud when it does not work.
+ *
+ * The first version of this file fired rollback and ignored the answer, which
+ * left committed batches and their sales standing on the preview across four
+ * runs, invisibly. Two separate causes hid behind that one silence: discard
+ * refuses a batch that wrote sales, and rollback answers 200 even when it
+ * deleted nothing. A cleanup that fails in silence is the same failure
+ * this module's own rules single out everywhere else, and it is worse in a
+ * spec, because the residue then shifts what the NEXT run sees.
+ *
+ * Rollback is refused while a commit lease is live, so it is retried rather
+ * than attempted once. Anything else is reported with the server's own reason.
+ *
+ * Which undo to ask for is not interchangeable, and the silent version hid
+ * that too: `discard` refuses any batch that has written sales ("Roll it back
+ * first - that removes each sale properly and releases its stove"), so a
+ * committed batch takes `rollback` and a staged one takes `discard`.
+ */
+async function undo(page: Page, batchId: string, kind: "rollback" | "discard") {
+  for (let i = 0; i < 6; i++) {
+    const r = await callEdgeFunction(page, "data-center-import", { action: kind, batchId });
+    if (r.status === 200) {
+      if (kind === "discard") return;
+      /*
+       * A 200 from rollback is not proof the sales went. It answers 200 having
+       * failed to delete a single one, recording that only in last_error - and
+       * the account these tests first used could not delete sales at all
+       * ("Admin privileges required"), so six batches survived two green runs.
+       * Ask the batch what happened rather than believing the status code.
+       */
+      const [b] = await branchSql<{ state: string; last_error: string | null }>(
+        `select state, last_error from data_center.import_batches where id = '${batchId}'`,
+      );
+      if (b?.state === "rolled_back" && !b?.last_error) return;
+      throw new Error(
+        `cleanup: rollback on ${batchId} answered 200 but the batch is ` +
+          `'${b?.state}' with last_error: ${b?.last_error ?? "(none)"}`,
+      );
+    }
+    const code = (r.body as { code?: string })?.code;
+    if (code === "commit_in_progress") {
+      await page.waitForTimeout(3000);
+      continue;
+    }
+    throw new Error(
+      `cleanup: ${kind} on ${batchId} answered ${r.status} ${JSON.stringify(r.body).slice(0, 300)}`,
+    );
+  }
+  throw new Error(`cleanup: ${kind} on ${batchId} never stopped saying a commit was running`);
+}
+
 const liveSalesFor = (serial: string) =>
   branchSql<{ n: number }>(
     `select count(*)::int as n from public.sales
@@ -109,7 +161,7 @@ const liveSalesFor = (serial: string) =>
 
 test.describe("a stove that already has a sale is not digitised twice", () => {
   test("refused even when the stock flag says the stove is free", async ({ page }, testInfo) => {
-    await signIn(page, USERS.dataManager);
+    await signIn(page, USERS.admin);
 
     const [serial] = await freeStoves(page, 1);
     expect(
@@ -121,6 +173,7 @@ test.describe("a stove that already has a sale is not digitised twice", () => {
     const marker = `digitised${testInfo.workerIndex}-${Date.now()}`;
     let first: string | null = null;
     let second: string | null = null;
+    let releasedStock = false;
     try {
       // Give the stove a real sale, through the real path.
       first = await stageAndValidate(page, `${marker}-a`, [serial]);
@@ -139,6 +192,7 @@ test.describe("a stove that already has a sale is not digitised twice", () => {
         `update public.stove_ids_base set status = 'available'
           where upper(stove_id) = upper('${serial}')`,
       );
+      releasedStock = true;
 
       second = await stageAndValidate(page, `${marker}-b`, [serial]);
       const rows = await rowsOf(page, second);
@@ -158,17 +212,32 @@ test.describe("a stove that already has a sale is not digitised twice", () => {
         "the reason should say where to go about it",
       ).toMatch(/sales app/i);
     } finally {
-      if (second) {
-        await callEdgeFunction(page, "data-center-import", { action: "discard", batchId: second });
+      /*
+       * Stock first, then the rollback. Leaving the release in place is not
+       * cosmetic: a live sale sitting on free stock IS the drift this whole
+       * change exists to catch, so a spec that walks away from it seeds the
+       * very fault it asserts against, for every run after this one.
+       *
+       * Both columns move together because the check constraint on
+       * stove_ids_base permits 'sold' only while sale_id is set.
+       */
+      if (releasedStock) {
+        await branchSql(
+          `update public.stove_ids_base b
+              set status = 'sold', sale_id = s.id
+             from public.sales s
+            where upper(b.stove_id) = upper('${serial}')
+              and upper(btrim(s.stove_serial_no)) = upper(btrim('${serial}'))
+              and s.is_archived is not true`,
+        );
       }
-      if (first) {
-        await callEdgeFunction(page, "data-center-import", { action: "rollback", batchId: first });
-      }
+      if (second) await undo(page, second, "discard");
+      if (first) await undo(page, first, "rollback");
     }
   });
 
   test("a sale cancelled on purpose does not block the receipt", async ({ page }, testInfo) => {
-    await signIn(page, USERS.dataManager);
+    await signIn(page, USERS.admin);
 
     const [serial] = await freeStoves(page, 1);
     expect(
@@ -208,31 +277,38 @@ test.describe("a stove that already has a sale is not digitised twice", () => {
         `a cancelled sale must not block the receipt (reason given: ${rows[0].exception_reason})`,
       ).toBe("valid");
     } finally {
-      for (const id of [second, first]) {
-        if (id) {
-          await callEdgeFunction(page, "data-center-import", { action: "discard", batchId: id });
-        }
-      }
+      // `second` never committed, so discard is its undo.
+      if (second) await undo(page, second, "discard");
+
       /*
-       * The fixture sale was archived out from under its batch, so rollback
-       * cannot find it by status. Remove it here and put the stove back, or
-       * the next run finds one fewer free stove than it expects.
+       * `first` DID commit, and discard refuses a batch that wrote sales:
+       * "Roll it back first - that removes each sale properly and releases
+       * its stove." Rollback is the right undo, and it needs the sale the way
+       * the commit left it, because this test then archived it and released
+       * the stove to imitate a cancellation.
        */
-      await branchSql(
-        `delete from public.sales
-          where upper(btrim(stove_serial_no)) = upper(btrim('${serial}'))`,
-      );
-      await branchSql(
-        `update public.stove_ids_base set status = 'available', sale_id = null
-          where upper(stove_id) = upper('${serial}')`,
-      );
+      if (first) {
+        await branchSql(
+          `update public.sales set is_archived = false
+            where upper(btrim(stove_serial_no)) = upper(btrim('${serial}'))`,
+        );
+        await branchSql(
+          `update public.stove_ids_base b
+              set status = 'sold', sale_id = s.id
+             from public.sales s
+            where upper(b.stove_id) = upper('${serial}')
+              and upper(btrim(s.stove_serial_no)) = upper(btrim('${serial}'))
+              and s.is_archived is not true`,
+        );
+        await undo(page, first, "rollback");
+      }
     }
   });
 
   test("a sale that lands between the check and the commit is refused at commit", async ({
     page,
   }, testInfo) => {
-    await signIn(page, USERS.dataManager);
+    await signIn(page, USERS.admin);
 
     const [serial] = await freeStoves(page, 1);
     expect(
@@ -277,8 +353,8 @@ test.describe("a stove that already has a sale is not digitised twice", () => {
       const live = await liveSalesFor(serial);
       expect(live[0].n, "one stove, one live sale").toBe(1);
     } finally {
-      if (b) await callEdgeFunction(page, "data-center-import", { action: "discard", batchId: b });
-      if (a) await callEdgeFunction(page, "data-center-import", { action: "rollback", batchId: a });
+      if (b) await undo(page, b, "discard");
+      if (a) await undo(page, a, "rollback");
     }
   });
 });
