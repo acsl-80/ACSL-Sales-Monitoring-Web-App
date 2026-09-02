@@ -66,6 +66,14 @@ async function fillReceiptWithoutSigning(page: Page, marker: string) {
   await page.locator("#wb-phone").fill("08015550222");
   await page.locator("#wb-address").fill(`${marker} Street`);
   await page.locator("#wb-amount").fill("1000");
+  /*
+   * Paid in full. A receipt that names no sales model can only go through
+   * create-sale's outright door, and that door is only honest when paid equals
+   * the amount; the commit has always refused the alternative and the bench
+   * now refuses it at the same moment. The signature is the point of this
+   * spec, so the receipt is otherwise the plainest one there is.
+   */
+  await page.locator("#wb-amountReceived").fill("1000");
   const state = page.getByRole("combobox", { name: "State" });
   await state.click();
   await page.getByPlaceholder("Type part of the state").fill("Kogi");

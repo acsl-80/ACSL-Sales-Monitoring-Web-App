@@ -48,20 +48,37 @@ async function openFirstStove(page: Page): Promise<boolean> {
 
 /** Everything the paper receipt states, as a PART payment: 500 of 1000. */
 async function fillPartPaidReceipt(page: Page, marker: string) {
-  await page.locator("#wb-endUserName").fill("Model");
-  await page.locator("#wb-endUserSurname").fill(marker);
-  await page.locator("#wb-phone").fill("08015550333");
-  await page.locator("#wb-address").fill(`${marker} Street`);
-  await page.locator("#wb-amount").fill("1000");
-  await page.locator("#wb-amountReceived").fill("500");
+  /*
+   * The pickers first. Both runs of this file so far lost the LGA option to
+   * "visible, enabled and stable" while the bench's first autosave was in
+   * flight, with the pill still reading "Saving…" twenty seconds on. Whether
+   * that is the picker or the save is a separate question (noted on the PR);
+   * this spec is about the model, so its picker work happens before that
+   * window opens.
+   */
   const state = page.getByRole("combobox", { name: "State" });
   await state.click();
   await page.getByPlaceholder("Type part of the state").fill("Kogi");
   await page.getByRole("listbox").getByRole("option", { name: "Kogi", exact: true }).click();
   const lga = page.getByRole("combobox", { name: "Local government area" });
   await expect(lga).toBeEnabled();
+  /*
+   * Centre the trigger before opening it. Playwright scrolls a target just
+   * far enough to click, which left this control on the last row of a 720px
+   * viewport; the list then opened below the fold and never read as visible
+   * and stable. (Worth a look in the product too: a picker at the bottom edge
+   * of a small laptop screen should flip upward.)
+   */
+  await lga.evaluate((el) => el.scrollIntoView({ block: "center" }));
   await lga.click();
+  await page.getByPlaceholder("Type part of the LGA").fill("Yagba West");
   await page.getByRole("listbox").getByRole("option", { name: "Yagba West", exact: true }).click();
+  await page.locator("#wb-endUserName").fill("Model");
+  await page.locator("#wb-endUserSurname").fill(marker);
+  await page.locator("#wb-phone").fill("08015550333");
+  await page.locator("#wb-address").fill(`${marker} Street`);
+  await page.locator("#wb-amount").fill("1000");
+  await page.locator("#wb-amountReceived").fill("500");
   const terms = page
     .locator('label:has-text("The buyer agreed to all six") input[type="checkbox"]')
     .first();
