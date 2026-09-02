@@ -89,8 +89,10 @@ test("a drafts-only bench batch offers 'Open the bench' and the button lands the
     ).toBeVisible();
 
     await open.click();
+    // The bench stays mounted behind the other tabs, so it comes back to
+    // wherever the typist was: the stove they had open, or the partner list.
     await expect(
-      page.getByPlaceholder("Search by name"),
+      page.locator("#wb-endUserName").or(page.getByPlaceholder("Search by name")).first(),
       "the button should land on the bench",
     ).toBeVisible({ timeout: 30_000 });
   } finally {
