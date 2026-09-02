@@ -1467,11 +1467,21 @@ export const dataCenterImport = {
       stopped?: string;
     }>("data-center-import", "commit", { batchId }),
 
-  /** Also sliced. Each sale goes back through delete-sale, which frees the stove. */
+  /**
+   * Also sliced. Each sale goes back through delete-sale, which frees the stove.
+   *
+   * `failures` is part of the contract, not decoration. The server answers 200
+   * whether or not delete-sale agreed to remove anything, and puts each refusal
+   * here with its reason. Dropping it from this type is how the panel came to
+   * announce "Rolled back. 0 sales reversed." over a batch it had not touched.
+   */
   rollback: (batchId: string) =>
-    call<{ reversed: number; remaining: number; done: boolean }>("data-center-import", "rollback", {
-      batchId,
-    }),
+    call<{
+      reversed: number;
+      remaining: number;
+      done: boolean;
+      failures: { rowId: string; reason: string }[];
+    }>("data-center-import", "rollback", { batchId }),
 
   resolveException: (rowId: string, correctedSerial: string) =>
     call<{ rowId: string; resolved: boolean; reason: string | null }>(

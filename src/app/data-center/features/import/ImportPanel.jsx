@@ -1069,6 +1069,8 @@ export default function ImportPanel({ canUpload, canCommit, canResolve }) {
        * commit chain holds the batch (409 commit_in_progress), and that
        * message is shown as-is.
        */
+      let refused = null;
+      let remaining = committed;
       for (;;) {
         let out;
         try {
@@ -1081,9 +1083,29 @@ export default function ImportPanel({ canUpload, canCommit, canResolve }) {
           throw err;
         }
         reversed += out.reversed;
-        if (out.done || out.reversed === 0) break;
+        remaining = out.remaining;
+        if (out.done) break;
+        /*
+         * Nothing moved and the server says it is not done: every sale still
+         * standing was refused by delete-sale, and the reason is in the body.
+         * This used to fall through to the success notice below, so an
+         * operator without delete rights was told "Rolled back. 0 sales
+         * reversed." over a batch that had not changed at all. The server was
+         * honest the whole time; the panel was not reading it.
+         */
+        if (out.reversed === 0) {
+          refused = out.failures?.[0]?.reason ?? "delete-sale refused every remaining sale";
+          break;
+        }
       }
-      setNotice(`Rolled back. ${plural(reversed, "sale")} reversed.`);
+      if (refused !== null) {
+        setError(
+          `Rollback stopped. ${plural(remaining, "sale")} could not be removed: ${refused}` +
+            (reversed > 0 ? ` ${plural(reversed, "sale")} had been reversed before it stopped.` : ""),
+        );
+      } else {
+        setNotice(`Rolled back. ${plural(reversed, "sale")} reversed.`);
+      }
       await refresh();
     } catch (err) {
       setError(
