@@ -51,6 +51,7 @@ const PREVIOUS_STOVES = [
 /** The shape Sell Stove starts from, so the two forms hold the same record. */
 export function blankSale() {
   return {
+    salesModel: "",
     // Minted here exactly as Sell Stove mints it in the browser. The import
     // path mints one at commit instead, which is why a bench record needs its
     // own: the sales app's validator asks for it before the record is saved,
@@ -137,6 +138,7 @@ export const FIELD_META = {
   address: { id: "wb-address", label: "Residential address" },
   salesDate: { id: "wb-salesDate", label: "Sales date" },
   transactionId: { id: "wb-salesDate", label: "Transaction ID" },
+  salesModel: { id: "wb-salesModel", label: "Sales model" },
   amount: { id: "wb-amount", label: "Sale amount" },
   amountReceived: { id: "wb-amountReceived", label: "Amount received" },
   termsAccepted: { id: "wb-termsAccepted", label: "The six consents" },
@@ -162,7 +164,29 @@ export function problemsInFormOrder(problems) {
 export function saleProblems(values) {
   const problems = { ...(validateSalesForm(withDefaults(values)) ?? {}) };
   for (const key of BENCH_OPTIONAL) delete problems[key];
+  const model = modelProblem(values);
+  if (model) problems.salesModel = model;
   return problems;
+}
+
+/**
+ * The bench's one rule of its own, and it is the server's rule repeated: a
+ * receipt with no sales model can only be written when the buyer paid in
+ * full. create-sale's outright path records the full amount as paid, and only
+ * the installment path, which needs a model, can hold a balance. Asked here so
+ * the refusal lands before any request, on the field itself.
+ */
+export function modelProblem(values) {
+  if (String(values.salesModel ?? "").trim()) return null;
+  const amount = Number(String(values.amount ?? "").replace(/[^0-9.]/g, ""));
+  if (!Number.isFinite(amount) || amount <= 0) return null; // the amount has its own error
+  const receivedRaw = String(values.amountReceived ?? "").trim();
+  if (receivedRaw === "") {
+    return "Pick the sales model on the receipt, or fill in Amount paid if the buyer paid in full.";
+  }
+  const received = Number(receivedRaw.replace(/[^0-9.]/g, ""));
+  if (!Number.isFinite(received) || received === amount) return null;
+  return "The buyer has not paid in full, and the balance is tracked against the sales model.";
 }
 
 /**
@@ -220,7 +244,14 @@ function Section({ title, note, children }) {
   );
 }
 
-export default function SaleForm({ values, onChange, disabled, errors = {} }) {
+export default function SaleForm({
+  values,
+  onChange,
+  disabled,
+  errors = {},
+  models = [],
+  modelsRestricted = false,
+}) {
   const [uploading, setUploading] = useState({ stove: false, agreement: false });
   const [previews, setPreviews] = useState({ stove: null, agreement: null });
   const [uploadError, setUploadError] = useState(null);
@@ -416,6 +447,44 @@ export default function SaleForm({ values, onChange, disabled, errors = {} }) {
             disabled={disabled}
             onChange={(e) => set("salesDate", e.target.value)}
           />
+        </Field>
+        <Field
+          label="Sales model"
+          htmlFor="wb-salesModel"
+          error={errors.salesModel}
+          help={
+            models.length === 0
+              ? "No active sales models exist to offer. They are set up under Settings, Payment models."
+              : modelsRestricted
+              ? "The models this partner is assigned. Needed unless the buyer paid in full."
+              : "This partner has no models assigned, so every model is offered. Pick the one on the receipt."
+          }
+        >
+          <select
+            id="wb-salesModel"
+            className={INPUT}
+            value={values.salesModel ?? ""}
+            disabled={disabled}
+            onChange={(e) => {
+              const name = e.target.value;
+              set("salesModel", name);
+              // The model's price fills an EMPTY amount. A typed amount is never
+              // overwritten: the receipt wins.
+              const picked = models.find((m) => m.name === name);
+              const price = picked?.price ? Number(picked.price) : 0;
+              if (price > 0 && !String(values.amount ?? "").trim()) set("amount", String(price));
+            }}
+          >
+            <option value="">{models.length ? "Pick the model on the receipt" : "None available"}</option>
+            {models.map((m) => (
+              <option key={m.id} value={m.name}>
+                {m.name}
+                {m.price && Number(m.price) > 0
+                  ? ` (\u20a6${Number(m.price).toLocaleString("en-NG")})`
+                  : ""}
+              </option>
+            ))}
+          </select>
         </Field>
         <Field
           label="Sale amount"

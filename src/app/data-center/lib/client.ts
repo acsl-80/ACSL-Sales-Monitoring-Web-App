@@ -1347,6 +1347,10 @@ export const dataCenterImport = {
         transactionId: string | null;
         stockStatus: string | null;
         alreadySold: boolean;
+        /** What the partner may sell on; every active model when nothing is assigned. */
+        models: { id: string; name: string; price: string | null }[];
+        /** True when the partner has an explicit list, which is what restricts. */
+        modelsRestricted: boolean;
       };
       work: {
         id: string;
@@ -1355,6 +1359,7 @@ export const dataCenterImport = {
         normalized: Record<string, unknown> | null;
         rejection_reason: string | null;
         rejection_hint: string | null;
+        exception_reason: string | null;
         confirmed_at: string | null;
         sale_id: string | null;
         last_edited_at: string | null;

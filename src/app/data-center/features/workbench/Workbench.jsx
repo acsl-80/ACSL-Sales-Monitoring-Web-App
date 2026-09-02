@@ -560,6 +560,19 @@ function Bench({ stoveId, onSaved, onBack, onNext, nextLabel, api = null }) {
           stoveSerialNo: d.stove.stoveId,
           partnerName: d.work?.draft_values?.partnerName ?? d.stove.partnerName ?? "",
         };
+        /*
+         * One assigned model is not a choice, so it is filled in, and its
+         * price fills an empty amount. Several, or none assigned, is the
+         * typist's call from the receipt.
+         */
+        const only =
+          d.stove.modelsRestricted && d.stove.models?.length === 1 ? d.stove.models[0] : null;
+        if (only && !String(start.salesModel ?? "").trim()) {
+          start.salesModel = only.name;
+          if (only.price && Number(only.price) > 0 && !String(start.amount ?? "").trim()) {
+            start.amount = String(Number(only.price));
+          }
+        }
         setValues(start);
         lastSaved.current = JSON.stringify(start);
         // A draft that exists on the server IS saved, and the pill should say
@@ -589,6 +602,7 @@ function Bench({ stoveId, onSaved, onBack, onNext, nextLabel, api = null }) {
    */
   const fieldForServerReason = (reason) => {
     const r = String(reason ?? "");
+    if (/sales model/i.test(r)) return "salesModel";
     if (/no state/i.test(r)) return "stateBackup";
     if (/\bLGA\b|local government/i.test(r)) return "lgaBackup";
     if (/no sale amount|sale amount/i.test(r)) return "amount";
@@ -715,7 +729,8 @@ function Bench({ stoveId, onSaved, onBack, onNext, nextLabel, api = null }) {
              * put it under the field that fact lives in and bring that field
              * into view, the same as a refusal made here would be.
              */
-            const key = fieldForServerReason(err.message);
+            // The server names the field when it can; the sentence is the fallback.
+            const key = err.data?.field ?? fieldForServerReason(err.message);
             if (key) {
               setServerProblem({ [key]: err.message });
               setShowMissing(true);
@@ -1008,6 +1023,18 @@ function Bench({ stoveId, onSaved, onBack, onNext, nextLabel, api = null }) {
           instead, so there is one version of it.
         </p>
       )}
+      {/* Refused when its batch was written. Said here, where it can be fixed,
+          with the server's own reason. */}
+      {work?.status === "exception" && !locked && (
+        <p className="flex items-start gap-2 rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900">
+          <TriangleAlert className="mt-0.5 h-4 w-4 shrink-0 text-amber-600" />
+          <span>
+            This receipt was refused when its batch was written:{" "}
+            {work.exception_reason ?? "no reason was recorded."} Fix it here and press Save as
+            finished again; it goes back into the queue.
+          </span>
+        </p>
+      )}
 
       {error && (
         <div className="rounded-lg border border-red-200 bg-red-50 p-3">
@@ -1027,6 +1054,8 @@ function Bench({ stoveId, onSaved, onBack, onNext, nextLabel, api = null }) {
       <SaleForm
         values={values}
         onChange={setField}
+        models={stove.models ?? []}
+        modelsRestricted={Boolean(stove.modelsRestricted)}
         disabled={locked || finishing}
         errors={showMissing ? { ...problems, ...(serverProblem ?? {}) } : {}}
       />
@@ -1714,7 +1743,11 @@ export default function Workbench() {
               >
                 <span className="font-mono">{r.stove_serial_no}</span>
                 <span className="ml-1.5 text-gray-600">
-                  {r.status === "draft" ? "draft" : "finished"}
+                  {r.status === "draft"
+                    ? "draft"
+                    : r.status === "exception"
+                    ? "refused, needs a look"
+                    : "finished"}
                 </span>
               </button>
             ))}

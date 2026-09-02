@@ -164,6 +164,18 @@ const EXCEPTION_KINDS = [
       "Check the rows again and these clear themselves.",
   },
   {
+    key: "unpaid_balance_no_model",
+    test: (why) => /names no sales model/i.test(why),
+    title: "A balance is owed but no sales model was named",
+    fixable: false,
+    what:
+      "The sales app tracks an unpaid balance against a sales model, so a part payment " +
+      "with no model cannot be written without recording it as paid in full. For a typed " +
+      "receipt, open it at the bench, pick the model and save it as finished again. For a " +
+      "file, add a sales_model column, or fill in Amount received where the buyer paid in " +
+      "full, and re-import. Then press Check the rows again.",
+  },
+  {
     key: "duplicate",
     test: (why) => /already appears on row/i.test(why),
     title: "The same stove ID appears twice in this file",
@@ -525,18 +537,34 @@ function nextStep(b) {
    * draft, so `pending` is the draft count for this source without the batches
    * read having to say so.
    */
+  /*
+   * `pending` counts drafts AND exceptions: both are rows that are neither
+   * valid, rejected nor committed. They are different sentences. A draft is
+   * being typed; an exception was refused and needs a person. Telling a
+   * typist that twenty-five refused receipts were "still being typed" was the
+   * second half of the 2026-09-02 report, after the batch reading as
+   * committed.
+   */
+  const exceptions = b.exception_rows ?? 0;
+  const drafts = Math.max(0, pending - exceptions);
   if (
     b.source === "workbench" && pending > 0 && (b.valid_rows ?? 0) === 0 &&
     (b.rejected_rows ?? 0) === 0
   ) {
-    return {
-      say:
-        `${plural(pending, "receipt is", "receipts are")} still being typed at the bench. ` +
-        "Each one is finished there, then confirmed from the queue.",
-      action: null,
-    };
+    const parts = [];
+    if (drafts > 0) {
+      parts.push(`${plural(drafts, "receipt is", "receipts are")} still being typed at the bench`);
+    }
+    if (exceptions > 0) {
+      parts.push(
+        `${plural(exceptions, "was", "were")} refused and ${exceptions === 1 ? "needs" : "need"} ` +
+          "a person: open each at the bench, where the reason is shown, fix it and save it " +
+          "as finished again",
+      );
+    }
+    return { say: `${parts.join("; ")}.`, action: null };
   }
-  if (pending > 0 && (b.valid_rows ?? 0) === 0 && (b.rejected_rows ?? 0) === 0) {
+  if (drafts > 0 && (b.valid_rows ?? 0) === 0 && (b.rejected_rows ?? 0) === 0) {
     return {
       say: `${plural(b.total_rows, "row is", "rows are")} here and none has been checked yet.`,
       action: { kind: "validate", label: "Check the rows", primary: true },
@@ -554,14 +582,16 @@ function nextStep(b) {
       action: { kind: "commit", label: `Commit ${b.valid_rows}`, primary: true },
     };
   }
-  if (pending > 0) {
+  if (drafts > 0) {
     return {
-      say: `${plural(pending, "row", "rows")} still to check.`,
+      say: `${plural(drafts, "row", "rows")} still to check.`,
       action: { kind: "validate", label: "Check the rest", primary: true },
     };
   }
   return {
-    say: "Nothing here can be written as it stands. Open it to see why.",
+    say: exceptions > 0
+      ? `${plural(exceptions, "row needs", "rows need")} a person first. Open it to see why.`
+      : "Nothing here can be written as it stands. Open it to see why.",
     action: null,
   };
 }

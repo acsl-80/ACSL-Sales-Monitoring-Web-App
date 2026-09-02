@@ -52,6 +52,7 @@ import {
   stageCallRows,
   validateCallRows,
 } from "./call-import.ts";
+import { benchHintFor, paymentDoorFor } from "./payment-door.ts";
 
 const DEFAULT_ORIGINS = [
   "https://sales.atmosfair.com.ng",
@@ -2000,6 +2001,18 @@ serve(async (req) => {
                   `the "${resolvedModel.canonicalName}" sales model, so the sales app would ` +
                   "refuse this sale. Assign the model to the partner (Partner Sales Models " +
                   "in the ERP sync), then check this batch again.";
+              } else {
+                /*
+                 * The door the commit will ask for, asked here, so a batch
+                 * never shows as ready while holding rows the commit is
+                 * certain to refuse. Same function, same sentence.
+                 */
+                const door = paymentDoorFor({
+                  amount: row.amount,
+                  amountReceived: row.amountReceived,
+                  paymentModelId: resolvedModel?.paymentModelId ?? null,
+                });
+                if (door.door === null) exceptionReason = door.reason;
               }
 
               if (exceptionReason) {
@@ -2444,7 +2457,9 @@ serve(async (req) => {
               text: `update data_center.import_batches
                         set state = 'committed', committed_at = now(), committed_by = $2,
                             commit_lease_until = null
-                      where id = $1 and state <> 'committed'`,
+                      where id = $1 and state <> 'committed'
+                        and exists (select 1 from data_center.import_rows
+                                     where batch_id = $1 and status = 'committed')`,
               args: [batchId, userId],
             })
           );
@@ -2567,20 +2582,18 @@ serve(async (req) => {
              * a no-op when paid already equals expected. Anything else without
              * a model is refused BY NAME, never silently coerced.
              */
-            if ((typeof modelId !== "string" || !modelId) && !paidInFull) {
-              failRows.push({
-                rowId: row.id,
-                reason: statedPaid === null
-                  ? "This row names no sales model and states no amount received. Paid is " +
-                    "only ever what was stated - add the sales model (so the balance can be " +
-                    "tracked) or the amount received, then check the batch again."
-                  : "This row names no sales model but states a part payment, and a part " +
-                    "payment needs a sales model to be tracked against. Add the model, " +
-                    "then check the batch again.",
-              });
+            const door = paymentDoorFor({
+              amount: Number(n.amount),
+              amountReceived: statedPaid === null ? null : Number(statedPaid),
+              paymentModelId: typeof modelId === "string" ? modelId : null,
+            });
+            if (door.door === null) {
+              // Validate and the bench ask the same function, so this is the
+              // last line of defence rather than the first, as it used to be.
+              failRows.push({ rowId: row.id, reason: door.reason });
               continue;
             }
-            const throughInstallment = typeof modelId === "string" && !!modelId;
+            const throughInstallment = door.door === "installment";
             const extras = (row.draft_values ?? row.raw ?? null) as
               | Record<string, unknown>
               | null;
@@ -2828,13 +2841,36 @@ serve(async (req) => {
               const outcomes = okRows.length + failRows.length;
               const { nextZeroRuns, breaker } = breakerFor(outcomes, zeroRuns, left);
 
+              /*
+               * Nothing left to write is not the same as written. A batch is
+               * "committed" only if at least one of its rows is; one whose
+               * every row was refused stays open with its exceptions, so the
+               * history says what it needs instead of reading as done with a
+               * zero beside it.
+               */
               await conn.queryObject({
                 text: `update data_center.import_batches
                           set committed_rows = (select count(*) from data_center.import_rows
                                                  where batch_id = $1 and status = 'committed'),
-                              state = case when $2 = 0 then 'committed' else 'validated' end,
-                              committed_at = case when $2 = 0 then now() else committed_at end,
-                              committed_by = case when $2 = 0 then $3 else committed_by end,
+                              state = case
+                                        when $2 > 0 then 'validated'
+                                        when exists (select 1 from data_center.import_rows
+                                                      where batch_id = $1 and status = 'committed')
+                                          then 'committed'
+                                        else 'validated'
+                                      end,
+                              committed_at = case
+                                               when $2 = 0 and exists (select 1 from data_center.import_rows
+                                                                        where batch_id = $1 and status = 'committed')
+                                                 then now()
+                                               else committed_at
+                                             end,
+                              committed_by = case
+                                               when $2 = 0 and exists (select 1 from data_center.import_rows
+                                                                        where batch_id = $1 and status = 'committed')
+                                                 then $3
+                                               else committed_by
+                                             end,
                               commit_lease_until = null,
                               last_error = $4
                         where id = $1`,
@@ -4107,9 +4143,33 @@ serve(async (req) => {
             );
           }
 
+          /*
+           * The models this partner may sell on, for the bench's picker.
+           *
+           * The host form's rule, copied rather than approximated: an explicit
+           * list restricts, and a partner with no list may use any active
+           * model. create-sale applies the identical rule, so what the picker
+           * offers is exactly what the sales app would accept.
+           */
+          type ModelRow = { id: string; name: string; price: string | null };
+          const assigned = stove.organization_id
+            ? await conn.queryObject<ModelRow>({
+              text: `select pm.id::text as id, pm.name, pm.fixed_price::text as price
+                       from public.organization_payment_models opm
+                       join public.payment_models pm on pm.id = opm.payment_model_id
+                      where opm.organization_id = $1 and pm.is_active
+                      order by pm.name`,
+              args: [stove.organization_id],
+            })
+            : { rows: [] as ModelRow[] };
+          const modelsRestricted = assigned.rows.length > 0;
+          const models = modelsRestricted ? assigned.rows : (await conn.queryObject<ModelRow>({
+            text: `select id::text as id, name, fixed_price::text as price
+                     from public.payment_models where is_active order by name`,
+          })).rows;
           const existing = await conn.queryObject({
             text: `select r.id::text, r.status, r.draft_values, r.normalized,
-                          r.rejection_reason, r.rejection_hint,
+                          r.rejection_reason, r.rejection_hint, r.exception_reason,
                           r.confirmed_at, r.sale_id::text,
                           r.last_edited_at, p.full_name as last_edited_by_name,
                           b.id::text as batch_id, b.uploaded_by::text as owner_id
@@ -4133,6 +4193,8 @@ serve(async (req) => {
                   transactionId: stove.sales_reference,
                   stockStatus: stove.status,
                   alreadySold: Boolean(stove.sale_id),
+                  models,
+                  modelsRestricted,
                 },
                 work: existing.rows[0] ?? null,
               },
@@ -4168,11 +4230,11 @@ serve(async (req) => {
         //
         // Priced by the same rule as a file and a typed record, or the bench
         // would refuse a receipt the other two accept.
-        const benchPrice = complete
-          ? await withReadConnection((c) => modelPriceFor(c, record))
+        const model = complete
+          ? await withReadConnection((c) => modelFor(c, record))
           : null;
+        const benchPrice = model?.price ?? null;
         const shape = complete ? normalizeRow(record, { amount: benchPrice }) : null;
-        const finished = shape?.ok ? shape.row : null;
         if (complete) {
           if (shape && !shape.ok) {
             return json(
@@ -4188,7 +4250,44 @@ serve(async (req) => {
               cors,
             );
           }
+          /*
+           * The same door the commit will ask for, asked now, while the typist
+           * is looking at the receipt. Before this the bench accepted a part
+           * payment with no model as finished, the queue offered it, and the
+           * commit refused it - twenty-five receipts in one morning.
+           */
+          if (shape?.ok) {
+            const door = paymentDoorFor({
+              amount: shape.row.amount,
+              amountReceived: shape.row.amountReceived,
+              paymentModelId: model?.paymentModelId ?? null,
+            });
+            if (door.door === null) {
+              return json(
+                {
+                  error: door.reason,
+                  code: "incomplete",
+                  data: { hint: benchHintFor(door), field: door.field },
+                },
+                400,
+                cors,
+              );
+            }
+          }
         }
+        /*
+         * What the row carries forward: the model resolved to the sales app's
+         * own id, exactly as validate writes it for a file row, so the commit
+         * sends the id rather than re-deriving it.
+         */
+        const finished = shape?.ok
+          ? {
+            ...shape.row,
+            ...(model
+              ? { paymentModelId: model.paymentModelId, salesModelName: model.canonicalName }
+              : {}),
+          }
+          : null;
 
         return await withConnection(async (conn) => {
           const stock = await conn.queryObject<{ organization_id: string | null }>({
@@ -4200,6 +4299,34 @@ serve(async (req) => {
             throw new BadRequest(`No stove with the ID "${stoveId}" is in stock.`);
           }
           await requireOrganization(organizationId);
+
+          // The partner's own list restricts, as it does for a file row and in
+          // the sales app. Refused here by name rather than at commit.
+          if (complete && model) {
+            const links = await conn.queryObject<{ payment_model_id: string }>({
+              text: `select payment_model_id::text from public.organization_payment_models
+                      where organization_id = $1`,
+              args: [organizationId],
+            });
+            const allowed = links.rows.map((l) => l.payment_model_id);
+            if (allowed.length > 0 && !allowed.includes(model.paymentModelId)) {
+              return json(
+                {
+                  error:
+                    `This partner is not assigned the "${model.canonicalName}" sales model, ` +
+                    "so the sales app would refuse this sale.",
+                  code: "incomplete",
+                  data: {
+                    field: "salesModel",
+                    hint: "Pick one of the models the picker offers for this partner, or have " +
+                      "the model assigned to the partner (Partner Sales Models), then finish it again.",
+                  },
+                },
+                400,
+                cors,
+              );
+            }
+          }
 
           await conn.queryObject("begin");
           try {
@@ -4249,8 +4376,13 @@ serve(async (req) => {
               batchId = made.rows[0].id;
             }
 
-            const existing = await conn.queryObject<{ id: string; confirmed_at: string | null }>({
-              text: `select r.id::text, r.confirmed_at
+            const existing = await conn.queryObject<{
+              id: string;
+              confirmed_at: string | null;
+              batch_id: string;
+              batch_state: string;
+            }>({
+              text: `select r.id::text, r.confirmed_at, b.id::text as batch_id, b.state as batch_state
                        from data_center.import_rows r
                        join data_center.import_batches b on b.id = r.batch_id
                       where r.stove_serial_no = $1 and b.source = 'workbench'
@@ -4313,7 +4445,8 @@ serve(async (req) => {
                                              else null
                                            end,
                               last_edited_by = $5, last_edited_at = now(),
-                              rejection_reason = null, rejection_hint = null
+                              rejection_reason = null, rejection_hint = null,
+                              exception_reason = null
                         where id = $1
                     returning status`,
                 args: [
@@ -4323,6 +4456,24 @@ serve(async (req) => {
                 ],
               });
               stored = String(updated.rows[0]?.status ?? status);
+              /*
+               * A refused row, finished again, reopens its batch.
+               *
+               * The batch was stamped committed when the commit refused this
+               * row (and, until 2026-09-02, even when it refused every row).
+               * The commit's state gate would then answer "this batch is
+               * committed and cannot be committed" to the very queue that
+               * offers the row. Committed rows keep their status; only the
+               * gate moves.
+               */
+              if (complete && existing.rows[0].batch_state === "committed") {
+                await conn.queryObject({
+                  text: `update data_center.import_batches
+                            set state = 'validated', last_error = null, commit_lease_until = null
+                          where id = $1 and state = 'committed'`,
+                  args: [existing.rows[0].batch_id],
+                });
+              }
             } else {
               const next = await conn.queryObject<{ n: number }>({
                 text: `select coalesce(max(row_number), 0) + 1 as n
@@ -4383,7 +4534,7 @@ serve(async (req) => {
           const mine = await conn.queryObject({
             text: `select r.stove_serial_no, r.status, r.last_edited_at,
                           r.draft_values, b.organization_id::text, o.partner_name,
-                          r.rejection_reason, r.rejection_hint
+                          r.rejection_reason, r.rejection_hint, r.exception_reason
                      from data_center.import_rows r
                      join data_center.import_batches b on b.id = r.batch_id
                      left join public.organizations o on o.id = b.organization_id
