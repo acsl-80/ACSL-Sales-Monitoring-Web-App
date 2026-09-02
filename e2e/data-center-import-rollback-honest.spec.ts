@@ -89,10 +89,23 @@ test("the panel reports a refused rollback as a failure, not a success", async (
       timeout: 30_000,
     });
 
+    /*
+     * The batch list is a table, and the actions live in the row's expanded
+     * detail, which only renders after the row is opened. The FIRST cell is
+     * clicked rather than the row's centre: this suite already learned that a
+     * row's middle can land on a link with stopPropagation.
+     */
     const row = page
-      .getByText(filename, { exact: true })
-      .locator('xpath=ancestor::div[.//button[starts-with(normalize-space(.), "Roll back")]][1]');
-    await row.getByRole("button", { name: /^Roll back / }).click();
+      .getByRole("cell", { name: filename, exact: true })
+      .locator("xpath=ancestor::tr[1]");
+    await expect(row, "the committed batch should be listed").toBeVisible({ timeout: 30_000 });
+    await row.getByRole("cell").first().click();
+
+    const rollBack = page.getByRole("button", { name: /^Roll back / });
+    await expect(rollBack, "opening the row should offer exactly one Roll back").toHaveCount(1, {
+      timeout: 15_000,
+    });
+    await rollBack.click();
     await page
       .getByRole("alertdialog")
       .getByRole("button", { name: /^Roll back / })
