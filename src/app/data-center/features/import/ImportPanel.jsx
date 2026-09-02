@@ -174,12 +174,29 @@ const EXCEPTION_KINDS = [
   },
   {
     key: "already_sold",
-    test: (why) => /already (recorded as sold|sold by the time)/i.test(why),
-    title: "The stove is already sold",
+    // Matches the reason the import writes when public.sales itself holds a
+    // live sale for the serial. The older wording ("already recorded as sold")
+    // was written off the stock flag and is kept in the pattern so a batch
+    // staged before that change still groups instead of falling into "other".
+    test: (why) => /already has a sale recorded|already (recorded as sold|sold by the time)/i.test(why),
+    title: "This receipt is already digitised",
     fixable: true,
     what:
-      "Somebody has already recorded a sale for this stove. If the serial on this row is " +
-      "wrong, correct it; if the row is a duplicate of a sale already in the app, leave it.",
+      "A sale already exists for this stove, so the row was not written over it. If the " +
+      "serial on this row is mistyped, correct it here and the row is re-checked on the " +
+      "spot. If the receipt really is a duplicate of a sale already in the app, leave it. " +
+      "If it replaces that sale, cancel the existing one in the sales app first.",
+  },
+  {
+    key: "stock_drift",
+    test: (why) => /no live sale exists/i.test(why),
+    title: "Stock says sold, but there is no sale",
+    fixable: true,
+    what:
+      "The stove is flagged sold in stock while nothing in the sales app claims it, so a " +
+      "sale was removed without the stove being released. Nothing here can fix that. " +
+      "Have the stove looked at in the sales app, then press Check the rows again. If " +
+      "instead the serial is mistyped, correct it here.",
   },
   {
     key: "moved_partner",
