@@ -18,7 +18,7 @@ const AGENT = "b0000000-0000-4000-8000-000000000005";
 const TAG = "E2ESCL";
 const SEED_ROWS = 1100;
 
-test.describe.configure({ mode: "serial", timeout: 240_000 });
+test.describe.configure({ timeout: 240_000 });
 
 type Truth = { n: number; amount: number; paid: number };
 async function truth(): Promise<Truth> {
