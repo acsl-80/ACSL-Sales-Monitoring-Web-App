@@ -83,6 +83,7 @@ import AgentViewCredentialModal from "../../admin/components/agents/AgentViewCre
 import AgentCredentialsModal from "../../admin/components/agents/AgentCredentialsModal";
 import tokenManager from "@/utils/tokenManager";
 import { useRealtimeRefresh } from "../hooks/useRealtimeRefresh";
+import { fetchAllRows } from "@/lib/fetchAllRows";
 import { useAgentsPerformance } from "../hooks/useAgentsPerformance";
 
 /**
@@ -101,22 +102,6 @@ const REALTIME_AGENT_TABLES = [
 // PostgREST caps un-ranged selects at 1000 rows, silently truncating bigger
 // result sets. Rebuilds the query per page (builders aren't reusable) and
 // loops .range() until exhausted.
-async function fetchAllRows<T = any>(
-  buildQuery: (from: number, to: number) => PromiseLike<{ data: T[] | null; error: any }>
-): Promise<T[]> {
-  const PAGE = 1000;
-  const rows: T[] = [];
-  let from = 0;
-  while (true) {
-    const { data, error } = await buildQuery(from, from + PAGE - 1);
-    if (error) throw error;
-    const chunk = data || [];
-    rows.push(...chunk);
-    if (chunk.length < PAGE) break;
-    from += PAGE;
-  }
-  return rows;
-}
 
 interface AcslAgent {
   id: string;
@@ -707,30 +692,24 @@ function AssignedStovesModal({
         const BATCH = 100;
         for (let i = 0; i < orgIds.length; i += BATCH) {
           const slice = orgIds.slice(i, i + BATCH);
-          let from = 0;
-          const PAGE = 1000;
-          while (true) {
-            const { data, error: err } = await supabase
+          const chunk = await fetchAllRows((from, to) =>
+            supabase
               .from("stove_ids")
               .select("stove_id,organization_id,status")
               .in("organization_id", slice)
               .eq("is_archived", false)
-              .range(from, from + PAGE - 1);
-            if (err) throw err;
-            const chunk = data || [];
-            chunk.forEach((s: any) => {
-              const meta = orgMap[s.organization_id] || { name: "—", state: "—", branch: "—" };
-              collected.push({
-                stove_id: s.stove_id,
-                partner_name: meta.name,
-                state: meta.state,
-                branch: meta.branch,
-                status: String(s.status || "—"),
-              });
+              .range(from, to),
+          );
+          chunk.forEach((s: any) => {
+            const meta = orgMap[s.organization_id] || { name: "—", state: "—", branch: "—" };
+            collected.push({
+              stove_id: s.stove_id,
+              partner_name: meta.name,
+              state: meta.state,
+              branch: meta.branch,
+              status: String(s.status || "—"),
             });
-            if (chunk.length < PAGE) break;
-            from += PAGE;
-          }
+          });
         }
         if (cancelled) return;
         collected.sort((a, b) => a.stove_id.localeCompare(b.stove_id));
@@ -924,27 +903,21 @@ function StovesStatusModal({
             const aSlice = agentIds.slice(i, i + ABATCH);
             for (let j = 0; j < orgIds.length; j += OBATCH) {
               const oSlice = orgIds.slice(j, j + OBATCH);
-              let from = 0;
-              const PAGE = 1000;
-              while (true) {
-                const { data, error: err } = await supabase
+              const chunk = await fetchAllRows((from, to) =>
+                supabase
                   .from("sales")
                   .select("id,organization_id,created_by,is_archived,sales_date")
                   .in("created_by", aSlice)
                   .in("organization_id", oSlice)
                   .eq("is_archived", false)
-                  .range(from, from + PAGE - 1);
-                if (err) throw err;
-                const chunk = data || [];
-                chunk.forEach((s: any) => salesRows.push({
-                  id: s.id,
-                  organization_id: s.organization_id,
-                  created_by: s.created_by,
-                  sales_date: s.sales_date || null,
-                }));
-                if (chunk.length < PAGE) break;
-                from += PAGE;
-              }
+                  .range(from, to),
+              );
+              chunk.forEach((s: any) => salesRows.push({
+                id: s.id,
+                organization_id: s.organization_id,
+                created_by: s.created_by,
+                sales_date: s.sales_date || null,
+              }));
             }
           }
 
@@ -1000,22 +973,16 @@ function StovesStatusModal({
               const aSlice = agentIds.slice(i, i + ABATCH);
               for (let j = 0; j < orgIds.length; j += OBATCH) {
                 const oSlice = orgIds.slice(j, j + OBATCH);
-                let from = 0;
-                const PAGE = 1000;
-                while (true) {
-                  const { data, error: err } = await supabase
+                const chunk = await fetchAllRows((from, to) =>
+                  supabase
                     .from("sales")
                     .select("id")
                     .in("created_by", aSlice)
                     .in("organization_id", oSlice)
                     .eq("is_archived", false)
-                    .range(from, from + PAGE - 1);
-                  if (err) throw err;
-                  const chunk = (data as SaleRow[] | null) || [];
-                  chunk.forEach((s) => saleIds.push(s.id));
-                  if (chunk.length < PAGE) break;
-                  from += PAGE;
-                }
+                    .range(from, to),
+                );
+                chunk.forEach((s) => saleIds.push(s.id));
               }
             }
             const uniqSaleIds = Array.from(new Set(saleIds));
@@ -1036,32 +1003,26 @@ function StovesStatusModal({
           const BATCH = 100;
           for (let i = 0; i < orgIds.length; i += BATCH) {
             const slice = orgIds.slice(i, i + BATCH);
-            let from = 0;
-            const PAGE = 1000;
-            while (true) {
-              const { data, error: err } = await supabase
+            const chunk = await fetchAllRows((from, to) =>
+              supabase
                 .from("stove_ids")
                 .select("stove_id,organization_id,status")
                 .in("organization_id", slice)
                 .eq("is_archived", false)
-                .range(from, from + PAGE - 1);
-              if (err) throw err;
-              const chunk = data || [];
-              chunk.forEach((s: any) => {
-                const key = `${s.stove_id}::${s.organization_id}`;
-                if (soldStoveIds.has(key)) return;
-                const meta = orgMap[s.organization_id] || { name: "—", state: "—", branch: "—" };
-                collected.push({
-                  stove_id: s.stove_id,
-                  partner_name: meta.name,
-                  state: meta.state,
-                  branch: meta.branch,
-                  sales_date: "",
-                });
+                .range(from, to),
+            );
+            chunk.forEach((s: any) => {
+              const key = `${s.stove_id}::${s.organization_id}`;
+              if (soldStoveIds.has(key)) return;
+              const meta = orgMap[s.organization_id] || { name: "—", state: "—", branch: "—" };
+              collected.push({
+                stove_id: s.stove_id,
+                partner_name: meta.name,
+                state: meta.state,
+                branch: meta.branch,
+                sales_date: "",
               });
-              if (chunk.length < PAGE) break;
-              from += PAGE;
-            }
+            });
           }
         }
         if (cancelled) return;
@@ -2881,7 +2842,7 @@ export default function SuperAdminAgentsContent() {
         )}
 
         {/* Monthly Records Collection Chart */}
-        <AgentRecordsChart title="Records Collected" tooltipLabel="Collected" />
+        <AgentRecordsChart title="Records Collected" tooltipLabel="Collected" dateFrom={dateFrom} />
 
         {/* Active filter banner */}
         {sortMode !== "default" && (

@@ -20,6 +20,9 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2.39.3";
  *   { action: "agents", agent_ids }
  *       -> report_agents_performance(): per agent, received, sold, available,
  *          direct partners and states, with the totals across them.
+ *   { action: "agent-records", year? }
+ *       -> report_agent_records_by_month(): the chart's twelve months of one
+ *          year, this year in Lagos when none is named.
  *   { action: "partner-agents", organization_ids }
  *       -> report_partner_agents(): the agents covering each partner, with
  *          what each sold there, keyed by organisation id. A manager sees
@@ -41,6 +44,7 @@ const ACTION_ROLES: Record<string, Set<string>> = {
   "state-stoves": new Set(ROUTE_ROLES),
   agents: new Set(["super_admin", "acsl_agent_manager"]),
   "partner-agents": new Set(["super_admin", "acsl_agent_manager", "acsl_agent", "super_admin_agent", "partner"]),
+  "agent-records": new Set(["super_admin", "acsl_agent_manager"]),
 };
 const STATUSES = new Set(["all", "sold", "available"]);
 const DEFAULT_LIMIT = 25;
@@ -176,6 +180,14 @@ serve(async (req) => {
       });
       if (error) throw error;
       return json({ success: true, data: data ?? {}, performance: performance() });
+    }
+
+    if (action === "agent-records") {
+      const thisYear = Number.parseInt(new Date().toLocaleDateString("en-CA", { timeZone: "Africa/Lagos" }).slice(0, 4), 10);
+      const year = positiveInt(body.year, thisYear);
+      const { data, error } = await admin.rpc("report_agent_records_by_month", { p_year: year });
+      if (error) throw error;
+      return json({ success: true, data, performance: performance() });
     }
 
     return json({ success: false, error: `Unknown action: ${action}` }, 400);

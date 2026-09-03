@@ -3,6 +3,7 @@ import React, { useState, useEffect, useRef, useCallback, useMemo } from "react"
 import { supabaseUrl as SUPABASE_URL } from "@/lib/supabaseConfig";
 import { useRealtimeRefresh, useRefreshListener } from "../../agents/hooks/useRealtimeRefresh";
 import { usePartnerAgents } from "../hooks/usePartnerAgents";
+import { fetchAllRows } from "@/lib/fetchAllRows";
 
 const REALTIME_PARTNER_TABLES = ["organizations", "sales", "stove_ids"];
 import DashboardLayout from "../../components/DashboardLayout";
@@ -885,24 +886,16 @@ const SystemStovesModal = ({ isOpen, onClose, mode }) => {
       setLoading(true);
       try {
         // 1. Fetch stove_ids across the whole system, matching the KPI filter.
-        const stoveRows = [];
-        const PAGE_FETCH = 1000;
-        const HARD_CAP = 50000;
-        let from = 0;
-        while (from < HARD_CAP) {
+        // The shared walk pages a thousand at a time and stops at fifty thousand.
+        const stoveRows = await fetchAllRows((from, to) => {
           let q = supabase
             .from("stove_ids")
             .select("stove_id,organization_id,status,created_at,sale_id")
             .eq("is_archived", false);
           if (mode === "sold")   q = q.eq("status", "sold");
           if (mode === "unsold") q = q.eq("status", "available");
-          const { data, error: err } = await q.range(from, from + PAGE_FETCH - 1);
-          if (err) throw err;
-          const chunk = data || [];
-          stoveRows.push(...chunk);
-          if (chunk.length < PAGE_FETCH) break;
-          from += PAGE_FETCH;
-        }
+          return q.range(from, to);
+        });
 
         // 2. Resolve organizations (partner name / state / branch) in batches.
         const orgIds = Array.from(new Set(stoveRows.map((s) => s.organization_id).filter(Boolean)));
