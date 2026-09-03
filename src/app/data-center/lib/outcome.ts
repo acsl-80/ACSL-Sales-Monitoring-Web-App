@@ -3,7 +3,7 @@
  *
  * Slice 7a of the 2026-09-02 review. Before this the queue, the editor, the
  * assignment log, My Work, the scorecards and the partner screens each said
- * it differently: "fully verified" with the underscore stripped here,
+ * it differently: "fully verified" spelled straight from the key here,
  * "Unverified" there, "not verified" for a record that did not exist, and an
  * unreachable pill with no tone at all because its map had no key for it.
  * "Unverified" meant partly verified on one screen and not yet verified on

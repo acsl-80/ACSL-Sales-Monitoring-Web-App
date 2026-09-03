@@ -45,7 +45,7 @@ const CORRECTED_NAME = "Corrected Buyer Seven";
 const ATTEMPT_AT = "2026-03-05 22:30:00+00";
 const ATTEMPT_NO = 97;
 
-test.describe.configure({ mode: "serial", timeout: 240_000 });
+test.describe.configure({ timeout: 240_000 });
 
 async function pick(): Promise<Snap[]> {
   const sales = await branchSql<{ sale_id: string; stove_serial_no: string; end_user_name: string }>(
@@ -156,22 +156,22 @@ test("the queue says it in one word, shows the corrected buyer, and marks a stov
   await signIn(page, USERS.admin);
   await openQueue(page);
 
-  await expect(page.getByRole("button", { name: "Yet to be resolved", exact: true })).toBeVisible();
-  await expect(page.getByRole("button", { name: "Still to verify", exact: true })).toHaveCount(0);
+  await expect.soft(page.getByRole("button", { name: "Yet to be resolved", exact: true })).toBeVisible();
+  await expect.soft(page.getByRole("button", { name: "Still to verify", exact: true })).toHaveCount(0);
 
   // The corrected buyer, with the mark, and an unreachable pill that has a tone.
   const rowA = await searchSerial(page, a.stove_serial_no);
-  await expect(rowA, "the queue should show the name the caller established").toContainText(CORRECTED_NAME);
-  await expect(rowA.getByText("corrected", { exact: true }).first(), "and say the receipt differed").toBeVisible();
+  await expect.soft(rowA, "the queue should show the name the caller established").toContainText(CORRECTED_NAME);
+  await expect.soft(rowA.getByText("corrected", { exact: true }).first(), "and say the receipt differed").toBeVisible();
   const pill = rowA.getByText("Unreachable", { exact: true });
-  await expect(pill).toBeVisible();
-  await expect(pill, "an unreachable pill should carry its tone, not the class undefined").toHaveClass(/orange/);
-  await expect(pill).not.toHaveClass(/undefined/);
+  await expect.soft(pill).toBeVisible();
+  await expect.soft(pill, "an unreachable pill should carry its tone, not the class undefined").toHaveClass(/orange/);
+  await expect.soft(pill).not.toHaveClass(/undefined/);
 
   // A record nobody has resolved.
   const rowB = await searchSerial(page, b.stove_serial_no);
-  await expect(rowB.getByText("Yet to be resolved", { exact: true })).toBeVisible();
-  await expect(rowB.getByText("not verified", { exact: true })).toHaveCount(0);
+  await expect.soft(rowB.getByText("Yet to be resolved", { exact: true })).toBeVisible();
+  await expect.soft(rowB.getByText("not verified", { exact: true })).toHaveCount(0);
 
   // The stove ID another caller took, marked on the row and not only findable.
   await page.getByPlaceholder("Name, phone or serial").fill("");
@@ -180,8 +180,8 @@ test("the queue says it in one word, shows the corrected buyer, and marks a stov
     .getByRole("button", { name: /^Open call record for/ })
     .filter({ hasText: c.stove_serial_no })
     .first();
-  await expect(rowC).toBeVisible({ timeout: 20_000 });
-  await expect(rowC.getByText("unconfirmed", { exact: true }), "the serial should wear the mark").toBeVisible();
+  await expect.soft(rowC).toBeVisible({ timeout: 20_000 });
+  await expect.soft(rowC.getByText("unconfirmed", { exact: true }), "the serial should wear the mark").toBeVisible();
 });
 
 test("the editor uses the same words and shows when a call was made, in Lagos time", async ({ page }) => {

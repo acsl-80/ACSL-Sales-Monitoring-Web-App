@@ -49,19 +49,19 @@ function toDate(value: unknown): Date | null {
 }
 
 /** "5 Mar 2026"; `empty` when there is no date. */
-export function dateOf<E = string>(value: unknown, empty: E | string = "—"): string | E {
+export function dateOf<E = string>(value: unknown, empty: E | string = "-"): string | E {
   const d = toDate(value);
   return d ? DATE.format(d) : empty;
 }
 
 /** "5 Mar 2026, 23:30"; `empty` when there is no time. */
-export function whenOf<E = string>(value: unknown, empty: E | string = "—"): string | E {
+export function whenOf<E = string>(value: unknown, empty: E | string = "-"): string | E {
   const d = toDate(value);
   return d ? WHEN.format(d) : empty;
 }
 
 /** "23:30"; `empty` when there is no time. */
-export function timeOf<E = string>(value: unknown, empty: E | string = "—"): string | E {
+export function timeOf<E = string>(value: unknown, empty: E | string = "-"): string | E {
   const d = toDate(value);
   return d ? TIME.format(d) : empty;
 }

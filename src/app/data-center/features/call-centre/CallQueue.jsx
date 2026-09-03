@@ -135,7 +135,7 @@ const PRESETS = [
 function cellValue(row, key) {
   if (key === "end_user_name") return row.resolved_end_user_name ?? row.end_user_name ?? "—";
   if (key === "primary_phone") return row.resolved_phone ?? row.primary_phone ?? "—";
-  if (key === "sales_date") return dateOf(row.sales_date);
+  if (key === "sales_date") return dateOf(row.sales_date, "—");
   if (key === "verification_outcome") return outcomeLabel(row.verification_outcome);
   if (key === "correction_state") return CORRECTION_WORDS[row.correction_state ?? "none"] || "—";
   const raw = row[key];
