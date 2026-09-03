@@ -289,6 +289,13 @@ serve(async (req) => {
       percentage: totalSalesForPct > 0 ? (Number(r.count) / totalSalesForPct) * 100 : 0,
     }));
     const byState = (s.by_state || []).map((r: any) => ({ state: r.state, count: Number(r.count) }));
+    // Month rows for the chart (slice 6b): an added field, nothing renamed.
+    const salesByMonth = (s.by_month || []).map((r: any) => ({
+      month: r.month,
+      count: Number(r.count),
+      amount: Number(r.amount) || 0,
+      received: Number(r.received) || 0,
+    }));
 
     // Return dashboard statistics
     const dashboardStats = {
@@ -311,6 +318,7 @@ serve(async (req) => {
       // Chart data
       byState,
       salesModelData,
+      salesByMonth,
     };
 
     return withCors(

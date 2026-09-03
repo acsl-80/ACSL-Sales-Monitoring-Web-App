@@ -7,51 +7,11 @@ const corsHeaders = {
     "authorization, x-client-info, apikey, content-type",
 };
 
-// Group organizations by EXACT (case/whitespace-normalized) partner_name.
-//
-// We deliberately do NOT fuzzy-merge names that merely "look similar". An older
-// version ran a second pass that merged any two partner names sharing ≥50% of
-// their words, then picked one label via a findBaseName() heuristic. That silently
-// hid legitimately distinct partners — e.g. "Swali Global Multi Concept" and
-// "Swali Global Multi Concept (Amina Sales Model)" collapsed into one, dropping the
-// Amina variant (and all its stoves) from every screen that reads this function.
-//
-// partner_name is authoritative: a parenthetical suffix, payment-model tag, or
-// spelling difference IS a different partner record with its own stove inventory.
-// Rows with the identical name are still grouped (their branches roll up under one
-// entry). If genuine duplicates appear afterward, the fix is a data cleanup in the
-// organizations table — not re-introducing fuzzy grouping here.
-function groupOrganizations(organizations: any[]): any[] {
-  const groups: Map<string, any> = new Map();
-
-  for (const org of organizations) {
-    const key = (org.partner_name || "").toLowerCase().trim();
-    if (!groups.has(key)) {
-      groups.set(key, {
-        base_name: org.partner_name,
-        branches: [],
-        organization_ids: [],
-        branch_count: 0,
-      });
-    }
-
-    const group = groups.get(key)!;
-    group.branches.push({
-      id: org.id,
-      branch: org.branch || "Main Branch",
-      state: org.state,
-      full_name: org.partner_name,
-      partner_type: org.partner_type,
-    });
-    group.organization_ids.push(org.id);
-    group.branch_count = group.branches.length;
-  }
-
-  // Sort alphabetically by base_name (unchanged response shape).
-  return Array.from(groups.values()).sort((a, b) =>
-    a.base_name.localeCompare(b.base_name)
-  );
-}
+// Grouping lives in public.organizations_grouped (migration 20260903050000):
+// by EXACT partner_name after case and whitespace are normalised, and by
+// nothing else. It stays deliberately un-fuzzy: a parenthetical suffix, a
+// payment-model tag or a spelling difference IS a different partner record
+// with its own stock. The history of why is in that migration's header.
 
 serve(async (req) => {
   // Handle CORS
@@ -100,32 +60,24 @@ serve(async (req) => {
     const page = parseInt(url.searchParams.get("page") || "1");
     const pageSize = parseInt(url.searchParams.get("page_size") || "30");
 
-    // Build query
-    let query = supabase
-      .from("organizations")
-      .select("id, partner_name, branch, state, partner_type", { count: "exact" });
-
-    // Apply search filter
-    if (search) {
-      query = query.ilike("partner_name", `%${search}%`);
-    }
-
-    // Execute query
-    const { data: organizations, error, count } = await query;
+    /*
+     * Grouped, sorted and paged in SQL. The rows used to be fetched whole and
+     * grouped here, and an unranged select stops at 1,000 rows, so past a
+     * thousand organisations the list and its count went quietly short.
+     */
+    const { data: grouped, error } = await supabase.rpc("organizations_grouped", {
+      p_search: search || null,
+      p_page: page,
+      p_page_size: pageSize,
+    });
 
     if (error) {
       throw error;
     }
 
-    // Group similar organizations
-    const groupedOrgs = groupOrganizations(organizations || []);
-
-    // Apply pagination to grouped results
-    const totalGroups = groupedOrgs.length;
+    const paginatedGroups = grouped?.data ?? [];
+    const totalGroups = Number(grouped?.total_count) || 0;
     const totalPages = Math.ceil(totalGroups / pageSize);
-    const startIndex = (page - 1) * pageSize;
-    const endIndex = startIndex + pageSize;
-    const paginatedGroups = groupedOrgs.slice(startIndex, endIndex);
 
     return new Response(
       JSON.stringify({

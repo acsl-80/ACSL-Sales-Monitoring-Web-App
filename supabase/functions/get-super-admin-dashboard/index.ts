@@ -215,6 +215,13 @@ serve(async (req) => {
       count: Number(r.count),
       percentage: totalSales > 0 ? (Number(r.count) / totalSales) * 100 : 0,
     }));
+    // Month rows for the chart (slice 6b): an added field, nothing renamed.
+    const salesByMonth = (summary.by_month || []).map((r: any) => ({
+      month: r.month,
+      count: Number(r.count),
+      amount: Number(r.amount) || 0,
+      received: Number(r.received) || 0,
+    }));
 
     return new Response(
       JSON.stringify({
@@ -230,6 +237,7 @@ serve(async (req) => {
           salesModelData,
           topPartners,
           topAgents,
+          salesByMonth,
         },
       }),
       { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } },

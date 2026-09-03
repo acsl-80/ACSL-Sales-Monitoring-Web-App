@@ -1,6 +1,7 @@
 
 import { supabaseFunctionsUrl } from "@/lib/supabaseConfig";
 import { useState, useEffect, useCallback, useMemo } from "react";
+import { keepPreviousData, useQuery } from "@tanstack/react-query";
 import DashboardLayout from "../../components/DashboardLayout";
 import DashboardContentBase from "./DashboardContent";
 import PartnerDashboardTableSection from "./PartnerDashboardTableSection";
@@ -10,20 +11,16 @@ import { usePermissions } from "../../hooks/usePermissions";
 import superAdminDashboardService from "../../services/superAdminDashboardService";
 import superAdminAgentService from "../../services/superAdminAgentService";
 import adminDashboardService from "../../services/adminDashboardService";
-import salesAdvancedService from "../../services/salesAdvancedAPIService";
 
 const MONTH_LABELS = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
 
-// Aggregate raw sales rows into 12 monthly buckets keyed by short month name.
-function bucketMonthlySales(rows: any[]): { month: string; value: number }[] {
+// The month rows the dashboard functions return ("YYYY-MM", count), folded
+// into the twelve buckets the chart draws, summed across the selected years.
+function bucketByMonth(rows: any[]): { month: string; value: number }[] {
   const counts = new Array(12).fill(0);
   (rows || []).forEach((r: any) => {
-    const raw = r?.sales_date || r?.sale_date || r?.created_at;
-    if (!raw) return;
-    const d = new Date(raw);
-    if (isNaN(d.getTime())) return;
-    const qty = Number(r?.quantity ?? 1) || 1;
-    counts[d.getMonth()] += qty;
+    const idx = Number(String(r?.month ?? "").slice(5, 7)) - 1;
+    if (idx >= 0 && idx < 12) counts[idx] += Number(r?.count) || 0;
   });
   return MONTH_LABELS.map((m, i) => ({ month: m, value: counts[i] }));
 }
@@ -58,10 +55,6 @@ const UnifiedDashboardContent = () => {
   }, [can, userRole]);
 
   // Shared state
-  const [loading, setLoading] = useState(true);
-  const [data, setData] = useState<any>(null);
-  /** Why the last load failed, shown above the cards; the cards keep whatever they had. */
-  const [loadError, setLoadError] = useState<string | null>(null);
   const [year, setYear] = useState<number>(CURRENT_YEAR);
   /*
    * Every year by default, not the current one.
@@ -145,75 +138,17 @@ const UnifiedDashboardContent = () => {
     return { from: `${y}-${mm}-01`, to: `${y}-${mm}-${String(last).padStart(2, "0")}` };
   }, [filters.months, filters.dateFrom, filters.dateTo, years, year, scope]);
 
-  // Build the sales-fetch filter that mirrors the active dashboard period filter
-  const buildSalesFilters = useCallback(() => {
-    const salesFilters: any = {
-      page: 1,
-      limit: 5000,
-      sortBy: "sales_date",
-      sortOrder: "desc",
-      includeAddress: false,
-      includeCreator: false,
-      includeImages: false,
-      responseFormat: "format2",
-    };
-
-    if (scope === "global") {
-      if (filters.dateFrom) salesFilters.dateFrom = filters.dateFrom;
-      if (filters.dateTo) salesFilters.dateTo = filters.dateTo;
-      if (!filters.dateFrom && !filters.dateTo) {
-        if (monthRange) {
-          salesFilters.dateFrom = monthRange.from;
-          salesFilters.dateTo = monthRange.to;
-        } else {
-          const ys = years.length ? years : ALL_YEARS;
-          const minY = Math.min(...ys);
-          const maxY = Math.max(...ys);
-          salesFilters.dateFrom = `${minY}-01-01`;
-          salesFilters.dateTo = `${maxY}-12-31`;
-        }
-      }
-      if (filters.state) salesFilters.state = filters.state;
-      if (filters.branch) salesFilters.branch = filters.branch;
-      if (filters.selectedGroup?.organization_ids?.length) {
-        const allBranches = filters.selectedGroup.branches || [];
-        let orgIds = filters.selectedGroup.organization_ids;
-        if (filters.state) {
-          const stateIds = allBranches
-            .filter((b: any) => b.state?.toLowerCase() === filters.state.toLowerCase())
-            .map((b: any) => b.id);
-          if (stateIds.length) orgIds = stateIds;
-        }
-        if (filters.branch) {
-          const branchIds = allBranches.filter((b: any) => b.branch === filters.branch).map((b: any) => b.id);
-          if (branchIds.length) orgIds = branchIds;
-        }
-        salesFilters.organization_ids = orgIds;
-      }
-    } else {
-      if (dateFrom) salesFilters.dateFrom = dateFrom;
-      if (dateTo) salesFilters.dateTo = dateTo;
-      if (!dateFrom && !dateTo) {
-        if (monthRange) {
-          salesFilters.dateFrom = monthRange.from;
-          salesFilters.dateTo = monthRange.to;
-        } else {
-          salesFilters.dateFrom = `${year}-01-01`;
-          salesFilters.dateTo = `${year}-12-31`;
-        }
-      }
-      const orgId = getOrganizationId?.();
-      if (orgId) salesFilters.organization_id = orgId;
-    }
-
-    return salesFilters;
-  }, [scope, year, years, dateFrom, dateTo, filters, monthRange, getOrganizationId]);
-
-  // Fetch dashboard stats based on scope (plus monthly sales aggregation)
-  const fetchData = useCallback(async () => {
-    setLoading(true);
-    try {
-      const statsPromise: Promise<any> = (() => {
+  /*
+   * The numbers, under React Query. One query per combination of scope and
+   * filter; the last good answer stays on screen while a new one loads or when
+   * one fails, and coming back to the dashboard inside the app's one-minute
+   * stale time shows it again without a round trip. The monthly chart is
+   * drawn from the month rows the dashboard functions now return; it used to
+   * ask get-sales-advanced for five thousand sales, receive at most five
+   * hundred, and count those.
+   */
+  const fetchStats = useCallback(async () => {
+    const response: any = await (() => {
         if (scope === "global") {
           const selectedYears = years.length ? years : ALL_YEARS;
           const payload: any = { years: selectedYears };
@@ -256,40 +191,25 @@ const UnifiedDashboardContent = () => {
           date_from: dateFrom || monthRange?.from || undefined,
           date_to: dateTo || monthRange?.to || undefined,
         });
-      })();
-
-      const salesPromise = salesAdvancedService
-        .getSalesData(buildSalesFilters(), "POST", "DashboardMonthlySales")
-        .catch((err: any) => {
-          console.error("Monthly sales fetch failed:", err);
-          return null;
-        });
-
-      setLoadError(null);
-      const [response, salesResp] = await Promise.all([statsPromise, salesPromise]);
-
-      const monthlySales = bucketMonthlySales(
-        Array.isArray(salesResp?.data) ? salesResp.data : (salesResp?.data?.sales ?? [])
-      );
-
-      if (response?.success) {
-        setData({ ...(response.data || {}), monthlySales });
-      } else {
-        console.error("Dashboard fetch failed:", response?.error || response?.message);
-        setLoadError(String(response?.error || response?.message || "the server did not answer"));
-        setData((prev: any) => ({ ...(prev || {}), monthlySales }));
-      }
-    } catch (err) {
-      console.error("Dashboard error:", err);
-      setLoadError(err instanceof Error ? err.message : "the request failed");
-    } finally {
-      setLoading(false);
+    })();
+    if (!response?.success) {
+      throw new Error(String(response?.error || response?.message || "the server did not answer"));
     }
-  }, [scope, year, years, dateFrom, dateTo, filters, monthRange, buildSalesFilters]);
+    return {
+      ...(response.data || {}),
+      monthlySales: bucketByMonth(response.data?.salesByMonth),
+    };
+  }, [scope, year, years, dateFrom, dateTo, filters, monthRange]);
 
-
-
-  useEffect(() => { fetchData(); }, [fetchData]);
+  const statsQuery = useQuery({
+    queryKey: ["dashboard-stats", scope, year, years, dateFrom, dateTo, filters, monthRange, reloadKey],
+    queryFn: fetchStats,
+    placeholderData: keepPreviousData,
+  });
+  const data: any = statsQuery.data ?? null;
+  const loading = statsQuery.isPending;
+  /** Why the last load failed, shown above the cards; the cards keep whatever they had. */
+  const loadError = statsQuery.error ? (statsQuery.error as Error).message : null;
 
   // Clear month filter if it becomes invalid (future month) after a year change.
   useEffect(() => {
@@ -453,7 +373,6 @@ const UnifiedDashboardContent = () => {
             onSuccess={() => {
               setShowCreateModal(false);
               setReloadKey((k) => k + 1);
-              fetchData();
             }}
           />
         )}

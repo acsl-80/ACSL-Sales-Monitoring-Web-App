@@ -19,7 +19,14 @@ const shapeSummary = (summary: any) => {
     count: Number(r.count),
     percentage: total > 0 ? (Number(r.count) / total) * 100 : 0,
   }));
-  return { expectedReceivable, amountReceived, byState, salesModelData };
+  // Month rows for the chart (slice 6b): an added field, nothing renamed.
+  const salesByMonth = (summary?.by_month || []).map((r: any) => ({
+    month: r.month,
+    count: Number(r.count),
+    amount: Number(r.amount) || 0,
+    received: Number(r.received) || 0,
+  }));
+  return { expectedReceivable, amountReceived, byState, salesModelData, salesByMonth };
 };
 
 serve(async (req) => {
@@ -82,7 +89,7 @@ serve(async (req) => {
 
       if (summaryResult.error) throw new Error("Failed to fetch sales data");
       const summary = summaryResult.data || {};
-      const { expectedReceivable, amountReceived, byState, salesModelData } = shapeSummary(summary);
+      const { expectedReceivable, amountReceived, byState, salesModelData, salesByMonth } = shapeSummary(summary);
 
       const stovesReceived = receivedResult.count ?? 0;
       const stovesSold = Number(summary.sold_cumulative) || 0;
@@ -100,6 +107,7 @@ serve(async (req) => {
               outstandingBalance: expectedReceivable - amountReceived,
               byState,
               salesModelData,
+              salesByMonth,
             },
           }),
           { status: 200, headers: { "Content-Type": "application/json" } }
@@ -119,7 +127,7 @@ serve(async (req) => {
             data: {
               stovesReceived: 0, stovesSold: 0, availableStoves: 0,
               expectedReceivable: 0, amountReceived: 0, outstandingBalance: 0,
-              byState: [], salesModelData: [],
+              byState: [], salesModelData: [], salesByMonth: [],
             },
           }),
           { status: 200, headers: { "Content-Type": "application/json" } }
@@ -185,7 +193,7 @@ serve(async (req) => {
     if (summaryResult.error) throw new Error("Failed to fetch sales data");
     const summary = summaryResult.data || {};
     const stovesSoldCount = Number(summary.sold_cumulative) || 0;
-    const { expectedReceivable, amountReceived, byState, salesModelData } = shapeSummary(summary);
+    const { expectedReceivable, amountReceived, byState, salesModelData, salesByMonth } = shapeSummary(summary);
 
     // Actual sales made by the manager + their team (attribution only, not the
     // full org-wide scope). Only meaningful for acsl_agent_manager.
@@ -214,6 +222,7 @@ serve(async (req) => {
             outstandingBalance: expectedReceivable - amountReceived,
             byState,
             salesModelData,
+            salesByMonth,
             teamSalesCount,
           },
         }),
