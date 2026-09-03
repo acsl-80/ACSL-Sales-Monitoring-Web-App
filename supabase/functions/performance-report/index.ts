@@ -52,15 +52,15 @@ serve(async (req) => {
     if (!authHeader) return json({ success: false, error: "Authorization required" }, 401);
 
     const supabaseUrl = Deno.env.get("SUPABASE_URL") ?? "";
-    const userClient = createClient(supabaseUrl, Deno.env.get("SUPABASE_ANON_KEY") ?? "", {
-      global: { headers: { Authorization: authHeader } },
-    });
-    const { data: userData, error: authError } = await userClient.auth.getUser();
+    const admin = createClient(supabaseUrl, Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "");
+    // The token is validated explicitly: a client carrying the header alone has
+    // no session of its own, and getUser() without one answers "missing".
+    const jwt = authHeader.replace(/^Bearer\s+/i, "").trim();
+    const { data: userData, error: authError } = await admin.auth.getUser(jwt);
     if (authError || !userData?.user) {
+      console.error("performance-report: token rejected:", authError?.message);
       return json({ success: false, error: "Your session is invalid or has expired" }, 401);
     }
-
-    const admin = createClient(supabaseUrl, Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "");
     const { data: profile } = await admin
       .from("profiles")
       .select("role, status")
