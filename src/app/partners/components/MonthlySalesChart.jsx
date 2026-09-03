@@ -30,6 +30,7 @@ function bucketMonthlySales(rows) {
 const MonthlySalesChart = ({ title = "Monthly Sales", tooltipLabel = "Sales" } = {}) => {
   const [monthly, setMonthly] = useState(MONTHS.map((m) => ({ month: m, value: 0 })));
   const [loading, setLoading] = useState(true);
+  const [failed, setFailed] = useState(false);
 
   useEffect(() => {
     let mounted = true;
@@ -44,6 +45,7 @@ const MonthlySalesChart = ({ title = "Monthly Sales", tooltipLabel = "Sales" } =
         if (mounted) setMonthly(bucketMonthlySales(rows));
       } catch (e) {
         console.error("Monthly sales fetch failed:", e);
+        if (mounted) setFailed(true);
       } finally {
         if (mounted) setLoading(false);
       }
@@ -90,6 +92,11 @@ const MonthlySalesChart = ({ title = "Monthly Sales", tooltipLabel = "Sales" } =
       </ResponsiveContainer>
       {loading && (
         <p className="text-xs text-gray-400 mt-2 text-center">Loading {title.toLowerCase()}…</p>
+      )}
+      {!loading && failed && (
+        <p role="alert" className="text-xs text-amber-700 mt-2 text-center">
+          Could not load {title.toLowerCase()}. Reload the page to try again.
+        </p>
       )}
     </div>
   );

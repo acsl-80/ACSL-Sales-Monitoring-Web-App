@@ -57,6 +57,7 @@ const TOP_OPTIONS = [5, 10, 15, 20, 37];
 const SalesByStateChart = () => {
   const [rows, setRows] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [failed, setFailed] = useState(false);
   const [dateRange, setDateRange] = useState({ from: undefined, to: undefined });
   const [month, setMonth] = useState("all");
   const [topN, setTopN] = useState(10);
@@ -75,6 +76,7 @@ const SalesByStateChart = () => {
         if (mounted) setRows(data);
       } catch (e) {
         console.error("Sales by state fetch failed:", e);
+        if (mounted) setFailed(true);
       } finally {
         if (mounted) setLoading(false);
       }
@@ -203,6 +205,10 @@ const SalesByStateChart = () => {
       <div className="px-4 pt-5 pb-4 bg-white">
         {loading ? (
           <p className="text-xs text-gray-400 text-center py-16">Loading sales by state…</p>
+        ) : failed ? (
+          <p role="alert" className="text-xs text-amber-700 text-center py-16">
+            Could not load sales by state. Reload the page to try again.
+          </p>
         ) : (
           <ResponsiveContainer width="100%" height={Math.max(360, chartData.length * 32)}>
             <BarChart

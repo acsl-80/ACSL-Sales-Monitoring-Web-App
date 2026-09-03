@@ -1,5 +1,6 @@
 
 import React, { useState, useEffect, useCallback } from "react";
+import { formatPaymentMethod } from "@/app/utils/formatPaymentMethod";
 import {
   Dialog,
   DialogContent,
@@ -56,14 +57,6 @@ interface PaymentHistoryModalProps {
 
 const formatCurrency = (amount: number) =>
   `₦${Number(amount ?? 0).toLocaleString("en-NG")}`;
-
-const formatPaymentMethod = (method: string) => {
-  if (!method) return "-";
-  return method
-    .split("_")
-    .map((w) => w.charAt(0).toUpperCase() + w.slice(1))
-    .join(" ");
-};
 
 const PaymentHistoryModal: React.FC<PaymentHistoryModalProps> = ({
   open,

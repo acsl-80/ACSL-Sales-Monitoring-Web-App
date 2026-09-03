@@ -1,10 +1,12 @@
 
 import React from "react";
-import { useToast, ToastContainer } from "@/components/ui/toast";
+import { useLocalToast, ToastContainer } from "@/components/ui/toast";
 import { ToastContext } from "./useToastNotification";
 
 export const ToastProvider = ({ children }) => {
-  const { toast, toasts, removeToast } = useToast();
+  // The provider owns the one list and the one container. Screens call
+  // useToast(), which hands back this provider's toast.
+  const { toast, toasts, removeToast } = useLocalToast();
 
   return (
     <ToastContext.Provider value={{ toast }}>

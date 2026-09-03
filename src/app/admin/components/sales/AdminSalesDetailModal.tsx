@@ -14,6 +14,8 @@ import paymentModelService from "../../../services/paymentModelService";
 import adminSalesService from "../../../services/adminSalesService";
 import RecordPaymentModal from "./RecordPaymentModal";
 import { buildAgreementBlobUrl, downloadAgreementPDF } from "./agreement/AgreementPDFGenerator";
+import { useToastNotification } from "@/app/contexts/useToastNotification";
+import { formatPaymentMethod } from "@/app/utils/formatPaymentMethod";
 
 interface InstallmentPayment {
   id: string;
@@ -101,6 +103,7 @@ const AdminSalesDetailModal: React.FC<AdminSalesDetailModalProps> = ({
   const [lightboxUrl, setLightboxUrl] = useState<string | null>(null);
   const [agreementPdfUrl, setAgreementPdfUrl] = useState<string | null>(null);
   const [agreementLoading, setAgreementLoading] = useState(false);
+  const { toast } = useToastNotification();
   const [paymentSummary, setPaymentSummary] = useState<{
     total_paid: number;
     remaining_balance: number;
@@ -156,6 +159,10 @@ const AdminSalesDetailModal: React.FC<AdminSalesDetailModalProps> = ({
       setAgreementPdfUrl(url);
     } catch (err) {
       console.error("Error generating agreement PDF:", err);
+      toast.error(
+        "The agreement could not be generated",
+        err instanceof Error ? err.message : "Try again; if it keeps failing, report the sale.",
+      );
     } finally {
       setAgreementLoading(false);
     }
@@ -167,6 +174,10 @@ const AdminSalesDetailModal: React.FC<AdminSalesDetailModalProps> = ({
       await downloadAgreementPDF(activeSale);
     } catch (err) {
       console.error("Error downloading agreement PDF:", err);
+      toast.error(
+        "The agreement could not be downloaded",
+        err instanceof Error ? err.message : "Try again; if it keeps failing, report the sale.",
+      );
     }
   };
 
@@ -553,8 +564,8 @@ const AdminSalesDetailModal: React.FC<AdminSalesDetailModalProps> = ({
                             <span className="ml-2 text-gray-400 italic">· {payment.notes}</span>
                           )}
                         </div>
-                        <Badge variant="outline" className="text-[10px] capitalize">
-                          {payment.payment_method}
+                        <Badge variant="outline" className="text-[10px]">
+                          {formatPaymentMethod(payment.payment_method)}
                         </Badge>
                       </div>
                     ))}
@@ -628,11 +639,19 @@ const AdminSalesDetailModal: React.FC<AdminSalesDetailModalProps> = ({
   );
 };
 
+/**
+ * What was collected against what was owed, for every sale.
+ *
+ * This used to treat any non-instalment sale as paid whatever `total_paid`
+ * held, so an outright sale with nothing collected wore a green "Paid". The
+ * rule FinancialReportsTable states applies here too: `total_paid` is what
+ * was actually collected, for outright sales as well, and is never replaced
+ * by `amount`.
+ */
 function getStatusBadge(sale: AdminSales | SuperAdminSale) {
-  const isInstallment = sale.is_installment;
   const totalPaid = sale.total_paid ?? 0;
-  const owed = isInstallment ? (sale.amount || 0) - totalPaid : 0;
-  if (!isInstallment || owed <= 0)
+  const owed = (sale.amount || 0) - totalPaid;
+  if (owed <= 0)
     return <Badge className="bg-green-100 text-green-800 border-green-200 text-[10px]">Paid</Badge>;
   if (totalPaid > 0 && owed > 0)
     return <Badge className="bg-amber-100 text-amber-800 border-amber-200 text-[10px]">Partial</Badge>;

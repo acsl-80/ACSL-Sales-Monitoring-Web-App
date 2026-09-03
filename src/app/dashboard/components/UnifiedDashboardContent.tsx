@@ -60,6 +60,8 @@ const UnifiedDashboardContent = () => {
   // Shared state
   const [loading, setLoading] = useState(true);
   const [data, setData] = useState<any>(null);
+  /** Why the last load failed, shown above the cards; the cards keep whatever they had. */
+  const [loadError, setLoadError] = useState<string | null>(null);
   const [year, setYear] = useState<number>(CURRENT_YEAR);
   /*
    * Every year by default, not the current one.
@@ -263,6 +265,7 @@ const UnifiedDashboardContent = () => {
           return null;
         });
 
+      setLoadError(null);
       const [response, salesResp] = await Promise.all([statsPromise, salesPromise]);
 
       const monthlySales = bucketMonthlySales(
@@ -273,10 +276,12 @@ const UnifiedDashboardContent = () => {
         setData({ ...(response.data || {}), monthlySales });
       } else {
         console.error("Dashboard fetch failed:", response?.error || response?.message);
+        setLoadError(String(response?.error || response?.message || "the server did not answer"));
         setData((prev: any) => ({ ...(prev || {}), monthlySales }));
       }
     } catch (err) {
       console.error("Dashboard error:", err);
+      setLoadError(err instanceof Error ? err.message : "the request failed");
     } finally {
       setLoading(false);
     }
@@ -382,6 +387,15 @@ const UnifiedDashboardContent = () => {
   return (
     <DashboardLayout currentRoute="dashboard">
       <div className="flex-1 overflow-y-auto bg-white">
+        {loadError && (
+          <div
+            role="alert"
+            className="mx-4 mt-4 rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900"
+          >
+            The dashboard could not load its numbers: {loadError}. What is shown may be
+            from an earlier load; reload the page to try again.
+          </div>
+        )}
         <DashboardContent
           data={normalized}
           loading={loading}

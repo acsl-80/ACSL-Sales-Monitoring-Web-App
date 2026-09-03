@@ -1,4 +1,5 @@
 import * as React from "react";
+import { ToastContext } from "@/app/contexts/useToastNotification";
 import { X, CheckCircle, AlertCircle, Info, AlertTriangle } from "lucide-react";
 import { cn } from "@/lib/utils";
 
@@ -74,7 +75,7 @@ const ToastDescription = React.forwardRef(({ className, ...props }, ref) => {
 ToastDescription.displayName = "ToastDescription";
 
 // Toast notification hook
-const useToast = () => {
+const useLocalToast = () => {
   const [toasts, setToasts] = React.useState([]);
 
   const addToast = React.useCallback((toast) => {
@@ -113,6 +114,29 @@ const useToast = () => {
 
   return { toast, toasts, removeToast };
 };
+
+/**
+ * The toast hook every screen calls.
+ *
+ * With a ToastProvider mounted (the app shell mounts one at the root), this
+ * returns the provider's toast, so a message lands in the one container
+ * everybody sees. Without one it falls back to a private list, which is what
+ * it always did. That private list was the defect: eight live screens called
+ * this hook, never rendered their own container, and every success and error
+ * they fired was written to state nothing displayed. Partner add and edit,
+ * payment models, tools and email settings gave no feedback at all.
+ *
+ * `toasts` is empty under a provider, so the seven components that still
+ * render their own <ToastContainer> render nothing extra.
+ */
+const useToast = () => {
+  const ctx = React.useContext(ToastContext);
+  const local = useLocalToast();
+  if (ctx?.toast) return { toast: ctx.toast, toasts: EMPTY, removeToast: noop };
+  return local;
+};
+const EMPTY = [];
+const noop = () => {};
 
 // Toast container component
 const ToastContainer = ({ toasts, onRemove }) => {
@@ -154,6 +178,7 @@ const ToastContainer = ({ toasts, onRemove }) => {
 };
 
 export {
+  useLocalToast,
   Toast,
   ToastAction,
   ToastClose,

@@ -8,6 +8,7 @@ import SalesTrackingBar, { TrackingKey } from "./SalesTrackingBar";
 import PaymentHistoryModal from "./PaymentHistoryModal";
 import RecordPaymentModal from "../sales/RecordPaymentModal";
 import AdminSalesDetailModal from "../sales/AdminSalesDetailModal";
+import { useToastNotification } from "@/app/contexts/useToastNotification";
 import { AdminSales } from "@/types/adminSales";
 import adminSalesService from "../../../services/adminSalesService";
 import { Loader2, Eye, EyeOff, Download } from "lucide-react";
@@ -146,6 +147,7 @@ const FinancialReportsView: React.FC<FinancialReportsViewProps> = ({ loadSales, 
     saveSelectedYears(years);
   };
   const [exporting, setExporting] = useState(false);
+  const { toast } = useToastNotification();
 
 
   const stateList = useMemo(() => Object.keys(lgaAndStates).sort(), []);
@@ -405,7 +407,7 @@ const FinancialReportsView: React.FC<FinancialReportsViewProps> = ({ loadSales, 
       });
 
       if (!result.success || !result.data?.length) {
-        alert("No data to export.");
+        toast.warning("Nothing to export", "No sales match the current filters.");
         return;
       }
 
@@ -427,6 +429,14 @@ const FinancialReportsView: React.FC<FinancialReportsViewProps> = ({ loadSales, 
 
       const { exportSalesDataToCSV } = await import("@/utils/csvExportUtils");
       exportSalesDataToCSV(exportData, `sales-export-${new Date().toISOString().slice(0, 10)}.csv`);
+    } catch (err) {
+      // A try/finally with no catch: the spinner stopped and nothing else
+      // happened, and the rejection went unhandled.
+      console.error("Sales export failed:", err);
+      toast.error(
+        "The export did not run",
+        err instanceof Error ? err.message : "The sales could not be fetched. Try again.",
+      );
     } finally {
       setExporting(false);
     }

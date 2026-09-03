@@ -33,7 +33,7 @@ import {
 } from "@/components/ui/popover";
 import { Calendar } from "@/components/ui/calendar";
 import { cn } from "@/lib/utils";
-import { toast } from "sonner";
+import { useToastNotification } from "@/app/contexts/useToastNotification";
 import { useAuth } from "../../contexts/useAuth";
 import { resolveRole } from "@/lib/permissions";
 import {
@@ -106,11 +106,14 @@ function maskKey(k: string): string {
   return `${k.slice(0, 4)}${"•".repeat(Math.max(8, k.length - 8))}${k.slice(-4)}`;
 }
 
-function copy(text: string, label = "Copied") {
-  navigator.clipboard.writeText(text).then(() => toast.success(label));
+function copy(text: string, label = "Copied", notify?: (label: string) => void) {
+  navigator.clipboard.writeText(text).then(() => notify?.(label));
 }
 
 const ApiEndpointContent = () => {
+  // sonner's <Toaster /> is mounted nowhere in this app; the app's own
+  // provider is.
+  const { toast } = useToastNotification();
   const { userRole } = useAuth();
   const resolvedRole = resolveRole(userRole) || "";
   const isSuperAdmin = resolvedRole === "super_admin";
@@ -344,7 +347,7 @@ const { data, pagination } = await res.json();`;
                 <code className="flex-1 text-xs font-mono bg-gray-50 border border-gray-200 rounded px-2 py-1.5 break-all">
                   {ENDPOINT_URL}
                 </code>
-                <Button variant="outline" size="sm" className="h-8 rounded-none" onClick={() => copy(ENDPOINT_URL, "Endpoint URL copied")}>
+                <Button variant="outline" size="sm" className="h-8 rounded-none" onClick={() => copy(ENDPOINT_URL, "Endpoint URL copied", toast.success)}>
                   <Copy className="h-3.5 w-3.5 mr-1" /> Copy
                 </Button>
               </div>
@@ -377,7 +380,7 @@ const { data, pagination } = await res.json();`;
                   variant="outline"
                   size="sm"
                   className="h-8 rounded-none"
-                  onClick={() => copy(apiKey, "API key copied")}
+                  onClick={() => copy(apiKey, "API key copied", toast.success)}
                   disabled={!apiKey}
                 >
                   <Copy className="h-3.5 w-3.5 mr-1" /> Copy
@@ -424,7 +427,7 @@ const { data, pagination } = await res.json();`;
                 <div>
                   <div className="flex items-center justify-between mb-1">
                     <span className="text-xs font-semibold text-gray-500">cURL</span>
-                    <Button variant="ghost" size="sm" className="h-7 px-2 rounded-none" onClick={() => copy(curlSnippet, "cURL copied")}>
+                    <Button variant="ghost" size="sm" className="h-7 px-2 rounded-none" onClick={() => copy(curlSnippet, "cURL copied", toast.success)}>
                       <Copy className="h-3 w-3 mr-1" /> Copy
                     </Button>
                   </div>
@@ -433,7 +436,7 @@ const { data, pagination } = await res.json();`;
                 <div>
                   <div className="flex items-center justify-between mb-1">
                     <span className="text-xs font-semibold text-gray-500">JavaScript (fetch)</span>
-                    <Button variant="ghost" size="sm" className="h-7 px-2 rounded-none" onClick={() => copy(jsSnippet, "Snippet copied")}>
+                    <Button variant="ghost" size="sm" className="h-7 px-2 rounded-none" onClick={() => copy(jsSnippet, "Snippet copied", toast.success)}>
                       <Copy className="h-3 w-3 mr-1" /> Copy
                     </Button>
                   </div>

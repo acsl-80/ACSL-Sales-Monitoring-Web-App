@@ -1,5 +1,5 @@
 import { useState, useEffect, useMemo, useCallback } from "react";
-import { toast } from "sonner";
+import { useToastNotification } from "@/app/contexts/useToastNotification";
 import DashboardLayout from "../components/DashboardLayout";
 import PageHeader from "../components/PageHeader";
 import { Users, Eye, Pencil } from "lucide-react";
@@ -55,6 +55,9 @@ const formatDate = (dateStr) => {
 };
 
 const EndUserRecordsContent = () => {
+  // sonner's <Toaster /> is mounted nowhere in this app, so its toasts were
+  // silent. The app's own provider is.
+  const { toast } = useToastNotification();
   const [allSales, setAllSales] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
