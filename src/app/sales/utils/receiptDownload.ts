@@ -1,6 +1,7 @@
-import html2canvas from "html2canvas";
-import jsPDF from "jspdf";
 import { SuperAdminSale } from "@/types/superAdminSales";
+// html2canvas and jspdf are loaded inside downloadReceiptAsPDF, when a receipt
+// is actually being saved. As static imports they were bundled into whichever
+// page imported this file. pdfUtils.js loads jspdf the same way.
 
 export interface DownloadReceiptOptions {
   filename?: string;
@@ -12,6 +13,10 @@ export const downloadReceiptAsPDF = async (
   sale: SuperAdminSale,
   options: DownloadReceiptOptions = {}
 ): Promise<void> => {
+  const [{ default: html2canvas }, { default: jsPDF }] = await Promise.all([
+    import("html2canvas"),
+    import("jspdf"),
+  ]);
   const {
     filename = `receipt-${sale.transaction_id || sale.id}-${
       new Date().toISOString().split("T")[0]

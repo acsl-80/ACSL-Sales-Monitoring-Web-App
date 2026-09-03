@@ -1,4 +1,9 @@
-import jsPDF from "jspdf";
+// Type only. The library itself is loaded inside generateAgreementPDF, when a
+// document is actually asked for. As a static import it rode into the
+// dashboard's first load through AdminSalesDetailModal and FinancialReportsView:
+// roughly 400 KB of PDF code fetched on every dashboard visit and used on
+// none of them. pdfUtils.js and apiDocsPdf.ts already load it this way.
+import type jsPDFType from "jspdf";
 
 // Pixel-faithful replica of the atmosfair "Improved Cook Stoves Programme for
 // Nigeria — User Agreement / Receipt" paper form, generated in code from a sale
@@ -82,7 +87,8 @@ const toPrintJpeg = (
   }
 };
 
-export const generateAgreementPDF = async (sale: any): Promise<jsPDF> => {
+export const generateAgreementPDF = async (sale: any): Promise<jsPDFType> => {
+  const { default: jsPDF } = await import("jspdf");
   const doc = new jsPDF({ unit: "mm", format: "a4", compress: true });
 
   // ── Layout constants ───────────────────────────────────────────────────────
