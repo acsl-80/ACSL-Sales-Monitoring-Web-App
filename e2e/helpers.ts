@@ -35,9 +35,10 @@ export async function callEdgeFunction(
   page: Page,
   fn: string,
   body: Record<string, unknown>,
+  query = "",
 ): Promise<{ status: number; body: unknown }> {
   return page.evaluate(
-    async ({ fn, body }) => {
+    async ({ fn, body, query }) => {
       const key = Object.keys(window.localStorage).find(
         (k) => k.startsWith("sb-") && k.endsWith("-auth-token"),
       );
@@ -47,14 +48,14 @@ export async function callEdgeFunction(
       // session belongs to. Deriving the URL from it rather than from a build
       // variable keeps the call pointed at whatever the page is pointed at.
       const ref = (key ?? "").replace(/^sb-/, "").replace(/-auth-token$/, "");
-      const response = await fetch(`https://${ref}.supabase.co/functions/v1/${fn}`, {
+      const response = await fetch(`https://${ref}.supabase.co/functions/v1/${fn}${query}`, {
         method: "POST",
         headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
         body: JSON.stringify(body),
       });
       return { status: response.status, body: await response.json() };
     },
-    { fn, body },
+    { fn, body, query },
   );
 }
 
