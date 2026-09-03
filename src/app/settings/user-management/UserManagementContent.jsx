@@ -650,17 +650,6 @@ const UserManagementPage = () => {
     ? list.map((o) => o?.id || o?.organization_id).filter(Boolean)
     : [];
 
-  const fetchDirectAgentAssignmentRows = async (agentId) => {
-    const columns = ["agent_id", "super_admin_agent_id", "user_id"];
-    for (const column of columns) {
-      const { data, error } = await supabase
-        .from("super_admin_agent_organizations")
-        .select("organization_id, assigned_by")
-        .eq(column, agentId);
-      if (!error) return Array.isArray(data) ? data : [];
-    }
-    return null;
-  };
 
   const persistAgentSupervisorMarker = async (agentId, partnerIds, managerIds) => {
     if (!agentId || partnerIds.length === 0 || managerIds.length === 0) return;
@@ -677,17 +666,11 @@ const UserManagementPage = () => {
 
       await Promise.all(
         Array.from(grouped.entries()).map(([managerId, ids]) =>
-          (async () => {
-            const columns = ["agent_id", "super_admin_agent_id", "user_id"];
-            for (const column of columns) {
-              const { error } = await supabase
-                .from("super_admin_agent_organizations")
-                .update({ assigned_by: managerId })
-                .eq(column, agentId)
-                .in("organization_id", ids);
-              if (!error) return;
-            }
-          })()
+          supabase
+            .from("super_admin_agent_organizations")
+            .update({ assigned_by: managerId })
+            .eq("agent_id", agentId)
+            .in("organization_id", ids)
         )
       );
     } catch {
@@ -778,33 +761,17 @@ const UserManagementPage = () => {
       const json = await res.json();
       if (!res.ok) throw new Error(json.error || "Failed to load managers");
       const base = (json.data || []).filter((u) => u.role === "acsl_agent_manager");
-      const enriched = await Promise.all(
-        base.map(async (u) => {
-          const [statesRes, orgsRes] = await Promise.allSettled([
-            superAdminAgentService.getAgentStates(u.id),
-            superAdminAgentService.getAgentOrganizations(u.id),
-          ]);
-          const statesList = statesRes.status === "fulfilled"
-            ? (statesRes.value?.data || statesRes.value?.states || statesRes.value || [])
-            : [];
-          const orgsList = orgsRes.status === "fulfilled"
-            ? (orgsRes.value?.data || orgsRes.value?.organizations || orgsRes.value || [])
-            : [];
-          const stateNames = Array.isArray(statesList)
-            ? statesList.map((s) => (typeof s === "string" ? s : s?.state)).filter(Boolean)
-            : [];
-          const orgIds = Array.isArray(orgsList)
-            ? orgsList.map((o) => o?.id || o?.organization_id).filter(Boolean)
-            : [];
-          return {
-            id: u.id,
-            full_name: u.full_name || u.email,
-            email: u.email,
-            states: new Set(stateNames),
-            orgIds: new Set(orgIds),
-          };
-        })
-      );
+      // One call answers every manager's states and partners; it used to be two per manager.
+      const scopes = base.length > 0
+        ? (await superAdminAgentService.getAgentScopes(base.map((u) => u.id)))?.data || {}
+        : {};
+      const enriched = base.map((u) => ({
+        id: u.id,
+        full_name: u.full_name || u.email,
+        email: u.email,
+        states: new Set(scopes[u.id]?.states || []),
+        orgIds: new Set(scopes[u.id]?.organization_ids || []),
+      }));
       setAcslManagers(enriched);
       return enriched;
     } catch {
@@ -983,24 +950,15 @@ const UserManagementPage = () => {
       // tables — calling those endpoints for partner / partner_agent / agent
       // returns 404 ("Agent not found"). Skip the lookups for those roles.
       const isAcslLike = role === "acsl_agent" || role === "acsl_agent_manager";
-      const [statesRes, orgsRes, assignmentRowsRes] = await Promise.allSettled([
-        isAcslLike ? superAdminAgentService.getAgentStates(user.id) : Promise.resolve({ data: [] }),
-        isAcslLike ? superAdminAgentService.getAgentOrganizations(user.id) : Promise.resolve({ data: [] }),
-        needsAcslAgentCascade(role) ? fetchDirectAgentAssignmentRows(user.id) : Promise.resolve([]),
-      ]);
-
-      const statesList = statesRes.status === "fulfilled"
-        ? (statesRes.value?.data || statesRes.value?.states || statesRes.value || [])
-        : [];
-      const orgsList = orgsRes.status === "fulfilled"
-        ? (orgsRes.value?.data || orgsRes.value?.organizations || orgsRes.value || [])
-        : [];
-      const stateNames = normalizeStateNames(statesList);
-      const assignmentRows = assignmentRowsRes.status === "fulfilled" && Array.isArray(assignmentRowsRes.value)
-        ? assignmentRowsRes.value
-        : [];
+      // One call carries the agent's states, partners, direct assignments (with who
+      // assigned them) and carve-outs; it used to be four, after a column probe.
+      const scope = isAcslLike || needsAcslAgentCascade(role)
+        ? (await superAdminAgentService.getAgentScopes([user.id], { withAssignments: true }).catch(() => null))?.data?.[user.id] ?? null
+        : null;
+      const stateNames = normalizeStateNames(scope?.states || []);
+      const assignmentRows = Array.isArray(scope?.direct_assignments) ? scope.direct_assignments : [];
       const directOrgIds = normalizeOrgIds(assignmentRows);
-      let orgIds = directOrgIds.length > 0 ? directOrgIds : normalizeOrgIds(orgsList);
+      let orgIds = directOrgIds.length > 0 ? directOrgIds : (scope?.organization_ids || []);
 
       // Partner Agents are bound to a single partner via profile.organization_id;
       // fall back to that value when no relational rows exist.
@@ -1016,8 +974,7 @@ const UserManagementPage = () => {
        * cover rather than every partner in their states. Absent endpoint or no
        * row means none, which is the correct reading either way.
        */
-      const scopeRes = await superAdminAgentService.getAgentScope(user.id).catch(() => null);
-      setExcludedPartnerIds(new Set(scopeRes?.data?.excluded_organization_ids ?? []));
+      setExcludedPartnerIds(new Set(scope?.excluded_organization_ids ?? []));
 
       // For acsl_agent: retain the original manager selection as tightly as
       // possible. Prefer the assignment creator when available, otherwise use

@@ -178,6 +178,15 @@ class SuperAdminAgentService {
   // ─── State Assignments ────────────────────────────────────────────────────
 
   // Get assigned states for an agent
+  // Several agents' scopes in one call: states, organisations, exclusions and
+  // mode per agent, plus the direct assignment rows when asked.
+  async getAgentScopes(agentIds, { withAssignments = false } = {}) {
+    const ids = [...new Set((agentIds || []).filter(Boolean))];
+    if (ids.length === 0) return { data: {} };
+    const qs = new URLSearchParams({ ids: ids.join(",") });
+    if (withAssignments) qs.append("with_assignments", "true");
+    return await this.request(`${API_FUNCTIONS_URL}/super-admin-agents/scopes?${qs}`, { method: "GET" });
+  }
   async getAgentStates(agentId) {
     return await this.request(
       `${API_FUNCTIONS_URL}/super-admin-agents/${agentId}/states`,

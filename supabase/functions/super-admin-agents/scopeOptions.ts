@@ -83,6 +83,33 @@ export async function getAgentScope(supabase: any, agentId: string) {
   };
 }
 
+const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+const MAX_SCOPE_IDS = 500;
+
+/**
+ * Several agents' scopes in one call: states, resolved organisations,
+ * exclusions and mode per agent, plus the direct assignment rows when asked
+ * (`with_assignments=true`, for one agent's edit form). Slice 10c of the
+ * 2026-09-02 review; the SQL is public.agent_scopes.
+ */
+export async function getAgentScopes(supabase: any, params: URLSearchParams) {
+  const ids = [
+    ...new Set(
+      String(params.get("ids") ?? "")
+        .split(",")
+        .map((s) => s.trim())
+        .filter((s) => UUID.test(s)),
+    ),
+  ].slice(0, MAX_SCOPE_IDS);
+  if (ids.length === 0) return { message: "No agents named", data: {} };
+  const { data, error } = await supabase.rpc("agent_scopes", {
+    p_agent_ids: ids,
+    p_with_assignments: params.get("with_assignments") === "true",
+  });
+  if (error) throw new Error(`Database error: ${error.message}`);
+  return { message: `Scopes for ${ids.length} agent(s)`, data: data ?? {} };
+}
+
 /** Replace the whole configuration, in one transaction. */
 export async function setAgentScope(
   supabase: any,

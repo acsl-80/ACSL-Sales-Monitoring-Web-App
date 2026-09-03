@@ -2,7 +2,7 @@
 
 import { listAgents, getAgent, getAgentOrganizations } from "./readOptions.ts";
 import { createAgent, updateAgent } from "./writeOptions.ts";
-import { getAgentScope, setAgentScope, assertMayEditScope } from "./scopeOptions.ts";
+import { getAgentScope, setAgentScope, assertMayEditScope, getAgentScopes } from "./scopeOptions.ts";
 import { deleteAgent } from "./deleteOptions.ts";
 import { setAgentOrganizations, removeAgentOrganization } from "./organizationOptions.ts";
 import { getAgentStates, setAgentStates, removeAgentState } from "./stateOptions.ts";
@@ -39,6 +39,11 @@ export async function handleRoute(req: Request, supabase: any) {
   }
 
   // ── GET /super-admin-agents  (list)
+  // Several agents' scopes in one call, for the screens that used to ask per agent.
+  if (method === "GET" && agentId === "scopes" && !subResource) {
+    await authenticateManagerOrAdmin(supabase, authHeader);
+    return await getAgentScopes(supabase, url.searchParams);
+  }
   if (method === "GET" && !agentId) {
     const auth = await authenticateReadAccess(supabase, authHeader);
     if (["acsl_agent", "super_admin_agent"].includes(auth.userRole)) {
