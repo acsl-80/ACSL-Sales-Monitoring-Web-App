@@ -104,12 +104,18 @@ async function openQueue(page: Page) {
   await expect(page.getByRole("heading", { name: "Call Centre" })).toBeVisible({ timeout: 20_000 });
 }
 
-async function searchSerial(page: Page, serial: string) {
-  const box = page.getByPlaceholder("Name, phone or serial");
-  await box.fill("");
-  await box.fill(serial);
-  const row = page.getByRole("button", { name: /^Open call record for/ }).first();
-  await expect(row).toBeVisible({ timeout: 20_000 });
+/**
+ * The row for a stove, found by the serial in its text. The seed holds a
+ * handful of sales, all rendered, so nothing needs the search box; and the
+ * row's own name changes with this slice (it carries the corrected buyer),
+ * which is why the serial is the handle and not the name.
+ */
+async function rowFor(page: Page, serial: string) {
+  const row = page
+    .getByRole("button", { name: /^Open call record for/ })
+    .filter({ hasText: serial })
+    .first();
+  await expect(row, `the queue should list ${serial}`).toBeVisible({ timeout: 20_000 });
   return row;
 }
 
@@ -160,7 +166,7 @@ test("the queue says it in one word, shows the corrected buyer, and marks a stov
   await expect.soft(page.getByRole("button", { name: "Still to verify", exact: true })).toHaveCount(0);
 
   // The corrected buyer, with the mark, and an unreachable pill that has a tone.
-  const rowA = await searchSerial(page, a.stove_serial_no);
+  const rowA = await rowFor(page, a.stove_serial_no);
   await expect.soft(rowA, "the queue should show the name the caller established").toContainText(CORRECTED_NAME);
   await expect.soft(rowA.getByText("corrected", { exact: true }).first(), "and say the receipt differed").toBeVisible();
   const pill = rowA.getByText("Unreachable", { exact: true });
@@ -169,12 +175,11 @@ test("the queue says it in one word, shows the corrected buyer, and marks a stov
   await expect.soft(pill).not.toHaveClass(/undefined/);
 
   // A record nobody has resolved.
-  const rowB = await searchSerial(page, b.stove_serial_no);
+  const rowB = await rowFor(page, b.stove_serial_no);
   await expect.soft(rowB.getByText("Yet to be resolved", { exact: true })).toBeVisible();
   await expect.soft(rowB.getByText("not verified", { exact: true })).toHaveCount(0);
 
   // The stove ID another caller took, marked on the row and not only findable.
-  await page.getByPlaceholder("Name, phone or serial").fill("");
   await page.getByRole("button", { name: "Stove ID unconfirmed", exact: true }).click();
   const rowC = page
     .getByRole("button", { name: /^Open call record for/ })
@@ -188,7 +193,7 @@ test("the editor uses the same words and shows when a call was made, in Lagos ti
   const [a] = snaps;
   await signIn(page, USERS.admin);
   await openQueue(page);
-  const row = await searchSerial(page, a.stove_serial_no);
+  const row = await rowFor(page, a.stove_serial_no);
   await row.click();
   await expect(page.getByRole("heading", { name: "Verification outcome" })).toBeVisible({ timeout: 15_000 });
 
