@@ -42,9 +42,10 @@ test.describe("slice 2: the host tells the truth", () => {
     );
     expect(sale, "the preview has no outright sale to test with").toBeTruthy();
     expect(SAFE_ID.test(sale.id)).toBe(true);
-    await branchSql(
-      `update public.sales set total_paid = 0, payment_status = 'unpaid' where id = '${sale.id}'`,
-    );
+    // Only what was collected changes. payment_status is left alone: the badge
+    // must read the money, and the column's check constraint does not admit
+    // an "unpaid" value for an outright sale, which is itself the point.
+    await branchSql(`update public.sales set total_paid = 0 where id = '${sale.id}'`);
     try {
       await signIn(page, USERS.admin);
       await page.goto("/sales");
