@@ -5,6 +5,7 @@
  */
 
 // Check if we're in a browser environment
+import { debug } from "@/app/utils/log";
 const isBrowser = typeof window !== 'undefined';
 
 // Initialize debug object
@@ -17,30 +18,30 @@ if (isBrowser) {
      * Check localStorage for Supabase auth data
      */
     checkLocalStorage() {
-      console.log("🔍 Checking localStorage for auth data...");
+      debug("🔍 Checking localStorage for auth data...");
       
       const keys = Object.keys(localStorage).filter(key => 
         key.includes('supabase') || key.includes('auth') || key.includes('transaction')
       );
       
-      console.log("📁 Auth-related localStorage keys:", keys);
+      debug("📁 Auth-related localStorage keys:", keys);
       
       keys.forEach(key => {
         try {
           const data = localStorage.getItem(key);
           if (key.includes('supabase.auth.token')) {
             const parsed = JSON.parse(data);
-            console.log(`🔑 ${key}:`, {
+            debug(`🔑 ${key}:`, {
               hasAccessToken: !!parsed?.access_token,
               hasRefreshToken: !!parsed?.refresh_token,
               expiresAt: parsed?.expires_at ? new Date(parsed.expires_at * 1000).toISOString() : 'No expiry',
               isExpired: parsed?.expires_at ? (parsed.expires_at * 1000) < Date.now() : 'Unknown'
             });
           } else {
-            console.log(`📝 ${key}:`, data?.length > 100 ? `${data.substring(0, 100)}...` : data);
+            debug(`📝 ${key}:`, data ? `${data.length} characters, not shown` : "empty");
           }
         } catch (error) {
-          console.log(`❌ ${key}: Could not parse data -`, error.message);
+          debug(`❌ ${key}: Could not parse data -`, error.message);
         }
       });
     },
@@ -49,7 +50,7 @@ if (isBrowser) {
      * Clear all auth-related localStorage
      */
     clearAuthStorage() {
-      console.log("🧹 Clearing auth-related localStorage...");
+      debug("🧹 Clearing auth-related localStorage...");
       
       const keys = Object.keys(localStorage).filter(key => 
         key.includes('supabase') || key.includes('auth') || key.includes('transaction')
@@ -57,10 +58,10 @@ if (isBrowser) {
       
       keys.forEach(key => {
         localStorage.removeItem(key);
-        console.log(`🗑️ Removed: ${key}`);
+        debug(`🗑️ Removed: ${key}`);
       });
       
-      console.log("✅ Auth storage cleared. Refresh the page to test.");
+      debug("✅ Auth storage cleared. Refresh the page to test.");
     },
 
     /**
@@ -68,7 +69,7 @@ if (isBrowser) {
      */
     async testSupabaseSession() {
       try {
-        console.log("🧪 Testing Supabase session...");
+        debug("🧪 Testing Supabase session...");
         
         if (!window.supabase) {
           console.error("❌ Supabase client not found on window object");
@@ -77,17 +78,17 @@ if (isBrowser) {
         
         const { data, error } = await window.supabase.auth.getSession();
         
-        console.log("📊 Session test results:", {
+        debug("📊 Session test results:", {
           hasSession: !!data?.session,
           hasUser: !!data?.session?.user,
-          userEmail: data?.session?.user?.email,
+          hasUser: Boolean(data?.session?.user),
           error: error?.message || 'No error'
         });
         
         if (data?.session) {
-          console.log("✅ Valid session found");
+          debug("✅ Valid session found");
         } else {
-          console.log("❌ No valid session");
+          debug("❌ No valid session");
         }
         
       } catch (error) {
@@ -104,12 +105,12 @@ if (isBrowser) {
         return;
       }
 
-      console.log("👁️ Starting auth state monitoring...");
+      debug("👁️ Starting auth state monitoring...");
       
       const { data: { subscription } } = window.supabase.auth.onAuthStateChange((event, session) => {
-        console.log(`🔄 Auth state change: ${event}`, {
+        debug(`🔄 Auth state change: ${event}`, {
           hasSession: !!session,
-          userEmail: session?.user?.email,
+          hasUser: Boolean(session?.user),
           timestamp: new Date().toISOString()
         });
       });
@@ -117,7 +118,7 @@ if (isBrowser) {
       // Return cleanup function
       return () => {
         subscription.unsubscribe();
-        console.log("🛑 Auth monitoring stopped");
+        debug("🛑 Auth monitoring stopped");
       };
     },
 
@@ -126,7 +127,7 @@ if (isBrowser) {
      */
     async testTokenRefresh() {
       try {
-        console.log("🔄 Testing token refresh...");
+        debug("🔄 Testing token refresh...");
         
         if (!window.supabase) {
           console.error("❌ Supabase client not found");
@@ -135,10 +136,10 @@ if (isBrowser) {
         
         const { data, error } = await window.supabase.auth.refreshSession();
         
-        console.log("📊 Refresh test results:", {
+        debug("📊 Refresh test results:", {
           hasSession: !!data?.session,
           hasUser: !!data?.session?.user,
-          userEmail: data?.session?.user?.email,
+          hasUser: Boolean(data?.session?.user),
           error: error?.message || 'No error'
         });
         
@@ -151,67 +152,67 @@ if (isBrowser) {
      * Analyze network requests
      */
     analyzeNetworkRequests() {
-      console.log("🌐 To analyze network requests:");
-      console.log("1. Open DevTools → Network tab");
-      console.log("2. Filter by 'auth' or 'token'");
-      console.log("3. Look for failed requests (red entries)");
-      console.log("4. Check request/response headers");
+      debug("🌐 To analyze network requests:");
+      debug("1. Open DevTools → Network tab");
+      debug("2. Filter by 'auth' or 'token'");
+      debug("3. Look for failed requests (red entries)");
+      debug("4. Check request/response headers");
       
       // Monitor fetch requests
       const originalFetch = window.fetch;
       window.fetch = async (...args) => {
         const [url] = args;
         if (typeof url === 'string' && (url.includes('auth') || url.includes('token'))) {
-          console.log(`🌐 Auth request: ${url}`);
+          debug(`🌐 Auth request: ${url}`);
         }
         return originalFetch.apply(window, args);
       };
       
-      console.log("🎯 Fetch monitoring enabled for auth requests");
+      debug("🎯 Fetch monitoring enabled for auth requests");
     },
 
     /**
      * Get comprehensive debugging info
      */
     getDebugInfo() {
-      console.log("🔍 Authentication Debug Info:");
-      console.log("================================");
+      debug("🔍 Authentication Debug Info:");
+      debug("================================");
       
       // Browser info
-      console.log("🌐 Browser:", window.navigator ? window.navigator.userAgent : 'Unknown');
-      console.log("📍 URL:", window.location.href);
-      console.log("🔄 Page loaded at:", new Date().toISOString());
+      debug("🌐 Browser:", window.navigator ? window.navigator.userAgent : 'Unknown');
+      debug("📍 Path:", window.location.pathname);
+      debug("🔄 Page loaded at:", new Date().toISOString());
       
       // Check if localStorage is available
       try {
         localStorage.setItem('test', 'test');
         localStorage.removeItem('test');
-        console.log("💾 localStorage: Available");
+        debug("💾 localStorage: Available");
       } catch (error) {
-        console.log("❌ localStorage: Not available or blocked -", error.message);
+        debug("❌ localStorage: Not available or blocked -", error.message);
       }
       
       // Check for common auth keys
       this.checkLocalStorage();
       
       // Check if Supabase is available
-      console.log("🔌 Supabase client:", window.supabase ? 'Available' : 'Not found');
+      debug("🔌 Supabase client:", window.supabase ? 'Available' : 'Not found');
       
-      console.log("================================");
-      console.log("💡 Available commands:");
-      console.log("• debugAuth.checkLocalStorage() - Check stored auth data");
-      console.log("• debugAuth.clearAuthStorage() - Clear all auth data");
-      console.log("• debugAuth.testSupabaseSession() - Test current session");
-      console.log("• debugAuth.testTokenRefresh() - Test token refresh");
-      console.log("• debugAuth.monitorAuthChanges() - Monitor auth events");
-      console.log("• debugAuth.analyzeNetworkRequests() - Monitor network calls");
+      debug("================================");
+      debug("💡 Available commands:");
+      debug("• debugAuth.checkLocalStorage() - Check stored auth data");
+      debug("• debugAuth.clearAuthStorage() - Clear all auth data");
+      debug("• debugAuth.testSupabaseSession() - Test current session");
+      debug("• debugAuth.testTokenRefresh() - Test token refresh");
+      debug("• debugAuth.monitorAuthChanges() - Monitor auth events");
+      debug("• debugAuth.analyzeNetworkRequests() - Monitor network calls");
     },
 
     /**
      * Quick fix for common issues
      */
     quickFix() {
-      console.log("🛠️ Running quick auth fix...");
+      debug("🛠️ Running quick auth fix...");
       
       // Clear potentially corrupted data
       this.clearAuthStorage();
@@ -225,7 +226,7 @@ if (isBrowser) {
         console.warn("⚠️ fetch not available - check browser compatibility");
       }
       
-      console.log("🔄 Please refresh the page and try logging in again");
+      debug("🔄 Please refresh the page and try logging in again");
     }
   };
 
@@ -234,7 +235,7 @@ if (isBrowser) {
 
   // Auto-run in development
   if (typeof process !== 'undefined' && process.env?.NODE_ENV === 'development') {
-    console.log("🔧 Auth debugging tools loaded. Run debugAuth.getDebugInfo() for help.");
+    debug("🔧 Auth debugging tools loaded. Run debugAuth.getDebugInfo() for help.");
   }
 }
 

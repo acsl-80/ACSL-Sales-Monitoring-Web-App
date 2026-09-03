@@ -7,18 +7,19 @@
  * Formats sales data into the specified CSV format
  * @param {Array} salesData - Array of SuperAdminSale objects
  * @returns {string} CSV formatted string
- */
+ */import { debug } from "@/app/utils/log";
+
 export const formatSalesDataToCSV = (salesData) => {
   if (!salesData || !Array.isArray(salesData) || salesData.length === 0) {
     console.warn("CSV Export: No sales data provided or empty array");
     return getCSVHeaders().join(",") + "\n"; // Return headers only if no data
   }
 
-  console.log(`CSV Export: Processing ${salesData.length} sales records`);
+  debug(`CSV Export: Processing ${salesData.length} sales records`);
 
   // Log first record structure for debugging
   if (salesData.length > 0) {
-    console.log("CSV Export: First record structure:", {
+    debug("CSV Export: First record structure:", {
       id: salesData[0].id,
       hasAddresses: !!salesData[0].addresses,
       addressesType: typeof salesData[0].addresses,

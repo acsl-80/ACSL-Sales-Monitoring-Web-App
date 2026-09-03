@@ -4,6 +4,7 @@ import { useAuth } from "../contexts/useAuth";
 import { useToast } from "@/components/ui/toast";
 import salesAdvancedService from "../services/salesAdvancedAPIService";
 import { safeFetchManager } from "../../utils/safeFetch";
+import { debug } from "@/app/utils/log";
 
 export const useSalesAdvanced = (initialFilters = {}) => {
   const { user, isAuthenticated } = useAuth();
@@ -44,7 +45,7 @@ export const useSalesAdvanced = (initialFilters = {}) => {
     const handleVisibilityChange = () => {
       const isVisible = typeof window !== "undefined" ? !document.hidden : true;
       if (isVisible && isMountedRef.current) {
-        console.log(
+        debug(
           `🔍 [${componentName}] Tab became visible - checking state`
         );
 
@@ -109,7 +110,7 @@ export const useSalesAdvanced = (initialFilters = {}) => {
         return updater;
       }
     }
-    console.log(
+    debug(
       `🔍 [${componentName}] Skipped state update - component unmounted`
     );
   }, []);
@@ -137,7 +138,7 @@ export const useSalesAdvanced = (initialFilters = {}) => {
       isLoadingRef.current = true;
 
       try {
-        console.log(`🔍 [${componentName}] Starting fetch...`);
+        debug(`🔍 [${componentName}] Starting fetch...`);
 
         // Clear any stuck token refresh before making request
         safeFetchManager.clearTokenRefresh();
@@ -164,7 +165,7 @@ export const useSalesAdvanced = (initialFilters = {}) => {
           return;
         }
 
-        console.log(`🔍 [${componentName}] API response received:`, {
+        debug(`🔍 [${componentName}] API response received:`, {
           success: response?.success,
           dataLength: response?.data?.length || 0,
         });
@@ -206,7 +207,7 @@ export const useSalesAdvanced = (initialFilters = {}) => {
         console.error(`🔍 [${componentName}] Fetch error:`, err.message);
 
         if (!isMountedRef.current) {
-          console.log(
+          debug(
             `🔍 [${componentName}] Component unmounted during error handling - ignoring`
           );
           return;
@@ -242,7 +243,7 @@ export const useSalesAdvanced = (initialFilters = {}) => {
             err.message.includes("cancelled") ||
             err.message.includes("aborted")
           ) {
-            console.log(
+            debug(
               `🔍 [${componentName}] Request was cancelled - not setting error`
             );
             // Don't set error for cancelled requests
@@ -254,7 +255,7 @@ export const useSalesAdvanced = (initialFilters = {}) => {
           setPagination({ page: 1, limit: 100, total: 0, totalPages: 0 });
         });
       } finally {
-        console.log(
+        debug(
           `🔍 [${componentName}] Fetch completed - resetting loading states`
         );
 
@@ -396,7 +397,7 @@ export const useSalesAdvanced = (initialFilters = {}) => {
 
   // Emergency reset method (callable from console)
   const emergencyReset = useCallback(() => {
-    console.log(`🔍 [${componentName}] EMERGENCY RESET TRIGGERED`);
+    debug(`🔍 [${componentName}] EMERGENCY RESET TRIGGERED`);
 
     // Clear all stuck states
     safeFetchManager.clearTokenRefresh();
@@ -419,10 +420,10 @@ export const useSalesAdvanced = (initialFilters = {}) => {
     if (typeof window !== "undefined") {
       window.emergencyResetSales = emergencyReset;
       window.testTabSwitch = () => {
-        console.log("🧪 Testing tab switch behavior...");
-        console.log("Current hasInitialized:", hasInitializedRef.current);
-        console.log("Current user ID:", user?.id);
-        console.log("Current isAuthenticated:", isAuthenticated);
+        debug("🧪 Testing tab switch behavior...");
+        debug("Current hasInitialized:", hasInitializedRef.current);
+        debug("Current user present:", Boolean(user?.id));
+        debug("Current isAuthenticated:", isAuthenticated);
       };
       return () => {
         delete window.emergencyResetSales;
@@ -485,7 +486,7 @@ export const useSalesAdvanced = (initialFilters = {}) => {
     const currentUserId = user?.id || null;
     const hasUserIdChanged = currentUserId !== lastUserIdRef.current;
 
-    console.log(`🔍 [${componentName}] Init effect triggered:`, {
+    debug(`🔍 [${componentName}] Init effect triggered:`, {
       isAuthenticated,
       hasInitialized: hasInitializedRef.current,
       isMounted: isMountedRef.current,
@@ -502,7 +503,7 @@ export const useSalesAdvanced = (initialFilters = {}) => {
     // Reset initialization flag if auth changes or we navigate back
     if (!isAuthenticated) {
       hasInitializedRef.current = false;
-      console.log(
+      debug(
         `🔍 [${componentName}] Auth lost - reset initialization flag`
       );
       return;
@@ -510,7 +511,7 @@ export const useSalesAdvanced = (initialFilters = {}) => {
 
     // Only initialize if user ID actually changed or first time
     if (!hasUserIdChanged && hasInitializedRef.current) {
-      console.log(
+      debug(
         `🔍 [${componentName}] Same user ID (${currentUserId}) - skipping initialization`
       );
       return;
@@ -525,20 +526,20 @@ export const useSalesAdvanced = (initialFilters = {}) => {
       hasInitializedRef.current = true;
       lastNavigationRef.current = Date.now();
 
-      console.log(
+      debug(
         `🔍 [${componentName}] Starting initialization for user ${currentUserId}...`
       );
 
       const loadInitialData = async () => {
         try {
           if (!isMountedRef.current) {
-            console.log(
+            debug(
               `🔍 [${componentName}] Component unmounted during init - aborting`
             );
             return;
           }
 
-          console.log(`🔍 [${componentName}] Loading initial data...`);
+          debug(`🔍 [${componentName}] Loading initial data...`);
           setLoading(true);
           setError(null);
 
@@ -554,14 +555,14 @@ export const useSalesAdvanced = (initialFilters = {}) => {
           );
 
           if (!isMountedRef.current) {
-            console.log(
+            debug(
               `🔍 [${componentName}] Component unmounted during initial load - ignoring response`
             );
             return;
           }
 
           if (salesResponse.success) {
-            console.log(
+            debug(
               `🔍 [${componentName}] Initial data loaded successfully`
             );
 
@@ -614,7 +615,7 @@ export const useSalesAdvanced = (initialFilters = {}) => {
           );
 
           if (!isMountedRef.current) {
-            console.log(
+            debug(
               `🔍 [${componentName}] Component unmounted during error handling - ignoring`
             );
             return;
@@ -648,7 +649,7 @@ export const useSalesAdvanced = (initialFilters = {}) => {
   useEffect(() => {
     if (!isAuthenticated || !user?.id) {
       hasInitializedRef.current = false;
-      console.log(
+      debug(
         `🔍 [${componentName}] User changed or logged out - reset initialization`
       );
     }

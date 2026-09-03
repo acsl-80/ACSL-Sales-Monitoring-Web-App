@@ -1,6 +1,7 @@
 
 import React from 'react';
 import { Button } from '@/components/ui/button';
+import { debug } from "@/app/utils/log";
 
 class ErrorBoundary extends React.Component {
   constructor(props) {
@@ -44,7 +45,7 @@ class ErrorBoundary extends React.Component {
             key.startsWith('supabase.auth') || key.startsWith('sb-')
           );
           supabaseKeys.forEach(key => localStorage.removeItem(key));
-          console.log('Cleared Supabase session data');
+          debug('Cleared Supabase session data');
         } catch (e) {
           console.warn('Could not clear localStorage:', e);
         }

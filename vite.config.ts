@@ -43,6 +43,17 @@ export default defineConfig(async ({ command, mode }) => {
     { server: { host: "::", port: 8080 } },
     {
       define: envDefine,
+      /*
+       * Slice 8b: nothing reaches the production console by accident. The
+       * host's own logging goes through src/app/utils/log.ts, which prints
+       * in development or under the support flag; any stray console.log,
+       * console.debug or console.info left in a file is marked pure so the
+       * production bundle drops it. console.warn and console.error stay: the
+       * error capture relies on them.
+       */
+      ...(command === "build"
+        ? { esbuild: { pure: ["console.log", "console.debug", "console.info"] } }
+        : {}),
       css: { transformer: "lightningcss" as const },
       resolve: {
         alias: {

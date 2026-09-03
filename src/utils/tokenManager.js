@@ -4,6 +4,7 @@
  */
 
 import { createClientComponentClient } from "@/lib/supabaseClient";
+import { debug } from "@/app/utils/log";
 
 /**
  * @typedef {Object} TokenData
@@ -60,7 +61,7 @@ class TokenManager {
     try {
       if (typeof window !== "undefined") {
         localStorage.setItem(this.TOKEN_STORAGE_KEY, JSON.stringify(tokenData));
-        console.log("🔐 [TokenManager] Token saved to storage");
+        debug("🔐 [TokenManager] Token saved to storage");
       }
     } catch (error) {
       console.error("🔐 [TokenManager] Error saving token to storage:", error);
@@ -76,7 +77,7 @@ class TokenManager {
         localStorage.removeItem(this.TOKEN_STORAGE_KEY);
       }
       this.tokenData = null;
-      console.log("🔐 [TokenManager] Token cleared from storage");
+      debug("🔐 [TokenManager] Token cleared from storage");
     } catch (error) {
       console.error("🔐 [TokenManager] Error clearing token:", error);
     }
@@ -143,7 +144,7 @@ class TokenManager {
    */
   async performRefresh() {
     try {
-      console.log("🔐 [TokenManager] Calling Supabase refresh...");
+      debug("🔐 [TokenManager] Calling Supabase refresh...");
 
       // Add timeout to prevent hanging
       const refreshPromise = this.supabase.auth.refreshSession();
@@ -174,7 +175,7 @@ class TokenManager {
         throw new Error("No access token received from refresh");
       }
 
-      console.log("🔐 [TokenManager] Refresh successful");
+      debug("🔐 [TokenManager] Refresh successful");
 
       // Update stored token data
       const newTokenData = {
@@ -194,14 +195,14 @@ class TokenManager {
 
       // If refresh fails, try to get current session as fallback
       try {
-        console.log(
+        debug(
           "🔐 [TokenManager] Attempting fallback to current session..."
         );
         const { data: sessionData, error: sessionError } =
           await this.supabase.auth.getSession();
 
         if (sessionData.session?.access_token && !sessionError) {
-          console.log("🔐 [TokenManager] Fallback successful");
+          debug("🔐 [TokenManager] Fallback successful");
           this.setLoginData(sessionData.session);
           return sessionData.session.access_token;
         }
@@ -219,7 +220,7 @@ class TokenManager {
    * Clear all token data (for logout)
    */
   clearToken() {
-    console.log("🔐 [TokenManager] Clearing all token data");
+    debug("🔐 [TokenManager] Clearing all token data");
     this.clearStoredToken();
     this.refreshPromise = null;
   }

@@ -7,6 +7,7 @@ import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
 import { useAuth } from "../contexts/useAuth";
 import { Key, LogOut, CheckCircle } from "lucide-react";
+import { debug } from "@/app/utils/log";
 
 const AuthenticationCard = () => {
   const { token, isAuthenticated, login, logout } = useAuth();
@@ -21,7 +22,7 @@ const AuthenticationCard = () => {
       // For now, just accept any token. In a real app, you'd validate it
       login(inputToken.trim());
       setInputToken("");
-      console.log("Authentication token set successfully");
+      debug("Authentication token set successfully");
     } catch (error) {
       console.error("Failed to set token:", error);
     } finally {

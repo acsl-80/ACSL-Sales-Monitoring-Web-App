@@ -1,5 +1,6 @@
 import { formatCurrency } from "@/app/utils/formatCurrency";
 import { formatDate } from "@/app/utils/formatDate";
+import { debug } from "@/app/utils/log";
 // Email service for sending receipts and invoices
 // You'll need to configure your email service (SendGrid, NodeMailer, etc.)
 
@@ -29,7 +30,7 @@ export const sendReceiptEmail = async (saleData, recipientEmail) => {
     // only logged and returned success; real sending was commented out). On
     // TanStack Start, wire this to a `createServerFn` when a real email
     // provider is configured. For now we preserve the original behavior.
-    console.log("Email would be sent:", emailData);
+    debug("Email would be sent:", emailData);
     return { success: true, message: "Email sent successfully" };
   } catch (error) {
     console.error("Error sending receipt email:", error);
@@ -60,7 +61,7 @@ export const sendInvoiceEmail = async (saleData, recipientEmail) => {
     };
 
     // See note in sendReceiptEmail: original route was a no-op demo.
-    console.log("Email would be sent:", emailData);
+    debug("Email would be sent:", emailData);
     return { success: true, message: "Email sent successfully" };
   } catch (error) {
     console.error("Error sending invoice email:", error);

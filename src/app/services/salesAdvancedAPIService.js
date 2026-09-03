@@ -3,6 +3,7 @@ import { createClientComponentClient } from "@/lib/supabaseClient";
 import { safeFetchManager } from "../../utils/safeFetch";
 import { formatSalesDataToCSV, downloadCSV } from "../../utils/csvExportUtils";
 import { supabaseUrl } from "@/lib/supabaseConfig";
+import { debug } from "@/app/utils/log";
 
 const API_BASE_URL = supabaseUrl;
 const API_FUNCTIONS_URL = `${API_BASE_URL}/functions/v1`;
@@ -75,7 +76,7 @@ class SalesAdvancedService {
         options.body = JSON.stringify(filters);
       }
 
-      console.log(`🔍 [SalesService] Making request:`, {
+      debug(`🔍 [SalesService] Making request:`, {
         method,
         url,
         filters,
@@ -88,7 +89,7 @@ class SalesAdvancedService {
         retryCount: 1, // Only retry once for sales data
       });
 
-      console.log(`🔍 [SalesService] Response received:`, {
+      debug(`🔍 [SalesService] Response received:`, {
         success: response?.success,
         dataLength: response?.data?.length || 0,
       });

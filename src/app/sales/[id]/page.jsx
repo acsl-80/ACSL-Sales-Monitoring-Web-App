@@ -26,6 +26,7 @@ import {
 } from "lucide-react";
 import { formatDate as formatDateShared } from "@/app/utils/formatDate";
 import { formatCurrency as formatCurrencyShared } from "@/app/utils/formatCurrency";
+import { debug } from "@/app/utils/log";
 
 export default function SaleDetailPage() {
   const params = useParams();
@@ -127,7 +128,7 @@ export default function SaleDetailPage() {
 
   const copyToClipboard = (text, label) => {
     navigator.clipboard.writeText(text);
-    console.log(`${label} copied to clipboard: ${text}`);
+    debug(`${label} copied to clipboard: ${text}`);
   };
 
   const openFullScreenImage = (imageSrc, title) => {
