@@ -14,7 +14,7 @@ import { branchSql, signIn, USERS } from "./helpers";
  *
  * Dates. Thirty-six copies of formatDate said a date thirty-six ways, en-GB
  * here and en-US there and the browser's own locale on the receipt. One
- * helper now: en-GB, Lagos, "31 Aug 2026".
+ * helper now: en-GB, Lagos, each screen keeping its numeric or short shape.
  *
  * Money. A missing amount printed ₦NaN on some screens and threw on others.
  * One helper now: ₦43,000, and a plain N/A for an amount that is not there.
@@ -23,13 +23,6 @@ import { branchSql, signIn, USERS } from "./helpers";
  */
 
 const SAFE_ID = /^[0-9a-f-]{36}$/;
-const DATE = new Intl.DateTimeFormat("en-GB", {
-  day: "2-digit",
-  month: "short",
-  year: "numeric",
-  timeZone: "Africa/Lagos",
-});
-
 test.describe.configure({ timeout: 180_000 });
 
 test("the top bar says where the reader is, and the Settings entry they are on is lit", async ({ page }) => {
@@ -59,22 +52,37 @@ test("the top bar says where the reader is, and the Settings entry they are on i
   );
 });
 
-test("a date is said one way, en-GB in Lagos", async ({ page }) => {
-  const [sale] = await branchSql<{ sales_date: string; end_user_name: string }>(
-    `select sales_date::text, end_user_name from public.sales
+/*
+ * A guard rather than a red. Every screen the suite can reach was already on
+ * the numeric en-GB shape, so the helper changes nothing visible there; the
+ * screens that were on en-US are modals and files the router no longer
+ * reaches, which is the dead code slice 11 removes. What can be held here is
+ * that a seeded date reads in the Lagos calendar day, in the shape the screen
+ * has always used, and that "Invalid Date" appears nowhere on the page.
+ */
+test("a date on the financial report reads en-GB in Lagos, and Invalid Date appears nowhere", async ({
+  page,
+}) => {
+  const [sale] = await branchSql<{ sales_date: string }>(
+    `select sales_date::text from public.sales
       where is_archived is not true and sales_date is not null order by sales_date desc, id limit 1`,
   );
   expect(sale?.sales_date).toBeTruthy();
-  const expected = DATE.format(new Date(sale.sales_date));
-  expect(expected).toMatch(/^\d{2} [A-Z][a-z]{2} \d{4}$/);
+  const expected = new Intl.DateTimeFormat("en-GB", {
+    day: "2-digit",
+    month: "2-digit",
+    year: "numeric",
+    timeZone: "Africa/Lagos",
+  }).format(new Date(sale.sales_date));
+  expect(expected).toMatch(/^\d{2}\/\d{2}\/\d{4}$/);
 
   await signIn(page, USERS.admin);
   await page.goto("/sales/financial-reports");
   await expect(page.getByText("CONTROL PANEL")).toBeVisible({ timeout: 30_000 });
-  await expect(
-    page.getByText(expected).first(),
-    `the sale dated ${sale.sales_date} should read ${expected}`,
-  ).toBeVisible({ timeout: 30_000 });
+  await expect(page.getByText(expected).first(), `the sale dated ${sale.sales_date} should read ${expected}`).toBeVisible(
+    { timeout: 30_000 },
+  );
+  await expect(page.getByText("Invalid Date")).toHaveCount(0);
 });
 
 /*
