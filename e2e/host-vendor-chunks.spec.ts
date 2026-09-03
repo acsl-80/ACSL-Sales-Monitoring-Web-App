@@ -34,7 +34,7 @@ async function loadedScripts(page: Page): Promise<Loaded[]> {
 test("React loads from its own chunk and the entry is small, at no cost to the first paint", async ({ page }) => {
   await signIn(page, USERS.admin);
   await page.goto("/dashboard");
-  await expect(page.getByRole("heading", { level: 1 })).toBeVisible({ timeout: 45_000 });
+  await expect(page.getByRole("heading", { level: 1 }).first()).toBeVisible({ timeout: 45_000 });
   await page.waitForLoadState("networkidle").catch(() => undefined);
 
   const scripts = await loadedScripts(page);
