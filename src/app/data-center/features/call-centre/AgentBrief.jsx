@@ -1,3 +1,5 @@
+import { outcomeLabel } from "../../lib/outcome";
+import { dateOf } from "../../lib/when";
 import { useMemo } from "react";
 import Link from "@/compat/Link";
 import {
@@ -42,7 +44,7 @@ import {
 
 const money = (v) =>
   v == null || v === "" ? null : `₦${new Intl.NumberFormat("en-NG").format(Number(v))}`;
-const date = (v) => (v ? new Date(v).toLocaleDateString() : null);
+const date = (v) => dateOf(v, null);
 const words = (v) => (v ? String(v).replace(/_/g, " ") : null);
 
 /**
@@ -329,7 +331,7 @@ export default function AgentBrief({ record }) {
         <Fact label="Third call" value={date(r.call_date_3)} />
         <Fact label="Last outcome" value={words(r.call_outcome)} />
         <Fact label="Worked by" value={r.call_agent} />
-        <Fact label="Verification" value={words(r.verification_outcome) ?? "nothing concluded"} />
+        <Fact label="Verification" value={outcomeLabel(r.verification_outcome)} />
         <Fact label="Typed up" value={date(r.recorded_at)} />
       </Group>
 

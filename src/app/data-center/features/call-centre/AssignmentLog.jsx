@@ -5,6 +5,8 @@ import PeriodFilter from "../../components/PeriodFilter";
 import { usePeriod } from "../../lib/usePeriod";
 import { dataCenterAssign, dataCenterWrite, DataCenterError } from "../../lib/client";
 import { plural } from "../../lib/plural";
+import { outcomeLabel, outcomeText, OUTCOME_WORDS, BATCH_STATE_WORDS } from "../../lib/outcome";
+import { dateOf, whenOf } from "../../lib/when";
 import ExportButton from "../../components/ExportButton";
 import CallRecordEditor from "./CallRecordEditor";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
@@ -39,24 +41,11 @@ const STATE_TONE = {
   reclaimed: "bg-purple-100 text-purple-800",
 };
 
-const OUTCOME_TONE = {
-  fully_verified: "text-(--dc-accent)",
-  partially_verified: "text-amber-700",
-  unreachable: "text-orange-700",
-  not_verified: "text-gray-500",
-};
-
 /** The four states a record can settle in, shortest label first on a phone. */
-const VERIFICATION = [
-  { value: "fully_verified", label: "Fully verified" },
-  { value: "partially_verified", label: "Partially verified" },
-  { value: "unreachable", label: "Unreachable" },
-  { value: "not_verified", label: "Not verified" },
-];
-
-const outcomeLabel = (v) => (v ? v.replace(/_/g, " ") : "no outcome yet");
-const dateOf = (iso) => (iso ? new Date(iso).toLocaleDateString() : "-");
-const whenOf = (iso) => (iso ? new Date(iso).toLocaleString() : "-");
+const VERIFICATION = ["fully_verified", "partially_verified", "unreachable", "not_verified"].map((value) => ({
+  value,
+  label: OUTCOME_WORDS[value],
+}));
 
 const EXPORT_COLUMNS = [
   { key: "batch_state", label: "Batch state" },
@@ -656,7 +645,7 @@ export default function AssignmentLog({ canRun, canEdit = false }) {
                 >
                   <td className="sticky left-0 z-10 bg-white px-3 py-2 transition group-hover:bg-(--dc-accent-soft)">
                     <span className={`rounded-full px-2 py-0.5 text-xs font-medium ${STATE_TONE[r.batch_state]}`}>
-                      {r.batch_state}
+                      {BATCH_STATE_WORDS[r.batch_state] ?? r.batch_state}
                     </span>
                     {r.reclaim_reason && (
                       <p className="mt-0.5 text-xs text-purple-700">{r.reclaim_reason}</p>
@@ -697,7 +686,7 @@ export default function AssignmentLog({ canRun, canEdit = false }) {
                       {r.stove_serial_no}
                     </Link>
                   </td>
-                  <td className={`px-3 py-2 text-xs font-medium ${OUTCOME_TONE[r.verification_outcome] ?? "text-gray-500"}`}>
+                  <td className={`px-3 py-2 text-xs font-medium ${outcomeText(r.verification_outcome)}`}>
                     {outcomeLabel(r.verification_outcome)}
                   </td>
                   <td className="px-3 py-2 tabular-nums text-gray-700">{r.attempt_count ?? 0}</td>

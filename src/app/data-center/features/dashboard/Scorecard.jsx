@@ -34,7 +34,7 @@ const NUMBER = new Intl.NumberFormat("en-NG");
  */
 const STATUS_COLUMNS = [
   { metric: "verified", label: "Verified", tone: "text-(--dc-accent)" },
-  { metric: "unverified", label: "Unverified", tone: "text-amber-700" },
+  { metric: "unverified", label: "Partly verified", tone: "text-amber-700" },
   { metric: "unreachable", label: "Unreachable", tone: "text-orange-700" },
   { metric: "unresolved", label: "Yet to be resolved", tone: "text-gray-600" },
 ];

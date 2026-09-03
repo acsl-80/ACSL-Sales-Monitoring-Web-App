@@ -93,7 +93,7 @@ test.describe("the five scorecards", () => {
             Number((td.textContent ?? "").replace(/[^0-9.-]/g, "")),
           );
           const sum =
-            cells[col("Verified")] + cells[col("Unverified")] +
+            cells[col("Verified")] + cells[col("Partly verified")] +
             cells[col("Unreachable")] + cells[col("Yet to be resolved")];
           // Shipments reconcile to Digitalised; people reconcile to Issued,
           // because for an agent "issued" is what they were handed.
@@ -284,7 +284,7 @@ test.describe("the headline figures", () => {
       "Issued · in the period shown",
       "Sold · in the period shown",
       "Verified · in the period shown",
-      "Unverified · in the period shown",
+      "Partly verified · in the period shown",
     ]) {
       await expect(
         page.getByRole("link", { name: new RegExp(`^${label}:`) }),
@@ -313,7 +313,7 @@ test.describe("the headline figures", () => {
       "Issued · all time",
       "Sold · all time",
       "Verified · all time",
-      "Unverified · all time",
+      "Partly verified · all time",
     ]) {
       await expect(
         page.getByRole("link", { name: new RegExp(`^${label}:`) }),

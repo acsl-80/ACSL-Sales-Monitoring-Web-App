@@ -20,7 +20,7 @@ test.describe("the call centre queue", () => {
     await expect(page.getByRole("heading", { name: "Call Centre" })).toBeVisible({
       timeout: 20_000,
     });
-    for (const preset of ["Never called", "Still to verify", "Chased 3 times", "Waiting on Sales"]) {
+    for (const preset of ["Never called", "Yet to be resolved", "Chased 3 times", "Waiting on Sales"]) {
       await expect(page.getByRole("button", { name: preset })).toBeVisible();
     }
   });

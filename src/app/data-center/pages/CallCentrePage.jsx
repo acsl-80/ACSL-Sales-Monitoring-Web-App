@@ -12,7 +12,7 @@ import { DATA_CENTER_FEATURES } from "../lib/features";
 /** The queue's own presets, named so a drill banner can say which one it took. */
 const PRESET_LABELS = {
   todo: "never called",
-  unresolved: "still to verify",
+  unresolved: "yet to be resolved",
   exhausted: "chased three times and still not verified",
   correction: "waiting on Sales",
   completed: "finished by the call centre",
@@ -22,7 +22,7 @@ const PRESET_LABELS = {
 /** The scorecard columns, said the way the dashboard says them. */
 const STATUS_LABELS = {
   verified: "verified",
-  unverified: "unverified",
+  unverified: "partly verified",
   unreachable: "unreachable",
   unresolved: "yet to be resolved",
 };

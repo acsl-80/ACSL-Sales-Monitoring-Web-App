@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import Link from "@/compat/Link";
 import { dataCenterClient, dataCenterWrite, DataCenterError } from "../../lib/client";
 import { plural } from "../../lib/plural";
+import { dateOf } from "../../lib/when";
 import ExportButton from "../../components/ExportButton";
 import {
   Loader2, AlertTriangle, TriangleAlert, Check, ChevronDown, ChevronRight,
@@ -32,7 +33,7 @@ import {
  * module is built never to become.
  */
 
-const when = (v) => (v ? new Date(v).toLocaleDateString() : "-");
+const when = (v) => dateOf(v, "-");
 
 const EXPORT_COLUMNS = [
   { key: "sales_rep", label: "Sales rep" },

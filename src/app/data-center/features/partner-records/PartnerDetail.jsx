@@ -5,6 +5,8 @@ import { usePaged } from "../../lib/usePaged";
 import Pagination from "../../components/Pagination";
 import ExportButton from "../../components/ExportButton";
 import { plural } from "../../lib/plural";
+import { outcomeLabel, outcomeText } from "../../lib/outcome";
+import { dateOf as formatDate } from "../../lib/when";
 import { DigitisationSheetButton } from "./DigitisationSheet";
 import {
   Dialog,
@@ -35,18 +37,10 @@ import {
  * consignments is 1,600 rows nobody asked for if it all arrives at once.
  */
 
-const dateOf = (v) => (v ? new Date(v).toLocaleDateString() : "-");
+const dateOf = (v) => formatDate(v, "-");
 const NUMBER = new Intl.NumberFormat("en-NG");
 const n = (v) => NUMBER.format(Number(v ?? 0));
 
-const OUTCOME_TONE = {
-  fully_verified: "text-(--dc-accent)",
-  partially_verified: "text-amber-700",
-  unreachable: "text-orange-700",
-  not_verified: "text-gray-600",
-};
-
-const outcomeLabel = (v) => (v ? v.replace(/_/g, " ") : "nothing concluded");
 
 const BATCH_COLUMNS = [
   { key: "transaction_id", label: "Reference" },
@@ -58,7 +52,7 @@ const BATCH_COLUMNS = [
   { key: "received_count", label: "Received" },
   { key: "digitalised_count", label: "Digitalised" },
   { key: "verified_count", label: "Verified" },
-  { key: "unverified_count", label: "Unverified" },
+  { key: "unverified_count", label: "Partly verified" },
   { key: "unreachable_count", label: "Unreachable" },
   { key: "unresolved_count", label: "Yet to be resolved" },
   { key: "outstanding_count", label: "Outstanding" },
@@ -404,7 +398,7 @@ function BatchLevel({ batch, onStove }) {
                   </td>
                   <td
                     className={`px-3 py-2 text-xs font-medium ${
-                      OUTCOME_TONE[x.verification_outcome] ?? "text-gray-500"
+                      outcomeText(x.verification_outcome)
                     }`}
                   >
                     {x.sale_id ? outcomeLabel(x.verification_outcome) : "-"}
@@ -528,7 +522,7 @@ function StoveLevel({ stoveId }) {
             <Detail
               label="Outcome"
               value={
-                <span className={OUTCOME_TONE[s.verification_outcome] ?? "text-gray-600"}>
+                <span className={outcomeText(s.verification_outcome)}>
                   {outcomeLabel(s.verification_outcome)}
                 </span>
               }

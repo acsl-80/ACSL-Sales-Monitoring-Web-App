@@ -88,7 +88,7 @@ test.describe("slice 4: a call centre save completes", () => {
       );
       await signIn(page, USERS.admin);
       await openRecord(page, r.end_user_name, "partially_verified");
-      await page.getByRole("button", { name: "Fully verified" }).click();
+      await page.getByRole("button", { name: "Verified", exact: true }).click();
       await page.getByRole("button", { name: "Save", exact: true }).click();
 
       // The whole point. Old code: "why_not_verified does not apply to this record".

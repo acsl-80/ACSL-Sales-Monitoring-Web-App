@@ -103,7 +103,7 @@ test("a batch whose records are all concluded closes itself and leaves the agent
   expect(SAFE_ID.test(seed.batch_id)).toBe(true);
   try {
     await signIn(page, USERS.callCentre);
-    await conclude(page, seed.sales[0].end_user_name, "Fully verified");
+    await conclude(page, seed.sales[0].end_user_name, "Verified");
     expect((await batchState(seed.batch_id)).state, "one of two concluded: still open").toBe("open");
     await conclude(page, seed.sales[1].end_user_name, "Unreachable");
 

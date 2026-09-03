@@ -60,7 +60,7 @@ function FunnelBar({ row }) {
       aria-hidden="true"
     >
       {seg(row.verified_count, "bg-(--dc-primary)", "Verified")}
-      {seg(row.unverified_count, "bg-amber-500", "Unverified")}
+      {seg(row.unverified_count, "bg-amber-500", "Partly verified")}
       {seg(row.unreachable_count, "bg-orange-500", "Unreachable")}
       {seg(row.unresolved_count, "bg-gray-400", "Yet to be resolved")}
     </span>
@@ -92,7 +92,7 @@ const EXPORT_COLUMNS = [
   { key: "received_is_logged", label: "Received was logged" },
   { key: "digitalised_count", label: "Digitalised" },
   { key: "verified_count", label: "Verified" },
-  { key: "unverified_count", label: "Unverified" },
+  { key: "unverified_count", label: "Partly verified" },
   { key: "unreachable_count", label: "Unreachable" },
   { key: "unresolved_count", label: "Yet to be resolved" },
   { key: "outstanding_count", label: "Outstanding" },

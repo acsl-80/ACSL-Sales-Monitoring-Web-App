@@ -5,8 +5,9 @@ import CallRecordEditor from "./CallRecordEditor";
 import { plural } from "../../lib/plural";
 import {
   Headphones, Loader2, AlertTriangle, PhoneCall, ChevronRight, ShieldAlert,
-  Check, CircleDashed, PenLine,
+  Check, CircleDashed, PenLine, Undo2,
 } from "lucide-react";
+import { dateOf as formatDate } from "../../lib/when";
 
 /**
  * What a call agent sees when they sit down.
@@ -27,7 +28,7 @@ import {
  * top to bottom is working in the right order.
  */
 
-const dateOf = (v) => (v ? new Date(v).toLocaleDateString() : null);
+const dateOf = (v) => formatDate(v, null);
 
 /** Where a record sits, and how urgent that makes it. */
 function standing(item) {
@@ -53,6 +54,14 @@ function standing(item) {
   }
   if (!item.attempt_count) {
     return { rank: 2, label: "Not called yet", tone: "bg-blue-100 text-blue-800", icon: CircleDashed };
+  }
+  /*
+   * Sent back to Sales: the caller found the receipt wrong and the record is
+   * in Sales' queue until it is fixed. Nothing for the agent to do on it, so
+   * it sits with the other waiting work rather than reading as a call to make.
+   */
+  if (item.correction_state === "open") {
+    return { rank: 3, label: "Sent back to Sales", tone: "bg-red-100 text-red-700", icon: Undo2 };
   }
   if (item.verification_outcome === "fully_verified") {
     return { rank: 5, label: "Verified", tone: "bg-(--dc-accent-soft) text-(--dc-accent-strong)", icon: Check };

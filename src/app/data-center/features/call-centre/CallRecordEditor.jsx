@@ -4,6 +4,8 @@ import AgentBrief from "./AgentBrief";
 import SerialRematch from "./SerialRematch";
 import Link from "@/compat/Link";
 import { dataCenterWrite, DataCenterError } from "../../lib/client";
+import { OUTCOME_WORDS, OUTCOME_PILL } from "../../lib/outcome";
+import { dateOf, whenOf } from "../../lib/when";
 import FieldRenderer, { isFieldVisible } from "./FieldRenderer";
 import {
   Dialog,
@@ -30,17 +32,13 @@ import {
  * "questions".
  */
 
-const OUTCOMES = [
-  { value: "not_verified", label: "Not verified", tone: "bg-gray-100 text-gray-700" },
-  { value: "partially_verified", label: "Partially verified", tone: "bg-amber-100 text-amber-800" },
-  { value: "fully_verified", label: "Fully verified", tone: "bg-(--dc-primary)/10 text-(--dc-accent)" },
-  /*
-    Nobody could reach this buyer, which is a conclusion and not a blank. It
-    was missing here and refused by the write endpoint, so the scorecard column
-    counting it could never be anything but zero.
-  */
-  { value: "unreachable", label: "Unreachable", tone: "bg-orange-100 text-orange-800" },
-];
+// One vocabulary and one set of tones for the four outcomes, from lib/outcome.
+// Unreachable is a conclusion and not a blank: nobody could reach this buyer.
+const OUTCOMES = ["not_verified", "partially_verified", "fully_verified", "unreachable"].map((value) => ({
+  value,
+  label: OUTCOME_WORDS[value],
+  tone: OUTCOME_PILL[value],
+}));
 
 // The record's own fields, as opposed to registry questions. Grouped so the
 // editor reads like the call rather than like the table.
@@ -387,7 +385,7 @@ export default function CallRecordEditor({ saleId, canEdit, onClose, onSaved }) 
                   : `${draft.saved_by_name ?? "Somebody"} started this and did not finish.`}
               </span>{" "}
               Their answers are in the form below, from{" "}
-              {new Date(draft.saved_at).toLocaleString()}. Nothing has been saved
+              {whenOf(draft.saved_at)}. Nothing has been saved
               to the record yet.
               {/*
                 The version the draft was typed against, checked out loud. A
@@ -566,7 +564,7 @@ export default function CallRecordEditor({ saleId, canEdit, onClose, onSaved }) 
                         #{a.attempt_no}
                       </span>
                       <span className="shrink-0 text-xs text-gray-500">
-                        {new Date(a.attempted_at).toLocaleDateString()}
+                        {whenOf(a.attempted_at)}
                       </span>
                       <span className="min-w-0 flex-1 truncate">{a.outcome ?? "no outcome recorded"}</span>
                       {a.answered_by && (
@@ -639,9 +637,7 @@ export default function CallRecordEditor({ saleId, canEdit, onClose, onSaved }) 
                 <div className="flex items-center justify-between gap-3">
                   <p className="text-sm text-amber-800">
                     Waiting on Sales since{" "}
-                    {record?.correction_requested_at
-                      ? new Date(record.correction_requested_at).toLocaleDateString()
-                      : "—"}
+                    {dateOf(record?.correction_requested_at)}
                     {record?.correction_reason ? ` · ${record.correction_reason}` : ""}
                   </p>
                   {canEdit && (

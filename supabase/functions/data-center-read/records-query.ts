@@ -202,6 +202,9 @@ const CALL_CENTER_COLUMNS = [
   "stated_serial",
   "serial_matches",
   "phone_was_corrected",
+  // The preset "Stove ID unconfirmed" filters on this; the row now carries
+  // it too, so the serial can wear the mark in the list (slice 7a).
+  "serial_unconfirmed_at::text as serial_unconfirmed_at",
   "answers",
   "other_comments",
   "correction_state",

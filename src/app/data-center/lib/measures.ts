@@ -62,7 +62,7 @@ export const MEASURES = {
       "Records the call centre confirmed with the end user. Was called 'Fully verified' on the dashboard.",
   },
   unverified: {
-    label: "Unverified",
+    label: "Partly verified",
     definition: "Received and called, but not confirmed.",
   },
   unreachable: {

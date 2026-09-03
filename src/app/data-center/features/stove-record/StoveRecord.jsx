@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import Link from "@/compat/Link";
 import { dataCenterClient, DataCenterError } from "../../lib/client";
 import { plural } from "../../lib/plural";
+import { dateOf as formatDate, whenOf } from "../../lib/when";
 import ExportButton from "../../components/ExportButton";
 import { journeyOf, REACHED, TROUBLE } from "./journey";
 import {
@@ -36,8 +37,8 @@ import {
 const NUMBER = new Intl.NumberFormat("en-NG");
 const n = (v) => (v == null || v === "" ? null : NUMBER.format(Number(v)));
 const money = (v) => (v == null || v === "" ? null : `₦${NUMBER.format(Number(v))}`);
-const dateOf = (v) => (v ? new Date(v).toLocaleDateString() : null);
-const stamp = (v) => (v ? new Date(v).toLocaleString() : null);
+const dateOf = (v) => formatDate(v, null);
+const stamp = (v) => whenOf(v, null);
 const yesNo = (v) => (v == null ? null : v ? "Yes" : "No");
 const words = (v) => (v ? String(v).replace(/_/g, " ") : null);
 

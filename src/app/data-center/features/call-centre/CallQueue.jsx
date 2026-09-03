@@ -4,6 +4,8 @@ import { usePeriod } from "../../lib/usePeriod";
 import { useRecords, PAGE_SIZE } from "../../lib/useRecords";
 import { useIsPhone } from "../../lib/useMediaQuery";
 import { plural } from "../../lib/plural";
+import { outcomeLabel, outcomePill, CORRECTION_WORDS } from "../../lib/outcome";
+import { dateOf } from "../../lib/when";
 import { useVirtualRows } from "../../lib/useVirtualRows";
 import CallRecordEditor from "./CallRecordEditor";
 import { Loader2, AlertTriangle, Search, X, PhoneCall, Filter } from "lucide-react";
@@ -40,12 +42,6 @@ const COLUMNS = [
   { key: "correction_state", label: "Correction", width: "108px" },
 ];
 
-const OUTCOME_TONE = {
-  fully_verified: "bg-(--dc-primary)/10 text-(--dc-accent)",
-  partially_verified: "bg-amber-100 text-amber-800",
-  not_verified: "bg-gray-100 text-gray-600",
-};
-
 const CORRECTION_TONE = {
   open: "bg-red-100 text-red-700",
   resolved: "bg-blue-100 text-blue-700",
@@ -63,17 +59,17 @@ function PhoneRow({ row }) {
   return (
     <div className="flex w-full min-w-0 flex-col justify-center gap-1 px-4 py-2">
       <div className="flex items-baseline gap-2">
-        <span className="min-w-0 flex-1 truncate font-medium text-gray-900">
-          {row.end_user_name ?? "Unnamed"}
+        <span className="min-w-0 flex-1 font-medium text-gray-900">
+          <Cell row={row} column={{ key: "end_user_name" }} />
         </span>
         <span className="shrink-0 text-xs text-gray-400">
           {cellValue(row, "sales_date")}
         </span>
       </div>
       <div className="flex items-center gap-2 text-xs text-gray-500">
-        <span className="truncate font-mono">{cellValue(row, "stove_serial_no")}</span>
+        <Cell row={row} column={{ key: "stove_serial_no" }} />
         <span aria-hidden="true">·</span>
-        <span className="truncate">{cellValue(row, "primary_phone")}</span>
+        <Cell row={row} column={{ key: "primary_phone" }} />
       </div>
       <div className="flex flex-wrap items-center gap-1.5">
         <Cell row={row} column={{ key: "verification_outcome" }} />
@@ -100,7 +96,7 @@ const PRESETS = [
   { key: "todo", label: "Never called", filters: { hasCallRecord: false } },
   {
     key: "unresolved",
-    label: "Still to verify",
+    label: "Yet to be resolved",
     filters: { verificationOutcome: "not_verified" },
   },
   {
@@ -131,22 +127,54 @@ const PRESETS = [
   { key: "unconfirmed", label: "Stove ID unconfirmed", filters: { serialUnconfirmed: true } },
 ];
 
+/*
+ * What a cell says. The buyer's name and phone are what the caller
+ * established (the resolved values), not what the receipt said; the outcome
+ * is its one word from lib/outcome; a date is said the module's way.
+ */
 function cellValue(row, key) {
+  if (key === "end_user_name") return row.resolved_end_user_name ?? row.end_user_name ?? "—";
+  if (key === "primary_phone") return row.resolved_phone ?? row.primary_phone ?? "—";
+  if (key === "sales_date") return dateOf(row.sales_date);
+  if (key === "verification_outcome") return outcomeLabel(row.verification_outcome);
+  if (key === "correction_state") return CORRECTION_WORDS[row.correction_state ?? "none"] || "—";
   const raw = row[key];
   if (raw === null || raw === undefined || raw === "") return key === "attempt_count" ? "0" : "—";
-  if (key === "verification_outcome" || key === "correction_state") {
-    return String(raw).replace(/_/g, " ");
-  }
   return String(raw);
+}
+
+/** The receipt said something else; the caller corrected it. */
+function CorrectedMark({ receipt }) {
+  return (
+    <span
+      title={`Corrected by the call centre; the receipt said ${receipt ?? "nothing"}`}
+      className="shrink-0 rounded-full bg-blue-100 px-1.5 text-[10px] font-medium text-blue-800"
+    >
+      corrected
+    </span>
+  );
+}
+
+/** Another caller's rematch took this stove ID; the buyer has not confirmed it. */
+function UnconfirmedMark() {
+  return (
+    <span
+      title="This stove ID was taken by another caller's record; confirm it with the buyer"
+      className="shrink-0 rounded-full bg-red-100 px-1.5 text-[10px] font-medium text-red-800"
+    >
+      unconfirmed
+    </span>
+  );
 }
 
 function Cell({ row, column }) {
   const value = cellValue(row, column.key);
   if (column.key === "verification_outcome") {
-    const tone = OUTCOME_TONE[row.verification_outcome ?? "not_verified"];
     return (
-      <span className={`inline-block truncate rounded-full px-2 py-0.5 text-xs font-medium ${tone}`}>
-        {row.verification_outcome ? value : "not verified"}
+      <span
+        className={`inline-block truncate rounded-full px-2 py-0.5 text-xs font-medium ${outcomePill(row.verification_outcome)}`}
+      >
+        {value}
       </span>
     );
   }
@@ -156,6 +184,26 @@ function Cell({ row, column }) {
     return (
       <span className={`inline-block rounded-full px-2 py-0.5 text-xs font-medium ${CORRECTION_TONE[state]}`}>
         {value}
+      </span>
+    );
+  }
+  if (column.key === "end_user_name" || column.key === "primary_phone") {
+    const isName = column.key === "end_user_name";
+    const corrected = isName
+      ? Boolean(row.was_corrected && row.corrected_end_user_name)
+      : Boolean(row.phone_was_corrected);
+    return (
+      <span className="flex min-w-0 items-center gap-1">
+        <span className="truncate">{value}</span>
+        {corrected && <CorrectedMark receipt={isName ? row.end_user_name : row.primary_phone} />}
+      </span>
+    );
+  }
+  if (column.key === "stove_serial_no") {
+    return (
+      <span className="flex min-w-0 items-center gap-1">
+        <span className="truncate font-mono">{value}</span>
+        {row.serial_unconfirmed_at && <UnconfirmedMark />}
       </span>
     );
   }
@@ -361,7 +409,7 @@ export default function CallQueue({ canEdit, drill = null }) {
                       key={row.sale_id}
                       type="button"
                       onClick={() => setOpenSale(row.sale_id)}
-                      aria-label={`Open call record for ${row.end_user_name ?? row.stove_serial_no ?? row.sale_id}`}
+                      aria-label={`Open call record for ${row.resolved_end_user_name ?? row.end_user_name ?? row.stove_serial_no ?? row.sale_id}`}
                       className="flex w-full border-b border-gray-100 text-left text-sm text-gray-700 transition hover:bg-(--dc-accent-soft)/50"
                       style={{ height: rowHeight }}
                     >

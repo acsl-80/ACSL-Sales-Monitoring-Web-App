@@ -4,6 +4,7 @@ import { dataCenterDashboard, DataCenterError } from "../../lib/client";
 import Scorecard, { scorecardRows } from "./Scorecard";
 import ExportScorecards from "./ExportScorecards";
 import { MEASURES, SCOPES, withScope, explain } from "../../lib/measures";
+import { wordsFor } from "../../lib/outcome";
 import { usePeriod } from "../../lib/usePeriod";
 import PeriodFilter from "../../components/PeriodFilter";
 import {
@@ -127,6 +128,7 @@ function Card({ label, value: v, hint, skin = "neutral", to, search, arrow }) {
 const BAR_TONES = {
   fully_verified: "bg-(--dc-primary)",
   partially_verified: "bg-amber-500",
+  unreachable: "bg-orange-500",
   not_verified: "bg-gray-400",
   never_called: "bg-gray-300",
   sold: "bg-(--dc-primary)",
@@ -147,7 +149,7 @@ function Bars({ title, data, subtitle, emptyText, linkFor }) {
   const rowBody = (d) => (
     <>
       <span className="w-32 shrink-0 truncate text-gray-700 sm:w-40" title={d.label}>
-        {d.label.replace(/_/g, " ")}
+        {wordsFor(d.label)}
       </span>
       <span className="h-4 min-w-0 flex-1 overflow-hidden rounded bg-gray-100">
         <span
@@ -188,7 +190,7 @@ function Bars({ title, data, subtitle, emptyText, linkFor }) {
                 <Link
                   to={target.to}
                   search={target.search ?? {}}
-                  aria-label={`${d.label.replace(/_/g, " ")}: ${NUMBER.format(d.value)}. See the records`}
+                  aria-label={`${wordsFor(d.label)}: ${NUMBER.format(d.value)}. See the records`}
                   className="flex items-center gap-2 rounded-md px-1.5 py-1 text-sm transition hover:bg-(--dc-accent-soft)/60 focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-(--dc-accent)"
                 >
                   {rowBody(d)}
@@ -359,7 +361,7 @@ export default function Dashboard({ canRun }) {
       ? { to: "/data-center/call-centre", search: { preset: "todo" } }
       : {
         to: "/data-center/call-centre",
-        search: { verificationOutcome: d.label, label: d.label.replace(/_/g, " ") },
+        search: { verificationOutcome: d.label, label: wordsFor(d.label) },
       };
 
   const linkPartner = (d) =>
@@ -509,7 +511,7 @@ export default function Dashboard({ canRun }) {
               hint={MEASURES.unverified.definition}
               skin="unverified"
               to="/data-center/call-centre"
-              search={{ status: "unverified", label: "Unverified" }}
+              search={{ status: "unverified", label: "Partly verified" }}
             />
           </div>
 
