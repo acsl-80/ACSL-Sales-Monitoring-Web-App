@@ -534,56 +534,6 @@ class AdminSalesService {
   }
 
   // Get full sales data for CSV export (includes address + cooking fields)
-  async getSalesForExport({
-    search,
-    paymentStatus,
-    dateFrom,
-    dateTo,
-    state,
-    lga,
-    organizationId,
-    createdBy,
-  } = {}) {
-    try {
-      const body = {
-        page: 1,
-        limit: 2000,
-        responseFormat: "format2",
-        includeAddress: true,
-        includeCreator: true,
-        ...(search ? { search } : {}),
-        ...(paymentStatus && paymentStatus !== "all" ? { paymentStatus } : {}),
-        ...(dateFrom ? { dateFrom } : {}),
-        ...(dateTo ? { dateTo } : {}),
-        ...(state && state !== "all" ? { state } : {}),
-        ...(lga && lga !== "all" ? { lga } : {}),
-        ...(organizationId && organizationId !== "all" ? { organizationId } : {}),
-        ...(createdBy ? { createdBy } : {}),
-      };
-
-      const response = await fetch(
-        `${API_FUNCTIONS_URL}/get-sales-advanced`,
-        {
-          method: "POST",
-          headers: await this.getHeaders(),
-          body: JSON.stringify(body),
-        }
-      );
-
-      if (!response.ok) {
-        const errorData = await response.json().catch(() => ({}));
-        throw new Error(errorData.message || `HTTP ${response.status}: ${response.statusText}`);
-      }
-
-      const result = await response.json();
-      if (!result.success) throw new Error(result.message || "Failed to fetch export data");
-
-      return { success: true, data: result.data || [] };
-    } catch (error) {
-      console.error("Error fetching sales for export:", error);
-      return { success: false, data: [], error: error.message };
-    }
-  }
 
   // Log sales activity
   async logSalesActivity(saleId, activityType, description, metadata = null) {

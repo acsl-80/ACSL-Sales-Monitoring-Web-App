@@ -8,11 +8,11 @@ import RecordPaymentModal from "../sales/RecordPaymentModal";
 import AdminSalesDetailModal from "../sales/AdminSalesDetailModal";
 import { useToastNotification } from "@/app/contexts/useToastNotification";
 import { AdminSales } from "@/types/adminSales";
-import adminSalesService from "../../../services/adminSalesService";
 import { Loader2 } from "lucide-react";
 import { lgaAndStates } from "../../../constants";
 import paymentModelService from "../../../services/paymentModelService";
-import { DEFAULT_PAGE_SIZE, useSalesReport } from "./useSalesReport";
+import { DEFAULT_PAGE_SIZE, buildReportRequest, useSalesReport } from "./useSalesReport";
+import { fetchAllSalesForExport, type ExportProgress } from "./exportSalesReport";
 import { toFinancialSummary, toTrackingCounts } from "./salesReportSummary";
 
 /*
@@ -116,6 +116,7 @@ const FinancialReportsView: React.FC<FinancialReportsViewProps> = ({
     [externalSelectedYear, internalSelectedYears],
   );
   const [exporting, setExporting] = useState(false);
+  const [exportProgress, setExportProgress] = useState<ExportProgress | null>(null);
   const { toast } = useToastNotification();
 
   const stateList = useMemo(() => Object.keys(lgaAndStates).sort(), []);
@@ -126,8 +127,8 @@ const FinancialReportsView: React.FC<FinancialReportsViewProps> = ({
 
   // One request per page, with every filter the server understands. The
   // years the scope covers and the partners it holds come back with it.
-  const report = useSalesReport(
-    {
+  const reportFilters = useMemo(
+    () => ({
       search: searchTerm,
       paymentStatus: paymentStatusFilter,
       startDate,
@@ -146,9 +147,29 @@ const FinancialReportsView: React.FC<FinancialReportsViewProps> = ({
       sortOrder,
       page: currentPage,
       pageSize,
-    },
-    reloadKey,
+    }),
+    [
+      searchTerm,
+      paymentStatusFilter,
+      startDate,
+      endDate,
+      viewFrom,
+      selectedState,
+      selectedLGA,
+      orgFilter,
+      approvalFilter,
+      salesModelFilter,
+      selectedMonth,
+      yearFilter,
+      selectedYears,
+      externalAvailableYears,
+      trackingFilter,
+      sortOrder,
+      currentPage,
+      pageSize,
+    ],
   );
+  const report = useSalesReport(reportFilters, reloadKey);
 
   const availableYears = useMemo(() => {
     if (externalAvailableYears) return externalAvailableYears;
@@ -227,46 +248,33 @@ const FinancialReportsView: React.FC<FinancialReportsViewProps> = ({
     setTrackingFilter("none");
   };
 
+  /*
+   * The export is the screen: the same request the table sends, every page
+   * of it, so the file holds what the filters allow and not the first five
+   * hundred of it. Past the ceiling the file is delivered and says so.
+   */
   const handleExport = async () => {
     try {
       setExporting(true);
-
-      const result = await (adminSalesService as any).getSalesForExport({
-        search: searchTerm || undefined,
-        paymentStatus: paymentStatusFilter !== "all" ? paymentStatusFilter : undefined,
-        dateFrom: startDate || undefined,
-        dateTo: endDate || undefined,
-        state: selectedState !== "all" ? selectedState : undefined,
-        lga: selectedLGA !== "all" ? selectedLGA : undefined,
-        organizationId: orgFilter !== "all" ? orgFilter : undefined,
+      setExportProgress(null);
+      const { rows, total, truncated } = await fetchAllSalesForExport(buildReportRequest(reportFilters), {
+        onProgress: setExportProgress,
       });
-
-      if (!result.success || !result.data?.length) {
+      if (rows.length === 0) {
         toast.warning("Nothing to export", "No sales match the current filters.");
         return;
       }
-
-      let exportData = result.data;
-      if (approvalFilter !== "all") {
-        exportData = exportData.filter((s: any) =>
-          approvalFilter === "approved" ? s.agent_approved : !s.agent_approved,
-        );
-      }
-      if (salesModelFilter !== "all") {
-        exportData = exportData.filter((s: any) => s.payment_model_id === salesModelFilter);
-      }
-      if (selectedYears.length > 0 && selectedYears.length < availableYears.length) {
-        exportData = exportData.filter((s: any) => {
-          const d = s.sales_date || s.created_at;
-          return d && selectedYears.includes(new Date(d).getFullYear());
-        });
-      }
-
       const { exportSalesDataToCSV } = await import("@/utils/csvExportUtils");
-      exportSalesDataToCSV(exportData, `sales-export-${new Date().toISOString().slice(0, 10)}.csv`);
+      exportSalesDataToCSV(rows, `sales-export-${new Date().toISOString().slice(0, 10)}.csv`);
+      if (truncated) {
+        toast.warning(
+          "The export was cut at its ceiling",
+          `${rows.length.toLocaleString("en-NG")} of ${total.toLocaleString("en-NG")} matching sales are in the file. Narrow the filters to export the rest.`,
+        );
+      } else {
+        toast.success("Export ready", `${rows.length.toLocaleString("en-NG")} sales in the file.`);
+      }
     } catch (err) {
-      // A try/finally with no catch: the spinner stopped and nothing else
-      // happened, and the rejection went unhandled.
       console.error("Sales export failed:", err);
       toast.error(
         "The export did not run",
@@ -274,25 +282,14 @@ const FinancialReportsView: React.FC<FinancialReportsViewProps> = ({
       );
     } finally {
       setExporting(false);
+      setExportProgress(null);
     }
   };
 
   useEffect(() => {
     if (onExportReady) onExportReady(handleExport);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [
-    searchTerm,
-    paymentStatusFilter,
-    startDate,
-    endDate,
-    selectedState,
-    selectedLGA,
-    orgFilter,
-    approvalFilter,
-    salesModelFilter,
-    selectedYears,
-    availableYears,
-  ]);
+  }, [reportFilters]);
 
   const handlePaymentSuccess = () => {
     setPaymentModalSale(null);
@@ -383,7 +380,13 @@ const FinancialReportsView: React.FC<FinancialReportsViewProps> = ({
             onToggleSort={() => setSortOrder((prev) => (prev === "asc" ? "desc" : "asc"))}
             viewFrom={viewFrom === "acsl_agent" ? "agent" : viewFrom}
           />
-          <span className="sr-only">{exporting ? "Exporting" : ""}</span>
+          {exporting && (
+            <p role="status" className="text-sm text-gray-600">
+              {exportProgress
+                ? `Exporting ${exportProgress.fetched.toLocaleString("en-NG")} of ${exportProgress.total.toLocaleString("en-NG")} sales...`
+                : "Preparing the export..."}
+            </p>
+          )}
         </>
       )}
 
