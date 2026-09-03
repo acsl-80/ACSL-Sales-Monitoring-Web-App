@@ -77,8 +77,8 @@ export default defineConfig(async ({ command, mode }) => {
        * the router or the Supabase client made Rolldown 1.1 fold them into
        * the entry. Grouping the lazy libraries (recharts, jspdf, deck.gl)
        * made the entry import each group statically through one shared
-       * helper folded into it, and the first paint went from 697 KB to
-       * 1,699 KB. Those libraries already load lazily on their own.
+       * helper folded into it, and the entry's static closure went from
+       * 692 KB to 1,699 KB. Those libraries already load lazily on their own.
        */
       environments: {
         client: {
