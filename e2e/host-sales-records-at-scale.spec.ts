@@ -126,8 +126,14 @@ test("paging is the server's: page two is a second request for the next two hund
 
   await page.getByRole("button", { name: /^Next/ }).click();
   await expect(page.getByText(/201–400 of/)).toBeVisible({ timeout: 30_000 });
-  const firstOfPageTwo = await page.locator("tbody tr").first().innerText();
-  expect(firstOfPageTwo, "page two should show different sales").not.toBe(firstOfPageOne);
+  // The footer follows the page state at once; the rows keep the previous
+  // page in place until the next one arrives, on purpose. Wait for the rows.
+  await expect
+    .poll(() => page.locator("tbody tr").first().innerText(), {
+      timeout: 30_000,
+      message: "page two should show different sales",
+    })
+    .not.toBe(firstOfPageOne);
 
   const pageTwo = bodies.find((b) => Number(b.page) === 2 && Number(b.limit) === 200);
   expect(pageTwo, "page two should be a request for page 2 with a limit of 200").toBeTruthy();
