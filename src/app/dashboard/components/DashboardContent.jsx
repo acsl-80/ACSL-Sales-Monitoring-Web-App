@@ -58,6 +58,7 @@ import { Calendar } from "@/components/ui/calendar";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { format, parseISO } from "date-fns";
 import PageHeader from "../../components/PageHeader";
+import { formatCurrency as formatCurrencyShared } from "@/app/utils/formatCurrency";
 
 const CURRENT_YEAR = new Date().getFullYear();
 const YEARS = Array.from({ length: CURRENT_YEAR - 2023 }, (_, i) => 2024 + i);
@@ -82,7 +83,7 @@ const PIE_COLORS = ["#10b981", "#3b82f6", "#8b5cf6", "#f59e0b", "#ef4444", "#06b
 const NIGERIAN_STATES = Object.keys(lgaAndStates).sort();
 
 // Full comma-formatted amount — no K/M abbreviation
-const formatCurrency = (value) => `₦${Math.round(value ?? 0).toLocaleString()}`;
+const formatCurrency = (v) => formatCurrencyShared(v, { empty: "₦0" });
 
 const KPI_CONFIG = [
   {

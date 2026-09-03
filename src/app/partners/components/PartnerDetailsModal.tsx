@@ -8,6 +8,7 @@ import {
 } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Building2, MapPin, Phone, Mail, User, Calendar, GitBranch, Package, ShoppingCart, Boxes } from "lucide-react";
+import { formatDate as formatDateShared } from "@/app/utils/formatDate";
 
 interface PartnerDetailsModalProps {
   partner: {
@@ -61,14 +62,7 @@ const SectionCard = ({
 );
 
 const PartnerDetailsModal: React.FC<PartnerDetailsModalProps> = ({ partner, onClose }) => {
-  const formatDate = (dateStr: string) =>
-    new Date(dateStr).toLocaleString("en-GB", {
-      day: "2-digit",
-      month: "short",
-      year: "numeric",
-      hour: "2-digit",
-      minute: "2-digit",
-    });
+  const formatDate = (v: unknown) => formatDateShared(v, { time: true });
 
   return (
     <Dialog open onOpenChange={onClose}>

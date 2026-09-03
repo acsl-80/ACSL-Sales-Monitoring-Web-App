@@ -14,6 +14,7 @@ import {
   Trash2,
   X,
 } from "lucide-react";
+import { formatDate as formatDateShared } from "@/app/utils/formatDate";
 
 const OrganizationDetailSidebar = ({
   organization,
@@ -24,20 +25,7 @@ const OrganizationDetailSidebar = ({
 }) => {
   if (!organization) return null;
 
-  const formatDate = (dateString) => {
-    if (!dateString) return "N/A";
-    try {
-      return new Date(dateString).toLocaleDateString("en-US", {
-        year: "numeric",
-        month: "long",
-        day: "numeric",
-        hour: "2-digit",
-        minute: "2-digit",
-      });
-    } catch (error) {
-      return "Invalid Date";
-    }
-  };
+  const formatDate = (v) => formatDateShared(v, { style: "long", time: true });
 
   return (
     <Modal

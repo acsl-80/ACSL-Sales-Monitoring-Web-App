@@ -17,15 +17,25 @@ type DashboardLayoutProps = {
   rightButton?: React.ReactNode;
 };
 
-// Context flag: if a parent DashboardLayout is already mounted (e.g. the
-// app-level shell in __root), nested usage renders children as a passthrough
-// so the sidebar/topnav don't tear down on every navigation.
-const LayoutMountedContext = createContext(false);
+/**
+ * The shell is mounted once, in __root, so the sidebar and top bar do not
+ * tear down on every navigation. A page's own <DashboardLayout> is nested
+ * inside it and used to render its children as a passthrough, which dropped
+ * the title and the description on the floor: every page said "Dashboard" and
+ * nothing ever reached the top bar (slice 8a, finding F26). The nested layout
+ * now publishes what it was given to the shell, and takes it back on unmount.
+ */
+type PageMeta = { title?: string; description?: string };
+type LayoutContextValue = { mounted: boolean; setMeta: (meta: PageMeta) => void };
+const LayoutContext = createContext<LayoutContextValue>({ mounted: false, setMeta: () => {} });
 
 const deriveCurrentRouteFromPath = (pathname: string): string => {
   const segments = pathname.split("/").filter(Boolean);
   if (segments.length === 0) return "dashboard";
-  if (segments[0] === "settings" && segments[1]) return segments[1];
+  // The Settings submenu's keys are "settings-<page>"; the derivation used to
+  // return the bare page segment, so no Settings entry ever highlighted.
+  if (segments[0] === "settings" && segments[1]) return `settings-${segments[1]}`;
+  if (segments[0] === "payment-models") return "settings-payment-models";
   if (segments[0] === "user-management" && segments[1] === "user-groups") {
     return "user-management-groups";
   }
@@ -65,27 +75,37 @@ const deriveCurrentRouteFromPath = (pathname: string): string => {
 const DashboardLayout = ({
   children,
   currentRoute,
-  title = "Dashboard",
+  title,
   description = "",
   rightButton = null,
 }: DashboardLayoutProps) => {
-  const alreadyMounted = useContext(LayoutMountedContext);
+  const shell = useContext(LayoutContext);
+  const [meta, setMeta] = useState<PageMeta>({});
 
-  if (alreadyMounted) {
+  // Nested inside the shell: hand it the page's words, and take them back when
+  // this page goes, so the next page without a title shows none rather than
+  // the last one's.
+  useEffect(() => {
+    if (!shell.mounted) return undefined;
+    shell.setMeta({ title, description });
+    return () => shell.setMeta({});
+  }, [shell, title, description]);
+
+  if (shell.mounted) {
     return <>{children}</>;
   }
 
   return (
-    <LayoutMountedContext.Provider value={true}>
+    <LayoutContext.Provider value={{ mounted: true, setMeta }}>
       <DashboardLayoutInner
         currentRoute={currentRoute}
-        title={title}
-        description={description}
+        title={meta.title ?? title}
+        description={meta.description ?? description}
         rightButton={rightButton}
       >
         {children}
       </DashboardLayoutInner>
-    </LayoutMountedContext.Provider>
+    </LayoutContext.Provider>
   );
 };
 
@@ -101,7 +121,9 @@ const DashboardLayoutInner = ({
   const [userProfile, setUserProfile] = useState<any>(null);
 
   const pathname = useRouterState({ select: (s) => s.location.pathname });
-  const activeRoute = currentRoute ?? deriveCurrentRouteFromPath(pathname);
+  // The path is the truth for what is highlighted; a page's own key is the
+  // fallback for a path the derivation does not know.
+  const activeRoute = deriveCurrentRouteFromPath(pathname) ?? currentRoute;
 
   useEffect(() => {
     const loadProfile = async () => {

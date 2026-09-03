@@ -16,6 +16,8 @@ import RecordPaymentModal from "./RecordPaymentModal";
 import { buildAgreementBlobUrl, downloadAgreementPDF } from "./agreement/AgreementPDFGenerator";
 import { useToastNotification } from "@/app/contexts/useToastNotification";
 import { formatPaymentMethod } from "@/app/utils/formatPaymentMethod";
+import { formatDate as formatDateShared } from "@/app/utils/formatDate";
+import { formatCurrency as formatCurrencyShared } from "@/app/utils/formatCurrency";
 
 interface InstallmentPayment {
   id: string;
@@ -132,17 +134,9 @@ const AdminSalesDetailModal: React.FC<AdminSalesDetailModalProps> = ({
     if (open && isInstallment) fetchInstallmentPayments();
   }, [open, isInstallment, fetchInstallmentPayments]);
 
-  const formatCurrency = (amount?: number | null) => {
-    if (amount === undefined || amount === null) return "N/A";
-    return `₦${Number(amount).toLocaleString("en-NG")}`;
-  };
+  const formatCurrency = (v: unknown) => formatCurrencyShared(v);
 
-  const formatDate = (dateStr?: string) => {
-    if (!dateStr) return "N/A";
-    return new Date(dateStr).toLocaleDateString("en-GB", {
-      day: "2-digit", month: "short", year: "numeric",
-    });
-  };
+  const formatDate = (v: unknown) => formatDateShared(v);
 
   const handlePaymentRecorded = () => {
     setShowRecordPayment(false);

@@ -18,6 +18,7 @@ import FinancialReportsView from "../../admin/components/financial-reports/Finan
 import adminSalesService from "../../services/adminSalesService";
 import superAdminAgentService from "../../services/superAdminAgentService";
 import { AdminSales } from "@/types/adminSales";
+import { formatDate as formatDateShared } from "@/app/utils/formatDate";
 
 const DARK_NAVY = "#07376a";
 
@@ -59,14 +60,7 @@ const statusBadge = (status: string) => {
   }
 };
 
-const fmtDate = (d?: string | null) => {
-  if (!d) return "—";
-  try {
-    return new Date(d).toLocaleDateString("en-GB", {
-      day: "2-digit", month: "2-digit", year: "numeric",
-    });
-  } catch { return "—"; }
-};
+const fmtDate = (v: unknown) => formatDateShared(v, { empty: "—", style: "numeric" });
 
 const PAGE_SIZE_OPTIONS = [10, 25, 50, 100];
 

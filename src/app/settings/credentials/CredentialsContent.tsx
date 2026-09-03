@@ -46,6 +46,7 @@ import ViewCredentialModal from "../../admin/components/credentials/ViewCredenti
 import ResetPasswordModal from "../../admin/components/credentials/ResetPasswordModal";
 import PageHeader from "../../components/PageHeader";
 import { useAuth } from "../../contexts/useAuth";
+import { formatDate as formatDateShared } from "@/app/utils/formatDate";
 
 type TabKey = "partners" | "saa" | "super-admins";
 
@@ -66,8 +67,7 @@ const TABS: { key: TabKey; label: string; icon: React.ElementType }[] = [
   { key: "super-admins", label: "Super Admins", icon: Shield },
 ];
 
-const formatDate = (d: string) =>
-  new Date(d).toLocaleDateString("en-GB", { day: "2-digit", month: "short", year: "numeric" });
+const formatDate = (v: unknown) => formatDateShared(v);
 
 // ── Shared ERP user-credentials table (SAA + Super Admin tabs) ────────────────
 const UserCredentialsSection = ({

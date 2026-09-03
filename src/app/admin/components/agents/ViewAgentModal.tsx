@@ -14,6 +14,8 @@ import {
   Edit,
 } from "lucide-react";
 import { SalesAgent } from "@/types/salesAgent";
+import { formatDate as formatDateShared } from "@/app/utils/formatDate";
+import { formatCurrency as formatCurrencyShared } from "@/app/utils/formatCurrency";
 
 interface ViewAgentModalProps {
   isOpen: boolean;
@@ -78,25 +80,9 @@ const ViewAgentModal: React.FC<ViewAgentModalProps> = ({
     }
   }, [isOpen]);
 
-  const formatDate = (dateString: string) => {
-    if (!dateString) return "N/A";
-    try {
-      return new Date(dateString).toLocaleDateString("en-GB", {
-        year: "numeric",
-        month: "short",
-        day: "numeric",
-      });
-    } catch (error) {
-      return "Invalid Date";
-    }
-  };
+  const formatDate = (v: unknown) => formatDateShared(v);
 
-  const formatCurrency = (amount: number) => {
-    return new Intl.NumberFormat("en-US", {
-      style: "currency",
-      currency: "NGN",
-    }).format(amount);
-  };
+  const formatCurrency = (v: unknown) => formatCurrencyShared(v);
 
   const getPasswordStatusBadge = (hasChanged: boolean | undefined) => {
     return hasChanged ? (

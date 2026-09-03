@@ -34,34 +34,16 @@ import {
   downloadAgreementPDF,
 } from "../admin/components/sales/agreement/AgreementPDFGenerator";
 import PdfImagePreview from "./PdfImagePreview";
+import { formatDate as formatDateShared } from "@/app/utils/formatDate";
+import { formatCurrency as formatCurrencyShared } from "@/app/utils/formatCurrency";
 
 
 const BRAND = "#4a5d0f";
 const BRAND_SOFT = "#eef3c4";
 
-const formatDate = (d) => {
-  if (!d) return "—";
-  try {
-    return new Date(d).toLocaleDateString("en-US", {
-      year: "numeric",
-      month: "long",
-      day: "numeric",
-    });
-  } catch {
-    return String(d);
-  }
-};
+const formatDate = (v) => formatDateShared(v, { empty: "—", style: "long" });
 
-const formatMoney = (v) => {
-  if (v === null || v === undefined || v === "") return "—";
-  const n = Number(v);
-  if (Number.isNaN(n)) return String(v);
-  return new Intl.NumberFormat("en-NG", {
-    style: "currency",
-    currency: "NGN",
-    maximumFractionDigits: 2,
-  }).format(n);
-};
+const formatMoney = (v) => formatCurrencyShared(v, { empty: "—" });
 
 const pick = (obj, keys) => {
   for (const k of keys) {

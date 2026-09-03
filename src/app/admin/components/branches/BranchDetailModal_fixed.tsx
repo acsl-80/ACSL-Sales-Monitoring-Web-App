@@ -8,6 +8,7 @@ import {
 import { Badge } from "@/components/ui/badge";
 import type { Branch } from "@/types/branches";
 import { Building2, MapPin, User, Calendar, Mail } from "lucide-react";
+import { formatDate as formatDateShared } from "@/app/utils/formatDate";
 
 interface BranchDetailModalProps {
   open: boolean;
@@ -22,20 +23,7 @@ const BranchDetailModal: React.FC<BranchDetailModalProps> = ({
 }) => {
   if (!branch) return null;
 
-  const formatDate = (dateString: string) => {
-    if (!dateString) return "N/A";
-    try {
-      return new Date(dateString).toLocaleDateString("en-US", {
-        year: "numeric",
-        month: "long",
-        day: "numeric",
-        hour: "2-digit",
-        minute: "2-digit",
-      });
-    } catch (error) {
-      return "Invalid Date";
-    }
-  };
+  const formatDate = (v: unknown) => formatDateShared(v, { style: "long", time: true });
 
   const InfoItem = ({
     icon: Icon,

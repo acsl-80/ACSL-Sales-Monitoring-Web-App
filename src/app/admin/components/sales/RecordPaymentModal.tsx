@@ -24,6 +24,7 @@ import {
   AlertCircle,
 } from "lucide-react";
 import paymentModelService from "../../../services/paymentModelService";
+import { formatCurrency as formatCurrencyShared } from "@/app/utils/formatCurrency";
 
 interface SaleSummary {
   transactionId?: string;
@@ -57,8 +58,7 @@ const RecordPaymentModal: React.FC<RecordPaymentModalProps> = ({
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
 
-  const formatCurrency = (val: number) =>
-    `₦${Number(val).toLocaleString("en-NG")}`;
+  const formatCurrency = (v: unknown) => formatCurrencyShared(v);
 
   const handleSave = async () => {
     setError("");

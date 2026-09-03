@@ -21,6 +21,7 @@ import {
 import PageHeader from "../components/PageHeader";
 import manageProfileService from "../services/manageProfileService";
 import ChangePasswordModal from "./components/ChangePasswordModal";
+import { formatDate as formatDateShared } from "@/app/utils/formatDate";
 
 interface ProfileData {
   profile: {
@@ -108,18 +109,7 @@ const formatRole = (role?: string) => {
     .join(" ");
 };
 
-const formatDate = (dateString?: string) => {
-  if (!dateString) return "N/A";
-  try {
-    return new Date(dateString).toLocaleDateString("en-GB", {
-      day: "2-digit",
-      month: "short",
-      year: "numeric",
-    });
-  } catch {
-    return "Invalid Date";
-  }
-};
+const formatDate = (v: unknown) => formatDateShared(v);
 
 // ── Page ─────────────────────────────────────────────────────────────────────
 

@@ -11,6 +11,8 @@ import { Badge } from "@/components/ui/badge";
 import { ArrowUpDown, ChevronLeft, ChevronRight, ChevronsLeft, ChevronsRight } from "lucide-react";
 import { AdminSales } from "@/types/adminSales";
 import FinancialReportRowActions from "./FinancialReportRowActions";
+import { formatDate as formatDateShared } from "@/app/utils/formatDate";
+import { formatCurrency as formatCurrencyShared } from "@/app/utils/formatCurrency";
 
 interface FinancialReportsTableProps {
   data: AdminSales[];
@@ -33,15 +35,9 @@ interface FinancialReportsTableProps {
   viewFrom?: "admin" | "superAdmin" | "agent";
 }
 
-const formatCurrency = (amount: number) =>
-  `₦${(amount ?? 0).toLocaleString("en-NG", { minimumFractionDigits: 0 })}`;
+const formatCurrency = (v: unknown) => formatCurrencyShared(v, { empty: "₦0" });
 
-const formatDate = (dateStr: string) => {
-  if (!dateStr) return "N/A";
-  return new Date(dateStr).toLocaleDateString("en-GB", {
-    day: "2-digit", month: "2-digit", year: "numeric",
-  });
-};
+const formatDate = (v: unknown) => formatDateShared(v, { style: "numeric" });
 
 // total_paid is what was actually collected, for outright sales too. Never
 // substitute `amount` here — that would report an underpaid sale as settled.

@@ -8,6 +8,7 @@ import {
 } from "@/components/ui/dialog";
 import { Loader2, AlertCircle, Building2, MapPin, Package, TrendingUp } from "lucide-react";
 import superAdminAgentService from "../../services/superAdminAgentService";
+import { formatDate as formatDateShared } from "@/app/utils/formatDate";
 
 interface Agent {
   id: string;
@@ -110,17 +111,7 @@ const ViewSuperAdminAgentModal: React.FC<ViewSuperAdminAgentModalProps> = ({
     fetchOrgs();
   }, [agent.id]);
 
-  const formatDate = (d: string) => {
-    try {
-      return new Date(d).toLocaleDateString("en-GB", {
-        day: "2-digit",
-        month: "short",
-        year: "numeric",
-      });
-    } catch {
-      return "N/A";
-    }
-  };
+  const formatDate = (v: unknown) => formatDateShared(v);
 
   const directOrgs = orgs.filter((o) => !o.source || o.source === "direct");
   const stateOrgs = orgs.filter((o) => o.source === "state");

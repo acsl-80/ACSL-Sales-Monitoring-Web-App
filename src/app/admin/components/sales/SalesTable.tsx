@@ -17,6 +17,7 @@ import {
 import { Eye, MoreVertical, Edit } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { AdminSales } from "@/types/adminSales";
+import { formatCurrency } from "@/app/utils/formatCurrency";
 
 const getPaymentStatusBadge = (sale: AdminSales) => {
   if (!sale.is_installment) return null;
@@ -35,7 +36,7 @@ const getPaymentStatusBadge = (sale: AdminSales) => {
           Partially Paid
         </Badge>
         <span className="text-xs text-gray-500">
-          ₦{(sale.total_paid ?? 0).toLocaleString()} / ₦{sale.amount.toLocaleString()}
+          {formatCurrency(sale.total_paid, { empty: "₦0" })} / {formatCurrency(sale.amount)}
         </span>
       </div>
     );

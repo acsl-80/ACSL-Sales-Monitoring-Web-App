@@ -24,6 +24,8 @@ import {
   Loader2,
   X,
 } from "lucide-react";
+import { formatDate as formatDateShared } from "@/app/utils/formatDate";
+import { formatCurrency as formatCurrencyShared } from "@/app/utils/formatCurrency";
 
 export default function SaleDetailPage() {
   const params = useParams();
@@ -96,29 +98,9 @@ export default function SaleDetailPage() {
     }
   }, [params.id]);
 
-  const formatDate = (dateString) => {
-    if (!dateString) return "N/A";
-    try {
-      return new Date(dateString).toLocaleDateString("en-US", {
-        year: "numeric",
-        month: "long",
-        day: "numeric",
-        hour: "2-digit",
-        minute: "2-digit",
-      });
-    } catch {
-      return "Invalid Date";
-    }
-  };
+  const formatDate = (v) => formatDateShared(v, { style: "long", time: true });
 
-  const formatCurrency = (amount) => {
-    if (!amount && amount !== 0) return "₦0.00";
-    return new Intl.NumberFormat("en-NG", {
-      style: "currency",
-      currency: "NGN",
-      minimumFractionDigits: 2,
-    }).format(amount);
-  };
+  const formatCurrency = (v) => formatCurrencyShared(v, { empty: "₦0" });
 
   const getStatusColor = (status) => {
     const colors = {

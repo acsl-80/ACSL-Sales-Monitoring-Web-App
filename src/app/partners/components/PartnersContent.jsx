@@ -76,6 +76,7 @@ import { Calendar as CalendarIcon } from "lucide-react";
 import { format, parseISO } from "date-fns";
 import { Calendar } from "@/components/ui/calendar";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { formatDate as formatDateShared } from "@/app/utils/formatDate";
 
 // ── Stove IDs Modal ──────────────────────────────────────────────────────────
 
@@ -164,11 +165,7 @@ const StoveIdsModal = ({ organization, isOpen, onClose, initialFilter = "all" })
     }
   };
 
-  const formatDate = (d) => {
-    if (!d) return "N/A";
-    try { return new Date(d).toLocaleDateString("en-GB", { day: "2-digit", month: "short", year: "numeric" }); }
-    catch { return "N/A"; }
-  };
+  const formatDate = (v) => formatDateShared(v);
 
   const filtered = stoveIds.filter((s) =>
     !search || s.stove_id?.toLowerCase().includes(search.toLowerCase())
@@ -455,11 +452,7 @@ export const StoveTransferHistoryModal = ({ organization, isOpen, onClose }) => 
     }
   };
 
-  const formatDate = (d) => {
-    if (!d) return "N/A";
-    try { return new Date(d).toLocaleDateString("en-GB", { day: "2-digit", month: "short", year: "numeric" }); }
-    catch { return "N/A"; }
-  };
+  const formatDate = (v) => formatDateShared(v);
 
   const SectionHeader = ({ title }) => (
     <div className="flex items-center justify-between border-b border-primary/20 pb-0.5 mb-2">
@@ -792,11 +785,7 @@ const SectionCard = ({ title, children }) => (
 
 const PartnerDetailModal = ({ organization, isOpen, onClose, onEdit }) => {
   if (!organization) return null;
-  const formatDate = (d) => {
-    if (!d) return "N/A";
-    try { return new Date(d).toLocaleDateString("en-GB", { day: "2-digit", month: "short", year: "numeric" }); }
-    catch { return "N/A"; }
-  };
+  const formatDate = (v) => formatDateShared(v);
   const typeLabel = organization.partner_type
     ? organization.partner_type.charAt(0).toUpperCase() + organization.partner_type.slice(1)
     : "N/A";
@@ -1012,11 +1001,7 @@ const SystemStovesModal = ({ isOpen, onClose, mode }) => {
   const safePage = Math.min(page, totalPages);
   const paginated = filtered.slice((safePage - 1) * PAGE_SIZE, safePage * PAGE_SIZE);
 
-  const fmtDate = (d) => {
-    if (!d) return "—";
-    try { return new Date(d).toLocaleDateString("en-GB", { day: "2-digit", month: "short", year: "numeric" }); }
-    catch { return "—"; }
-  };
+  const fmtDate = (v) => formatDateShared(v, { empty: "—" });
 
   const exportCsv = () => {
     const esc = (v) => {
@@ -1424,11 +1409,7 @@ export default function PartnersContent() {
     });
   }, [organizationsData]);
 
-  const formatDate = (d) => {
-    if (!d) return "N/A";
-    try { return new Date(d).toLocaleDateString("en-GB", { day: "2-digit", month: "short", year: "numeric" }); }
-    catch { return "N/A"; }
-  };
+  const formatDate = (v) => formatDateShared(v);
 
   const handleViewDetails = (org) => setSelectedOrganization(org);
   const handleViewStoveIds = (org, filter = "all") => { setStoveIdsOrg(org); setStoveIdsFilter(filter); };

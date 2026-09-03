@@ -79,6 +79,7 @@ import AssignOrganizationsModal from "../../super-admin-agents/components/Assign
 import organizationsService from "../../services/organizationsService";
 import superAdminAgentService from "../../services/superAdminAgentService";
 import profileService from "../../services/profileService";
+import { formatDate as formatDateShared } from "@/app/utils/formatDate";
 
 
 // Nigerian states (36 + FCT)
@@ -106,18 +107,7 @@ const formatRelativeTime = (dateString) => {
   return diffMonths === 1 ? "1 month ago" : `${diffMonths} months ago`;
 };
 
-const formatDate = (dateString) => {
-  if (!dateString) return "N/A";
-  try {
-    return new Date(dateString).toLocaleDateString("en-GB", {
-      day: "2-digit",
-      month: "short",
-      year: "numeric",
-    });
-  } catch {
-    return "N/A";
-  }
-};
+const formatDate = (v) => formatDateShared(v);
 
 const getRoleLabel = (role) => {
   if (role === "super_admin") return "Super Admin";

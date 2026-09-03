@@ -19,6 +19,7 @@ import { SlidersHorizontal, Shield, Save, CheckCircle2, Eye, EyeOff, Loader2, Ch
 import PageHeader from "../../components/PageHeader";
 import { useAuth } from "../../contexts/useAuth";
 import EmailNotificationSettings from "./EmailNotificationSettings";
+import { formatDate as formatDateShared } from "@/app/utils/formatDate";
 
 const FUNCTIONS_URL = import.meta.env.VITE_SUPABASE_URL + "/functions/v1";
 
@@ -322,8 +323,7 @@ const SystemConfigPage = () => {
     setTimeout(() => setCopiedId(null), 2000);
   };
 
-  const formatDate = (d) =>
-    d ? new Date(d).toLocaleDateString("en-US", { year: "numeric", month: "short", day: "numeric" }) : "Never";
+  const formatDate = (v) => formatDateShared(v);
 
   // ── Landing: two-card nav (no sub-panel selected) ─────────────────
   if (!activeSubPanel) {

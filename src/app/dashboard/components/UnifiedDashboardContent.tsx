@@ -305,7 +305,7 @@ const UnifiedDashboardContent = () => {
   const showDrilldown = scope === "acsl_agent" || scope === "partner";
 
   return (
-    <DashboardLayout currentRoute="dashboard">
+    <DashboardLayout currentRoute="dashboard" title="Dashboard">
       <div className="flex-1 overflow-y-auto bg-white">
         {loadError && (
           <div

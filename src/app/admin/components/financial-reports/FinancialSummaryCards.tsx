@@ -1,6 +1,7 @@
 
 import React from "react";
 import { CreditCard, TrendingUp, TrendingDown } from "lucide-react";
+import { formatCurrency as formatCurrencyShared } from "@/app/utils/formatCurrency";
 
 interface FinancialSummary {
   totalReceivable: number;
@@ -15,8 +16,7 @@ interface FinancialSummaryCardsProps {
   summary: FinancialSummary;
 }
 
-const formatCurrency = (amount: number) =>
-  `₦${(amount ?? 0).toLocaleString("en-NG", { minimumFractionDigits: 0 })}`;
+const formatCurrency = (v: unknown) => formatCurrencyShared(v, { empty: "₦0" });
 
 const FinancialSummaryCards: React.FC<FinancialSummaryCardsProps> = ({
   summary,

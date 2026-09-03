@@ -1,3 +1,5 @@
+import { formatCurrency } from "@/app/utils/formatCurrency";
+import { formatDate } from "@/app/utils/formatDate";
 // PDF generation utilities for receipts and invoices
 // You'll need to install: npm install jspdf jspdf-autotable
 
@@ -18,7 +20,7 @@ export const generateReceiptPDF = (saleData) => {
 
     // Receipt Details
     const receiptNumber = `RCP-${saleData.transaction_id || saleData.id}`;
-    const currentDate = new Date().toLocaleDateString();
+    const currentDate = formatDate(new Date());
 
     doc.setFontSize(10);
     doc.text(`Receipt #: ${receiptNumber}`, 120, 30);
@@ -85,10 +87,7 @@ export const generateReceiptPDF = (saleData) => {
 
     doc.setFontSize(10);
     doc.setFont("helvetica", "normal");
-    const amount = new Intl.NumberFormat("en-NG", {
-      style: "currency",
-      currency: "NGN",
-    }).format(saleData.amount || 0);
+    const amount = formatCurrency(saleData.amount || 0);
 
     doc.text(`Amount: ${amount}`, 20, 195);
     doc.text(`Payment Method: ${saleData.payment_method || "Cash"}`, 20, 205);
@@ -100,9 +99,7 @@ export const generateReceiptPDF = (saleData) => {
       215
     );
     doc.text(
-      `Sale Date: ${new Date(
-        saleData.sales_date || saleData.created_at
-      ).toLocaleDateString()}`,
+      `Sale Date: ${formatDate(saleData.sales_date || saleData.created_at)}`,
       20,
       225
     );
@@ -141,10 +138,8 @@ export const generateInvoicePDF = (saleData) => {
 
       // Invoice Details
       const invoiceNumber = `INV-${saleData.transaction_id || saleData.id}`;
-      const currentDate = new Date().toLocaleDateString();
-      const dueDate = new Date(
-        Date.now() + 30 * 24 * 60 * 60 * 1000
-      ).toLocaleDateString(); // 30 days from now
+      const currentDate = formatDate(new Date());
+      const dueDate = formatDate(Date.now() + 30 * 24 * 60 * 60 * 1000); // 30 days from now
 
       doc.setFontSize(10);
       doc.text(`Invoice #: ${invoiceNumber}`, 120, 45);
@@ -194,14 +189,8 @@ export const generateInvoicePDF = (saleData) => {
           "1",
           `Atmosfair Stove - ${saleData.stove_serial_no || "N/A"}`,
           "1",
-          new Intl.NumberFormat("en-NG", {
-            style: "currency",
-            currency: "NGN",
-          }).format(amount),
-          new Intl.NumberFormat("en-NG", {
-            style: "currency",
-            currency: "NGN",
-          }).format(amount),
+          formatCurrency(amount),
+          formatCurrency(amount),
         ],
       ];
 
@@ -220,20 +209,14 @@ export const generateInvoicePDF = (saleData) => {
       doc.setFontSize(10);
       doc.text("Subtotal:", 120, finalY);
       doc.text(
-        new Intl.NumberFormat("en-NG", {
-          style: "currency",
-          currency: "NGN",
-        }).format(amount),
+        formatCurrency(amount),
         160,
         finalY
       );
 
       doc.text("VAT (7.5%):", 120, finalY + 10);
       doc.text(
-        new Intl.NumberFormat("en-NG", {
-          style: "currency",
-          currency: "NGN",
-        }).format(tax),
+        formatCurrency(tax),
         160,
         finalY + 10
       );
@@ -241,10 +224,7 @@ export const generateInvoicePDF = (saleData) => {
       doc.setFont("helvetica", "bold");
       doc.text("Total:", 120, finalY + 20);
       doc.text(
-        new Intl.NumberFormat("en-NG", {
-          style: "currency",
-          currency: "NGN",
-        }).format(total),
+        formatCurrency(total),
         160,
         finalY + 20
       );
@@ -263,13 +243,10 @@ export const generateInvoicePDF = (saleData) => {
 // For environments without jsPDF, create a fallback HTML-based approach
 export const generateReceiptHTML = (saleData) => {
   const receiptNumber = `RCP-${saleData.transaction_id || saleData.id}`;
-  const currentDate = new Date().toLocaleDateString();
+  const currentDate = formatDate(new Date());
   const customerName =
     saleData.end_user_name || saleData.contact_person || "N/A";
-  const amount = new Intl.NumberFormat("en-NG", {
-    style: "currency",
-    currency: "NGN",
-  }).format(saleData.amount || 0);
+  const amount = formatCurrency(saleData.amount || 0);
 
   return `
     <!DOCTYPE html>

@@ -50,6 +50,7 @@ import SignatureCanvas from "../../../components/ui/SignatureCanvas";
 import paymentModelService from "../../../services/paymentModelService";
 import superAdminAgentService from "../../../services/superAdminAgentService";
 import { useAuth } from "../../../contexts/useAuth";
+import { formatCurrency as formatCurrencyShared } from "@/app/utils/formatCurrency";
 
 const FormField = ({ label, error, children, htmlFor }) => (
   <div>
@@ -960,8 +961,7 @@ const CreateSalesForm = ({
     }
   };
 
-  const formatCurrency = (amount) =>
-    `₦${Number(amount).toLocaleString("en-NG")}`;
+  const formatCurrency = (v) => formatCurrencyShared(v);
 
   // Format a raw number string with commas for display in inputs
   const formatAmountInput = (value) => {

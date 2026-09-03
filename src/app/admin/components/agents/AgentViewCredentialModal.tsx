@@ -20,6 +20,7 @@ import {
   Loader2,
 } from "lucide-react";
 import tokenManager from "@/utils/tokenManager";
+import { formatDate as formatDateShared } from "@/app/utils/formatDate";
 
 export interface AgentCredential {
   id?: string;
@@ -136,13 +137,7 @@ const AgentViewCredentialModal: React.FC<AgentViewCredentialModalProps> = ({
     ? activeCredential.username ?? ""
     : activeCredential.email ?? "";
 
-  const formatDate = (d?: string) =>
-    d
-      ? new Date(d).toLocaleString("en-GB", {
-          day: "2-digit", month: "short", year: "numeric",
-          hour: "2-digit", minute: "2-digit",
-        })
-      : "—";
+  const formatDate = (v: unknown) => formatDateShared(v, { time: true });
 
   const CopyBtn = ({ text, field }: { text: string; field: string }) => (
     <button

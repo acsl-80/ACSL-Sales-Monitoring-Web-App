@@ -20,6 +20,8 @@ import {
   Eye,
 } from "lucide-react";
 import { useAuth } from "../contexts/useAuth";
+import { formatDate as formatDateShared } from "@/app/utils/formatDate";
+import { formatCurrency } from "@/app/utils/formatCurrency";
 
 const StoveDetailModal = ({ open, onClose, stove }) => {
   const { supabase } = useAuth();
@@ -80,20 +82,7 @@ const StoveDetailModal = ({ open, onClose, stove }) => {
     }
   };
 
-  const formatDate = (dateString) => {
-    if (!dateString) return "N/A";
-    try {
-      return new Date(dateString).toLocaleDateString("en-US", {
-        year: "numeric",
-        month: "long",
-        day: "numeric",
-        hour: "2-digit",
-        minute: "2-digit",
-      });
-    } catch (error) {
-      return "Invalid Date";
-    }
-  };
+  const formatDate = (v) => formatDateShared(v, { style: "long", time: true });
 
   return (
     <Dialog open={open} onOpenChange={onClose}>
@@ -306,9 +295,7 @@ const StoveDetailModal = ({ open, onClose, stove }) => {
                             </p>
                             <p className="font-medium text-gray-900">
                               {saleDetails.amount_paid
-                                ? `₦${parseFloat(
-                                    saleDetails.amount_paid
-                                  ).toLocaleString()}`
+                                ? `${formatCurrency(saleDetails.amount_paid)}`
                                 : "N/A"}
                             </p>
                           </div>

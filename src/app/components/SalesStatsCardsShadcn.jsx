@@ -12,6 +12,7 @@ import {
   Activity,
   BarChart3,
 } from "lucide-react";
+import { formatCurrency as formatCurrencyShared } from "@/app/utils/formatCurrency";
 
 const SalesStatsCards = ({ stats = {} }) => {
   const {
@@ -29,14 +30,7 @@ const SalesStatsCards = ({ stats = {} }) => {
     achievement = 0,
   } = stats;
 
-  const formatCurrency = (amount) => {
-    return new Intl.NumberFormat("en-NG", {
-      style: "currency",
-      currency: "NGN",
-      minimumFractionDigits: 0,
-      maximumFractionDigits: 0,
-    }).format(amount);
-  };
+  const formatCurrency = (v) => formatCurrencyShared(v);
 
   const formatNumber = (num) => {
     return new Intl.NumberFormat("en-US").format(num);

@@ -230,6 +230,7 @@ const Sidebar = ({ isOpen, onClose, currentRoute }) => {
                           <Link
                             key={child.route}
                             href={child.href}
+                            aria-current={active ? "page" : undefined}
                             onClick={() => navigateToRoute(child.href)}
                             className={`flex items-center gap-2 px-3 py-1.5 rounded-lg transition-colors text-sm ${
                               active
@@ -253,6 +254,7 @@ const Sidebar = ({ isOpen, onClose, currentRoute }) => {
               <Link
                 key={item.route}
                 href={item.href}
+                aria-current={active ? "page" : undefined}
                 onClick={() => navigateToRoute(item.href)}
                 className={`flex items-center gap-3 px-3 py-2 rounded-lg transition-colors text-sm ${
                   active

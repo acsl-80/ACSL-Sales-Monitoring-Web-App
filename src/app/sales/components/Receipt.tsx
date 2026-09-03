@@ -1,5 +1,7 @@
 import React from "react";
 import { SuperAdminSale } from "@/types/superAdminSales";
+import { formatDate as formatDateShared } from "@/app/utils/formatDate";
+import { formatCurrency as formatCurrencyShared } from "@/app/utils/formatCurrency";
 
 interface ReceiptProps {
   sale: SuperAdminSale;
@@ -21,27 +23,9 @@ const Receipt: React.FC<ReceiptProps> = ({
     email: "info@atmosfair.com",
   },
 }) => {
-  const formatDate = (dateString?: string) => {
-    if (!dateString) return "N/A";
-    try {
-      return new Date(dateString).toLocaleDateString("en-US", {
-        year: "numeric",
-        month: "long",
-        day: "numeric",
-      });
-    } catch {
-      return "Invalid Date";
-    }
-  };
+  const formatDate = (v: unknown) => formatDateShared(v, { style: "long" });
 
-  const formatCurrency = (amount?: number) => {
-    if (!amount && amount !== 0) return "₦0.00";
-    return new Intl.NumberFormat("en-NG", {
-      style: "currency",
-      currency: "NGN",
-      minimumFractionDigits: 2,
-    }).format(amount);
-  };
+  const formatCurrency = (v: unknown) => formatCurrencyShared(v, { empty: "₦0" });
 
   const calculateStoveAge = (salesDate?: string) => {
     if (!salesDate) return "N/A";

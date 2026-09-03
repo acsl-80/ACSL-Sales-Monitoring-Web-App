@@ -42,6 +42,7 @@ import {
 import MapPage from "./MapPage";
 import PageHeader from "../components/PageHeader";
 import salesAdvancedService from "../services/salesAdvancedAPIService";
+import { formatCurrency as formatCurrencyShared } from "@/app/utils/formatCurrency";
 
 export default function HeatmapPage() {
   const [isFullscreen, setIsFullscreen] = useState(false);
@@ -298,14 +299,7 @@ export default function HeatmapPage() {
     };
   }, [filteredData]);
 
-  const formatCurrency = (amount) => {
-    return new Intl.NumberFormat("en-NG", {
-      style: "currency",
-      currency: "NGN",
-      minimumFractionDigits: 0,
-      maximumFractionDigits: 0,
-    }).format(amount);
-  };
+  const formatCurrency = (v) => formatCurrencyShared(v);
 
   const exportData = () => {
     const csvContent = [

@@ -44,15 +44,9 @@ import EditEndUserModal from "./EditEndUserModal";
 import CancelSaleModal from "../admin/components/sales/CancelSaleModal";
 import { useAuth } from "../contexts/useAuth";
 import { resolveRole } from "@/lib/permissions";
+import { formatDate as formatDateShared } from "@/app/utils/formatDate";
 
-const formatDate = (dateStr) => {
-  if (!dateStr) return "N/A";
-  return new Date(dateStr).toLocaleDateString("en-GB", {
-    day: "2-digit",
-    month: "2-digit",
-    year: "numeric",
-  });
-};
+const formatDate = (v) => formatDateShared(v, { style: "numeric" });
 
 const EndUserRecordsContent = () => {
   // sonner's <Toaster /> is mounted nowhere in this app, so its toasts were

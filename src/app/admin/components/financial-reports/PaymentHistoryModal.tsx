@@ -19,6 +19,7 @@ import { Badge } from "@/components/ui/badge";
 import { Loader2, CreditCard, CheckCircle2, Eye } from "lucide-react";
 import { AdminSales } from "@/types/adminSales";
 import paymentModelService from "../../../services/paymentModelService";
+import { formatCurrency as formatCurrencyShared } from "@/app/utils/formatCurrency";
 
 interface InstallmentPayment {
   id: string;
@@ -55,8 +56,7 @@ interface PaymentHistoryModalProps {
   sale: AdminSales | null;
 }
 
-const formatCurrency = (amount: number) =>
-  `₦${Number(amount ?? 0).toLocaleString("en-NG")}`;
+const formatCurrency = (v: unknown) => formatCurrencyShared(v, { empty: "₦0" });
 
 const PaymentHistoryModal: React.FC<PaymentHistoryModalProps> = ({
   open,

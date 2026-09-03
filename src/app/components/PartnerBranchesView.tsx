@@ -10,6 +10,7 @@ import { useToast, ToastContainer } from "@/components/ui/toast";
 import PartnerBranchesFilters from "./PartnerBranchesFilters";
 import PartnerBranchesStats from "./PartnerBranchesStats";
 import PartnerBranchesTable from "./PartnerBranchesTable";
+import { formatDate as formatDateShared } from "@/app/utils/formatDate";
 
 interface PartnerBranchesViewProps {
   organization: any;
@@ -236,18 +237,7 @@ const PartnerBranchesView: React.FC<PartnerBranchesViewProps> = ({
     }
   };
 
-  const formatDate = (dateString: string) => {
-    if (!dateString) return "N/A";
-    try {
-      return new Date(dateString).toLocaleDateString("en-US", {
-        year: "numeric",
-        month: "short",
-        day: "numeric",
-      });
-    } catch (error) {
-      return "Invalid Date";
-    }
-  };
+  const formatDate = (v: unknown) => formatDateShared(v);
 
   const viewBranchDetails = (branch: Branch) => {
     setSelectedBranch(branch);

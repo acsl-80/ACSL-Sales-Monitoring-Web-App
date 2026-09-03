@@ -24,6 +24,7 @@ import {
   FileText,
   Upload,
 } from "lucide-react";
+import { formatDate as formatDateShared } from "@/app/utils/formatDate";
 
 // Simple tooltip component
 const SimpleTooltip = ({ children, text }) => {
@@ -55,18 +56,7 @@ const OrganizationTable = ({
   onDelete,
   onImportCSV,
 }) => {
-  const formatDate = (dateString) => {
-    if (!dateString) return "N/A";
-    try {
-      return new Date(dateString).toLocaleDateString("en-US", {
-        year: "numeric",
-        month: "short",
-        day: "numeric",
-      });
-    } catch (error) {
-      return "Invalid Date";
-    }
-  };
+  const formatDate = (v) => formatDateShared(v);
 
   const getStatusColor = (status) => {
     switch (status) {

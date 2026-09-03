@@ -15,6 +15,7 @@ import { Loader2, X, FileText, Eye } from "lucide-react";
 import { useAuth } from "../contexts/useAuth";
 import AdminSalesDetailModal from "../admin/components/sales/AdminSalesDetailModal";
 import { useToast } from "@/components/ui/toast";
+import { formatDate as formatDateShared } from "@/app/utils/formatDate";
 
 const StoveIdsSidebar = ({ organization, isOpen, onClose }) => {
   const { supabase } = useAuth();
@@ -75,18 +76,7 @@ const StoveIdsSidebar = ({ organization, isOpen, onClose }) => {
     }
   };
 
-  const formatDate = (dateString) => {
-    if (!dateString) return "N/A";
-    try {
-      return new Date(dateString).toLocaleDateString("en-US", {
-        year: "numeric",
-        month: "short",
-        day: "numeric",
-      });
-    } catch (error) {
-      return "Invalid Date";
-    }
-  };
+  const formatDate = (v) => formatDateShared(v);
 
   // Fetch sale by sale_id and show sidebar
   const handleViewSale = async (saleId) => {

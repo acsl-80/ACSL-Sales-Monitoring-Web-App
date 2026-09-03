@@ -19,6 +19,7 @@ import {
   CreditCard,
 } from "lucide-react";
 import paymentModelService from "../../services/paymentModelService";
+import { formatCurrency as formatCurrencyShared } from "@/app/utils/formatCurrency";
 
 const AssignPaymentModelsModal = ({ organization, onClose, onSuccess }) => {
   const [allModels, setAllModels] = useState([]);
@@ -78,8 +79,7 @@ const AssignPaymentModelsModal = ({ organization, onClose, onSuccess }) => {
     }
   };
 
-  const formatCurrency = (amount) =>
-    `₦${Number(amount).toLocaleString("en-NG")}`;
+  const formatCurrency = (v) => formatCurrencyShared(v);
 
   return (
     <Dialog open onOpenChange={onClose}>

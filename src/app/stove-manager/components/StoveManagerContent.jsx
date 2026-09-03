@@ -15,6 +15,8 @@ import {
   ChevronLeft,
 } from "lucide-react";
 import { useAuth } from "../../contexts/useAuth";
+import { formatDate as formatDateShared } from "@/app/utils/formatDate";
+import { formatCurrency as formatCurrencyShared } from "@/app/utils/formatCurrency";
 
 // ── Primitives ────────────────────────────────────────────────────────────────
 const DetailItem = ({ label, value, highlight }) => (
@@ -495,23 +497,9 @@ export default function StoveManagerContent() {
 function StoveDetail({ stove, sale, isSuperAdmin, isAcslAgent }) {
   const isSold = stove.status === "sold";
 
-  const formatDate = (dateStr) => {
-    if (!dateStr) return null;
-    try {
-      return new Date(dateStr).toLocaleDateString("en-GB", {
-        day: "2-digit",
-        month: "short",
-        year: "numeric",
-      });
-    } catch {
-      return null;
-    }
-  };
+  const formatDate = (v) => (v == null || v === "" ? null : formatDateShared(v));
 
-  const formatCurrency = (amount) => {
-    if (amount == null) return null;
-    return `₦${Number(amount).toLocaleString("en-NG")}`;
-  };
+  const formatCurrency = (v) => (v == null || v === "" ? null : formatCurrencyShared(v));
 
   const statusBadge = isSold ? (
     <Badge className="bg-blue-100 text-blue-800 border-blue-200 text-[10px]">Sold</Badge>

@@ -9,7 +9,7 @@ const loadSales = () =>
 
 const SuperAdminFinancialReportsPage = () => (
   <ProtectedRoute requireSuperAdmin>
-    <DashboardLayout currentRoute="financial-reports">
+    <DashboardLayout currentRoute="financial-reports" title="Financial Reports">
       <FinancialReportsView loadSales={loadSales} viewFrom="superAdmin" />
     </DashboardLayout>
   </ProtectedRoute>

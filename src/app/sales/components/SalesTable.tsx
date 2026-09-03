@@ -18,6 +18,7 @@ import { MoreVertical, Download, Eye, Trash2 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { SuperAdminSale } from "@/types/superAdminSales";
 import { Checkbox } from "../../../components/ui/checkbox";
+import { formatCurrency } from "@/app/utils/formatCurrency";
 
 const getPaymentStatusBadge = (sale: SuperAdminSale) => {
   if (!sale.is_installment) return null;
@@ -36,7 +37,7 @@ const getPaymentStatusBadge = (sale: SuperAdminSale) => {
           Partially Paid
         </Badge>
         <span className="text-xs text-gray-500">
-          ₦{(sale.total_paid ?? 0).toLocaleString()} / ₦{sale.amount.toLocaleString()}
+          {formatCurrency(sale.total_paid, { empty: "₦0" })} / {formatCurrency(sale.amount)}
         </span>
       </div>
     );
@@ -169,14 +170,14 @@ const SalesTable = ({
                   {sale.payment_model?.name ?? "Full Payment"}
                 </TableCell>
                 <TableCell className="px-2 py-2 text-xs whitespace-nowrap text-right">
-                  ₦{sale.amount.toLocaleString()}
+                  {formatCurrency(sale.amount)}
                 </TableCell>
                 <TableCell className="px-2 py-2 text-xs whitespace-nowrap text-right">
-                  ₦{(sale.total_paid ?? 0).toLocaleString()}
+                  {formatCurrency(sale.total_paid, { empty: "₦0" })}
                 </TableCell>
                 <TableCell className="px-2 py-2 text-xs whitespace-nowrap text-right">
                   {balance > 0 ? (
-                    <span className="text-red-600 font-medium">₦{balance.toLocaleString()}</span>
+                    <span className="text-red-600 font-medium">{formatCurrency(balance)}</span>
                   ) : (
                     <span className="text-green-600 font-medium">₦0</span>
                   )}

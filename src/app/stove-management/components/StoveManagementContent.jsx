@@ -24,6 +24,7 @@ import { downloadTableAsCSV } from "@/utils/csvExportUtils";
 import AdminSalesDetailModal from "../../admin/components/sales/AdminSalesDetailModal";
 import PageHeader from "../../components/PageHeader";
 import superAdminAgentService from "../../services/superAdminAgentService";
+import { formatDate as formatDateShared } from "@/app/utils/formatDate";
 
 const SimpleTooltip = ({ children, text }) => {
   const [show, setShow] = useState(false);
@@ -396,11 +397,7 @@ export default function StoveManagementContent() {
     fetchStoveIds(1, pagination.page_size, filters, selectedOrgIds, showArchived, sortBy, newDir, isAcslScoped, acslOrgFilter, assignedOrgIds);
   };
 
-  const formatDate = (dateString) => {
-    if (!dateString) return "—";
-    try { return new Date(dateString).toLocaleDateString("en-GB", { year: "numeric", month: "short", day: "numeric" }); }
-    catch { return "Invalid Date"; }
-  };
+  const formatDate = (v) => formatDateShared(v, { empty: "—" });
 
   // ── Display rows (groupBy for super admin) ────────────────────────────────
   const displayRows = (() => {
