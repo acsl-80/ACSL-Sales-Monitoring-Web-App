@@ -202,9 +202,6 @@ const CALL_CENTER_COLUMNS = [
   "stated_serial",
   "serial_matches",
   "phone_was_corrected",
-  // The preset "Stove ID unconfirmed" filters on this; the row now carries
-  // it too, so the serial can wear the mark in the list (slice 7a).
-  "serial_unconfirmed_at::text as serial_unconfirmed_at",
   "answers",
   "other_comments",
   "correction_state",
@@ -732,9 +729,20 @@ export function buildRecordsQuery(
     pageSize,
     scopeDescription: scope.description,
     hydrate: (ids: string[]) => ({
+      /*
+       * Table 2 also carries serial_unconfirmed_at, the flag the preset
+       * "Stove ID unconfirmed" filters on, so the serial can wear the mark in
+       * the list (slice 7a). It lives on call_records and not on the resolved
+       * view, hence the join here rather than an entry in the column list;
+       * the first cut named it as a view column and the queue answered 500.
+       */
       text: `
-        select ${selected.map((c) => `v.${c}`).join(", ")}, rep.sales_rep
-        from ${view} v${REP_LATERAL}
+        select ${selected.map((c) => `v.${c}`).join(", ")}, rep.sales_rep${
+          table === "call_center" ? ", cr.serial_unconfirmed_at::text as serial_unconfirmed_at" : ""
+        }
+        from ${view} v${REP_LATERAL}${
+          table === "call_center" ? " left join data_center.call_records cr on cr.sale_id = v.sale_id" : ""
+        }
         where v.sale_id = any($1::uuid[])
         order by v.sales_date ${direction}, v.sale_id ${direction}
       `,
