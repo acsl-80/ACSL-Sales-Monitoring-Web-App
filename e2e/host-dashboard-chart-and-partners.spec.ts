@@ -132,7 +132,15 @@ test.describe("slice 6b: the chart and the list", () => {
     await signIn(page, USERS.admin);
     await page.goto("/dashboard");
     await expect(page.getByText("TOTAL SALES", { exact: true })).toBeVisible({ timeout: 45_000 });
-    const loaded = statsCalls;
+    // The baseline is taken once the requests have gone quiet. A first load
+    // can fetch more than once, and a count taken between two of those
+    // fetches made this test pass against code that fetched on every mount.
+    let loaded = statsCalls;
+    for (let quiet = 0; quiet < 3; ) {
+      await page.waitForTimeout(1000);
+      if (statsCalls === loaded) quiet += 1;
+      else { loaded = statsCalls; quiet = 0; }
+    }
     expect(loaded).toBeGreaterThan(0);
 
     // Away and back through the app's own navigation; a reload would empty
@@ -141,10 +149,11 @@ test.describe("slice 6b: the chart and the list", () => {
     if (!(await records.isVisible())) await page.getByText("Manage Sales", { exact: true }).click();
     await records.click();
     await page.waitForURL(/\/sales(\?|$)/, { timeout: 30_000 });
+    await page.waitForTimeout(1000);
     await page.getByRole("link", { name: "Dashboard", exact: true }).click();
     await page.waitForURL(/\/dashboard/, { timeout: 30_000 });
     await expect(page.getByText("TOTAL SALES", { exact: true })).toBeVisible({ timeout: 45_000 });
-    await page.waitForTimeout(1500);
+    await page.waitForTimeout(3000);
 
     expect(statsCalls, "the cached numbers should be shown; no new fetch inside the stale window").toBe(loaded);
   });
