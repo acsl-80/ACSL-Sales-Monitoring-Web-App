@@ -139,14 +139,17 @@ test("a due chip is a server filter, and the list agrees with the badge", async 
   await signIn(page, USERS.admin);
   await openSales(page);
 
-  const chip = page.getByRole("button", { name: /^Due in 30 days/ });
+  // With no payment recorded yet, an instalment sale's next due date is its
+  // sale date, so the seeded instalments are already overdue: that chip has
+  // a count on both the old build and the new.
+  const chip = page.getByRole("button", { name: /^Overdue/ });
   await expect(chip).toBeVisible({ timeout: 30_000 });
   const badge = Number((await chip.innerText()).replace(/\D/g, ""));
-  expect(badge, "the seed's instalment sales fall due inside thirty days").toBeGreaterThan(0);
+  expect(badge, "the seed's instalment sales should be overdue").toBeGreaterThan(0);
 
   await chip.click();
   await expect
-    .poll(() => bodies.some((b) => b.dueBucket === "due30"), {
+    .poll(() => bodies.some((b) => b.dueBucket === "overdue"), {
       timeout: 15_000,
       message: "the chip should ask the server for its window",
     })
