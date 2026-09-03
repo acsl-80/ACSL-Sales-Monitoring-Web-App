@@ -38,13 +38,23 @@ test("React loads from its own chunk and the entry is small, at no cost to the f
   await page.waitForLoadState("networkidle").catch(() => undefined);
 
   const scripts = await loadedScripts(page);
+  // The first paint is what the document itself asks for: its script tags and
+  // module preloads. Chunks a page imports later are not the first paint, and
+  // today's figure was measured the same way on production.
+  const initialNames: string[] = await page.evaluate(() =>
+    Array.from(document.querySelectorAll('script[src], link[rel="modulepreload"]'))
+      .map((el) => (el as HTMLScriptElement).src || (el as HTMLLinkElement).href)
+      .filter((u) => /\/assets\/[^?]+\.js$/.test(u))
+      .map((u) => u.replace(/^.*\/assets\//, "")),
+  );
+  const initial = scripts.filter((s) => initialNames.includes(s.name));
   const entry = scripts.find((s) => /^index-[\w-]+\.js$/.test(s.name));
-  const vendorReact = scripts.find((s) => s.name.startsWith("vendor-react-"));
-  const total = scripts.reduce((sum, s) => sum + s.bytes, 0);
+  const vendorReact = initial.find((s) => s.name.startsWith("vendor-react-"));
+  const total = initial.reduce((sum, s) => sum + s.bytes, 0);
 
   test.info().annotations.push({
     type: "scripts loaded on the dashboard",
-    description: `${scripts.length} files, ${Math.round(total / 1024)} KB: ${scripts
+    description: `first paint ${initial.length} files, ${Math.round(total / 1024)} KB; loaded by idle ${scripts.length} files, ${Math.round(scripts.reduce((s, x) => s + x.bytes, 0) / 1024)} KB: ${scripts
       .sort((a, b) => b.bytes - a.bytes)
       .slice(0, 8)
       .map((s) => `${s.name} ${Math.round(s.bytes / 1024)} KB`)
