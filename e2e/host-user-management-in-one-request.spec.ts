@@ -22,19 +22,25 @@ test.describe.configure({ timeout: 180_000 });
 
 function trackBackend(page: Page) {
   const calls: Array<{ url: string; at: number }> = [];
+  // Quiet means no request issued and no response received: a call that follows
+  // a slow answer must not slip past the window.
+  let lastActivity = 0;
+  const isBackend = (url: string) => /\.supabase\.co\/(rest|functions)\/v1\//.test(url) && !url.includes("/realtime/");
   page.on("request", (r) => {
-    const url = r.url();
-    if (/\.supabase\.co\/(rest|functions)\/v1\//.test(url) && !url.includes("/realtime/")) {
-      calls.push({ url, at: Date.now() });
+    if (isBackend(r.url())) {
+      lastActivity = Date.now();
+      calls.push({ url: r.url(), at: lastActivity });
     }
+  });
+  page.on("response", (r) => {
+    if (isBackend(r.url())) lastActivity = Date.now();
   });
   return {
     calls,
     async quietFor(ms: number, limit = 60_000) {
       const started = Date.now();
       for (;;) {
-        const last = calls.length ? calls[calls.length - 1].at : 0;
-        if (Date.now() - last >= ms) return;
+        if (Date.now() - lastActivity >= ms) return;
         if (Date.now() - started > limit) throw new Error("the page never went quiet");
         await page.waitForTimeout(250);
       }
@@ -64,7 +70,7 @@ test("choosing the ACSL Agent group loads every manager's scope in one request",
   const perManager = since.filter((u) => PER_AGENT.test(u));
   const scopes = since.filter((u) => SCOPES.test(u));
   expect(perManager.length, "no request should ask for one manager's states or partners at a time").toBe(0);
-  expect(scopes.length, "the managers' scopes should come from one request").toBe(1);
+  expect(scopes.length, `the managers' scopes should come from one request; calls since the click: ${since.map((u) => u.replace(/^https:\/\/[^/]+/, "")).join(" | ") || "none"}`).toBe(1);
 });
 
 test("opening an ACSL agent's edit form asks for that agent once and probes no columns", async ({ page }) => {
