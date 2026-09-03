@@ -59,6 +59,10 @@ test.describe("the assignment log", () => {
      * its own text as the reason.
      */
     await page.getByRole("button", { name: "Assign now" }).click();
+    // Since slice 7b the lever asks first; this is the yes.
+    const ask = page.getByRole("alertdialog");
+    await expect(ask).toContainText("Assign the pool now?", { timeout: 10_000 });
+    await ask.getByRole("button", { name: "Assign", exact: true }).click();
 
     const answered = page.getByText(/assigned\.|Nothing to hand out/i);
     const failed = page.getByText(/Assignment failed|Reclaim failed/i);
