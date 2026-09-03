@@ -8,6 +8,7 @@ import { plural } from "../../lib/plural";
 import { outcomeLabel, outcomeText, OUTCOME_WORDS, BATCH_STATE_WORDS } from "../../lib/outcome";
 import { dateOf, whenOf } from "../../lib/when";
 import ExportButton from "../../components/ExportButton";
+import ConfirmDialog from "../../components/ConfirmDialog";
 import CallRecordEditor from "./CallRecordEditor";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import {
@@ -381,6 +382,9 @@ export default function AssignmentLog({ canRun, canEdit = false }) {
     load(back);
   };
 
+  /** Which lever is waiting for a yes: assign, reclaim, or a move with its records. */
+  const [confirmAction, setConfirmAction] = useState(null);
+
   const runAssignment = async () => {
     setBusy(true);
     setNotice(null);
@@ -427,6 +431,39 @@ export default function AssignmentLog({ canRun, canEdit = false }) {
 
   return (
     <div className="overflow-hidden rounded-xl border border-gray-200 border-t-[3px] border-t-(--dc-accent) bg-white shadow-sm">
+      <ConfirmDialog
+        open={confirmAction !== null}
+        title={
+          confirmAction?.kind === "assign"
+            ? "Assign the pool now?"
+            : confirmAction?.kind === "reclaim"
+              ? "Reclaim quiet batches?"
+              : `Move ${plural(confirmAction?.what?.saleIds?.length ?? 0, "record")} to ${
+                  agents.find((a) => a.agent_id === moveTo)?.full_name ?? "that agent"
+                }?`
+        }
+        description={
+          confirmAction?.kind === "assign"
+            ? "Every agent with room takes a batch from the pool of unassigned records. Their lists change the moment it runs."
+            : confirmAction?.kind === "reclaim"
+              ? "Every open batch with no activity for the stale age goes back to the pool, and its agent loses it. Calls already logged stay on the records."
+              : "They leave their current agent's list and appear on the new one's at once. Calls already logged stay on the records."
+        }
+        cancelLabel="Not now"
+        actionLabel={
+          confirmAction?.kind === "assign" ? "Assign" : confirmAction?.kind === "reclaim" ? "Reclaim" : "Move them"
+        }
+        busy={busy}
+        onCancel={() => setConfirmAction(null)}
+        onConfirm={() => {
+          const action = confirmAction;
+          setConfirmAction(null);
+          if (!action) return;
+          if (action.kind === "assign") runAssignment();
+          else if (action.kind === "reclaim") runReclaim();
+          else reassign(action.what);
+        }}
+      />
       <div className="border-b border-gray-100 bg-(--dc-accent-soft)/30 px-4 py-3">
         <div className="flex flex-wrap items-center gap-2">
           <ClipboardList className="h-4 w-4 text-(--dc-accent)" />
@@ -442,7 +479,7 @@ export default function AssignmentLog({ canRun, canEdit = false }) {
                 <button
                   type="button"
                   disabled={busy}
-                  onClick={runAssignment}
+                  onClick={() => setConfirmAction({ kind: "assign" })}
                   className="inline-flex items-center gap-1.5 rounded-md bg-(--dc-accent) px-2.5 py-1.5 text-xs font-medium text-white hover:bg-(--dc-accent-strong) disabled:opacity-50"
                 >
                   {busy ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Play className="h-3.5 w-3.5" />}
@@ -451,7 +488,7 @@ export default function AssignmentLog({ canRun, canEdit = false }) {
                 <button
                   type="button"
                   disabled={busy}
-                  onClick={runReclaim}
+                  onClick={() => setConfirmAction({ kind: "reclaim" })}
                   className="inline-flex items-center gap-1.5 rounded-md border border-(--dc-accent)/30 px-2.5 py-1.5 text-xs font-medium text-(--dc-accent) transition hover:bg-(--dc-accent-soft)/60 disabled:opacity-50"
                 >
                   <RotateCcw className="h-3.5 w-3.5" /> Reclaim quiet batches
@@ -584,7 +621,7 @@ export default function AssignmentLog({ canRun, canEdit = false }) {
           <button
             type="button"
             disabled={busy || !moveTo}
-            onClick={() => reassign({ saleIds: [...chosen] })}
+            onClick={() => setConfirmAction({ kind: "reassign", what: { saleIds: [...chosen] } })}
             className="inline-flex items-center gap-1.5 rounded-md bg-(--dc-accent) px-2.5 py-1.5 text-xs font-medium text-white hover:bg-(--dc-accent-strong) disabled:opacity-50"
           >
             {busy ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Users className="h-3.5 w-3.5" />}

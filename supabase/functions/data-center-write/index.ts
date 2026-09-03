@@ -314,8 +314,17 @@ serve(async (req) => {
       const needed = READ_ONLY_ACTIONS.has(String(body.action))
         ? "call_records.view"
         : "call_records.edit";
+      /*
+       * Closing a send-back is Sales' act, not the call centre's: the record
+       * came back to them to fix, and "Mark it fixed" is how it returns. So
+       * that one action also answers to corrections.fix, the feature a sales
+       * rep holds (slice 7b). Opening a send-back stays with the call centre.
+       */
+      const closingSendBack = String(body.action) === "correction" && body.open === false;
+      const allowed =
+        features.includes(needed) || (closingSendBack && features.includes("corrections.fix"));
 
-      if (!features.includes(needed)) {
+      if (!allowed) {
         return json(
           {
             error: needed === "call_records.view"
@@ -869,11 +878,12 @@ serve(async (req) => {
                  where sale_id = $1`
               : `update data_center.call_records
                    set correction_resolved_at = now(), correction_resolved_by = $2,
+                       other_comments = coalesce($3, other_comments),
                        updated_by = $2, updated_at = now(), version = version + 1
                  where sale_id = $1`,
             args: open
               ? [saleId, userId, body.reasonId ?? null, body.note ?? null]
-              : [saleId, userId],
+              : [saleId, userId, body.note ? String(body.note) : null],
           });
           await conn.queryObject("commit");
           return json({ data: { saleId, correctionOpen: open } }, 200, cors);

@@ -13,16 +13,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
-import {
-  AlertDialog,
-  AlertDialogAction,
-  AlertDialogCancel,
-  AlertDialogContent,
-  AlertDialogDescription,
-  AlertDialogFooter,
-  AlertDialogHeader,
-  AlertDialogTitle,
-} from "@/components/ui/alert-dialog";
+import ConfirmDialog from "../../components/ConfirmDialog";
 import {
   Loader2,
   UserPlus,
@@ -444,29 +435,21 @@ function AgentDetail({ agent, onChanged, onOpenRecord }) {
         );
       })}
 
-      <AlertDialog open={confirm !== null} onOpenChange={(o) => !o && setConfirm(null)}>
-        <AlertDialogContent className="dc-root" data-area="call-centre">
-          <AlertDialogHeader>
-            <AlertDialogTitle>Return this work to the pool?</AlertDialogTitle>
-            <AlertDialogDescription>
-              {confirm?.label} goes back to being unassigned, and can be given to
-              somebody else. Calls already logged against it stay where they are.
-            </AlertDialogDescription>
-          </AlertDialogHeader>
-          <AlertDialogFooter>
-            <AlertDialogCancel>Keep it assigned</AlertDialogCancel>
-            <AlertDialogAction
-              disabled={busy}
-              onClick={(e) => {
-                e.preventDefault();
-                act();
-              }}
-            >
-              Unassign
-            </AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
+      <ConfirmDialog
+        open={confirm !== null}
+        title="Return this work to the pool?"
+        description={
+          <>
+            {confirm?.label} goes back to being unassigned, and can be given to somebody
+            else. Calls already logged against it stay where they are.
+          </>
+        }
+        cancelLabel="Keep it assigned"
+        actionLabel="Unassign"
+        busy={busy}
+        onCancel={() => setConfirm(null)}
+        onConfirm={act}
+      />
     </div>
   );
 }

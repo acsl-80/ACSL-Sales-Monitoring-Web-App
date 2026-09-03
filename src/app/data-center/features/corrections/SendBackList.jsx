@@ -67,14 +67,10 @@ function Resolve({ row, onDone }) {
        * only in the audit trail, where the next agent to ring this buyer will
        * not think to look.
        */
-      if (note.trim()) {
-        await dataCenterWrite.saveCallRecord(
-          row.sale_id,
-          { other_comments: note.trim() },
-          null,
-        );
-      }
-      await dataCenterWrite.correction(row.sale_id, false);
+      // One call: closing the send-back carries the note with it, so a sales
+      // rep, who may close a send-back but may not edit call records, can do
+      // both in the one act the server allows them.
+      await dataCenterWrite.correction(row.sale_id, false, null, note.trim() || null);
       onDone?.(row.sale_id);
     } catch (err) {
       setError(err instanceof DataCenterError ? err.message : "That did not save.");

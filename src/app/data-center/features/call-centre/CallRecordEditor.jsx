@@ -6,6 +6,7 @@ import Link from "@/compat/Link";
 import { dataCenterWrite, DataCenterError } from "../../lib/client";
 import { OUTCOME_WORDS, OUTCOME_PILL } from "../../lib/outcome";
 import { dateOf, whenOf } from "../../lib/when";
+import ConfirmDialog from "../../components/ConfirmDialog";
 import FieldRenderer, { isFieldVisible } from "./FieldRenderer";
 import {
   Dialog,
@@ -81,6 +82,11 @@ export default function CallRecordEditor({ saleId, canEdit, onClose, onSaved }) 
   const [nextNote, setNextNote] = useState("");
   const [error, setError] = useState(null);
   const [notice, setNotice] = useState(null);
+  /** A Save refused because somebody else saved first; reloading is the way on. */
+  const [conflict, setConflict] = useState(false);
+  /** Finish later could not keep the typing; closing now would lose it. */
+  const [keepFailed, setKeepFailed] = useState(null);
+  const [confirmClear, setConfirmClear] = useState(false);
   /*
    * The half-finished form somebody left here, and whether it is still on
    * screen. `draft` is what arrived with the record; `draftState` is what has
@@ -177,7 +183,14 @@ export default function CallRecordEditor({ saleId, canEdit, onClose, onSaved }) 
     return () => clearTimeout(timer);
   }, [values, canEdit, loading, saleId, record?.call_record_version]);
 
-  /** Keep it now rather than in two seconds, for a deliberate close. */
+  /**
+   * Keep it now rather than in two seconds, for a deliberate close.
+   *
+   * A draft that could not be written used to be swallowed here and the
+   * editor closed anyway, so the typing was gone and nobody was told. Closing
+   * is still never blocked: the failure is shown, with a way to close
+   * regardless, and the choice is the person's.
+   */
   const keepAndClose = async () => {
     if (canEdit && touched.current) {
       try {
@@ -186,9 +199,9 @@ export default function CallRecordEditor({ saleId, canEdit, onClose, onSaved }) 
           values,
           record?.call_record_version ?? null,
         );
-      } catch {
-        // Same reasoning as the autosave: closing must not be blocked by a
-        // draft that could not be written.
+      } catch (err) {
+        setKeepFailed(err instanceof DataCenterError ? err.message : "the draft could not be written");
+        return;
       }
     }
     onClose?.();
@@ -254,6 +267,7 @@ export default function CallRecordEditor({ saleId, canEdit, onClose, onSaved }) 
       );
       setNotice("Saved.");
       setError(null);
+      setConflict(false);
       // The server clears the draft in the same transaction as the save. This
       // is the local half of that, so the banner goes without waiting for the
       // reload to come back.
@@ -263,9 +277,11 @@ export default function CallRecordEditor({ saleId, canEdit, onClose, onSaved }) 
       await load();
       onSaved?.(result);
     } catch (err) {
-      // A 409 means someone else saved while this was open. Say so plainly:
-      // the agent needs to reload, not retry.
-      setError(err instanceof DataCenterError ? err.message : "Could not save.");
+      // A 409 is not a fault in what was typed: somebody else saved first. It
+      // is shown in its own tone with the one way on, a reload.
+      const isConflict = err instanceof DataCenterError && err.status === 409;
+      setConflict(isConflict);
+      setError(err instanceof DataCenterError ? err.message : "Could not save this record.");
     } finally {
       setSaving(false);
     }
@@ -405,7 +421,7 @@ export default function CallRecordEditor({ saleId, canEdit, onClose, onSaved }) 
             {canEdit && (
               <button
                 type="button"
-                onClick={discardDraft}
+                onClick={() => setConfirmClear(true)}
                 disabled={draftBusy}
                 className="inline-flex shrink-0 items-center gap-1 rounded-md border border-amber-400 bg-white px-2.5 py-1 text-xs font-medium text-amber-900 transition hover:bg-amber-100 disabled:opacity-50"
               >
@@ -431,11 +447,68 @@ export default function CallRecordEditor({ saleId, canEdit, onClose, onSaved }) 
                 rather than as generosity. */}
             <div className="mx-auto max-w-5xl space-y-5">
             {error && (
-              <div className="flex items-start gap-2 rounded-lg border border-amber-200 bg-amber-50 p-3">
-                <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-amber-600" />
-                <p className="text-sm text-amber-900">{error}</p>
+              <div
+                role="alert"
+                className={`flex flex-wrap items-start gap-2 rounded-lg border p-3 ${
+                  conflict ? "border-red-200 bg-red-50" : "border-amber-200 bg-amber-50"
+                }`}
+              >
+                <AlertTriangle
+                  className={`mt-0.5 h-4 w-4 shrink-0 ${conflict ? "text-red-600" : "text-amber-600"}`}
+                />
+                <p className={`min-w-0 flex-1 text-sm ${conflict ? "text-red-900" : "text-amber-900"}`}>
+                  {error}
+                </p>
+                {conflict && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setConflict(false);
+                      setError(null);
+                      load();
+                    }}
+                    className="inline-flex shrink-0 items-center gap-1 rounded-md border border-red-300 bg-white px-2.5 py-1 text-xs font-medium text-red-800 transition hover:bg-red-100"
+                  >
+                    <RotateCcw className="h-3 w-3" /> Reload
+                  </button>
+                )}
               </div>
             )}
+            {keepFailed && (
+              <div
+                role="alert"
+                className="flex flex-wrap items-start gap-2 rounded-lg border border-red-200 bg-red-50 p-3"
+              >
+                <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-red-600" />
+                <p className="min-w-0 flex-1 text-sm text-red-900">
+                  Your answers could not be kept: {keepFailed}. Save the record, or close anyway
+                  and lose what you typed.
+                </p>
+                <button
+                  type="button"
+                  onClick={() => onClose?.()}
+                  className="inline-flex shrink-0 items-center rounded-md border border-red-300 bg-white px-2.5 py-1 text-xs font-medium text-red-800 transition hover:bg-red-100"
+                >
+                  Close anyway
+                </button>
+              </div>
+            )}
+            <ConfirmDialog
+              open={confirmClear}
+              title="Clear this unfinished form?"
+              description={`${
+                draft?.saved_by_name ? `${draft.saved_by_name}'s` : "The"
+              } unsaved answers go, and the form starts again from the saved record. Nothing already saved changes.`}
+              cancelLabel="Keep the answers"
+              actionLabel="Clear it"
+              destructive
+              busy={draftBusy}
+              onCancel={() => setConfirmClear(false)}
+              onConfirm={() => {
+                setConfirmClear(false);
+                discardDraft();
+              }}
+            />
             {notice && (
               <div className="flex items-center gap-2 rounded-lg border border-(--dc-primary)/20 bg-(--dc-primary-soft)/50 p-3">
                 <Check className="h-4 w-4 text-(--dc-accent)" />

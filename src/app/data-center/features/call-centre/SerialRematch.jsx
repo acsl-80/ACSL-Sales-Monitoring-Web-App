@@ -1,3 +1,4 @@
+import ConfirmDialog from "../../components/ConfirmDialog";
 import { useState } from "react";
 import Link from "@/compat/Link";
 import { dataCenterCall, DataCenterError } from "../../lib/client";
@@ -27,12 +28,20 @@ export default function SerialRematch({ saleId, currentSerial, canEdit, onDone }
   const [serial, setSerial] = useState("");
   const [note, setNote] = useState("");
   const [busy, setBusy] = useState(false);
+  const [confirming, setConfirming] = useState(false);
   const [error, setError] = useState(null);
   const [done, setDone] = useState(null);
 
-  const run = async (e) => {
+  /** The form asks first; the move itself is `perform`, once confirmed. */
+  const run = (e) => {
     e.preventDefault();
+    if (!serial.trim()) return;
+    setConfirming(true);
+  };
+
+  const perform = async () => {
     const value = serial.trim();
+    setConfirming(false);
     if (!value) return;
     setBusy(true);
     setError(null);
@@ -158,6 +167,16 @@ export default function SerialRematch({ saleId, currentSerial, canEdit, onDone }
           {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : <Package className="h-4 w-4" />}
           Move this record onto it
         </button>
+        <ConfirmDialog
+          open={confirming}
+          title={`Move this record onto ${serial.trim() || "that stove"}?`}
+          description="The record's stove ID changes to the one the buyer read out. If another buyer's record already holds that stove, theirs is marked unconfirmed until a caller confirms it with them, and somebody will have to ring them."
+          cancelLabel="Leave it"
+          actionLabel="Move it"
+          busy={busy}
+          onCancel={() => setConfirming(false)}
+          onConfirm={perform}
+        />
         <button
           type="button"
           onClick={() => {
