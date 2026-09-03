@@ -6,6 +6,13 @@
 **Status:** requested work. Each item below carries the file and line in the
 mobile code, what the web app does today, and what the app should do to match.
 
+**Update, 3 September 2026, evening.** The web review is complete: every batch
+is merged and confirmed on production. Everything this brief called inherited
+has shipped, the contract below held, and the aggregate the brief promised for
+M8 exists: `get-sales-advanced` with `withSummary: true` returns a `summary`
+object beside the rows, computed in SQL and scoped to the caller. The items
+themselves are unchanged; nothing on this list has been closed from the web side.
+
 ## Why this brief exists
 
 The web app and the mobile app share one Supabase project and one set of edge
@@ -29,8 +36,8 @@ Two kinds of finding are separated on purpose:
 
 ## Facts you can rely on
 
-- Production holds 2,071 sales (2,039 live) and 22,032 stoves as of 2 September
-  2026. Both grow daily.
+- Production holds 2,145 live sales and 22,032 stoves as of the evening of
+  3 September 2026. Both grow daily.
 - The app never reads tables directly; every read goes through an edge function
   and each function caps a single response: `get-sales-advanced` at 500 rows,
   `get-stove-ids` at 500, `get-transfer-history` at 200, `manage-organizations`
@@ -47,11 +54,17 @@ So you can build against something stable:
 1. Response shapes of the shared edge functions do not change.
 2. Every list function keeps returning `pagination.total` or `has_more`, so the
    app can page rather than fetch once.
-3. From the web's batch 2 onward, the dashboard functions compute every figure
-   in SQL; the app's six cards inherit that.
+3. Done, 3 September: the dashboard functions compute every figure in SQL;
+   the app's six cards are right with no app change.
 4. New SQL report functions on the web side are service-role only and not
-   reachable from the app. If a screen needs a server-side total, ask and an
-   edge action will be exposed for it rather than the app summing rows.
+   reachable from the app. For sales totals the action already exists: send
+   `withSummary: true` to `get-sales-advanced` with the same filters the list
+   uses, and read `summary`: `total`, `receivable`, `collected`,
+   `outstanding`, `fully_paid`, `partially_paid`, `unpaid`, and `due`
+   (`overdue`, `dueToday`, `due7`, `due14`, `due30`). The rows still page
+   with `page` and `limit` (500 at most) and `pagination.total` is exact. For
+   any other screen that needs a server-side total, ask and an action will be
+   exposed rather than the app summing rows.
 5. `create-sale`, `update-sale` and `get-sale` are not being changed by the web
    review.
 
@@ -77,7 +90,7 @@ unless a path starts with `supabase/`, which is the web repo.
 
 | # | What is wrong | Evidence | What to do |
 |---|---|---|---|
-| M8 | Financial Reports totals (count, value, collected, outstanding, by-status bars) and the dashboard drill-down sheets ("N sales, total", "N stoves") are summed on the phone from a single 500-row fetch. They are wrong today | `lib/features/sales/sales_provider.dart:27`; `lib/features/sales/financial_reports_screen.dart:82-93`; `lib/features/dashboard/dashboard_screen.dart:597`, `:697`, `:750`, `:324`, `:462` | Take totals from the server. Ask for an aggregate edge action (see the contract) rather than paging every row to the phone to sum it |
+| M8 | Financial Reports totals (count, value, collected, outstanding, by-status bars) and the dashboard drill-down sheets ("N sales, total", "N stoves") are summed on the phone from a single 500-row fetch. They are wrong today | `lib/features/sales/sales_provider.dart:27`; `lib/features/sales/financial_reports_screen.dart:82-93`; `lib/features/dashboard/dashboard_screen.dart:597`, `:697`, `:750`, `:324`, `:462` | Take totals from the server: `get-sales-advanced` with `withSummary: true` returns them in `summary` (see the contract), scoped and filtered exactly as the rows. Page rows only for lists, never to sum them |
 | M9 | The sales list fetches 100 rows once (500 for a custom date range) and pages them on the phone in 25s. Nothing past the first fetch is reachable, and "a to b of N" reports the fetched count, not the real one | `lib/features/sales/list/sales_list_controller.dart:24-36`, `:232-233`; `lib/features/sales/list/sales_list_screen.dart:760` | Server offset paging with the page size the user picks, and the total from `pagination.total` |
 | M10 | Transfer history capped at 50, agents at 25, users at 25, a partner's stove sheet at 500; `has_more` is ignored and there is no paging control | `lib/features/stoves/transfer_history_provider.dart:34`; `lib/features/agents/agents_provider.dart:31-35`; `lib/features/settings/users_provider.dart:29-33`; `lib/features/partners/partners_screen.dart:525` | Page with `pagination.total` or `has_more`. The partner list already does this correctly at `lib/features/partners/partner_access_service.dart:48-79`; copy it |
 
