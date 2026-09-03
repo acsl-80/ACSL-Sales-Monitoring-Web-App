@@ -257,62 +257,38 @@ serve(async (req) => {
       console.error("Error fetching pending sales count:", pendingCountError);
     }
 
-    // Get financial + chart data (year-filtered, exclude cancelled)
-    let salesQuery = supabase
-      .from("sales")
-      .select("amount, total_paid, is_installment, payment_status, state_backup, payment_model_id")
-      .eq("organization_id", organizationId)
-      .eq("is_archived", false)
-      .not("amount", "is", null);
-
-    if (dateFrom) salesQuery = salesQuery.gte("sales_date", dateFrom);
-    if (dateTo) salesQuery = salesQuery.lte("sales_date", dateTo + "T23:59:59");
-
-    const { data: salesRows, error: financialError } = await salesQuery;
-
-    let totalSalesAmount = 0;
-    let totalAmountPaid = 0;
-    let totalAmountOwed = 0;
-    let customersOwing = 0;
-    const stateMap: Record<string, number> = {};
-    const modelCountMap: Record<string, number> = {};
-    const modelIds: string[] = [];
-
-    if (!financialError && salesRows) {
-      for (const sale of salesRows) {
-        const amount = sale.amount || 0;
-        const paid = sale.is_installment ? (sale.total_paid || 0) : amount;
-        totalSalesAmount += amount;
-        totalAmountPaid += paid;
-        if (sale.is_installment && sale.payment_status !== "fully_paid") customersOwing += 1;
-
-        if (sale.state_backup) stateMap[sale.state_backup] = (stateMap[sale.state_backup] || 0) + 1;
-        if (sale.payment_model_id && !modelIds.includes(sale.payment_model_id)) {
-          modelIds.push(sale.payment_model_id);
-        }
-      }
-      totalAmountOwed = totalSalesAmount - totalAmountPaid;
-    }
-
-    // Resolve payment model names
-    let modelNames: Record<string, string> = {};
-    if (modelIds.length > 0) {
-      const { data: models } = await supabase.from("payment_models").select("id, name").in("id", modelIds);
-      models?.forEach((m) => { modelNames[m.id] = m.name; });
-    }
-    salesRows?.forEach((s) => {
-      const label = s.payment_model_id ? (modelNames[s.payment_model_id] || "Other") : "Outright";
-      modelCountMap[label] = (modelCountMap[label] || 0) + 1;
+    /*
+     * Money and breakdowns from one SQL function, over is_archived is not
+     * true (the Data Center's predicate) and the same date window. The rows
+     * used to be fetched here and summed, and an unranged select stops at
+     * 1,000 rows, so a partner past a thousand sales saw a thousand.
+     *
+     * Two rules change with it, both on purpose. Amount received is what
+     * was collected, total_paid, for outright sales too: the rule the Paid
+     * badge follows since slice 2. And a sale with no state or no amount is
+     * still a sale: it counts under "Unknown" instead of leaving the chart.
+     * Production has none of either today, so no figure moves.
+     */
+    const { data: summary, error: financialError } = await supabase.rpc("dashboard_sales_summary", {
+      p_organization_ids: [organizationId],
+      p_date_from: dateFrom,
+      p_date_to: dateTo,
     });
+    if (financialError) console.error("Error fetching sales summary:", financialError);
+    const s = (financialError ? null : summary) || {};
 
-    const totalSalesForPct = salesRows?.length || 0;
-    const salesModelData = Object.entries(modelCountMap)
-      .map(([model, count]) => ({ model, count, percentage: totalSalesForPct > 0 ? (count / totalSalesForPct) * 100 : 0 }))
-      .sort((a, b) => b.count - a.count);
+    const totalSalesAmount = Number(s.expected_receivable) || 0;
+    const totalAmountPaid = Number(s.amount_received) || 0;
+    const totalAmountOwed = totalSalesAmount - totalAmountPaid;
+    const customersOwing = Number(s.customers_owing) || 0;
 
-    const byState = Object.entries(stateMap)
-      .map(([state, count]) => ({ state, count }))
-      .sort((a, b) => b.count - a.count);
+    const totalSalesForPct = Number(s.total) || 0;
+    const salesModelData = (s.by_model || []).map((r: any) => ({
+      model: r.model,
+      count: Number(r.count),
+      percentage: totalSalesForPct > 0 ? (Number(r.count) / totalSalesForPct) * 100 : 0,
+    }));
+    const byState = (s.by_state || []).map((r: any) => ({ state: r.state, count: Number(r.count) }));
 
     // Return dashboard statistics
     const dashboardStats = {

@@ -150,122 +150,71 @@ serve(async (req) => {
         );
 
     /*
-     * The sold COUNT is a balance too, because it is one side of a balance
-     * sheet: received minus sold is what a partner still holds. The comment
-     * below it has always said "cumulative as of year end" and the identity
-     * has always been stated in those terms, but the query used the flow
-     * filter, so received and sold were measured over different windows and
-     * "available" was the difference between two unlike things.
+     * Every number below comes from one SQL function over the same base
+     * filter and the same period. Until now the rows were fetched into this
+     * function and summed here, and PostgREST stops an unranged select at
+     * 1,000 rows (max_rows in config.toml), so the money cards, the state
+     * table and the model donut were computed from the first thousand sales
+     * and presented as totals: 2,039 live sales read as 1,000 on 2026-09-02.
      *
-     * The sales ROWS underneath stay a flow. Money earned is genuinely a
-     * period question, and those rows feed revenue rather than the balance.
+     * The window is what it was: a custom range or a contiguous year set is
+     * an inclusive date pair; a non-contiguous year set is passed as the
+     * years themselves. The sold count is the count of those same rows, as
+     * before. One thing is stricter: partners that resolve to no name now
+     * mean no rows, rather than falling through to every partner.
      */
-    const soldPromise = partnerNames?.length
-      ? countInChunks(partnerNames, (c) =>
-          applyPeriod(buildSalesBase(serviceClient.from("sales").select("*", { count: "exact", head: true })), "sales_date").in("partner_name", c)
-        )
-      : applyPeriod(buildSalesBase(serviceClient.from("sales").select("*", { count: "exact", head: true })), "sales_date");
+    const rangeMode = hasCustomDate || yearsContiguous;
+    const dateToInclusive = body.date_to || `${maxYear}-12-31`;
+    const summaryPromise = serviceClient.rpc("dashboard_sales_summary", {
+      p_partner_names: partnerNames,
+      p_state: stateFilter,
+      p_branch: branchFilter,
+      p_date_from: rangeMode ? startDate : null,
+      p_date_to: rangeMode ? dateToInclusive : null,
+      p_years: rangeMode ? null : years,
+      p_top_n: 5,
+    });
 
-    const salesCols = "id, amount, total_paid, state_backup, partner_name, retailer_branch, payment_model_id, created_by";
-    const salesPromise = partnerNames?.length
-      ? selectInChunks(partnerNames, (c) =>
-          applyPeriod(buildSalesBase(serviceClient.from("sales").select(salesCols)), "sales_date").in("partner_name", c)
-        )
-      : applyPeriod(buildSalesBase(serviceClient.from("sales").select(salesCols)), "sales_date");
+    const [receivedResult, summaryResult] = await Promise.all([receivedPromise, summaryPromise]);
 
-    const [receivedResult, soldCumulativeResult, salesResult] = await Promise.all([
-      receivedPromise,
-      soldPromise,
-      salesPromise,
-    ]);
-
-    if (salesResult.error) throw new Error("Failed to fetch sales data");
+    if (summaryResult.error) throw new Error("Failed to fetch sales data");
+    const summary = summaryResult.data || {};
 
     const stovesReceivedByPartners = receivedResult.count ?? 0;
-    const stovesSoldToEndUsers = soldCumulativeResult.count ?? 0; // cumulative as of year end
-    // Available = received up to year end minus sold up to year end
+    const stovesSoldToEndUsers = Number(summary.total) || 0;
+    // Available = received over the period minus sold over the period
     const availableStoves = Math.max(0, stovesReceivedByPartners - stovesSoldToEndUsers);
 
-    const sales = salesResult.data || [];
-
-    const expectedReceivable = sales.reduce((sum, s) => sum + (Number(s.amount) || 0), 0);
-    const amountReceived = sales.reduce((sum, s) => sum + (Number(s.total_paid) || 0), 0);
+    const expectedReceivable = Number(summary.expected_receivable) || 0;
+    const amountReceived = Number(summary.amount_received) || 0;
     const outstandingBalance = expectedReceivable - amountReceived;
 
-    // Sales by state (year-filtered)
-    const stateMap: Record<string, number> = {};
-    sales.forEach((s) => {
-      const st = s.state_backup || "Unknown";
-      stateMap[st] = (stateMap[st] || 0) + 1;
-    });
-    const salesByState = Object.entries(stateMap)
-      .map(([state, count]) => ({ state, count }))
-      .sort((a, b) => b.count - a.count);
-
-    // Top 5 partners by sales (year-filtered)
-    const partnerMap: Record<string, { name: string; branch: string | null; count: number }> = {};
-    sales.forEach((s) => {
-      const name = (s.partner_name || "Unknown").trim();
-      const branch = s.retailer_branch ? s.retailer_branch.trim() : null;
-      const key = `${name}|||${branch || ""}`;
-      if (!partnerMap[key]) partnerMap[key] = { name, branch, count: 0 };
-      partnerMap[key].count += 1;
-    });
-    const totalSales = sales.length;
-    const topPartners = Object.values(partnerMap)
-      .sort((a, b) => b.count - a.count)
-      .slice(0, 5)
-      .map((p) => ({
-        ...p,
-        percentage: totalSales > 0 ? ((p.count / totalSales) * 100).toFixed(1) : "0",
-      }));
-
-    // Top 5 agents by sales count (year-filtered)
-    const agentCountMap: Record<string, number> = {};
-    sales.forEach((s) => {
-      if (s.created_by) agentCountMap[s.created_by] = (agentCountMap[s.created_by] || 0) + 1;
-    });
-    const topAgentIds = Object.entries(agentCountMap)
-      .sort((a, b) => b[1] - a[1])
-      .slice(0, 5)
-      .map(([id]) => id);
-    let agentNames: Record<string, string> = {};
-    if (topAgentIds.length > 0) {
-      const { data: agentProfiles } = await serviceClient
-        .from("profiles")
-        .select("id, full_name, email, username")
-        .in("id", topAgentIds);
-      agentProfiles?.forEach((p) => { agentNames[p.id] = p.full_name || p.username || p.email || "Unknown"; });
-    }
-    const topAgents = topAgentIds.map((id) => ({
-      name: agentNames[id] || "Unknown",
-      count: agentCountMap[id],
-      percentage: totalSales > 0 ? ((agentCountMap[id] / totalSales) * 100).toFixed(1) : "0",
+    // The shapes below are unchanged: the SQL gives counts, the percentages
+    // are still worked out here, as strings for the two top-five lists and as
+    // numbers for the model donut, exactly as the browser and the mobile app
+    // have always received them.
+    const totalSales = stovesSoldToEndUsers;
+    const pct = (count: number) => (totalSales > 0 ? ((count / totalSales) * 100).toFixed(1) : "0");
+    const salesByState = (summary.by_state || []).map((r: any) => ({
+      state: r.state,
+      count: Number(r.count),
     }));
-
-    // Sales model analysis (year-filtered)
-    const modelIds = [...new Set(sales.map((s) => s.payment_model_id).filter(Boolean))];
-    let modelNames: Record<string, string> = {};
-    if (modelIds.length > 0) {
-      const { data: models } = await serviceClient
-        .from("payment_models")
-        .select("id, name")
-        .in("id", modelIds);
-      models?.forEach((m) => { modelNames[m.id] = m.name; });
-    }
-
-    const modelCountMap: Record<string, number> = {};
-    sales.forEach((s) => {
-      const label = s.payment_model_id ? (modelNames[s.payment_model_id] || "Other") : "Outright";
-      modelCountMap[label] = (modelCountMap[label] || 0) + 1;
-    });
-    const salesModelData = Object.entries(modelCountMap)
-      .map(([model, count]) => ({
-        model,
-        count,
-        percentage: totalSales > 0 ? (count / totalSales) * 100 : 0,
-      }))
-      .sort((a, b) => b.count - a.count);
+    const topPartners = (summary.by_partner || []).map((r: any) => ({
+      name: r.name,
+      branch: r.branch ?? null,
+      count: Number(r.count),
+      percentage: pct(Number(r.count)),
+    }));
+    const topAgents = (summary.by_agent || []).map((r: any) => ({
+      name: r.name,
+      count: Number(r.count),
+      percentage: pct(Number(r.count)),
+    }));
+    const salesModelData = (summary.by_model || []).map((r: any) => ({
+      model: r.model,
+      count: Number(r.count),
+      percentage: totalSales > 0 ? (Number(r.count) / totalSales) * 100 : 0,
+    }));
 
     return new Response(
       JSON.stringify({
