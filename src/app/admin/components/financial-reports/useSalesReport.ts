@@ -9,7 +9,8 @@
  * the one place the screen's state becomes a request.
  */
 
-import { useEffect, useMemo, useState } from "react";
+import { useMemo } from "react";
+import { useSettled } from "@/lib/useSettled";
 import { keepPreviousData, useQuery } from "@tanstack/react-query";
 import salesAdvancedService from "../../../services/salesAdvancedAPIService";
 import type { AdminSales } from "@/types/adminSales";
@@ -67,16 +68,6 @@ export function buildReportRequest(f: ReportFilters): Record<string, unknown> {
     ...(periods.length ? { periods } : {}),
     ...(f.tracking !== "none" ? { dueBucket: f.tracking } : {}),
   };
-}
-
-/** A value that settles after the typing stops. */
-function useSettled<T>(value: T, ms = 350): T {
-  const [settled, setSettled] = useState(value);
-  useEffect(() => {
-    const t = setTimeout(() => setSettled(value), ms);
-    return () => clearTimeout(t);
-  }, [value, ms]);
-  return settled;
 }
 
 export type SalesReport = {

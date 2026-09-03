@@ -1,6 +1,8 @@
 import { useEffect, useMemo, useState } from "react";
-import { useAuth } from "../../contexts/useAuth";
 import { useRealtimeRefresh, useRefreshListener } from "../hooks/useRealtimeRefresh";
+import { useStatesPerformance, type StoveStatus } from "../hooks/useStatesPerformance";
+import StateStovesModal from "./StateStovesModal";
+import { Kpi, Pill, SortableTh } from "./reportBits";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import {
@@ -41,29 +43,20 @@ import {
   X,
 } from "lucide-react";
 import { downloadCSV } from "@/utils/csvExportUtils";
-import tokenManager from "@/utils/tokenManager";
 
-const ACSL_AGENT_ROLES = new Set(["acsl_agent", "acsl_agent_manager"]);
-const ACSL_ASSIGNMENT_TABLES = [
-  "super_admin_agent_organizations",
-  "acsl_agent_organizations",
-];
-const ACSL_AGENT_ID_COLUMNS = ["agent_id", "super_admin_agent_id", "user_id"];
+/**
+ * The tables behind the report. A change on any of them, debounced by the
+ * realtime hook, invalidates the query; the view names the base table
+ * because realtime never fires for a view.
+ */
 const REALTIME_STATE_TABLES = [
   "organizations",
   "profiles",
-  ...ACSL_ASSIGNMENT_TABLES,
+  "acsl_agent_organizations",
+  "acsl_agent_states",
+  "acsl_agent_scope",
   "sales",
-  "stove_ids",
-];
-
-const PROFILE_ROLES_FOR_STATES = [
-  "partner",
-  "admin",
-  "partner_agent",
-  "agent",
-  "acsl_agent",
-  "acsl_agent_manager",
+  "stove_ids_base",
 ];
 
 const AGENT_ROLE_LABELS: Record<string, string> = {
@@ -80,89 +73,6 @@ function formatNumber(n: number | null | undefined): string {
   return n.toLocaleString("en-US");
 }
 
-type ProfileLite = {
-  id: string;
-  full_name: string | null;
-  email: string | null;
-  role: string;
-  organization_id: string | null;
-  phone: string | null;
-};
-
-async function fetchProfilesViaManageUsers(): Promise<ProfileLite[] | null> {
-  try {
-    const { supabaseFunctionsUrl } = await import("@/lib/supabaseConfig");
-    const token = await tokenManager.getValidToken();
-    if (!token) return null;
-
-    const fetchRole = async (role: string): Promise<any[]> => {
-      const rows: any[] = [];
-      let nextPage = 1;
-      let totalPages = 1;
-      do {
-        const qs = new URLSearchParams({
-          page: String(nextPage),
-          limit: "100",
-          sortBy: "created_at",
-          sortOrder: "desc",
-          role,
-        });
-        const res = await fetch(`${supabaseFunctionsUrl}/manage-users?${qs.toString()}`, {
-          headers: { Authorization: `Bearer ${token}` },
-        });
-        const contentType = res.headers.get("content-type") || "";
-        if (!contentType.includes("application/json")) return rows;
-        const json = await res.json();
-        if (!res.ok) return rows;
-        rows.push(...(json.data || []));
-        totalPages = json.pagination?.totalPages ?? 1;
-        nextPage += 1;
-      } while (nextPage <= totalPages);
-      return rows;
-    };
-
-    const all = (await Promise.all(PROFILE_ROLES_FOR_STATES.map(fetchRole))).flat();
-    const byId = new Map<string, ProfileLite>();
-    all.forEach((u: any) => {
-      if (!u?.id || byId.has(u.id)) return;
-      byId.set(u.id, {
-        id: u.id,
-        full_name: u.full_name ?? u.name ?? null,
-        email: u.email ?? null,
-        role: u.role,
-        organization_id: u.organization_id ?? null,
-        phone: u.phone ?? null,
-      });
-    });
-    return Array.from(byId.values());
-  } catch {
-    return null;
-  }
-}
-
-async function fetchAllRows<T = any>(
-  buildQuery: (from: number, to: number) => PromiseLike<{ data: T[] | null; error: any }>,
-): Promise<T[]> {
-  const PAGE = 1000;
-  const rows: T[] = [];
-  let from = 0;
-  while (true) {
-    const { data, error } = await buildQuery(from, from + PAGE - 1);
-    if (error) throw error;
-    const chunk = data || [];
-    rows.push(...chunk);
-    if (chunk.length < PAGE) break;
-    from += PAGE;
-  }
-  return rows;
-}
-
-function pickAgentId(row: any, columns: string[]) {
-  for (const col of columns) {
-    if (row?.[col]) return String(row[col]);
-  }
-  return null;
-}
 
 type SortKey =
   | "state"
@@ -173,54 +83,16 @@ type SortKey =
   | "notSold"
   | "sellThrough";
 
-interface PartnerDetail {
-  id: string;
-  name: string;
-  phone: string;
-  totalStoves: number;
-  stovesSold: number;
-  stovesAvailable: number;
-}
-
-interface AgentDetail {
-  id: string;
-  name: string;
-  role: string;
-  statesCovered: string[];
-  stovesRecorded: number;
-}
-
-interface StoveDetail {
-  stove_id: string;
-  partner_name: string;
-  status: "sold" | "available";
-}
-
-interface StateRow {
-  state: string;
-  partners: number;
-  partnerAgents: number;
-  acslAgents: number;
-  agents: number;
-  stoves: number;
-  sold: number;
-  notSold: number;
-  sellThrough: number;
-  partnerDetails: PartnerDetail[];
-  agentDetails: AgentDetail[];
-  stoveDetails: StoveDetail[];
-}
 
 const PAGE_SIZES = [10, 25, 50];
 
 export default function StatesPerformanceContent() {
-  const { supabase } = useAuth() as any;
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
-  const [rows, setRows] = useState<StateRow[]>([]);
-  // Set of states that appear in at least one ACSL agent's partner-derived
-  // assignments — same rule as Agents Performance's "States Assigned" badge.
-  const [agentCoveredStates, setAgentCoveredStates] = useState<Set<string>>(new Set());
+  // The report, its covered states and its loading state come from one query.
+  const report = useStatesPerformance();
+  const rows = report.rows;
+  const loading = report.isPending;
+  const error = report.error;
+  const agentCoveredStates = report.coveredStates;
 
   const [search, setSearch] = useState("");
   const [sortKey, setSortKey] = useState<SortKey>("sold");
@@ -245,322 +117,11 @@ export default function StatesPerformanceContent() {
   // Stove detail modal state
   const [stoveModalOpen, setStoveModalOpen] = useState(false);
   const [stoveModalState, setStoveModalState] = useState<string | null>(null);
-  const [stoveModalSearch, setStoveModalSearch] = useState("");
-  const [stoveModalStatus, setStoveModalStatus] = useState<"all" | "sold" | "available">("all");
-  const [stoveModalPage, setStoveModalPage] = useState(1);
-  const [stoveModalPageSize, setStoveModalPageSize] = useState(25);
-  const [reloadKey, setReloadKey] = useState(0);
+  const [stoveModalStatus, setStoveModalStatus] = useState<StoveStatus>("all");
 
   useRealtimeRefresh("states", REALTIME_STATE_TABLES);
-  useRefreshListener("states", () => setReloadKey((k) => k + 1));
+  useRefreshListener("states", report.invalidate);
 
-  useEffect(() => {
-    let cancelled = false;
-    async function load() {
-      if (!supabase) return;
-      setLoading(true);
-      setError(null);
-      try {
-        // Fetch organizations (id, state, name, phone)
-        const { data: orgs, error: oErr } = await supabase
-          .from("organizations")
-          .select("id,state,partner_name,contact_phone,alternative_phone");
-        if (oErr) throw oErr;
-
-        // Partner-side + ACSL profiles — prefer manage-users (service role, bypasses RLS)
-        // so the roster and names match the Agents Performance report.
-        let profiles: ProfileLite[] | null = await fetchProfilesViaManageUsers();
-        if (!profiles) {
-          const { data: fallback, error: pErr } = await supabase
-            .from("profiles")
-            .select("id,full_name,email,role,organization_id,phone")
-            .in("role", PROFILE_ROLES_FOR_STATES);
-          if (pErr) throw pErr;
-          profiles = (fallback || []) as ProfileLite[];
-        }
-
-        // Stoves (paginated)
-        const stoves: {
-          stove_id: string | null;
-          organization_id: string | null;
-          status: string | null;
-          sale_id: string | null;
-        }[] = [];
-        const PAGE_FETCH = 1000;
-        const HARD_CAP = 100000;
-        let from = 0;
-        while (from < HARD_CAP) {
-          const { data, error: sErr } = await supabase
-            .from("stove_ids")
-            .select("stove_id,organization_id,status,sale_id")
-            .eq("is_archived", false)
-            .range(from, from + PAGE_FETCH - 1);
-          if (sErr) throw sErr;
-          const chunk = data || [];
-          stoves.push(...chunk);
-          if (chunk.length < PAGE_FETCH) break;
-          from += PAGE_FETCH;
-        }
-
-        // Sales (for stoves-recorded-by-agent per state)
-        const sales: { created_by: string | null; organization_id: string | null }[] = [];
-        let sfrom = 0;
-        while (sfrom < HARD_CAP) {
-          const { data, error: sErr2 } = await supabase
-            .from("sales")
-            .select("created_by,organization_id")
-            .range(sfrom, sfrom + PAGE_FETCH - 1);
-          if (sErr2) throw sErr2;
-          const chunk = data || [];
-          sales.push(...chunk);
-          if (chunk.length < PAGE_FETCH) break;
-          sfrom += PAGE_FETCH;
-        }
-
-        // Build org -> state map
-        const orgState = new Map<string, string>();
-        (orgs || []).forEach((o: any) => {
-          if (o?.id) orgState.set(o.id, (o.state || "").trim() || "Unknown");
-        });
-
-        // Profile lookup
-        const profileById = new Map<string, any>();
-        (profiles || []).forEach((p: any) => profileById.set(p.id, p));
-
-        // ACSL agent -> states covered, using the same partner-derived rule as
-        // the Agents Performance "States Assigned" badge: assigned states are
-        // the union of states from the agent's assigned partner organizations.
-        const acslStatesByAgent = new Map<string, Set<string>>();
-        const getExistingAgentCols = async (table: string) => {
-          const found: string[] = [];
-          for (const col of ACSL_AGENT_ID_COLUMNS) {
-            const { error } = await supabase
-              .from(table)
-              .select(col, { count: "exact", head: true })
-              .limit(1);
-            if (!error) found.push(col);
-          }
-          return found;
-        };
-        await Promise.all(
-          ACSL_ASSIGNMENT_TABLES.map(async (table) => {
-            const cols = await getExistingAgentCols(table);
-            if (cols.length === 0) return;
-            const data = await fetchAllRows<any>((from, to) =>
-              supabase
-                .from(table)
-                .select(`organization_id,${cols.join(",")}`)
-                .range(from, to),
-            );
-            data.forEach((r: any) => {
-              const agentId = pickAgentId(r, cols);
-              if (!agentId) return;
-              const profile = profileById.get(agentId);
-              if (!profile || !ACSL_AGENT_ROLES.has(profile.role)) return;
-
-              const st = r.organization_id ? orgState.get(r.organization_id) : null;
-              if (!st || st === "Unknown") return;
-
-              let set = acslStatesByAgent.get(agentId);
-              if (!set) {
-                set = new Set();
-                acslStatesByAgent.set(agentId, set);
-              }
-              set.add(st);
-            });
-          }),
-        );
-        const covered = new Set<string>();
-        acslStatesByAgent.forEach((stateSet) => {
-          stateSet.forEach((state) => covered.add(state));
-        });
-        if (!cancelled) setAgentCoveredStates(covered);
-
-
-        // Aggregate per state
-        const map = new Map<string, StateRow>();
-        const ensure = (state: string): StateRow => {
-          let r = map.get(state);
-          if (!r) {
-            r = {
-              state,
-              partners: 0,
-              partnerAgents: 0,
-              acslAgents: 0,
-              agents: 0,
-              stoves: 0,
-              sold: 0,
-              notSold: 0,
-              sellThrough: 0,
-              partnerDetails: [],
-              agentDetails: [],
-              stoveDetails: [],
-            };
-            map.set(state, r);
-          }
-          return r;
-        };
-
-        // Partner stove counts per organization
-        const partnerStoveCounts = new Map<
-          string,
-          { total: number; sold: number; available: number }
-        >();
-        const ensurePartnerCounts = (orgId: string) => {
-          let c = partnerStoveCounts.get(orgId);
-          if (!c) {
-            c = { total: 0, sold: 0, available: 0 };
-            partnerStoveCounts.set(orgId, c);
-          }
-          return c;
-        };
-
-        // Partners
-        (orgs || []).forEach((o: any) => {
-          const state = (o.state || "").trim();
-          if (!state) return;
-          ensure(state).partners += 1;
-        });
-
-        // Partner-side agents (via profile's organization_id -> state)
-        const partnerAgentRoles = new Set(["partner", "admin", "partner_agent", "agent"]);
-        (profiles || []).forEach((p: any) => {
-          if (!partnerAgentRoles.has(p.role)) return;
-          const state = p.organization_id ? orgState.get(p.organization_id) : null;
-          if (!state || state === "Unknown") return;
-          ensure(state).partnerAgents += 1;
-        });
-
-        // ACSL agents (dedupe by agent per partner-derived state)
-        acslStatesByAgent.forEach((stateSet) => {
-          stateSet.forEach((state) => {
-            ensure(state).acslAgents += 1;
-          });
-        });
-
-        // Stoves
-        const orgPartnerName = new Map<string, string>();
-        (orgs || []).forEach((o: any) => {
-          if (o?.id) orgPartnerName.set(o.id, o.partner_name || "—");
-        });
-        stoves.forEach((s) => {
-          const state = s.organization_id ? orgState.get(s.organization_id) : null;
-          if (!state || state === "Unknown") return;
-          const row = ensure(state);
-          row.stoves += 1;
-          const isSold = s.status === "sold" || !!s.sale_id;
-          if (isSold) row.sold += 1;
-          if (s.organization_id) {
-            const c = ensurePartnerCounts(s.organization_id);
-            c.total += 1;
-            if (isSold) c.sold += 1;
-            else c.available += 1;
-          }
-          row.stoveDetails.push({
-            stove_id: s.stove_id || "—",
-            partner_name: s.organization_id ? (orgPartnerName.get(s.organization_id) || "—") : "—",
-            status: isSold ? "sold" : "available",
-          });
-        });
-
-        // Build partner details per state
-        const partnerDetailsByState = new Map<string, PartnerDetail[]>();
-        (orgs || []).forEach((o: any) => {
-          const state = (o.state || "").trim();
-          if (!state) return;
-          const counts = partnerStoveCounts.get(o.id) || { total: 0, sold: 0, available: 0 };
-          const phone = o.contact_phone || o.alternative_phone || "—";
-          const detail: PartnerDetail = {
-            id: o.id,
-            name: o.partner_name || "—",
-            phone,
-            totalStoves: counts.total,
-            stovesSold: counts.sold,
-            stovesAvailable: counts.available,
-          };
-          const list = partnerDetailsByState.get(state) || [];
-          list.push(detail);
-          partnerDetailsByState.set(state, list);
-        });
-
-        // Agent -> per-state stoves recorded (from sales.created_by + org state)
-        // Key: `${agentId}::${state}` -> count
-        const agentStateSales = new Map<string, number>();
-        sales.forEach((s) => {
-          if (!s.created_by || !s.organization_id) return;
-          const st = orgState.get(s.organization_id);
-          if (!st || st === "Unknown") return;
-          const key = `${s.created_by}::${st}`;
-          agentStateSales.set(key, (agentStateSales.get(key) || 0) + 1);
-        });
-
-        // Build agent details per state
-        const agentDetailsByState = new Map<string, AgentDetail[]>();
-        const pushAgent = (state: string, agent: AgentDetail) => {
-          const list = agentDetailsByState.get(state) || [];
-          if (list.some((a) => a.id === agent.id)) return;
-          list.push(agent);
-          agentDetailsByState.set(state, list);
-        };
-
-        // Partner-side agents: their org's state
-        (profiles || []).forEach((p: any) => {
-          if (!partnerAgentRoles.has(p.role)) return;
-          const state = p.organization_id ? orgState.get(p.organization_id) : null;
-          if (!state || state === "Unknown") return;
-          pushAgent(state, {
-            id: p.id,
-            name: p.full_name || p.email || "—",
-            role: p.role,
-            statesCovered: [state],
-            stovesRecorded: agentStateSales.get(`${p.id}::${state}`) || 0,
-          });
-        });
-
-        // ACSL agents/managers
-        acslStatesByAgent.forEach((stateSet, agentId) => {
-          const p = profileById.get(agentId);
-          const statesCovered = Array.from(stateSet).sort();
-          stateSet.forEach((state) => {
-            pushAgent(state, {
-              id: agentId,
-              name: p?.full_name || p?.email || "—",
-              role: p?.role || "acsl_agent",
-              statesCovered,
-              stovesRecorded: agentStateSales.get(`${agentId}::${state}`) || 0,
-            });
-          });
-        });
-
-        // Finalize computed cols
-        const finalRows: StateRow[] = Array.from(map.values())
-          .filter((r) => r.partners > 0) // only states that have partners
-          .map((r) => ({
-            ...r,
-            agents: r.partnerAgents + r.acslAgents,
-            notSold: Math.max(0, r.stoves - r.sold),
-            sellThrough: r.stoves > 0 ? r.sold / r.stoves : 0,
-            partnerDetails: partnerDetailsByState.get(r.state) || [],
-            agentDetails: agentDetailsByState.get(r.state) || [],
-            stoveDetails: [...r.stoveDetails].sort((a, b) =>
-              (a.stove_id || "").localeCompare(b.stove_id || ""),
-            ),
-          }));
-
-        if (!cancelled) {
-          setRows(finalRows);
-        }
-      } catch (e: any) {
-        if (!cancelled) setError(e?.message || "Failed to load states performance");
-      } finally {
-        if (!cancelled) setLoading(false);
-      }
-    }
-    load();
-    return () => {
-      cancelled = true;
-    };
-  }, [supabase, reloadKey]);
 
   const filtered = useMemo(() => {
     const q = search.trim().toLowerCase();
@@ -784,74 +345,20 @@ export default function StatesPerformanceContent() {
     );
   };
 
-  // ----- Stove modal derived state -----
-  const openStoveModal = (state: string, status: "all" | "sold" | "available" = "all") => {
+  // ----- Stove modal -----
+  const openStoveModal = (state: string, status: StoveStatus = "all") => {
     setStoveModalState(state);
-    setStoveModalSearch("");
     setStoveModalStatus(status);
-    setStoveModalPage(1);
-    setStoveModalPageSize(25);
     setStoveModalOpen(true);
   };
   const closeStoveModal = () => {
     setStoveModalOpen(false);
     setStoveModalState(null);
-    setStoveModalSearch("");
-    setStoveModalPage(1);
   };
-
   const stoveModalRow = useMemo(
     () => (stoveModalState ? rows.find((r) => r.state === stoveModalState) : undefined),
     [rows, stoveModalState],
   );
-
-  const stoveModalStoves = useMemo(() => {
-    const list = stoveModalRow?.stoveDetails || [];
-    const q = stoveModalSearch.trim().toLowerCase();
-    return list.filter((s) => {
-      if (stoveModalStatus !== "all" && s.status !== stoveModalStatus) return false;
-      if (!q) return true;
-      return (
-        s.stove_id.toLowerCase().includes(q) ||
-        s.partner_name.toLowerCase().includes(q)
-      );
-    });
-  }, [stoveModalRow, stoveModalSearch, stoveModalStatus]);
-
-  const stoveModalTotalPages = Math.max(
-    1,
-    Math.ceil(stoveModalStoves.length / stoveModalPageSize),
-  );
-  const stoveModalClampedPage = Math.min(stoveModalPage, stoveModalTotalPages);
-  const stoveModalStart = (stoveModalClampedPage - 1) * stoveModalPageSize;
-  const stoveModalPageRows = stoveModalStoves.slice(
-    stoveModalStart,
-    stoveModalStart + stoveModalPageSize,
-  );
-  useEffect(
-    () => setStoveModalPage(1),
-    [stoveModalSearch, stoveModalPageSize, stoveModalStatus],
-  );
-
-  const handleStoveModalExport = () => {
-    const headers = ["#", "Stove ID", "Partner", "State", "Status"];
-    const state = stoveModalState || "";
-    const lines = [headers.join(",")].concat(
-      stoveModalStoves.map((s, i) =>
-        [
-          i + 1,
-          `"${(s.stove_id || "").replace(/"/g, '""')}"`,
-          `"${s.partner_name.replace(/"/g, '""')}"`,
-          `"${state.replace(/"/g, '""')}"`,
-          s.status,
-        ].join(","),
-      ),
-    );
-    downloadCSV(
-      lines.join("\n"),
-      `stoves-in-${state.toLowerCase().replace(/\s+/g, "-") || "state"}-${new Date().toISOString().split("T")[0]}.csv`,
-    );
-  };
 
 
 
@@ -1339,243 +846,18 @@ export default function StatesPerformanceContent() {
       </Dialog>
 
       {/* Stoves in State Modal */}
-      <Dialog open={stoveModalOpen} onOpenChange={(open) => !open && closeStoveModal()}>
-        <DialogContent className="max-w-6xl w-[95vw] max-h-[90vh] p-0 flex flex-col overflow-hidden">
-          <DialogHeader className="border-b bg-[#4a5d0f] px-6 py-4 shrink-0">
-            <div className="flex items-center justify-between">
-              <div>
-                <DialogTitle className="text-base font-semibold text-white">
-                  Stove IDs in {stoveModalState}
-                </DialogTitle>
-                <DialogDescription className="text-white/80 text-xs">
-                  {formatNumber(stoveModalRow?.stoves ?? 0)} total · {formatNumber(stoveModalRow?.sold ?? 0)} sold · {formatNumber(stoveModalRow?.notSold ?? 0)} available
-                </DialogDescription>
-              </div>
-              <button
-                onClick={closeStoveModal}
-                className="rounded-md p-1 text-white/80 hover:bg-white/10 hover:text-white"
-              >
-                <X className="h-4 w-4" />
-              </button>
-            </div>
-          </DialogHeader>
-
-          <div className="flex flex-col flex-1 min-h-0 space-y-3 p-5 overflow-hidden">
-            <div className="flex flex-wrap items-center gap-2 shrink-0">
-              <div className="relative min-w-[240px] flex-1">
-                <Search className="pointer-events-none absolute left-2.5 top-2.5 h-4 w-4 text-gray-400" />
-                <Input
-                  placeholder="Search stove ID or partner..."
-                  value={stoveModalSearch}
-                  onChange={(e) => setStoveModalSearch(e.target.value)}
-                  className="h-9 pl-9 shadow-none"
-                />
-              </div>
-              <Select value={stoveModalStatus} onValueChange={(v) => setStoveModalStatus(v as any)}>
-                <SelectTrigger className="h-9 w-[140px] shadow-none">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="all">All statuses</SelectItem>
-                  <SelectItem value="sold">Sold</SelectItem>
-                  <SelectItem value="available">Available</SelectItem>
-                </SelectContent>
-              </Select>
-              <Button
-                onClick={handleStoveModalExport}
-                disabled={stoveModalStoves.length === 0}
-                className="h-9 bg-[#4a5d0f] text-white hover:bg-[#3a4a0c] shadow-none"
-              >
-                <Download className="mr-2 h-4 w-4" /> Export CSV
-              </Button>
-            </div>
-
-            <div className="flex-1 min-h-0 overflow-auto rounded-lg border border-[#e5e7eb]">
-              <Table>
-                <TableHeader>
-                  <TableRow className="bg-[#eef3c4] hover:bg-[#eef3c4]">
-                    <TableHead className="w-12 text-left text-[11px] font-semibold text-[#4a5d0f]">#</TableHead>
-                    <TableHead className="text-left text-[11px] font-semibold text-[#4a5d0f]">Stove ID</TableHead>
-                    <TableHead className="text-left text-[11px] font-semibold text-[#4a5d0f]">Partner</TableHead>
-                    <TableHead className="text-center text-[11px] font-semibold text-[#4a5d0f]">Status</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {stoveModalPageRows.length === 0 ? (
-                    <TableRow>
-                      <TableCell colSpan={4} className="py-8 text-center text-sm text-gray-500">
-                        No stoves found.
-                      </TableCell>
-                    </TableRow>
-                  ) : (
-                    stoveModalPageRows.map((s, i) => (
-                      <TableRow key={`${s.stove_id}-${i}`} className="border-b text-xs">
-                        <TableCell className="align-top text-gray-500">
-                          {stoveModalStart + i + 1}
-                        </TableCell>
-                        <TableCell className="align-top">
-                          <span className="font-mono text-[12px] font-medium text-gray-900">
-                            {s.stove_id}
-                          </span>
-                        </TableCell>
-                        <TableCell className="align-top text-gray-700">
-                          {s.partner_name}
-                        </TableCell>
-                        <TableCell className="text-center align-top">
-                          {s.status === "sold" ? (
-                            <Pill tone="emerald">Sold</Pill>
-                          ) : (
-                            <Pill tone="slate">Available</Pill>
-                          )}
-                        </TableCell>
-                      </TableRow>
-                    ))
-                  )}
-                </TableBody>
-              </Table>
-            </div>
-
-            <div className="flex flex-wrap items-center justify-end gap-3 border-t border-[#e5e7eb] pt-3 text-xs text-gray-600 shrink-0">
-              <div>
-                Showing {stoveModalStoves.length === 0 ? 0 : formatNumber(stoveModalStart + 1)}–
-                {formatNumber(Math.min(stoveModalStart + stoveModalPageSize, stoveModalStoves.length))} of {formatNumber(stoveModalStoves.length)} stoves
-              </div>
-              <div className="flex items-center gap-2">
-                <span>per page:</span>
-                <Select value={String(stoveModalPageSize)} onValueChange={(v) => setStoveModalPageSize(Number(v))}>
-                  <SelectTrigger className="h-8 w-[80px] shadow-none">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {[25, 50, 100, 200].map((n) => (
-                      <SelectItem key={n} value={String(n)}>
-                        {n}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-              <div className="flex items-center gap-1">
-                <Button
-                  variant="outline"
-                  size="sm"
-                  className="h-8 shadow-none"
-                  disabled={stoveModalClampedPage <= 1}
-                  onClick={() => setStoveModalPage((p) => Math.max(1, p - 1))}
-                >
-                  Prev
-                </Button>
-                <span className="px-2">
-                  Page {stoveModalClampedPage} of {stoveModalTotalPages}
-                </span>
-                <Button
-                  variant="outline"
-                  size="sm"
-                  className="h-8 shadow-none"
-                  disabled={stoveModalClampedPage >= stoveModalTotalPages}
-                  onClick={() => setStoveModalPage((p) => Math.min(stoveModalTotalPages, p + 1))}
-                >
-                  Next
-                </Button>
-              </div>
-            </div>
-          </div>
-        </DialogContent>
-      </Dialog>
+      <StateStovesModal
+        open={stoveModalOpen}
+        state={stoveModalState}
+        initialStatus={stoveModalStatus}
+        summary={
+          stoveModalRow
+            ? { stoves: stoveModalRow.stoves, sold: stoveModalRow.sold, notSold: stoveModalRow.notSold }
+            : null
+        }
+        onClose={closeStoveModal}
+      />
     </div>
 
-  );
-}
-
-function Kpi({
-  icon: Icon,
-  label,
-  value,
-  tone,
-  sub,
-}: {
-  icon: any;
-  label: string;
-  value: number;
-  tone: "blue" | "indigo" | "teal" | "orange" | "emerald" | "violet";
-  sub?: string;
-}) {
-  const toneMap: Record<string, string> = {
-    blue: "from-blue-500 to-blue-600",
-    indigo: "from-indigo-500 to-indigo-600",
-    teal: "from-teal-500 to-emerald-600",
-    orange: "from-orange-500 to-amber-600",
-    emerald: "from-emerald-500 to-green-600",
-    violet: "from-violet-500 to-purple-600",
-  };
-  return (
-    <div
-      className={`relative overflow-hidden rounded-xl bg-gradient-to-br ${toneMap[tone]} p-3 text-white shadow-sm`}
-    >
-      <div className="flex items-start justify-between gap-2">
-        <div className="min-w-0">
-          <div className="text-xl font-bold leading-tight">{value.toLocaleString()}</div>
-          <div className="mt-0.5 text-[11px] font-medium text-white/90">{label}</div>
-          {sub ? (
-            <div className="mt-1 text-[10px] font-medium text-white/80">{sub}</div>
-          ) : null}
-        </div>
-        <div className="grid h-7 w-7 shrink-0 place-items-center rounded-lg bg-white/20 backdrop-blur-sm">
-          <Icon className="h-3.5 w-3.5" />
-        </div>
-      </div>
-    </div>
-  );
-}
-
-
-
-function Pill({
-  children,
-  tone,
-}: {
-  children: React.ReactNode;
-  tone: "green" | "slate" | "emerald" | "rose";
-}) {
-  const map: Record<string, string> = {
-    green: "bg-[#eef3c4] text-[#4a5d0f]",
-    slate: "bg-slate-100 text-slate-700",
-    emerald: "bg-emerald-100 text-emerald-700",
-    rose: "bg-rose-100 text-rose-700",
-  };
-  return (
-    <span className={`inline-flex min-w-[2rem] justify-center rounded-full px-2 py-0.5 text-[11px] font-medium ${map[tone]}`}>
-      {children}
-    </span>
-  );
-}
-
-function SortableTh({
-  label,
-  k,
-  sortKey,
-  onClick,
-  icon,
-  align = "center",
-}: {
-  label: string;
-  k: SortKey;
-  sortKey: SortKey;
-  onClick: (k: SortKey) => void;
-  icon: React.ReactNode;
-  align?: "left" | "center";
-}) {
-  return (
-    <TableHead
-      className={`cursor-pointer text-white hover:bg-[#3f4f0d] ${
-        align === "center" ? "text-center" : "text-left"
-      }`}
-      onClick={() => onClick(k)}
-    >
-      <span className="inline-flex items-center">
-        {label}
-        {icon}
-      </span>
-    </TableHead>
   );
 }
