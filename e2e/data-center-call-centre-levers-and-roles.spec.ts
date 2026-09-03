@@ -145,6 +145,16 @@ test.describe("slice 7b: the levers ask first, and No does nothing", () => {
     await signIn(page, USERS.admin);
     await openQueue(page);
     await expect(page.getByRole("heading", { name: "Agents and their work" })).toBeVisible({ timeout: 40_000 });
+    const opener = page.getByRole("button", { name: /^What .* is holding$/ }).first();
+    await expect(opener).toBeVisible({ timeout: 20_000 });
+    await opener.click();
+    await page.getByRole("button", { name: "Unassign batch" }).first().click();
+    const ask = page.getByRole("alertdialog");
+    await expect(ask).toBeVisible({ timeout: 10_000 });
+    await expect(ask).toContainText("Return this work to the pool?");
+    await ask.getByRole("button", { name: "Keep it assigned" }).click();
+    await expect(ask).toHaveCount(0);
+  });
 
   test("Assign now and Reclaim ask, and No runs nothing", async ({ page }) => {
     const calls: string[] = [];
@@ -172,17 +182,6 @@ test.describe("slice 7b: the levers ask first, and No does nothing", () => {
     await page.waitForTimeout(1_000);
     const acted = calls.filter((body) => /"action"\s*:\s*"(run|reclaim)"/.test(body));
     expect(acted, "No must not have run the assignment or the reclaim").toHaveLength(0);
-  });
-
-    const opener = page.getByRole("button", { name: /^What .* is holding$/ }).first();
-    await expect(opener).toBeVisible({ timeout: 20_000 });
-    await opener.click();
-    await page.getByRole("button", { name: "Unassign batch" }).first().click();
-    const ask = page.getByRole("alertdialog");
-    await expect(ask).toBeVisible({ timeout: 10_000 });
-    await expect(ask).toContainText("Return this work to the pool?");
-    await ask.getByRole("button", { name: "Keep it assigned" }).click();
-    await expect(ask).toHaveCount(0);
   });
 });
 
@@ -219,13 +218,13 @@ test("a save that lost to somebody else is red, and Reload reloads", async ({ pa
     await dialog.getByRole("button", { name: "Partly verified", exact: true }).click();
     await dialog.getByRole("button", { name: "Save", exact: true }).click();
 
-    const alert = dialog.getByRole("alert").filter({ hasText: "Someone else changed this record" });
-    await expect(alert).toBeVisible({ timeout: 15_000 });
-    await expect(alert, "a conflict should be red, not the amber of every other error").toHaveClass(/red/);
-    const reload = alert.getByRole("button", { name: "Reload" });
+    const message = dialog.getByText(/Someone else changed this record/);
+    await expect(message).toBeVisible({ timeout: 15_000 });
+    await expect(message, "a conflict should be red, not the amber of every other error").toHaveClass(/text-red/);
+    const reload = dialog.getByRole("button", { name: "Reload" });
     await expect(reload, "and it should offer a Reload").toBeVisible();
     await reload.click();
-    await expect(alert).toHaveCount(0, { timeout: 15_000 });
+    await expect(message).toHaveCount(0, { timeout: 15_000 });
 
     await dialog.getByRole("button", { name: "Partly verified", exact: true }).click();
     await dialog.getByRole("button", { name: "Save", exact: true }).click();
@@ -245,10 +244,26 @@ test("a sales rep can close a send-back routed to them, note and all", async ({ 
     `select access_role from data_center.module_access where user_id = '${ACSL_AGENT_ID}'`,
   );
   const note = "Fixed the phone number on the receipt, 7b";
+  let repKey = "";
   try {
     await branchSql(
       `insert into data_center.module_access (user_id, access_role) values ('${ACSL_AGENT_ID}', 'sales_rep')
        on conflict (user_id) do update set access_role = 'sales_rep'`,
+    );
+    // A send-back is routed to the rep named on the consignment, through the
+    // rep's linked account. Link the seed's rep for this stove to the agent.
+    const [rep] = await branchSql<{ sales_rep: string | null }>(
+      `select f.sales_rep from data_center.transfer_funnel f
+         join data_center.v_transfer_stoves b on b.transfer_id = f.transfer_id
+        where b.stove_id = upper(trim('${e.stove_serial_no}')) limit 1`,
+    );
+    expect(rep?.sales_rep, "the seed's transfer should name a sales rep").toBeTruthy();
+    const repName = String(rep.sales_rep).replace(/'/g, "''");
+    repKey = String(rep.sales_rep).trim().toLowerCase().replace(/'/g, "''");
+    await branchSql(
+      `insert into data_center.sales_rep_accounts (rep_key, rep_name, user_id, linked_at)
+       values ('${repKey}', '${repName}', '${ACSL_AGENT_ID}', now())
+       on conflict (rep_key) do update set user_id = excluded.user_id, linked_at = now()`,
     );
     await branchSql(
       `update data_center.call_records
@@ -261,8 +276,7 @@ test("a sales rep can close a send-back routed to them, note and all", async ({ 
     await expect(page.getByRole("heading", { name: "Records to fix" })).toBeVisible({ timeout: 30_000 });
     const link = page.getByRole("link", { name: e.stove_serial_no });
     await expect(link, "the sent-back record should be listed for the sales rep").toBeVisible({ timeout: 20_000 });
-    const row = link.locator("xpath=ancestor::li[1] | ancestor::tr[1] | ancestor::div[contains(@class,'flex')][1]").first();
-    await row.getByRole("button", { name: /Mark it fixed/ }).click();
+    await page.getByRole("button", { name: /Mark it fixed/ }).first().click();
     await page.getByPlaceholder(/What did you do\?/).fill(note);
     await page.getByRole("button", { name: "Send it back to the call centre" }).click();
 
@@ -280,6 +294,7 @@ test("a sales rep can close a send-back routed to them, note and all", async ({ 
       .toBe(`true:${note}`);
     await expect(page.getByText("That did not save.")).toHaveCount(0);
   } finally {
+    if (repKey) await branchSql(`delete from data_center.sales_rep_accounts where rep_key = '${repKey}'`);
     if (access?.access_role) {
       await branchSql(
         `update data_center.module_access set access_role = '${access.access_role}' where user_id = '${ACSL_AGENT_ID}'`,
