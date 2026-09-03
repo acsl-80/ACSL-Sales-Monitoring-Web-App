@@ -610,6 +610,13 @@ function applySorting(query: any, filters: Filters) {
   } else {
     query = query.order(sortBy, { ascending: sortOrder === "asc" });
   }
+  /*
+   * A stable tiebreaker. Many sales share a sales_date, and an offset page
+   * over an order with ties is not the same set twice: page two repeated a
+   * row of page one on the preview branch the day this was paged for real.
+   * The id is unique, so the order is total and every page is its own.
+   */
+  query = query.order("id", { ascending: sortOrder === "asc" });
 
   return query;
 }
