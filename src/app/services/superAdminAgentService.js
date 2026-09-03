@@ -68,10 +68,6 @@ class SuperAdminAgentService {
     return await this.request(url, { method: "GET" });
   }
 
-  // Get ACSL agents assigned to a specific organization
-  async getAgentsByOrganization(organizationId) {
-    return await this.getSuperAdminAgents({ organization_id: organizationId, limit: 100 });
-  }
 
   // Get a single super admin agent by ID
   async getSuperAdminAgent(agentId) {

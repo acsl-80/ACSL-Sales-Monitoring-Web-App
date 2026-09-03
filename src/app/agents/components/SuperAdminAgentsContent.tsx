@@ -83,14 +83,19 @@ import AgentViewCredentialModal from "../../admin/components/agents/AgentViewCre
 import AgentCredentialsModal from "../../admin/components/agents/AgentCredentialsModal";
 import tokenManager from "@/utils/tokenManager";
 import { useRealtimeRefresh } from "../hooks/useRealtimeRefresh";
+import { useAgentsPerformance } from "../hooks/useAgentsPerformance";
 
+/**
+ * The tables behind the tab. The assignment view and the stove view are named
+ * by their base tables, because realtime never fires for a view.
+ */
 const REALTIME_AGENT_TABLES = [
   "profiles",
   "acsl_agent_organizations",
-  "super_admin_agent_organizations",
   "acsl_agent_states",
+  "acsl_agent_scope",
   "sales",
-  "stove_ids",
+  "stove_ids_base",
 ];
 
 // PostgREST caps un-ranged selects at 1000 rows, silently truncating bigger
@@ -2394,184 +2399,43 @@ export default function SuperAdminAgentsContent() {
   useRealtimeRefresh("agents", REALTIME_AGENT_TABLES);
 
 
-  // Hydrate Assigned / Collected / In Stock per agent from their assigned partner orgs.
-  // Assigned = total stoves across agent's partners; Collected = sold; In Stock = available.
-  const agentIdsKey = useMemo(() => agents.map((a) => a.id).join(","), [agents]);
+  // Assigned / Collected / In Stock per agent, from one request for every
+  // listed agent. The rows are merged in place so the table, the KPI cards
+  // and the modals keep reading the fields they always read.
+  const agentIds = useMemo(() => agents.map((a) => a.id), [agents]);
+  const perf = useAgentsPerformance(agentIds);
   useEffect(() => {
-    if (!agents.length) return;
-    let cancelled = false;
-    (async () => {
-      try {
-        const { getSupabase } = await import("@/lib/supabaseClient");
-        const supabase = getSupabase();
-
-        // 1. Orgs per agent (direct + via state assignments).
-        const orgListResults = await Promise.all(
-          agents.map((a) => {
-            // The super-admin-agents edge function only knows about ACSL roles
-            // (acsl_agent / acsl_agent_manager). Calling it for partner /
-            // partner_agent / agent roles 404s ("Agent not found"). Skip them.
-            if (a.role !== "acsl_agent" && a.role !== "acsl_agent_manager") {
-              return Promise.resolve({ id: a.id, orgs: [] as any[] });
-            }
-            return superAdminAgentService
-              .getAgentOrganizations(a.id)
-              .then((res: any) => ({ id: a.id, orgs: (res?.data || []) as any[] }))
-              .catch(() => ({ id: a.id, orgs: [] as any[] }));
-          })
-        );
-        if (cancelled) return;
-
-        // For stove math we use ALL orgs the agent can reach (direct + via state).
-        // For partner *counts* we use ONLY direct assignments, so the badge
-        // matches what was explicitly set in the User Manager.
-        const agentToOrgIds: Record<string, string[]> = {};
-        const agentToDirectOrgIds: Record<string, string[]> = {};
-        const agentToStates: Record<string, string[]> = {};
-        const allOrgIds = new Set<string>();
-        for (const r of orgListResults) {
-          const ids = r.orgs.map((o: any) => o.id).filter(Boolean);
-          const directIds = r.orgs
-            .filter((o: any) => !o.source || o.source === "direct")
-            .map((o: any) => o.id)
-            .filter(Boolean);
-          agentToOrgIds[r.id] = ids;
-          agentToDirectOrgIds[r.id] = directIds;
-          // Derive states from ALL reachable orgs (direct + via state assignments)
-          const stateMap = new Map<string, string>();
-          for (const o of r.orgs) {
-            const raw = (o as any).state;
-            if (!raw) continue;
-            const s = String(raw).trim();
-            if (!s) continue;
-            const key = s.toLowerCase();
-            if (!stateMap.has(key)) stateMap.set(key, s);
-          }
-          agentToStates[r.id] = Array.from(stateMap.values());
-          ids.forEach((id) => allOrgIds.add(id));
-        }
-
-
-
-        // 2. Stove counts per org — count TOTAL non-archived stoves per org
-        //    (the fixed pool assigned to sell), and separately track how many
-        //    are still available and how many are already marked sold.
-        const directOrgIdSet = new Set<string>();
-        Object.values(agentToDirectOrgIds).forEach((ids) =>
-          ids.forEach((id) => directOrgIdSet.add(id))
-        );
-        const orgIds = Array.from(directOrgIdSet);
-        const BATCH = 200;
-        const stoveTotalByOrg: Record<string, number> = {};
-        const stoveAvailableByOrg: Record<string, number> = {};
-        const stoveSoldByOrg: Record<string, number> = {};
-        for (let i = 0; i < orgIds.length; i += BATCH) {
-          const slice = orgIds.slice(i, i + BATCH);
-          // Paginate past PostgREST's 1000-row cap — a single un-ranged
-          // select silently truncates, undercounting orgs with big pools.
-          let from = 0;
-          const PAGE = 1000;
-          while (true) {
-            const { data, error: err } = await supabase
-              .from("stove_ids")
-              .select("organization_id,status")
-              .in("organization_id", slice)
-              .eq("is_archived", false)
-              .range(from, from + PAGE - 1);
-            if (err) throw err;
-            const chunk = data || [];
-            chunk.forEach((s: any) => {
-              const oid = s.organization_id;
-              const status = String(s.status || "").toLowerCase();
-              stoveTotalByOrg[oid] = (stoveTotalByOrg[oid] || 0) + 1;
-              if (status === "sold") {
-                stoveSoldByOrg[oid] = (stoveSoldByOrg[oid] || 0) + 1;
-              } else {
-                stoveAvailableByOrg[oid] = (stoveAvailableByOrg[oid] || 0) + 1;
-              }
-            });
-            if (chunk.length < PAGE) break;
-            from += PAGE;
-          }
-        }
-        if (cancelled) return;
-
-        // 3. Collected (per agent) = actual sales records created by each agent.
-        const soldByAgent: Record<string, number> = {};
-        await Promise.all(
-          agents.map(async (a) => {
-            const { count } = await supabase
-              .from("sales")
-              .select("*", { count: "exact", head: true })
-              .eq("created_by", a.id)
-              .eq("is_archived", false);
-            soldByAgent[a.id] = count || 0;
-          })
-        );
-        if (cancelled) return;
-
-        // 4. Global totals.
-        //    Assigned = total stoves across the unique set of directly-assigned
-        //                partners (deduped so shared partners aren't counted twice).
-        //    Sold     = per-agent sales attributed via created_by.
-        //    Unsold   = Assigned − Sold (never negative).
-        let globalAssigned = 0;
-        let globalSold = 0;
-        for (const oid of orgIds) globalAssigned += stoveTotalByOrg[oid] || 0;
-        for (const a of agents) globalSold += soldByAgent[a.id] || 0;
-        setStoveTotals({
-          assigned: globalAssigned,
-          sold: globalSold,
-          unsold: Math.max(0, globalAssigned - globalSold),
-        });
-        setKpiAssignedOrgIds(orgIds);
-
-        // 5. Merge per-agent stove_summary. received = total stoves at the
-        //    agent's directly-assigned partners; sold = agent's own sales;
-        //    available = received − sold.
-        setAgents((prev) =>
-          prev.map((a) => {
-            const orgs = agentToDirectOrgIds[a.id] || [];
-            let received = 0;
-            for (const oid of orgs) received += stoveTotalByOrg[oid] || 0;
-            const sold = soldByAgent[a.id] || 0;
-            const available = Math.max(0, received - sold);
-            // For ACSL roles, prefer the hydrated org count so managers also
-            // see their assigned partners (backend list may not populate it).
-            const isAcslRole = a.role === "acsl_agent" || a.role === "acsl_agent_manager";
-            const directOrgs = agentToDirectOrgIds[a.id] || [];
-            const assigned_organizations_count = isAcslRole
-              ? directOrgs.length
-              : a.assigned_organizations_count;
-            const total_partners_count = isAcslRole
-              ? directOrgs.length
-              : a.total_partners_count;
-            const states = agentToStates[a.id] || [];
-            const assigned_states = isAcslRole && states.length > 0 ? states : a.assigned_states;
-            const assigned_states_count = isAcslRole
-              ? states.length
-              : a.assigned_states_count;
-
-            return {
-              ...a,
-              assigned_organizations_count,
-              total_partners_count,
-              assigned_states,
-              assigned_states_count,
-              stove_summary: { received, sold, available },
-              direct_org_ids: directOrgs,
-            };
-          })
-        );
-
-
-      } catch {
-        // silent: columns fall back to em-dash
-      }
-    })();
-    return () => { cancelled = true; };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [agentIdsKey]);
+    if (!perf.byId || !perf.totals) return;
+    const byId = perf.byId;
+    setStoveTotals(perf.totals);
+    setKpiAssignedOrgIds(Array.from(new Set(Array.from(byId.values()).flatMap((x) => x.directOrgIds))));
+    setAgents((prev) =>
+      prev.map((a) => {
+        const x = byId.get(a.id);
+        if (!x) return a;
+        const isAcslRole = a.role === "acsl_agent" || a.role === "acsl_agent_manager";
+        return {
+          ...a,
+          assigned_organizations_count: isAcslRole ? x.directOrgCount : a.assigned_organizations_count,
+          total_partners_count: isAcslRole ? x.directOrgCount : a.total_partners_count,
+          assigned_states: isAcslRole && x.states.length > 0 ? x.states : a.assigned_states,
+          assigned_states_count: isAcslRole ? x.states.length : a.assigned_states_count,
+          stove_summary: { received: x.received, sold: x.sold, available: x.available },
+          direct_org_ids: x.directOrgIds,
+        };
+      }),
+    );
+  }, [perf.byId, perf.totals]);
+  // A realtime change or a user edit marks the numbers stale; the list refetches on its own listener.
+  useEffect(() => {
+    const handler = () => perf.invalidate();
+    window.addEventListener("acsl:user-updated", handler);
+    window.addEventListener("performance-report:refresh:agents", handler);
+    return () => {
+      window.removeEventListener("acsl:user-updated", handler);
+      window.removeEventListener("performance-report:refresh:agents", handler);
+    };
+  }, [perf.invalidate]);
 
 
 

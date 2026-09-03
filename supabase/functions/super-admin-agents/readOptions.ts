@@ -541,7 +541,7 @@ export async function getAgentOrganizations(supabase: any, agentId: string, sear
     summary: {
       direct_count: directOrgs.length,
       state_count: assignedStates.length,
-      state_resolved_org_count: stateOrgs.length,
+      state_resolved_org_count: viaState,
       total_unique_orgs: allOrganizations.length,
     },
   };

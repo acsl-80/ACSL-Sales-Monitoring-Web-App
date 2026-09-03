@@ -2,6 +2,7 @@
 import React, { useState, useEffect, useRef, useCallback, useMemo } from "react";
 import { supabaseUrl as SUPABASE_URL } from "@/lib/supabaseConfig";
 import { useRealtimeRefresh, useRefreshListener } from "../../agents/hooks/useRealtimeRefresh";
+import { usePartnerAgents } from "../hooks/usePartnerAgents";
 
 const REALTIME_PARTNER_TABLES = ["organizations", "sales", "stove_ids"];
 import DashboardLayout from "../../components/DashboardLayout";
@@ -1179,8 +1180,6 @@ export default function PartnersContent() {
   const [loadingOrgId, setLoadingOrgId] = useState(null);
   const [expandedRefKeys, setExpandedRefKeys] = useState({});
 
-  const [orgAgentsData, setOrgAgentsData] = useState({});
-  const loadingAgentOrgIdsRef = useRef(new Set());
 
   const [sortMode, setSortMode] = useState("default");
   const [stoveSort, setStoveSort] = useState({ key: null, direction: null });
@@ -1228,6 +1227,11 @@ export default function PartnersContent() {
     deleteOrganization,
     fetchOrganizations,
   } = useOrganizations();
+  // The agents covering each partner on the page, one request per page; the
+  // assigned/unassigned filter reads it as it always did.
+  const pageOrgIds = useMemo(() => organizationsData.map((o) => o.id), [organizationsData]);
+  const partnerAgents = usePartnerAgents(pageOrgIds);
+  const orgAgentsData = partnerAgents.byOrg;
 
   // Close dropdowns on outside click
   useEffect(() => {
@@ -1308,6 +1312,7 @@ export default function PartnersContent() {
   useRealtimeRefresh("partners", REALTIME_PARTNER_TABLES);
   useRefreshListener("partners", () => {
     try { fetchOrganizations && fetchOrganizations(); } catch {}
+    try { partnerAgents.invalidate(); } catch {}
     try { fetchStats(filters, dateFrom, dateTo); } catch {}
     try { fetchTypeCounts(); } catch {}
   });
@@ -1390,24 +1395,6 @@ export default function PartnersContent() {
     setExpandedRefKeys((prev) => ({ ...prev, [key]: !prev[key] }));
   };
 
-  useEffect(() => {
-    if (organizationsData.length === 0) return;
-    organizationsData.forEach((org) => {
-      if (orgAgentsData[org.id] !== undefined) return;
-      if (loadingAgentOrgIdsRef.current.has(org.id)) return;
-      loadingAgentOrgIdsRef.current.add(org.id);
-      superAdminAgentService.getAgentsByOrganization(org.id)
-        .then((response) => {
-          setOrgAgentsData((prev) => ({ ...prev, [org.id]: response.data || [] }));
-        })
-        .catch(() => {
-          setOrgAgentsData((prev) => ({ ...prev, [org.id]: [] }));
-        })
-        .finally(() => {
-          loadingAgentOrgIdsRef.current.delete(org.id);
-        });
-    });
-  }, [organizationsData]);
 
   const formatDate = (v) => formatDateShared(v);
 
@@ -2006,7 +1993,7 @@ export default function PartnersContent() {
           organization={assignAgentOrg}
           isOpen={!!assignAgentOrg}
           onClose={() => setAssignAgentOrg(null)}
-          onSuccess={() => { setAssignAgentOrg(null); setOrgAgentsData({}); }}
+          onSuccess={() => { setAssignAgentOrg(null); partnerAgents.invalidate(); }}
         />
         <ViewCredentialModal isOpen={!!viewingCredential} onClose={() => setViewingCredential(null)} credential={viewingCredential} />
         <AssignedAgentsModal organization={agentsModalOrg} agents={agentsModalOrg ? (orgAgentsData[agentsModalOrg.id] || []) : []} isOpen={!!agentsModalOrg} onClose={() => setAgentsModalOrg(null)} />
