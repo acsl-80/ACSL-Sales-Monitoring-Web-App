@@ -1,5 +1,6 @@
 
-import { useState, useEffect, useCallback, useMemo } from "react";
+import { useState, useEffect, useMemo } from "react";
+import adminSalesService from "../../services/adminSalesService";
 import { X, Loader2, ChevronLeft, ChevronRight, ChevronsLeft, ChevronsRight } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
@@ -15,7 +16,6 @@ import {
 } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
 import FinancialReportsView from "../../admin/components/financial-reports/FinancialReportsView";
-import adminSalesService from "../../services/adminSalesService";
 import superAdminAgentService from "../../services/superAdminAgentService";
 import { AdminSales } from "@/types/adminSales";
 import { formatDate as formatDateShared } from "@/app/utils/formatDate";
@@ -131,17 +131,6 @@ export default function PartnerDashboardTableSection({
     return pages;
   };
 
-  const loadSales = useCallback(async () => {
-    const from = dateFrom || `${year}-01-01`;
-    const to   = dateTo   || `${year}-12-31`;
-    const paymentStatus = activeCard === "amountReceived" ? "paid" : undefined;
-    return adminSalesService.getFinancialReportSales({
-      limit: 1000,
-      dateFrom: from,
-      dateTo: to,
-      ...(paymentStatus ? { paymentStatus } : {}),
-    });
-  }, [activeCard, year, dateFrom, dateTo]);
 
   const initialPaymentStatus =
     activeCard === "amountReceived"    ? "paid"    :
@@ -315,7 +304,8 @@ export default function PartnerDashboardTableSection({
         )
       ) : (
         <FinancialReportsView
-          loadSales={loadSales}
+          initialStartDate={dateFrom || `${year}-01-01`}
+          initialEndDate={dateTo || `${year}-12-31`}
           onEditSale={onEditSale}
           onDeleteSale={onDeleteSale}
           viewFrom="admin"

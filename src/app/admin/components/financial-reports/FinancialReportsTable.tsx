@@ -224,7 +224,7 @@ const FinancialReportsTable: React.FC<FinancialReportsTableProps> = ({
         <div className="flex items-center gap-3">
           <p className="text-sm text-gray-600">
             Showing <span className="font-medium">{startRecord}–{endRecord}</span> of{" "}
-            <span className="font-medium">{totalRecords}</span> records
+            <span className="font-medium">{totalRecords.toLocaleString("en-NG")}</span> records
           </p>
           <div className="flex items-center gap-2">
             <span className="text-sm text-gray-500">per page:</span>
@@ -233,10 +233,10 @@ const FinancialReportsTable: React.FC<FinancialReportsTableProps> = ({
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="10">10</SelectItem>
                 <SelectItem value="25">25</SelectItem>
                 <SelectItem value="50">50</SelectItem>
                 <SelectItem value="100">100</SelectItem>
+                <SelectItem value="200">200</SelectItem>
               </SelectContent>
             </Select>
           </div>

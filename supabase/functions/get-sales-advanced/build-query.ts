@@ -26,7 +26,8 @@ export async function buildQuery(
   userOrgId: string | null,
   assignedOrgIds?: string[],
   userId?: string,
-  teamAgentIds?: string[]
+  teamAgentIds?: string[],
+  pageIds?: string[] | null
 ): Promise<QueryResult> {
   console.log("🔍 Building optimized sales query with joins...");
 
@@ -61,6 +62,25 @@ export async function buildQuery(
     q = applyNonOrgFilters(q, filters);
     return q;
   };
+
+  /*
+   * A due chip: the SQL report has already chosen this page's ids, in due
+   * order, within the same scope and filters. Fetch exactly those rows and
+   * hand them back in that order; the total is the chip's own count.
+   */
+  if (Array.isArray(pageIds)) {
+    if (pageIds.length === 0) return { sales: [], totalRecords: 0 };
+    const { data, error } = await baseQuery().in("id", pageIds);
+    if (error) {
+      console.error("❌ Page-by-ids query failed:", error.message);
+      throw new Error(`Database query failed: ${error.message}`);
+    }
+    const order = new Map(pageIds.map((id, i) => [id, i]));
+    const sales = (data || []).sort(
+      (a: any, b: any) => (order.get(a.id) ?? 0) - (order.get(b.id) ?? 0),
+    );
+    return { sales, totalRecords: pageIds.length };
+  }
 
   // Fast path: a single query is safe (no scoping, or a small in-list / or-clause).
   if (!orgPlan.chunked) {
@@ -274,6 +294,14 @@ function applyDateFilters(query: any, filters: Filters) {
   if (filters.dateFrom) query = query.gte("sales_date", filters.dateFrom);
   if (filters.dateTo) query = query.lte("sales_date", filters.dateTo);
 
+  // Year, years and month, as windows: {from} inclusive, {to} exclusive.
+  if (Array.isArray(filters.periods) && filters.periods.length) {
+    const windows = filters.periods
+      .filter((p) => /^\d{4}-\d{2}-\d{2}$/.test(String(p?.from)) && /^\d{4}-\d{2}-\d{2}$/.test(String(p?.to)))
+      .map((p) => `and(sales_date.gte.${p.from},sales_date.lt.${p.to})`);
+    if (windows.length) query = query.or(windows.join(","));
+  }
+
   // Created date filters
   if (filters.createdFrom) query = query.gte("created_at", filters.createdFrom);
   if (filters.createdTo) query = query.lte("created_at", filters.createdTo);
@@ -359,7 +387,26 @@ function applyStatusFilters(query: any, filters: Filters) {
     query = query.eq("is_installment", boolVal);
   }
   if (filters.paymentModelId) query = query.eq("payment_model_id", filters.paymentModelId);
-  
+
+  /*
+   * paymentStatus was accepted and never applied, so the status filter on the
+   * Sales Records screen worked only over the rows already loaded. The words
+   * and the rule are the screen's own: paid is anything not on instalments or
+   * settled; partial is an instalment sale part-paid; unpaid is an instalment
+   * sale with nothing collected.
+   */
+  if (filters.paymentStatus === "paid") {
+    query = query.or("is_installment.is.false,is_installment.is.null,payment_status.eq.fully_paid");
+  } else if (filters.paymentStatus === "partial") {
+    query = query.eq("is_installment", true).eq("payment_status", "partially_paid");
+  } else if (filters.paymentStatus === "unpaid") {
+    query = query.eq("is_installment", true).or("total_paid.eq.0,total_paid.is.null");
+  }
+  if (filters.agentApproved !== undefined && filters.agentApproved !== null) {
+    const approved = filters.agentApproved === true || (filters.agentApproved as any) === "true";
+    query = approved ? query.eq("agent_approved", true) : query.or("agent_approved.is.false,agent_approved.is.null");
+  }
+
   // Archive filter - default to hiding archived sales
   if (filters.showArchived === true || (filters.showArchived as any) === "true") {
     query = query.eq("is_archived", true);
@@ -381,6 +428,76 @@ type OrgPlan =
   | { chunked: false; apply: (q: any) => any }
   | { chunked: true; chunks: string[][]; sideQueries: string[] };
 
+/**
+ * Who may see which sales, as data.
+ *
+ * Slice 9a. The rule lived only inside the query plan below, as closures over
+ * a query builder, so nothing else could ask it. The totals now come from a
+ * SQL function that needs the same scope, so the rule is stated once here and
+ * the plan is derived from it.
+ *
+ *   orgIds    sales of these organisations (a super admin's filter, an ACSL
+ *             agent's assignments, a partner's own organisation)
+ *   agentIds  sales attributed to these people (a partner agent's own)
+ *   teamIds   a manager's team, matched on either attribution column
+ *   none      a scope that matches nothing
+ *
+ * All three null means no scoping: the super admin with no filter.
+ */
+export type ScopeSets = {
+  orgIds: string[] | null;
+  agentIds: string[] | null;
+  teamIds: string[] | null;
+  none: boolean;
+};
+
+export function computeScopeSets(
+  filters: Filters,
+  userRole: string,
+  userOrgId: string | null,
+  assignedOrgIds?: string[],
+  userId?: string,
+  teamAgentIds?: string[]
+): ScopeSets {
+  const empty: ScopeSets = { orgIds: null, agentIds: null, teamIds: null, none: true };
+  const requested = filters.organizationId
+    ? [filters.organizationId]
+    : filters.organizationIds?.length
+      ? filters.organizationIds
+      : null;
+
+  if (userRole === "super_admin") {
+    return { orgIds: requested, agentIds: null, teamIds: null, none: false };
+  }
+
+  if (
+    userRole === "acsl_agent" ||
+    userRole === "acsl_agent_manager" ||
+    userRole === "super_admin_agent"
+  ) {
+    // Client filters are honoured only within the assignment, never beyond it.
+    const scope = assignedOrgIds || [];
+    const team = userRole === "acsl_agent_manager" ? teamAgentIds || [] : [];
+    if (requested) {
+      const within = requested.filter((id) => scope.includes(id));
+      return within.length
+        ? { orgIds: within, agentIds: null, teamIds: null, none: false }
+        : empty;
+    }
+    if (team.length > 0) {
+      return { orgIds: scope.length ? scope : null, agentIds: null, teamIds: team, none: false };
+    }
+    return scope.length ? { orgIds: scope, agentIds: null, teamIds: null, none: false } : empty;
+  }
+
+  if (userRole === "partner" || userRole === "admin") {
+    return userOrgId ? { orgIds: [userOrgId], agentIds: null, teamIds: null, none: false } : empty;
+  }
+
+  // partner_agent / agent: own sales only, regardless of org or client filters.
+  return userId ? { orgIds: null, agentIds: [userId], teamIds: null, none: false } : empty;
+}
+
 function computeOrgPlan(
   filters: Filters,
   userRole: string,
@@ -390,6 +507,7 @@ function computeOrgPlan(
   teamAgentIds?: string[]
 ): OrgPlan {
   console.log("🏢 Computing organization scope plan...");
+  const sets = computeScopeSets(filters, userRole, userOrgId, assignedOrgIds, userId, teamAgentIds);
 
   // Helper: scope by a list of org ids, chunking when the list is large.
   const inList = (ids: string[]): OrgPlan => {
@@ -402,73 +520,38 @@ function computeOrgPlan(
     return { chunked: true, chunks: chunk(ids, ORG_CHUNK_SIZE), sideQueries: [] };
   };
 
-  if (userRole === "super_admin") {
-    console.log("👑 Super admin: optional org filtering");
-    if (filters.organizationId) {
-      const id = filters.organizationId;
-      return { chunked: false, apply: (q) => q.eq("organization_id", id) };
-    }
-    if (filters.organizationIds?.length) {
-      return inList(filters.organizationIds);
-    }
-    return { chunked: false, apply: (q) => q };
+  if (sets.none) {
+    return { chunked: false, apply: (q) => q.eq("organization_id", NO_MATCH_ID) };
   }
-
-  if (
-    userRole === "acsl_agent" ||
-    userRole === "acsl_agent_manager" ||
-    userRole === "super_admin_agent"
-  ) {
-    // ACSL roles: assigned partner sales only. Client-supplied org filters are
-    // honored only within the assigned scope (intersection), never beyond it.
-    console.log(`🔗 ${userRole}: scoped to ${assignedOrgIds?.length || 0} assigned orgs`);
-    const scope = assignedOrgIds || [];
-    const team = userRole === "acsl_agent_manager" ? teamAgentIds || [] : [];
-
-    if (filters.organizationId) {
-      const id = scope.includes(filters.organizationId) ? filters.organizationId : NO_MATCH_ID;
-      return { chunked: false, apply: (q) => q.eq("organization_id", id) };
-    }
-    if (filters.organizationIds?.length) {
-      return inList(filters.organizationIds.filter((id) => scope.includes(id)));
-    }
-    if (team.length > 0) {
-      // Manager: every org assigned to the team, PLUS any sale attributed to a
-      // team member (sold_on_behalf_of OR created_by; the former is NULL on
-      // older rows). The team clause is small, so it stays inline; only the org
-      // list can be large and is chunked.
-      const teamList = team.join(",");
-      const teamClause = `sold_on_behalf_of.in.(${teamList}),created_by.in.(${teamList})`;
-      if (scope.length === 0) {
-        return { chunked: false, apply: (q) => q.or(teamClause) };
-      }
-      if (scope.length <= ORG_CHUNK_SIZE) {
-        return {
-          chunked: false,
-          apply: (q) => q.or(`organization_id.in.(${scope.join(",")}),${teamClause}`),
-        };
-      }
-      // Large manager scope: org chunks + a single side query for team rows.
-      // Rows are deduped by id on merge; counts are summed as an upper bound.
-      return { chunked: true, chunks: chunk(scope, ORG_CHUNK_SIZE), sideQueries: [teamClause] };
-    }
-    return inList(scope);
+  if (sets.agentIds) {
+    const uid = sets.agentIds[0];
+    return { chunked: false, apply: (q) => q.or(`created_by.eq.${uid},sold_on_behalf_of.eq.${uid}`) };
   }
-
-  if (userRole === "partner" || userRole === "admin") {
-    // Partner: own organization's sales only. Client org filters cannot widen this.
-    console.log("🏢 Partner: locked to own organization");
-    const id = userOrgId || NO_MATCH_ID;
-    return { chunked: false, apply: (q) => q.eq("organization_id", id) };
+  if (sets.teamIds) {
+    // Manager: every org assigned to the team, PLUS any sale attributed to a
+    // team member (sold_on_behalf_of OR created_by; the former is NULL on
+    // older rows). The team clause is small, so it stays inline; only the org
+    // list can be large and is chunked.
+    const teamList = sets.teamIds.join(",");
+    const teamClause = `sold_on_behalf_of.in.(${teamList}),created_by.in.(${teamList})`;
+    const scope = sets.orgIds || [];
+    if (scope.length === 0) {
+      return { chunked: false, apply: (q) => q.or(teamClause) };
+    }
+    if (scope.length <= ORG_CHUNK_SIZE) {
+      return {
+        chunked: false,
+        apply: (q) => q.or(`organization_id.in.(${scope.join(",")}),${teamClause}`),
+      };
+    }
+    // Large manager scope: org chunks + a single side query for team rows.
+    // Rows are deduped by id on merge; counts are summed as an upper bound.
+    return { chunked: true, chunks: chunk(scope, ORG_CHUNK_SIZE), sideQueries: [teamClause] };
   }
-
-  // partner_agent / agent: own sales only, regardless of org or client filters.
-  console.log("👤 Partner agent: own sales only");
-  if (userId) {
-    const clause = `created_by.eq.${userId},sold_on_behalf_of.eq.${userId}`;
-    return { chunked: false, apply: (q) => q.or(clause) };
+  if (sets.orgIds) {
+    return inList(sets.orgIds);
   }
-  return { chunked: false, apply: (q) => q.eq("organization_id", NO_MATCH_ID) };
+  return { chunked: false, apply: (q) => q };
 }
 
 function applyBooleanFilters(query: any, filters: Filters) {
@@ -509,13 +592,21 @@ function applySearchFilter(query: any, filters: Filters) {
 function applySorting(query: any, filters: Filters) {
   console.log("🔄 Applying sorting...");
 
-  const sortBy = filters.sortBy || "created_at";
-  const sortOrder = filters.sortOrder || "desc";
+  // Only columns a screen sorts by; anything else falls back to created_at
+  // rather than reaching the query builder as a raw column name.
+  const SORTABLE = new Set([
+    "created_at", "sales_date", "updated_at", "amount", "total_paid",
+    "end_user_name", "partner_name", "state_backup", "transaction_id", "stove_serial_no",
+  ]);
+  const sortBy = SORTABLE.has(String(filters.sortBy)) ? String(filters.sortBy) : "created_at";
+  const sortOrder = filters.sortOrder === "asc" ? "asc" : "desc";
 
   if (filters.multiSort?.length) {
-    filters.multiSort.forEach((sort) => {
-      query = query.order(sort.field, { ascending: sort.order === "asc" });
-    });
+    filters.multiSort
+      .filter((sort) => SORTABLE.has(String(sort?.field)))
+      .forEach((sort) => {
+        query = query.order(sort.field, { ascending: sort.order === "asc" });
+      });
   } else {
     query = query.order(sortBy, { ascending: sortOrder === "asc" });
   }

@@ -1,7 +1,5 @@
-
-import { useState, useEffect, useMemo, useCallback } from "react";
+import { useState, useEffect, useMemo } from "react";
 import FinancialSummaryCards from "./FinancialSummaryCards";
-import PaymentStatusCards from "./PaymentStatusCards";
 import FinancialReportsFilters from "./FinancialReportsFilters";
 import FinancialReportsTable from "./FinancialReportsTable";
 import SalesTrackingBar, { TrackingKey } from "./SalesTrackingBar";
@@ -11,14 +9,25 @@ import AdminSalesDetailModal from "../sales/AdminSalesDetailModal";
 import { useToastNotification } from "@/app/contexts/useToastNotification";
 import { AdminSales } from "@/types/adminSales";
 import adminSalesService from "../../../services/adminSalesService";
-import { Loader2, Eye, EyeOff, Download } from "lucide-react";
-import { Button } from "@/components/ui/button";
+import { Loader2 } from "lucide-react";
 import { lgaAndStates } from "../../../constants";
-import { Checkbox } from "@/components/ui/checkbox";
-import { CalendarDays, ChevronDown, ChevronUp } from "lucide-react";
 import paymentModelService from "../../../services/paymentModelService";
+import { DEFAULT_PAGE_SIZE, useSalesReport } from "./useSalesReport";
+import { toFinancialSummary, toTrackingCounts } from "./salesReportSummary";
 
-// --- YearFilterBar helper ---
+/*
+ * Sales Records and the Financial Report.
+ *
+ * Slice 9a of the 2026-09-02 review (finding F6). This view used to load at
+ * most 500 sales and do everything in the browser: search, every filter, the
+ * sort, the paging, the money totals, the status counts and the due chips.
+ * Past five hundred sales each of those was computed over the first five
+ * hundred and shown as the whole. The server now pages, filters, sorts and
+ * totals; the screen's state becomes a request in useSalesReport, the
+ * server's summary becomes the cards and the chips in salesReportSummary, and
+ * what is left here is the screen.
+ */
+
 const STORAGE_KEY = "super_admin_manage_sales_selected_years";
 
 const loadSelectedYears = (): number[] => {
@@ -33,59 +42,12 @@ const loadSelectedYears = (): number[] => {
 };
 
 const saveSelectedYears = (years: number[]) => {
-  try { localStorage.setItem(STORAGE_KEY, JSON.stringify(years)); } catch {}
-};
-
-const getYearPillLabel = (selected: number[], available: number[]): string => {
-  if (selected.length === 0 || selected.length === available.length) return "All Years";
-  return [...selected].sort((a, b) => a - b).join(", ");
-};
-
-interface YearFilterBarProps {
-  selectedYears: number[];
-  availableYears: number[];
-  onChange: (years: number[]) => void;
-}
-
-const YearFilterBar: React.FC<YearFilterBarProps> = ({ selectedYears, availableYears, onChange }) => {
-  const [open, setOpen] = useState(false);
-  const handleToggle = (year: number) => {
-    const updated = selectedYears.includes(year)
-      ? selectedYears.filter((y) => y !== year)
-      : [...selectedYears, year].sort((a, b) => a - b);
-    if (updated.length === 0) return;
-    onChange(updated);
-    saveSelectedYears(updated);
-  };
-  const pillLabel = getYearPillLabel(selectedYears, availableYears);
-  return (
-    <div className="rounded-lg border border-border bg-card mb-4">
-      <button onClick={() => setOpen((v) => !v)} className="w-full flex items-center justify-between px-4 py-3 hover:bg-muted/50 transition-colors">
-        <div className="flex items-center gap-2 text-sm font-medium text-muted-foreground">
-          <CalendarDays className="h-4 w-4" />
-          <span>Active year(s) in view</span>
-          <span className="text-xs bg-green-600 text-white px-2 py-0.5 rounded-full font-medium">{pillLabel}</span>
-        </div>
-        {open ? <ChevronUp className="h-4 w-4 text-muted-foreground" /> : <ChevronDown className="h-4 w-4 text-muted-foreground" />}
-      </button>
-      {open && (
-        <div className="px-4 pb-4 pt-1 border-t border-border">
-          <div className="flex flex-wrap items-center gap-4 mt-2">
-            {availableYears.map((year) => (
-              <label key={year} className="flex items-center gap-2 cursor-pointer select-none">
-                <Checkbox checked={selectedYears.includes(year)} onCheckedChange={() => handleToggle(year)} />
-                <span className="text-sm font-medium text-foreground">{year}</span>
-              </label>
-            ))}
-          </div>
-        </div>
-      )}
-    </div>
-  );
+  try {
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(years));
+  } catch {}
 };
 
 interface FinancialReportsViewProps {
-  loadSales: () => Promise<{ success: boolean; data?: AdminSales[]; error?: string }>;
   onEditSale?: (sale: AdminSales) => void;
   onDeleteSale?: (sale: AdminSales) => void;
   onCancelSale?: (sale: AdminSales) => void;
@@ -98,6 +60,11 @@ interface FinancialReportsViewProps {
   onSelectionChange?: (count: number) => void;
   initialSearchTerm?: string;
   initialPaymentStatus?: string;
+  /** A host page's period, as the partner dashboard's drill-down passes it. */
+  initialStartDate?: string;
+  initialEndDate?: string;
+  /** Bumped by the host page after a create or a delete, to fetch again. */
+  reloadKey?: number;
 }
 
 // See FinancialReportsTable: total_paid is the real collected figure.
@@ -106,28 +73,34 @@ const getAmountPaid = (sale: AdminSales): number => sale.total_paid ?? 0;
 const getAmountOwed = (sale: AdminSales): number =>
   Math.max(0, (sale.amount ?? 0) - getAmountPaid(sale));
 
-const FinancialReportsView: React.FC<FinancialReportsViewProps> = ({ loadSales, onEditSale, onDeleteSale, onCancelSale, onApproveSale, viewFrom = "admin", selectedYear: externalSelectedYear, onYearChange: externalOnYearChange, availableYears: externalAvailableYears, onExportReady, onSelectionChange, initialSearchTerm, initialPaymentStatus }) => {
-  const [allSales, setAllSales] = useState<AdminSales[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState("");
-
+const FinancialReportsView: React.FC<FinancialReportsViewProps> = ({
+  onEditSale,
+  onDeleteSale,
+  onCancelSale,
+  onApproveSale,
+  viewFrom = "admin",
+  selectedYear: externalSelectedYear,
+  availableYears: externalAvailableYears,
+  onExportReady,
+  initialSearchTerm,
+  initialPaymentStatus,
+  initialStartDate,
+  initialEndDate,
+  reloadKey = 0,
+}) => {
   const [searchTerm, setSearchTerm] = useState(initialSearchTerm ?? "");
   const [paymentStatusFilter, setPaymentStatusFilter] = useState(initialPaymentStatus ?? "all");
-  const [startDate, setStartDate] = useState("");
-  const [endDate, setEndDate] = useState("");
+  const [startDate, setStartDate] = useState(initialStartDate ?? "");
+  const [endDate, setEndDate] = useState(initialEndDate ?? "");
 
   const [currentPage, setCurrentPage] = useState(1);
-  const [pageSize, setPageSize] = useState(10);
+  const [pageSize, setPageSize] = useState<number>(DEFAULT_PAGE_SIZE);
   const [sortOrder, setSortOrder] = useState<"asc" | "desc">("desc");
-
-  const [showFinancialSummary, setShowFinancialSummary] = useState(true);
-  const [showStatusBreakdown, setShowStatusBreakdown] = useState(true);
 
   const [detailModalSale, setDetailModalSale] = useState<AdminSales | null>(null);
   const [historyModalSale, setHistoryModalSale] = useState<AdminSales | null>(null);
   const [paymentModalSale, setPaymentModalSale] = useState<AdminSales | null>(null);
 
-  // New filters
   const [selectedState, setSelectedState] = useState("all");
   const [selectedLGA, setSelectedLGA] = useState("all");
   const [orgFilter, setOrgFilter] = useState("all");
@@ -139,59 +112,58 @@ const FinancialReportsView: React.FC<FinancialReportsViewProps> = ({ loadSales, 
   const [trackingFilter, setTrackingFilter] = useState<TrackingKey>("none");
   const [internalSelectedYears, setInternalSelectedYears] = useState<number[]>(loadSelectedYears);
   const selectedYears = useMemo(
-    () => externalSelectedYear !== undefined ? [externalSelectedYear] : internalSelectedYears,
-    [externalSelectedYear, internalSelectedYears]
+    () => (externalSelectedYear !== undefined ? [externalSelectedYear] : internalSelectedYears),
+    [externalSelectedYear, internalSelectedYears],
   );
-  const setSelectedYears = (years: number[]) => {
-    setInternalSelectedYears(years);
-    saveSelectedYears(years);
-  };
   const [exporting, setExporting] = useState(false);
   const { toast } = useToastNotification();
 
-
   const stateList = useMemo(() => Object.keys(lgaAndStates).sort(), []);
   const lgaList = useMemo(
-    () => selectedState !== "all" ? (lgaAndStates as Record<string, string[]>)[selectedState] || [] : [],
-    [selectedState]
+    () => (selectedState !== "all" ? (lgaAndStates as Record<string, string[]>)[selectedState] || [] : []),
+    [selectedState],
+  );
+
+  // One request per page, with every filter the server understands. The
+  // years the scope covers and the partners it holds come back with it.
+  const report = useSalesReport(
+    {
+      search: searchTerm,
+      paymentStatus: paymentStatusFilter,
+      startDate,
+      endDate,
+      state: viewFrom === "superAdmin" ? selectedState : "all",
+      lga: viewFrom === "superAdmin" ? selectedLGA : "all",
+      organizationId: viewFrom === "acsl_agent" ? orgFilter : "all",
+      approval: viewFrom === "acsl_agent" ? approvalFilter : "all",
+      salesModelId: salesModelFilter,
+      month: selectedMonth,
+      yearFilter,
+      // The year pills narrow only the super admin's view, as they always have.
+      selectedYears: viewFrom === "superAdmin" ? selectedYears : [],
+      availableYears: externalAvailableYears ?? [],
+      tracking: trackingFilter,
+      sortOrder,
+      page: currentPage,
+      pageSize,
+    },
+    reloadKey,
   );
 
   const availableYears = useMemo(() => {
     if (externalAvailableYears) return externalAvailableYears;
-    if (allSales.length === 0) return [new Date().getFullYear()];
-    const years = Array.from(
-      new Set(
-        allSales
-          .map((s) => { const d = s.sales_date || s.created_at; return d ? new Date(d).getFullYear() : null; })
-          .filter((y): y is number => y !== null)
-      )
-    ).sort((a, b) => a - b);
-    return years.length > 0 ? years : [new Date().getFullYear()];
-  }, [allSales, externalAvailableYears]);
+    return report.summary.years.length ? report.summary.years : [new Date().getFullYear()];
+  }, [externalAvailableYears, report.summary.years]);
 
-  const fetchSales = useCallback(async () => {
-    try {
-      setLoading(true);
-      setError("");
-      const result = await loadSales();
-      if (result.success) {
-        setAllSales(result.data || []);
-      } else {
-        setError(result.error || "Failed to fetch data");
-      }
-    } catch (err: any) {
-      setError(err.message || "An error occurred");
-    } finally {
-      setLoading(false);
-    }
-  }, [loadSales]);
-
-  useEffect(() => { fetchSales(); }, [fetchSales]);
+  const financialSummary = useMemo(() => toFinancialSummary(report.summary), [report.summary]);
+  const trackingCounts = useMemo(() => toTrackingCounts(report.summary), [report.summary]);
+  const assignedOrgs = report.summary.partners;
 
   // Load active sales models for the filter dropdown
   useEffect(() => {
     let mounted = true;
-    paymentModelService.getPaymentModels({ status: "active" })
+    paymentModelService
+      .getPaymentModels({ status: "active" })
       .then((res) => {
         if (!mounted) return;
         const models = (res?.data || [])
@@ -201,196 +173,59 @@ const FinancialReportsView: React.FC<FinancialReportsViewProps> = ({ loadSales, 
         setSalesModels(models);
       })
       .catch((err) => console.error("[SalesRecords] failed to load sales models:", err));
-    return () => { mounted = false; };
+    return () => {
+      mounted = false;
+    };
   }, []);
 
-  const filteredSales = useMemo(() => {
-    let result = [...allSales];
-
-    if (searchTerm) {
-      const term = searchTerm.toLowerCase();
-      result = result.filter((s) =>
-        (s.end_user_name || "").toLowerCase().includes(term) ||
-        (s.transaction_id || "").toLowerCase().includes(term) ||
-        (s.phone || "").toLowerCase().includes(term) ||
-        (s.partner_name || "").toLowerCase().includes(term) ||
-        (s.stove_serial_no || "").toLowerCase().includes(term)
-      );
-    }
-
-    if (viewFrom === "superAdmin") {
-      if (externalSelectedYear !== undefined) {
-        result = result.filter((s) => {
-          const d = s.sales_date || s.created_at;
-          if (!d) return true; // no date — don't exclude
-          return new Date(d).getFullYear() === externalSelectedYear;
-        });
-      } else if (selectedYears.length > 0 && selectedYears.length < availableYears.length) {
-        result = result.filter((s) => {
-          const d = s.sales_date || s.created_at;
-          if (!d) return true;
-          return selectedYears.includes(new Date(d).getFullYear());
-        });
-      }
-    }
-
-    if (paymentStatusFilter !== "all") {
-      result = result.filter((s) => {
-        const paid = getAmountPaid(s);
-        switch (paymentStatusFilter) {
-          case "paid":    return !s.is_installment || s.payment_status === "fully_paid";
-          case "partial": return s.is_installment && s.payment_status === "partially_paid";
-          case "unpaid":  return s.is_installment && paid === 0;
-          default:        return true;
-        }
-      });
-    }
-
-    if (selectedState !== "all") {
-      result = result.filter((s) => (s.state_backup || "").toLowerCase() === selectedState.toLowerCase());
-    }
-    if (selectedLGA !== "all") {
-      result = result.filter((s) => (s.lga_backup || "").toLowerCase() === selectedLGA.toLowerCase());
-    }
-    if (orgFilter !== "all") {
-      result = result.filter((s) => (s.organization_id === orgFilter || s.partner_id === orgFilter));
-    }
-    if (approvalFilter !== "all") {
-      result = result.filter((s) => approvalFilter === "approved" ? s.agent_approved : !s.agent_approved);
-    }
-    if (salesModelFilter !== "all") {
-      result = result.filter((s) => s.payment_model_id === salesModelFilter);
-    }
-    if (yearFilter !== "all") {
-      const y = Number(yearFilter);
-      result = result.filter((s) => {
-        const d = s.sales_date || s.created_at;
-        return d ? new Date(d).getFullYear() === y : false;
-      });
-    }
-    if (selectedMonth !== "all") {
-      const m = Number(selectedMonth);
-      result = result.filter((s) => {
-        const d = s.sales_date || s.created_at;
-        return d ? new Date(d).getMonth() === m : false;
-      });
-    }
-
-    if (startDate) result = result.filter((s) => (s.sales_date || s.created_at) >= startDate);
-    if (endDate)   result = result.filter((s) => (s.sales_date || s.created_at) <= endDate + "T23:59:59");
-
-
-    result.sort((a, b) => {
-      const dA = new Date(a.sales_date || a.created_at).getTime();
-      const dB = new Date(b.sales_date || b.created_at).getTime();
-      return sortOrder === "asc" ? dA - dB : dB - dA;
-    });
-
-    return result;
-  }, [allSales, searchTerm, paymentStatusFilter, startDate, endDate, sortOrder, selectedState, selectedLGA, orgFilter, approvalFilter, salesModelFilter, selectedMonth, yearFilter, selectedYears, availableYears, viewFrom]);
-
-  const financialSummary = useMemo(() => {
-    const totalReceivable = filteredSales.reduce((sum, s) => sum + (s.amount || 0), 0);
-    const totalCollected  = filteredSales.reduce((sum, s) => sum + getAmountPaid(s), 0);
-    const outstandingBalance = totalReceivable - totalCollected;
-    return {
-      totalReceivable, totalCollected, outstandingBalance,
-      salesCount: filteredSales.length,
-      collectedPercent:    totalReceivable > 0 ? (totalCollected / totalReceivable) * 100 : 0,
-      outstandingPercent:  totalReceivable > 0 ? (outstandingBalance / totalReceivable) * 100 : 0,
-    };
-  }, [filteredSales]);
-
-  const paymentBreakdown = useMemo(() => ({
-    totalOrders:    filteredSales.length,
-    fullyPaid:      filteredSales.filter((s) => !s.is_installment || s.payment_status === "fully_paid").length,
-    partiallyPaid:  filteredSales.filter((s) => s.is_installment && s.payment_status === "partially_paid").length,
-    unpaid:         filteredSales.filter((s) => s.is_installment && (s.total_paid ?? 0) === 0).length,
-  }), [filteredSales]);
-
-  const trackingCounts = useMemo(() => {
-    const today = new Date(); today.setHours(0, 0, 0, 0);
-    const startTs = today.getTime();
-    const day = 86400000;
-    const counts = { due30: 0, due14: 0, due7: 0, dueToday: 0, overdue: 0 };
-    for (const s of filteredSales) {
-      const dueStr = s.installment_summary?.next_due_date;
-      if (!dueStr) continue;
-      const balance = getAmountOwed(s);
-      if (balance <= 0) continue;
-      const d = new Date(dueStr); d.setHours(0, 0, 0, 0);
-      const diffDays = Math.round((d.getTime() - startTs) / day);
-      if (diffDays < 0) counts.overdue++;
-      else if (diffDays === 0) counts.dueToday++;
-      if (diffDays >= 0 && diffDays <= 7) counts.due7++;
-      if (diffDays >= 0 && diffDays <= 14) counts.due14++;
-      if (diffDays >= 0 && diffDays <= 30) counts.due30++;
-    }
-    return counts;
-  }, [filteredSales]);
-
-  const trackedSales = useMemo(() => {
-    if (trackingFilter === "none") return filteredSales;
-    const today = new Date(); today.setHours(0, 0, 0, 0);
-    const startTs = today.getTime();
-    const day = 86400000;
-    return filteredSales.filter((s) => {
-      const dueStr = s.installment_summary?.next_due_date;
-      if (!dueStr) return false;
-      if (getAmountOwed(s) <= 0) return false;
-      const d = new Date(dueStr); d.setHours(0, 0, 0, 0);
-      const diffDays = Math.round((d.getTime() - startTs) / day);
-      switch (trackingFilter) {
-        case "overdue":  return diffDays < 0;
-        case "dueToday": return diffDays === 0;
-        case "due7":     return diffDays >= 0 && diffDays <= 7;
-        case "due14":    return diffDays >= 0 && diffDays <= 14;
-        case "due30":    return diffDays >= 0 && diffDays <= 30;
-        default: return true;
-      }
-    });
-  }, [filteredSales, trackingFilter]);
-
-  const paginatedSales = useMemo(() => {
-    const start = (currentPage - 1) * pageSize;
-    return trackedSales.slice(start, start + pageSize);
-  }, [trackedSales, currentPage, pageSize]);
-
+  // Any change of filter starts the paging over.
   useEffect(() => {
     setCurrentPage(1);
-  }, [searchTerm, paymentStatusFilter, startDate, endDate, pageSize, selectedState, selectedLGA, orgFilter, approvalFilter, salesModelFilter, selectedMonth, yearFilter, selectedYears, trackingFilter]);
+  }, [
+    searchTerm,
+    paymentStatusFilter,
+    startDate,
+    endDate,
+    pageSize,
+    selectedState,
+    selectedLGA,
+    orgFilter,
+    approvalFilter,
+    salesModelFilter,
+    selectedMonth,
+    yearFilter,
+    selectedYears,
+    trackingFilter,
+  ]);
 
-  const hasActiveFilters = searchTerm !== "" || paymentStatusFilter !== "all" || startDate !== "" || endDate !== "" || selectedState !== "all" || selectedLGA !== "all" || orgFilter !== "all" || approvalFilter !== "all" || salesModelFilter !== "all" || selectedMonth !== "all" || yearFilter !== "all" || trackingFilter !== "none";
+  const hasActiveFilters =
+    searchTerm !== "" ||
+    paymentStatusFilter !== "all" ||
+    startDate !== "" ||
+    endDate !== "" ||
+    selectedState !== "all" ||
+    selectedLGA !== "all" ||
+    orgFilter !== "all" ||
+    approvalFilter !== "all" ||
+    salesModelFilter !== "all" ||
+    selectedMonth !== "all" ||
+    yearFilter !== "all" ||
+    trackingFilter !== "none";
 
   const clearFilters = () => {
-    setSearchTerm(""); setPaymentStatusFilter("all"); setStartDate(""); setEndDate("");
-    setSelectedState("all"); setSelectedLGA("all"); setOrgFilter("all"); setApprovalFilter("all");
-    setSalesModelFilter("all"); setSelectedMonth("all"); setYearFilter("all"); setTrackingFilter("none");
+    setSearchTerm("");
+    setPaymentStatusFilter("all");
+    setStartDate("");
+    setEndDate("");
+    setSelectedState("all");
+    setSelectedLGA("all");
+    setOrgFilter("all");
+    setApprovalFilter("all");
+    setSalesModelFilter("all");
+    setSelectedMonth("all");
+    setYearFilter("all");
+    setTrackingFilter("none");
   };
-
-
-  // Clicking a status card toggles the filter
-  const handleCardFilterClick = (filter: string) => {
-    setPaymentStatusFilter((prev) => prev === filter ? "all" : filter);
-  };
-
-  useEffect(() => {
-    if (onExportReady) onExportReady(handleExport);
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [filteredSales]);
-
-  const handlePaymentSuccess = () => { setPaymentModalSale(null); fetchSales(); };
-
-  const toggleBtn = (show: boolean, onToggle: () => void) => (
-    <Button variant="ghost" size="sm"
-      className="h-7 w-fit p-0 flex items-center gap-1.5 text-xs text-blue-600 hover:text-blue-800 transition-colors"
-      onClick={onToggle}
-    >
-      {show
-        ? <><p>Hide</p><EyeOff className="h-4 w-4" /></>
-        : <><p>Show</p><Eye className="h-4 w-4" /></>}
-    </Button>
-  );
 
   const handleExport = async () => {
     try {
@@ -414,7 +249,7 @@ const FinancialReportsView: React.FC<FinancialReportsViewProps> = ({ loadSales, 
       let exportData = result.data;
       if (approvalFilter !== "all") {
         exportData = exportData.filter((s: any) =>
-          approvalFilter === "approved" ? s.agent_approved : !s.agent_approved
+          approvalFilter === "approved" ? s.agent_approved : !s.agent_approved,
         );
       }
       if (salesModelFilter !== "all") {
@@ -442,22 +277,46 @@ const FinancialReportsView: React.FC<FinancialReportsViewProps> = ({ loadSales, 
     }
   };
 
+  useEffect(() => {
+    if (onExportReady) onExportReady(handleExport);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [
+    searchTerm,
+    paymentStatusFilter,
+    startDate,
+    endDate,
+    selectedState,
+    selectedLGA,
+    orgFilter,
+    approvalFilter,
+    salesModelFilter,
+    selectedYears,
+    availableYears,
+  ]);
+
+  const handlePaymentSuccess = () => {
+    setPaymentModalSale(null);
+    report.refetch();
+  };
+
   return (
     <div className="space-y-4">
-      {/* Error */}
-      {error && (
-        <div className="p-3 bg-red-50 border border-red-200 rounded-lg text-red-700 text-sm">{error}</div>
+      {report.error && (
+        <div role="alert" className="p-3 bg-red-50 border border-red-200 rounded-lg text-red-700 text-sm">
+          The sales could not be loaded: {report.error}. What is shown may be from an earlier load.
+        </div>
       )}
 
-      {/* Loading */}
-      {loading ? (
+      {report.isPending ? (
         <div className="flex items-center justify-center py-20">
           <Loader2 className="h-6 w-6 animate-spin text-gray-400" />
           <span className="ml-3 text-gray-500">Loading sales data...</span>
         </div>
       ) : (
         <>
-          {/* Filters */}
+          {/* The money over everything the filters allow, from SQL. */}
+          <FinancialSummaryCards summary={financialSummary} />
+
           <FinancialReportsFilters
             searchTerm={searchTerm}
             onSearchChange={setSearchTerm}
@@ -469,9 +328,15 @@ const FinancialReportsView: React.FC<FinancialReportsViewProps> = ({ loadSales, 
             onEndDateChange={setEndDate}
             onClearFilters={clearFilters}
             hasActiveFilters={hasActiveFilters}
-            // Role specific filters
             selectedState={viewFrom === "superAdmin" ? selectedState : undefined}
-            onStateChange={viewFrom === "superAdmin" ? (val) => { setSelectedState(val); setSelectedLGA("all"); } : undefined}
+            onStateChange={
+              viewFrom === "superAdmin"
+                ? (val) => {
+                    setSelectedState(val);
+                    setSelectedLGA("all");
+                  }
+                : undefined
+            }
             selectedLGA={viewFrom === "superAdmin" ? selectedLGA : undefined}
             onLGAChange={viewFrom === "superAdmin" ? setSelectedLGA : undefined}
             stateList={stateList}
@@ -488,26 +353,23 @@ const FinancialReportsView: React.FC<FinancialReportsViewProps> = ({ loadSales, 
             yearFilter={yearFilter}
             onYearFilterChange={setYearFilter}
             availableYears={availableYears}
-            // We would need to fetch assignedOrgs if viewFrom === "acsl_agent"
-            // For now, we can extract them from allSales
-            assignedOrgs={viewFrom === "acsl_agent" ? Array.from(new Set(allSales.map(s => s.organization_id).filter(Boolean))).map(id => ({
-              id: id as string,
-              partner_name: allSales.find(s => s.organization_id === id)?.partner_name || "Unknown Partner"
-            })) : []}
+            assignedOrgs={viewFrom === "acsl_agent" ? assignedOrgs : []}
           />
 
+          {/* A chip is a server filter: its badge and the footer count the same rows. */}
+          <SalesTrackingBar
+            active={trackingFilter}
+            counts={trackingCounts}
+            totalCount={report.summary.total}
+            onChange={setTrackingFilter}
+          />
 
-          {/* Sales Tracking */}
-          <SalesTrackingBar active={trackingFilter} counts={trackingCounts} totalCount={filteredSales.length} onChange={setTrackingFilter} />
-
-
-          {/* Table */}
           <FinancialReportsTable
-            data={paginatedSales}
-            loading={false}
+            data={report.rows}
+            loading={report.isFetching}
             currentPage={currentPage}
             pageSize={pageSize}
-            totalRecords={trackedSales.length}
+            totalRecords={report.total}
             onPageChange={setCurrentPage}
             onPageSizeChange={setPageSize}
             onViewDetails={setDetailModalSale}
@@ -521,16 +383,16 @@ const FinancialReportsView: React.FC<FinancialReportsViewProps> = ({ loadSales, 
             onToggleSort={() => setSortOrder((prev) => (prev === "asc" ? "desc" : "asc"))}
             viewFrom={viewFrom === "acsl_agent" ? "agent" : viewFrom}
           />
+          <span className="sr-only">{exporting ? "Exporting" : ""}</span>
         </>
       )}
 
-      {/* Modals */}
       <AdminSalesDetailModal
         open={!!detailModalSale}
         onClose={() => setDetailModalSale(null)}
         sale={detailModalSale}
         viewFrom={viewFrom === "superAdmin" ? "superAdmin" : "admin"}
-        onSaleUpdated={fetchSales}
+        onSaleUpdated={report.refetch}
       />
 
       <PaymentHistoryModal open={!!historyModalSale} onClose={() => setHistoryModalSale(null)} sale={historyModalSale} />

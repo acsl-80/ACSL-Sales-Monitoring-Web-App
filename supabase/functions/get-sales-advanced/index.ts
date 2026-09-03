@@ -2,7 +2,7 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { withCors } from "./cors.ts";
 import { authenticateUser } from "./authenticate.ts";
 import { parseFilters } from "./parse-filters.ts";
-import { buildQuery } from "./build-query.ts";
+import { buildQuery, computeScopeSets } from "./build-query.ts";
 import { fetchRelatedData } from "./fetch-related.ts";
 import { convertToCSV, prepareExportData } from "./export.ts";
 import { transformResponse } from "./format-transformer.ts";
@@ -125,17 +125,68 @@ async function executeMainLogic(req: Request) {
 
     console.log(`🛡️ Enforced safe limit: ${safeLimit}`);
 
+    /*
+     * Slice 9a. The numbers that are not a page of rows (how many match, what
+     * they add up to, how many fall due) come from one SQL function over the
+     * same filters and the same scope, so the total at the top and the rows
+     * beneath it cannot disagree. Asked for by the screens that show them;
+     * the mobile app never asks and sees nothing new.
+     */
+    let summary: Record<string, unknown> | null = null;
+    let pageIds: string[] | null = null;
+    let bucketTotal: number | null = null;
+    if (filters.withSummary || filters.dueBucket) {
+      const sets = computeScopeSets(filters, userRole, userOrgId, assignedOrgIds, userId, teamAgentIds);
+      const { data: report, error: reportError } = await adminSupabase.rpc("report_sales_financials", {
+        p_organization_ids: sets.orgIds,
+        p_agent_ids: sets.agentIds,
+        p_team_ids: sets.teamIds,
+        p_scope_empty: sets.none,
+        p_search: filters.search || null,
+        p_states: filters.state ? [filters.state] : filters.states?.length ? filters.states : null,
+        p_lgas: filters.lga ? [filters.lga] : filters.lgas?.length ? filters.lgas : null,
+        p_payment_model_id: filters.paymentModelId || null,
+        p_payment_status: filters.paymentStatus || null,
+        p_agent_approved:
+          filters.agentApproved === undefined || filters.agentApproved === null
+            ? null
+            : filters.agentApproved === true || (filters.agentApproved as any) === "true",
+        p_is_installment:
+          filters.isInstallment === undefined || filters.isInstallment === null
+            ? null
+            : filters.isInstallment === true || (filters.isInstallment as any) === "true",
+        p_date_from: filters.dateFrom || null,
+        p_date_to: filters.dateTo || null,
+        p_periods: Array.isArray(filters.periods) && filters.periods.length ? filters.periods : null,
+        p_show_archived: filters.showArchived === true || (filters.showArchived as any) === "true",
+        p_bucket: filters.dueBucket || null,
+        p_page: filters.page || 1,
+        p_limit: filters.limit,
+      });
+      if (reportError) {
+        console.error("❌ Report query failed:", reportError.message);
+        throw new Error(`Report query failed: ${reportError.message}`);
+      }
+      summary = report;
+      if (filters.dueBucket) {
+        pageIds = Array.isArray(report?.bucket_ids) ? report.bucket_ids : [];
+        bucketTotal = Number(report?.bucket_total ?? 0);
+      }
+    }
+
     // Build and execute optimized query with joins
     console.log("🔍 Building optimized query with joins...");
-    const { sales, totalRecords } = await buildQuery(
+    const { sales, totalRecords: rowTotal } = await buildQuery(
       supabase,
       filters,
       userRole,
       userOrgId,
       assignedOrgIds,
       userId,
-      teamAgentIds
+      teamAgentIds,
+      pageIds
     );
+    const totalRecords = bucketTotal !== null ? bucketTotal : rowTotal;
     console.log(`✅ Found ${sales?.length || 0} sales records`);
 
     // Always run related-data fetching when we have rows: the creator/agent name
@@ -187,6 +238,7 @@ async function executeMainLogic(req: Request) {
         totalPages: Math.ceil((totalRecords || 0) / limit),
       },
       filters: filters,
+      ...(summary ? { summary } : {}),
       timestamp: new Date().toISOString(),
       performance: {
         responseTime: `${responseTime}ms`,
