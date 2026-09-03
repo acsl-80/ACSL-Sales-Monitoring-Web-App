@@ -59,6 +59,20 @@ export async function callEdgeFunction(
   );
 }
 
+/** The same, as a GET: for the read routes that take their arguments in the path. */
+export async function getEdgeFunction(page: Page, path: string): Promise<{ status: number; body: unknown }> {
+  return page.evaluate(async ({ path }) => {
+    const key = Object.keys(window.localStorage).find((k) => k.startsWith("sb-") && k.endsWith("-auth-token"));
+    const stored = JSON.parse(window.localStorage.getItem(key ?? "") ?? "{}");
+    const token = stored.access_token ?? stored?.currentSession?.access_token;
+    const ref = (key ?? "").replace(/^sb-/, "").replace(/-auth-token$/, "");
+    const response = await fetch(`https://${ref}.supabase.co/functions/v1/${path}`, {
+      headers: { Authorization: `Bearer ${token}` },
+    });
+    return { status: response.status, body: await response.json().catch(() => null) };
+  }, { path });
+}
+
 /**
  * Run SQL against the PREVIEW BRANCH database. Never against production.
  *
