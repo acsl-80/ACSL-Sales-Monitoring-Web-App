@@ -227,13 +227,31 @@ export default function CallRecordEditor({ saleId, canEdit, onClose, onSaved }) 
     return [...grouped.entries()];
   }, [schema, effective]);
 
+  /**
+   * What travels with a save: every value except a registry question that is
+   * not being asked under the record as it will be, and except the send-back
+   * arguments, which belong to the correction action. Sending the whole form
+   * was how an old answer to "why not verified" followed the record into
+   * "Fully verified" and got the save refused.
+   */
+  const payloadFor = (all) => {
+    const byKey = new Map((schema?.fields ?? []).map((f) => [f.key, f]));
+    const out = {};
+    for (const [key, value] of Object.entries(all)) {
+      if (key === "correction_reason_id" || key === "correction_note") continue;
+      const def = byKey.get(key);
+      if (def && !isFieldVisible(def, effective)) continue;
+      out[key] = value;
+    }
+    return out;
+  };
   const save = async () => {
     setSaving(true);
     setNotice(null);
     try {
       const result = await dataCenterWrite.saveCallRecord(
         saleId,
-        values,
+        payloadFor(values),
         record?.call_record_version ?? null,
       );
       setNotice("Saved.");
@@ -264,8 +282,10 @@ export default function CallRecordEditor({ saleId, canEdit, onClose, onSaved }) 
       });
       await load();
       setNotice("Call logged.");
+      return true;
     } catch (err) {
       setError(err instanceof DataCenterError ? err.message : "Could not log the call.");
+      return false;
     } finally {
       setSaving(false);
     }
@@ -274,7 +294,7 @@ export default function CallRecordEditor({ saleId, canEdit, onClose, onSaved }) 
   const toggleCorrection = async (open) => {
     setSaving(true);
     try {
-      await dataCenterWrite.correction(saleId, open, values.correction_reason_id, values.correction_note);
+      await dataCenterWrite.correction(saleId, open, correctionReasonId || null, null);
       await load();
       setNotice(open ? "Sent back to Sales." : "Correction marked resolved.");
     } catch (err) {
@@ -298,7 +318,15 @@ export default function CallRecordEditor({ saleId, canEdit, onClose, onSaved }) 
    */
   const otherIsPicked =
     callOutcomes.find((o) => o.id === nextOutcome)?.value === "other";
-  const canLog = !otherIsPicked || nextNote.trim().length > 0;
+  // An attempt needs an outcome; "something else" needs the words as well.
+  /*
+   * The reason for a send-back is an argument to the correction action, not
+   * a field on the record. Held here rather than in `values`, where it was
+   * autosaved into the draft, replayed on every open, and refused by the
+   * record save as an unknown field for ever after.
+   */
+  const [correctionReasonId, setCorrectionReasonId] = useState("");
+  const canLog = Boolean(nextOutcome) && (!otherIsPicked || nextNote.trim().length > 0);
   const correctionReasons = schema?.options?.correction_reason ?? [];
   const correctionOpen = record?.correction_state === "open";
 
@@ -492,10 +520,14 @@ export default function CallRecordEditor({ saleId, canEdit, onClose, onSaved }) 
                     <button
                       type="button"
                       disabled={saving || !canLog}
-                      onClick={() => {
-                        logAttempt(nextOutcome, nextNote);
-                        setNextOutcome("");
-                        setNextNote("");
+                      onClick={async () => {
+                        // Cleared only once the attempt is on the record; a
+                        // refused attempt keeps what was typed.
+                        const ok = await logAttempt(nextOutcome, nextNote);
+                        if (ok) {
+                          setNextOutcome("");
+                          setNextNote("");
+                        }
                       }}
                       className="inline-flex shrink-0 items-center gap-1 whitespace-nowrap rounded-md bg-(--dc-accent) px-2.5 py-1.5 text-xs font-medium text-white transition hover:bg-(--dc-accent-strong) disabled:opacity-50"
                     >
@@ -629,8 +661,8 @@ export default function CallRecordEditor({ saleId, canEdit, onClose, onSaved }) 
                     <SearchableSelect
                       ariaLabel="Reason for sending it back"
                       disabled={!canEdit}
-                      value={values.correction_reason_id ?? ""}
-                      onChange={(next) => setValue("correction_reason_id", next)}
+                      value={correctionReasonId}
+                      onChange={setCorrectionReasonId}
                       placeholder="Reason..."
                       searchPlaceholder="Type part of a reason"
                       emptyLabel="No reason matches that"
@@ -640,7 +672,7 @@ export default function CallRecordEditor({ saleId, canEdit, onClose, onSaved }) 
                   {canEdit && (
                     <button
                       type="button"
-                      disabled={saving || !values.correction_reason_id}
+                      disabled={saving || !correctionReasonId}
                       onClick={() => toggleCorrection(true)}
                       className="rounded-md border border-amber-400/60 px-2.5 py-1.5 text-xs font-medium text-amber-800 hover:bg-amber-50 disabled:opacity-50"
                     >

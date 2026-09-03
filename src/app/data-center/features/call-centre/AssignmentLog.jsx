@@ -127,7 +127,9 @@ function QuickEdit({ row, outcomes, onDone }) {
       await dataCenterWrite.saveCallRecord(
         row.sale_id,
         { verification_outcome: value },
-        current?.record?.version ?? null,
+        // The view names it call_record_version; `version` was never set,
+        // so the optimistic lock was silently skipped on this path.
+        current?.record?.call_record_version ?? null,
       );
     });
 

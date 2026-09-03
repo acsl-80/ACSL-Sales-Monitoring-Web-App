@@ -191,9 +191,10 @@ function splitPayload(
   fields: FieldDef[],
   submitted: Record<string, unknown>,
   merged: Record<string, unknown>,
-): { columns: Record<string, unknown>; answers: Record<string, unknown> } {
+): { columns: Record<string, unknown>; answers: Record<string, unknown>; ignored: string[] } {
   const columns: Record<string, unknown> = {};
   const answers: Record<string, unknown> = {};
+  const ignored: string[] = [];
   const byKey = new Map(fields.map((f) => [f.key, f]));
 
   for (const [key, value] of Object.entries(submitted)) {
@@ -210,7 +211,20 @@ function splitPayload(
       throw new BadRequest(`Unknown field: ${key}`);
     }
     if (!isVisible(def, merged)) {
-      throw new BadRequest(`${key} does not apply to this record`);
+      /*
+       * A registry key that no longer applies is dropped, not fatal.
+       *
+       * The editor seeds its form from the stored answers, so an answer given
+       * while the record was partially verified (why_not_verified) came back
+       * on every later save. Choosing "Fully verified" then made this line
+       * refuse the whole save, and the record could never complete. Twenty-one
+       * live records were in that state on 2026-09-02. The stored answer is
+       * left where it is; it simply does not travel with this write. Unknown
+       * keys above are still refused: that is the defence against arbitrary
+       * columns, and this is not it.
+       */
+      ignored.push(key);
+      continue;
     }
     validateAnswer(def, value);
 
@@ -221,7 +235,7 @@ function splitPayload(
     }
   }
 
-  return { columns, answers };
+  return { columns, answers, ignored };
 }
 
 serve(async (req) => {
@@ -553,7 +567,13 @@ serve(async (req) => {
         const saleId = String(body.saleId ?? "");
         if (!saleId) throw new BadRequest("saleId is required");
         const submitted = (body.values ?? {}) as Record<string, unknown>;
-        const expectedVersion = body.version === undefined ? null : Number(body.version);
+        // null means "no lock", the same as absent. It used to become Number(null),
+        // which is 0, so any caller sending null for an existing record was told
+        // somebody else had changed it. save_call_draft already reads baseVersion
+        // this way.
+        const expectedVersion = body.version === undefined || body.version === null
+          ? null
+          : Number(body.version);
 
         if (
           submitted.verification_outcome !== undefined &&
@@ -586,7 +606,10 @@ serve(async (req) => {
           } as Record<string, unknown>;
 
           const fields = await loadFields(conn!);
-          const { columns, answers } = splitPayload(fields, submitted, merged);
+          const { columns, answers, ignored } = splitPayload(fields, submitted, merged);
+          if (ignored.length > 0) {
+            console.info(`save_call_record: dropped ${ignored.join(", ")} for ${saleId}: no longer applies`);
+          }
 
           if (!current) {
             await conn!.queryObject({
@@ -663,7 +686,20 @@ serve(async (req) => {
         const saleId = String(body.saleId ?? "");
         if (!saleId) throw new BadRequest("saleId is required");
 
-        const values = (body.values ?? {}) as Record<string, unknown>;
+        const submittedDraft = (body.values ?? {}) as Record<string, unknown>;
+        /*
+         * A draft keeps only keys the record could take: writable columns and
+         * active registry fields. Anything else typed into the form
+         * (correction_reason_id was one, an inactive field another) used to
+         * be stored, replayed into the form on the next open, and refused by
+         * the real save for ever after. Visibility is not judged here; a
+         * draft is not judged.
+         */
+        const draftFields = await loadFields(conn);
+        const keepable = new Set<string>([...WRITABLE_COLUMNS, ...draftFields.map((f) => f.key)]);
+        const values = Object.fromEntries(
+          Object.entries(submittedDraft).filter(([k]) => keepable.has(k)),
+        ) as Record<string, unknown>;
         const encoded = JSON.stringify(values);
         // 256 KB. A form of eleven questions is a couple of kilobytes; anything
         // near this ceiling is a loop, not an agent typing.
