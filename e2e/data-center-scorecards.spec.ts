@@ -4,7 +4,7 @@ import { signIn, USERS } from "./helpers";
 /**
  * The five scorecards, and the two promises they make.
  *
- * One: the columns reconcile. Verified + Unverified + Unreachable + Yet to be
+ * One: the columns reconcile. Verified + Partly verified + Unreachable + Yet to be
  * resolved equals the reconciling column on every row, which is §3.4 as an
  * assertion rather than a hope. The engine defines unresolved as the
  * remainder, so a failure here means someone changed that and broke it.
@@ -366,7 +366,7 @@ test.describe("the headline figures", () => {
     expect(shown).toBeGreaterThanOrEqual(issuedTotal);
   });
 
-  test("the Unverified card and the queue behind it agree on the word", async ({
+  test("the Partly verified card and the queue behind it agree on the word", async ({
     page,
   }) => {
     await signIn(page, USERS.admin);
@@ -375,9 +375,9 @@ test.describe("the headline figures", () => {
       page.getByRole("heading", { name: "Partner", exact: true }),
     ).toBeVisible({ timeout: 30_000 });
 
-    await page.getByRole("link", { name: /^Unverified · in the period shown:/ }).click();
+    await page.getByRole("link", { name: /^Partly verified · in the period shown:/ }).click();
 
-    // Both sides define unverified the same way - the funnel view, the
+    // Both sides define partly verified (the "unverified" group) the same way: the funnel view, the
     // scorecard compute and the queue filter all read it off one list, which
     // is why removing an outcome from that list moved all three together.
     await expect(page).toHaveURL(/status=unverified/);
