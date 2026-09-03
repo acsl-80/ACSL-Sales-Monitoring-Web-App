@@ -707,68 +707,30 @@ class AdminSalesService {
     }
   }
 
-  // Cancel a sale: mark it archived + cancelled, and release the stove ID.
-  // Uses direct Supabase writes so it works for any authenticated user
-  // allowed by RLS on the sales / stove_ids tables.
+  // Cancel a sale: archive it, stamp who, when and why, and release the stove.
+  //
+  // One call to public.cancel_sale, which does all of it in one transaction
+  // under the same rule as the sales row policies. This used to be two
+  // separate browser writes, stove first, sale second, and a failure between
+  // them left a released stove standing against a live sale; the first
+  // write's failure was only ever warned about. Cancelling twice is
+  // harmless: the function says already_cancelled and changes nothing.
   async cancelSale(saleId, reason = "") {
     try {
       if (!saleId) throw new Error("Sale ID is required");
-
-      const { data: sale, error: fetchError } = await this.supabase
-        .from("sales")
-        .select("id, stove_serial_no, transaction_id")
-        .eq("id", saleId)
-        .single();
-
-      if (fetchError || !sale) {
-        throw new Error(fetchError?.message || "Sale not found");
-      }
-
-      // Release the stove back to available first, so a downstream failure
-      // doesn't leave it stuck as sold.
-      if (sale.stove_serial_no) {
-        const { error: stoveResetError } = await this.supabase
-          .from("stove_ids")
-          .update({ sale_id: null, status: "available" })
-          .eq("stove_id", sale.stove_serial_no);
-        if (stoveResetError) {
-          console.warn("⚠️ Could not reset stove status:", stoveResetError.message);
-        }
-      }
-
-      const { data: userData } = await this.supabase.auth.getUser();
-      const cancelledBy = userData?.user?.id ?? null;
-
-      const primaryUpdate = {
-        is_archived: true,
-        cancelled_at: new Date().toISOString(),
-        cancelled_by: cancelledBy,
-        cancel_reason: reason || null,
-      };
-
-      let { error: updateError } = await this.supabase
-        .from("sales")
-        .update(primaryUpdate)
-        .eq("id", saleId);
-
-      if (updateError) {
-        // Fallback if the extra cancellation columns don't exist yet.
-        const { error: fallbackError } = await this.supabase
-          .from("sales")
-          .update({ is_archived: true })
-          .eq("id", saleId);
-        if (fallbackError) {
-          throw new Error(fallbackError.message || updateError.message);
-        }
-        console.warn(
-          "⚠️ Cancellation metadata columns missing; sale archived without reason.",
-          updateError.message
-        );
-      }
-
+      const { data, error } = await this.supabase.rpc("cancel_sale", {
+        _sale_id: saleId,
+        _reason: reason && String(reason).trim() ? String(reason).trim() : null,
+      });
+      if (error) throw new Error(error.message || "Failed to cancel sale");
       return {
         success: true,
-        data: { id: saleId, transaction_id: sale.transaction_id },
+        data: {
+          id: data?.id ?? saleId,
+          transaction_id: data?.transaction_id ?? null,
+          already_cancelled: data?.already_cancelled === true,
+          stove_released: data?.stove_released === true,
+        },
       };
     } catch (error) {
       console.error("Error cancelling sale:", error);
