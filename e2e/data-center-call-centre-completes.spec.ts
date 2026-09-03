@@ -120,7 +120,16 @@ test.describe("slice 4: a call centre save completes", () => {
       );
       await signIn(page, USERS.admin);
       await openRecord(page, r.end_user_name);
-      await page.locator("#dc-field-ward").fill("New ward");
+      // The correction inputs carry no label association, so the field is
+      // reached from its visible label. The draft's value proves it applied.
+      // Two things on the page read "Ward"; the correction input follows the
+      // second. The draft's value proves the right one was found.
+      const ward = page
+        .getByText("Ward", { exact: true })
+        .last()
+        .locator("xpath=following::input[1]");
+      await expect(ward).toHaveValue("Old ward", { timeout: 15_000 });
+      await ward.fill("New ward");
       await page.getByRole("button", { name: "Save", exact: true }).click();
 
       // Old code: "Unknown field: correction_reason_id".
@@ -136,13 +145,25 @@ test.describe("slice 4: a call centre save completes", () => {
   }) => {
     const [r] = await twoRecords();
     await signIn(page, USERS.admin);
+    // The version the record carries now, so the refusal is about the key and
+    // not about the lock.
+    const current = await callEdgeFunction(page, "data-center-write", {
+      action: "call_record",
+      saleId: r.sale_id,
+    });
+    const version =
+      (current.body as { data?: { record?: { call_record_version?: number | null } } })?.data?.record
+        ?.call_record_version ?? null;
     const res = await callEdgeFunction(page, "data-center-write", {
       action: "save_call_record",
       saleId: r.sale_id,
       values: { definitely_not_a_field: 1 },
-      version: null,
+      version,
     });
-    expect(res.status, "a key the registry does not know must still be a 400").toBe(400);
+    expect(
+      `${res.status} ${JSON.stringify(res.body).slice(0, 120)}`,
+      "a key the registry does not know must still be a 400",
+    ).toMatch(/^400 /);
   });
 
   test("a call cannot be logged without an outcome", async ({ page }) => {

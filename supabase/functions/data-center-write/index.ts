@@ -687,6 +687,11 @@ serve(async (req) => {
         if (!saleId) throw new BadRequest("saleId is required");
 
         const submittedDraft = (body.values ?? {}) as Record<string, unknown>;
+        // Judged on what was sent, before anything is dropped: a runaway payload
+        // is a loop whatever keys it uses, and pruning must not launder it.
+        if (JSON.stringify(submittedDraft).length > 256_000) {
+          throw new BadRequest("That draft is too large to keep. Save the record instead.");
+        }
         /*
          * A draft keeps only keys the record could take: writable columns and
          * active registry fields. Anything else typed into the form
