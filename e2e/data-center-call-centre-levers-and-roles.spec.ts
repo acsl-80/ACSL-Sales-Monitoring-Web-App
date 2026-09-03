@@ -120,12 +120,12 @@ test.describe("slice 7b: the levers ask first, and No does nothing", () => {
       await openQueue(page);
       const dialog = await openRecord(page, b.stove_serial_no);
       await dialog.getByRole("button", { name: "Fix the stove ID" }).click();
-      await dialog.getByLabel("Confirmed stove ID").fill("PRV000014");
+      await dialog.getByLabel("Confirmed stove ID").fill("PRV999999");
       await dialog.getByRole("button", { name: "Move this record onto it" }).click();
 
       const ask = page.getByRole("alertdialog");
       await expect(ask, "the move should ask first").toBeVisible({ timeout: 10_000 });
-      await expect(ask).toContainText("Move this record onto PRV000014?");
+      await expect(ask).toContainText("Move this record onto PRV999999?");
       await ask.getByRole("button", { name: "Leave it" }).click();
       await expect(ask).toHaveCount(0);
 
@@ -134,9 +134,17 @@ test.describe("slice 7b: the levers ask first, and No does nothing", () => {
       );
       expect(after.stove_serial_no, "No must not have moved the record").toBe(b.stove_serial_no);
     } finally {
+      await branchSql(
+        `update public.sales set stove_serial_no = '${b.stove_serial_no}' where id = '${b.sale_id}'`,
+      );
       await dropRecordUnless(b.sale_id, existed);
     }
   });
+
+  test("Unassign still asks, through the same dialog", async ({ page }) => {
+    await signIn(page, USERS.admin);
+    await openQueue(page);
+    await expect(page.getByRole("heading", { name: "Agents and their work" })).toBeVisible({ timeout: 40_000 });
 
   test("Assign now and Reclaim ask, and No runs nothing", async ({ page }) => {
     const calls: string[] = [];
@@ -166,10 +174,6 @@ test.describe("slice 7b: the levers ask first, and No does nothing", () => {
     expect(acted, "No must not have run the assignment or the reclaim").toHaveLength(0);
   });
 
-  test("Unassign still asks, through the same dialog", async ({ page }) => {
-    await signIn(page, USERS.admin);
-    await openQueue(page);
-    await expect(page.getByRole("heading", { name: "Agents and their work" })).toBeVisible({ timeout: 40_000 });
     const opener = page.getByRole("button", { name: /^What .* is holding$/ }).first();
     await expect(opener).toBeVisible({ timeout: 20_000 });
     await opener.click();
