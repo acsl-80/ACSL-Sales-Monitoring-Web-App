@@ -90,10 +90,25 @@ export default function MyWork({ canEdit, hideWhenEmpty = false }) {
 
   useEffect(load, [load]);
 
+  // Open work is grouped by partner; finished batches sit under their own
+  // heading below it, so what is done reads as done.
+  const openItems = useMemo(
+    () => (items ?? []).filter((i) => i.batch_state !== "completed"),
+    [items],
+  );
+  const finished = useMemo(() => {
+    const groups = new Map();
+    for (const item of (items ?? []).filter((i) => i.batch_state === "completed")) {
+      const key = item.partner_name ?? "No partner";
+      if (!groups.has(key)) groups.set(key, []);
+      groups.get(key).push(item);
+    }
+    return [...groups.entries()];
+  }, [items]);
   const partners = useMemo(() => {
     if (!items) return [];
     const groups = new Map();
-    for (const item of items) {
+    for (const item of openItems) {
       const key = item.partner_name ?? "No partner";
       if (!groups.has(key)) groups.set(key, []);
       groups.get(key).push(item);
@@ -106,20 +121,22 @@ export default function MyWork({ canEdit, hideWhenEmpty = false }) {
     return [...groups.entries()].sort(
       (a, b) => standing(a[1][0]).rank - standing(b[1][0]).rank,
     );
-  }, [items]);
+  }, [items, openItems]);
 
   const totals = useMemo(() => {
-    const list = items ?? [];
+    const list = openItems;
     return {
       all: list.length,
       todo: list.filter((i) => !i.attempt_count).length,
       unfinished: list.filter((i) => i.has_draft).length,
       urgent: list.filter((i) => i.serial_unconfirmed_at).length,
+      // Unreachable is a conclusion, the same as standing() treats it; a
+      // count that left it out could never reach "all done".
       done: list.filter((i) =>
-        ["fully_verified", "partially_verified"].includes(i.verification_outcome),
+        ["fully_verified", "partially_verified", "unreachable"].includes(i.verification_outcome),
       ).length,
     };
-  }, [items]);
+  }, [openItems]);
 
   if (error) {
     return (
@@ -182,7 +199,7 @@ export default function MyWork({ canEdit, hideWhenEmpty = false }) {
           </div>
         </header>
 
-        {items.length === 0 ? (
+        {openItems.length === 0 ? (
           <div className="m-4 rounded-lg border border-dashed border-(--dc-accent)/40 bg-(--dc-accent-soft)/15 p-6 text-center">
             <p className="text-sm font-medium text-gray-800">Nothing is assigned to you.</p>
             <p className="mt-1 text-sm text-gray-600">
@@ -257,6 +274,33 @@ export default function MyWork({ canEdit, hideWhenEmpty = false }) {
                 </ul>
               </div>
             ))}
+          </div>
+        )}
+        {/* Closed in the last seven days, so what is done reads as done rather
+            than sitting in the list for ever, which is what "pending" meant. */}
+        {finished.length > 0 && (
+          <div className="border-t border-gray-200">
+            <p className="flex flex-wrap items-baseline gap-2 bg-gray-50/80 px-4 py-2">
+              <span className="text-sm font-semibold text-gray-900">Finished</span>
+              <span className="text-xs text-gray-600">
+                batches closed in the last seven days; a batch closes itself when its
+                last record is concluded
+              </span>
+            </p>
+            <ul className="divide-y divide-gray-50">
+              {finished.map(([partner, list]) => (
+                <li
+                  key={partner}
+                  className="flex flex-wrap items-center gap-x-3 gap-y-1 px-4 py-2.5 text-sm"
+                >
+                  <span className="inline-flex shrink-0 items-center gap-1 rounded-full bg-(--dc-accent-soft) px-2 py-0.5 text-xs font-medium text-(--dc-accent-strong)">
+                    <Check className="h-3 w-3" /> Complete
+                  </span>
+                  <span className="font-medium text-gray-900">{partner}</span>
+                  <span className="text-gray-600">{plural(list.length, "record")} concluded</span>
+                </li>
+              ))}
+            </ul>
           </div>
         )}
       </section>

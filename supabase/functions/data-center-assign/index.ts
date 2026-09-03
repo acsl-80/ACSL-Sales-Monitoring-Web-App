@@ -255,6 +255,7 @@ serve(async (req) => {
              * off the receipt.
              */
             text: `select l.batch_id::text, l.partner_name, l.assigned_at, l.batch_size,
+                          l.batch_state, b.completed_at,
                           l.sale_id::text, l.position, l.stove_serial_no, l.sales_date,
                           l.verification_outcome, l.attempt_count, l.last_attempt_at,
                           v.resolved_end_user_name as end_user_name,
@@ -279,12 +280,22 @@ serve(async (req) => {
                           dp.full_name as draft_saved_by_name,
                           (d.saved_by = $1) as draft_is_mine
                      from data_center.v_assignment_log l
+                     join data_center.assignment_batches b on b.id = l.batch_id
                      left join data_center.v_call_center_resolved v on v.sale_id = l.sale_id
                      left join data_center.call_records cr on cr.sale_id = l.sale_id
                      left join data_center.call_drafts d on d.sale_id = l.sale_id
                      left join public.profiles dp on dp.id = d.saved_by
-                    where l.agent_id = $1 and l.batch_state = 'open' and l.is_active
-                    order by l.assigned_at desc, l.position
+                    /*
+                     * Open work, and work finished in the last week. A batch
+                     * now closes itself when its last record is concluded, so
+                     * "finished" is a real state an agent can see rather than
+                     * a list that never shrinks.
+                     */
+                    where l.agent_id = $1 and l.is_active
+                      and (l.batch_state = 'open'
+                           or (l.batch_state = 'completed'
+                               and b.completed_at > now() - interval '7 days'))
+                    order by (l.batch_state = 'open') desc, l.assigned_at desc, l.position
                     limit 200`,
             args: [userId],
           });

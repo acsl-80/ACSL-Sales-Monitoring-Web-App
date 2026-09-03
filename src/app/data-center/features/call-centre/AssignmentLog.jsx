@@ -46,7 +46,7 @@ const OUTCOME_TONE = {
   not_verified: "text-gray-500",
 };
 
-/** The five states a record can settle in, shortest label first on a phone. */
+/** The four states a record can settle in, shortest label first on a phone. */
 const VERIFICATION = [
   { value: "fully_verified", label: "Fully verified" },
   { value: "partially_verified", label: "Partially verified" },
