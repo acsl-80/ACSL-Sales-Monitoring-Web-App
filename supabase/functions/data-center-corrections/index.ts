@@ -245,12 +245,14 @@ serve(async (req) => {
                     limit ${limit}`,
             args: [userId],
           });
+          // The parameter is bound only when the predicate names it: a bound
+          // value the statement never reads is a protocol error, not a no-op.
           const counts = await conn.queryObject<{ state: string; n: number }>({
             text: `select c.state, count(*)::int as n
                      from data_center.v_corrections c
                     where ${visible} and c.is_archived is not true
                     group by c.state`,
-            args: [userId],
+            args: mine ? [userId] : [],
           });
           const unrouted = seesEverything
             ? await conn.queryObject({

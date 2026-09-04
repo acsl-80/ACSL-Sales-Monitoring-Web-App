@@ -265,10 +265,14 @@ test("a sales rep can close a send-back routed to them, note and all", async ({ 
        values ('${repKey}', '${repName}', '${ACSL_AGENT_ID}', now())
        on conflict (rep_key) do update set user_id = excluded.user_id, linked_at = now()`,
     );
+    // Phase 24: a send-back is an episode. Opened here as the call centre
+    // would open it, routed to the rep the transfer names; the mirror trigger
+    // sets the six columns on the call record from it.
+    await branchSql(`delete from data_center.corrections where sale_id = '${e.sale_id}'`);
     await branchSql(
-      `update data_center.call_records
-          set correction_requested_at = now(), correction_resolved_at = null, correction_resolved_by = null
-        where sale_id = '${e.sale_id}'`,
+      `insert into data_center.corrections
+         (sale_id, seq, state, note, opened_at, routed_rep_key, routed_rep_user_id, disputed_fields)
+       values ('${e.sale_id}', 1, 'open', 'e2e: phone is wrong', now(), '${repKey}', '${ACSL_AGENT_ID}', '{phone}')`,
     );
 
     await signIn(page, USERS.acslAgent);
