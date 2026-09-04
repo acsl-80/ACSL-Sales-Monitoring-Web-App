@@ -118,3 +118,30 @@ reads that already existed. The page refreshes all of it together at
   client. So the host's history does not see the module's fixes. The
   episode's `before` and `after` snapshots are the audit of a correction;
   the review panel shows the host's rows as a supplement and says so.
+
+## D25. Complete means the required fields plus evidence, both configuration (2026-09-04, slice 7a)
+
+The rule required a drawn signature, so 2,286 of 2,340 live sales read
+incomplete to this module although every one of them came through an import
+that asserted the paper agreement. The rule now has two configured parts:
+`completeness_required_fields` (six columns; the signature left the list only
+because the list still read as seeded) and `completeness_evidence_any_of`,
+a list of kinds any one of which satisfies it: `column` (a named column of
+`public.sales`, today `signature`) and `import_paper_agreement` (a committed
+import batch that asserted the paper agreement). Unknown kinds raise.
+
+The batch remembers the assertion in `import_batches.paper_agreement_asserted`,
+stamped by a trigger when a batch reaches committed, from `import.paper_sources`
+(receipt, manual, field, workbench; not call_center, whose batches attach to
+sales that already exist) and `import.require_paper_agreement` at that moment.
+A trigger rather than the import function because that function reaches
+committed on three paths. Committed batches were backfilled by the same rule.
+
+The dashboard's amber notice about the sales app's status rule is gone. In its
+place the Complete card keeps its percentage and a "What is missing" strip
+names each part of the rule with the count of live sales missing it, linking
+to the records table narrowed by the new `missingField` filter, which the
+database validates against the rule (`data_center.missing_predicate`). The
+disagreement with the sales app is one sentence, and it reaches zero only with
+D1 (slice 7b).
+

@@ -22,6 +22,7 @@ const EMPTY: RecordFacets = {
   lgasByState: {},
   salesModels: [],
   salesAgents: [],
+  missingFields: [],
   scope: "",
 };
 

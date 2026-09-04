@@ -73,6 +73,14 @@ export interface RecordsFilters {
   dateFrom?: string;
   dateTo?: string;
   includeArchived?: boolean;
+  /**
+   * One part of the module's completeness rule the sale is missing: a
+   * required field by name, or the word evidence. Validated by the database
+   * (data_center.missing_predicate) against the rule as configured, never
+   * against a list held here, and the resolved predicate arrives through
+   * CompletenessContext because this builder never reads workflow_config.
+   */
+  missingField?: string;
 
   // --- Table 2 only. Rejected outright when reading Table 1. ---
   /** fully_verified | partially_verified | unreachable | not_verified */
@@ -113,6 +121,19 @@ export interface RecordsFilters {
  * the scope predicate from being reimplemented slightly differently for Table 2.
  */
 export type TableName = "records" | "call_center";
+
+/**
+ * What the server resolved for a completeness filter before building.
+ *
+ * The predicate text comes from data_center.missing_predicate, which built
+ * it from validated column names, so it is code the database wrote rather
+ * than anything a caller sent. It travels as a separate argument for the
+ * same reason the page ceiling does: the request body is never trusted to
+ * carry SQL.
+ */
+export interface CompletenessContext {
+  missingSql: string;
+}
 
 export interface RecordsRequest {
   table?: TableName;
@@ -351,6 +372,7 @@ export function buildRecordsQuery(
    * exactly that trust. This comes from the action, which is code.
    */
   pageSizeCeiling: number = MAX_PAGE_SIZE,
+  completeness: CompletenessContext | null = null,
 ): BuiltQuery {
   const args: unknown[] = [];
   const p = (value: unknown) => {
@@ -463,6 +485,11 @@ export function buildRecordsQuery(
   if (f.saleStatus) {
     if (!SALE_STATUSES.has(f.saleStatus)) throw new BadRequest("Unknown sale status");
     where.push(`s.status = ${p(f.saleStatus)}`);
+  }
+  if (f.missingField !== undefined) {
+    if (table !== "records") throw new BadRequest("The completeness filter belongs to the records table");
+    if (!completeness?.missingSql) throw new BadRequest("Unknown completeness field");
+    where.push(`(${completeness.missingSql})`);
   }
   if (f.paymentStatus) {
     if (!PAYMENT_STATUSES.has(f.paymentStatus)) throw new BadRequest("Unknown payment status");

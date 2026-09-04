@@ -1,5 +1,6 @@
 import { useMemo, useState } from "react";
 import Field from "../../components/Field";
+import { fieldWords } from "../../lib/completenessWords";
 import { SearchableSelect } from "@/components/ui/searchable-select";
 import { Search, X, SlidersHorizontal, ArrowDownWideNarrow, ArrowUpWideNarrow } from "lucide-react";
 
@@ -50,6 +51,7 @@ const ADVANCED = [
   "saleAgent",
   "salesModel",
   "saleStatus",
+  "missingField",
   "paymentStatus",
   "platform",
   "dateFrom",
@@ -119,6 +121,7 @@ export default function RecordsFilters({
       saleAgent: (v) => `sold by ${agent(v)}`,
       salesModel: (v) => model(v),
       saleStatus: (v) => `status ${words(v)}`,
+      missingField: (v) => `missing ${fieldWords(v)}`,
       paymentStatus: (v) => `payment ${words(v)}`,
       platform: (v) => (v === "mobile" ? "from the mobile app" : "from the web app"),
       dateFrom: (v) => `sold on or after ${v}`,
@@ -293,6 +296,19 @@ export default function RecordsFilters({
               }))}
             />
           </Field>
+          {/* The module's own rule, one part at a time. The parts come from
+              the rule itself, so this list follows Settings. */}
+          {facets.missingFields.length > 0 && (
+            <Field label="Missing">
+              <SearchableSelect
+                value={draft.missingField ?? ""}
+                onChange={(next) => set("missingField", next)}
+                placeholder="Nothing in particular"
+                pinned={{ value: "", label: "Nothing in particular" }}
+                options={facets.missingFields.map((v) => ({ value: v, label: fieldWords(v) }))}
+              />
+            </Field>
+          )}
 
           <Field label="Payment">
             <SearchableSelect

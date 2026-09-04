@@ -15,6 +15,8 @@ type StoveRecordsSearch = {
   organizationId?: string;
   userState?: string;
   saleStatus?: string;
+  /** One part of the module's completeness rule the sale is missing. */
+  missingField?: string;
   dateFrom?: string;
   dateTo?: string;
   label?: string;
@@ -32,6 +34,7 @@ export const Route = createFileRoute("/data-center/stove-records")({
     organizationId: str(search.organizationId),
     userState: str(search.userState),
     saleStatus: str(search.saleStatus),
+    missingField: str(search.missingField),
     dateFrom: str(search.dateFrom),
     dateTo: str(search.dateTo),
     label: str(search.label),

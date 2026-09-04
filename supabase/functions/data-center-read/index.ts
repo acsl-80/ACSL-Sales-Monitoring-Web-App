@@ -25,6 +25,7 @@ import { featuresFor } from "../_shared/data-center-roles.ts";
 import {
   BadRequest,
   buildRecordsQuery,
+  type CompletenessContext,
   SHEET_PAGE_SIZE,
   toPage,
   COUNT_CEILING,
@@ -340,6 +341,30 @@ serve(async (req) => {
           profile.organization_id ?? null,
         );
 
+        /*
+         * The completeness filter is resolved by the database, not by a list
+         * held here: missing_predicate validates the name against the rule as
+         * configured and returns the predicate, or raises, which is a 400.
+         */
+        let completeness: CompletenessContext | null = null;
+        const missingField = (body.filters as Record<string, unknown> | undefined)?.missingField;
+        if (missingField !== undefined) {
+          if (typeof missingField !== "string" || !/^[a-z_]{1,64}$/.test(missingField)) {
+            return json({ error: "Unknown completeness field", code: "bad_request" }, 400, cors);
+          }
+          try {
+            const resolved = await withReadConnection((connection) =>
+              connection.queryObject<{ sql: string }>({
+                text: "select data_center.missing_predicate($1, 's') as sql",
+                args: [missingField],
+              }),
+            );
+            completeness = { missingSql: resolved.rows[0].sql };
+          } catch {
+            return json({ error: "Unknown completeness field", code: "bad_request" }, 400, cors);
+          }
+        }
+
         let built;
         try {
           built = buildRecordsQuery(
@@ -351,6 +376,8 @@ serve(async (req) => {
               filters: (body.filters ?? {}) as never,
             },
             scope,
+            undefined,
+            completeness,
           );
         } catch (err) {
           if (err instanceof BadRequest) {
@@ -2300,6 +2327,22 @@ serve(async (req) => {
             }),
           ]);
 
+          /*
+           * The parts of the completeness rule, for the Missing facet. Read
+           * from the rule itself, so a field added in Settings is offered here
+           * without a release; evidence is offered only while a rule asks for it.
+           */
+          const rule = await connection.queryObject<{ fields: string[] | null; has_evidence: boolean }>({
+            text: `select (select array(select jsonb_array_elements_text(value))
+                             from data_center.workflow_config
+                            where key = 'completeness_required_fields') as fields,
+                          data_center.completeness_evidence_predicate('s') is not null as has_evidence`,
+          });
+          const missingFields = [
+            ...(rule.rows[0]?.fields ?? []),
+            ...(rule.rows[0]?.has_evidence ? ["evidence"] : []),
+          ];
+
           // The LGAs arrive flat and are grouped here rather than in
           // thirty-seven round trips: the panel needs "the LGAs of whichever
           // state is chosen", which is a lookup, not a query.
@@ -2317,6 +2360,7 @@ serve(async (req) => {
                 lgasByState: byState,
                 salesModels: models.rows,
                 salesAgents: agents.rows,
+                missingFields,
                 scope: scope.description,
               },
             },

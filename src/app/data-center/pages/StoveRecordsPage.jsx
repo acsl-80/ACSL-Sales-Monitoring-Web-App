@@ -2,6 +2,7 @@ import { useMemo } from "react";
 import { useNavigate, useSearch } from "@tanstack/react-router";
 import DataCentreShell from "../components/DataCentreShell";
 import RecordsTable from "../features/records/RecordsTable";
+import { fieldWords } from "../lib/completenessWords";
 import StoveFinder from "../features/stove-record/StoveFinder";
 import { DATA_CENTER_FEATURES } from "../lib/features";
 
@@ -14,6 +15,7 @@ const SUBJECT = {
   organizationId: (v, label) => label ?? "one partner",
   userState: (v, label) => `buyers in ${label ?? v}`,
   saleStatus: (v, label) => `${label ?? v} by the sales app's own status`,
+  missingField: (v) => `missing ${fieldWords(v)}`,
 };
 
 function Inner() {
@@ -22,7 +24,7 @@ function Inner() {
 
   const drill = useMemo(() => {
     const filters = {};
-    for (const key of ["organizationId", "userState", "saleStatus", "dateFrom", "dateTo"]) {
+    for (const key of ["organizationId", "userState", "saleStatus", "missingField", "dateFrom", "dateTo"]) {
       if (search[key]) filters[key] = search[key];
     }
     if (Object.keys(filters).length === 0) return null;

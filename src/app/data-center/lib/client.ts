@@ -270,6 +270,8 @@ export type RecordFacets = {
   lgasByState: Record<string, string[]>;
   salesModels: { id: string; name: string }[];
   salesAgents: { id: string; name: string }[];
+  /** The parts of the completeness rule: its required fields, then "evidence" while a rule asks for it. */
+  missingFields: string[];
   scope: string;
 };
 

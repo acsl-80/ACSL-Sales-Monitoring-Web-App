@@ -1,7 +1,8 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { Link } from "@tanstack/react-router";
 import { dataCenterDashboard, DataCenterError } from "../../lib/client";
-import { metricValue } from "../../lib/metricValue";
+import { metricValue, metricRows } from "../../lib/metricValue";
+import { fieldWords } from "../../lib/completenessWords";
 import Scorecard, { scorecardRows } from "./Scorecard";
 import ExportScorecards from "./ExportScorecards";
 import { MEASURES, SCOPES, withScope, explain } from "../../lib/measures";
@@ -398,7 +399,11 @@ export default function Dashboard({ canRun }) {
   const total = value(m, "sales.total");
   const complete = value(m, "sales.complete");
   const appSays = value(m, "sales.app_says_completed");
-  const disagreement = value(m, "sales.status_disagreement");
+  // What is missing, per part of the rule, largest first. Empty until a run
+  // has written the metric; nothing is shown then rather than a false zero.
+  const missing = metricRows(m, "sales.incomplete_by_missing")
+    .filter((r) => r.dimension.field && r.value > 0)
+    .sort((a, b) => b.value - a.value);
   const verified = value(m, "verification.by_outcome", { outcome: "fully_verified" });
 
   return (
@@ -507,44 +512,6 @@ export default function Dashboard({ canRun }) {
               search={{ status: "unverified", label: "Partly verified" }}
             />
           </div>
-
-          {/* The disagreement, stated rather than buried. This is finding 2 as
-              a number: the sales app calls these sales incomplete and this
-              module's rule calls them complete. */}
-          {disagreement > 0 && (
-            <div className="flex items-start gap-3 rounded-xl border border-amber-300 bg-amber-50 p-4 ring-1 ring-inset ring-amber-200">
-              <TriangleAlert className="mt-0.5 h-5 w-5 shrink-0 text-amber-600" />
-              <div>
-                <p className="text-sm font-medium text-amber-900">
-                  {NUMBER.format(disagreement)} sales are complete by this module&apos;s rule and
-                  &quot;incomplete&quot; to the sales app
-                </p>
-                <p className="mt-1 text-sm text-amber-800">
-                  The sales app reports {NUMBER.format(appSays)} completed. Its rule still
-                  requires a stove photo and an agreement document that the Sell Stove form
-                  made optional, so counting on it would understate the work done. This
-                  module counts the seven fields listed in workflow_config instead.
-                </p>
-                {/* The next action, in the notice itself. A number with no
-                    "so what" reads as an alarm nobody can switch off. */}
-                <p className="mt-1 text-sm text-amber-800">
-                  Nothing to do in this module: the counts above are the ones to use.
-                  This notice clears when the sales app&apos;s rule stops requiring the
-                  two images its own form made optional, which is a change in the sales
-                  app (one function, calculate_sale_status, and a recompute of the status
-                  column), not a change to any record.
-                </p>
-                <Link
-                  to="/data-center/stove-records"
-                  search={{ saleStatus: "incomplete", label: "Incomplete" }}
-                  className="mt-2 inline-flex items-center gap-1.5 text-sm font-medium text-amber-900 underline-offset-2 hover:underline"
-                >
-                  See the records the sales app calls incomplete
-                  <ArrowUpRight className="h-4 w-4" aria-hidden="true" />
-                </Link>
-              </div>
-            </div>
-          )}
 
           <div className="grid grid-cols-1 gap-3 lg:grid-cols-2">
             <Bars
@@ -674,6 +641,47 @@ export default function Dashboard({ canRun }) {
               to="/data-center/import"
             />
           </div>
+
+          {/* The rule, said plainly, and the way to the records that fail it.
+              This replaces an amber notice about the sales app's status rule,
+              which asked the reader to do nothing and could not be dismissed.
+              Each part links to exactly the records missing it. */}
+          {missing.length > 0 && (
+            <section
+              aria-labelledby="what-is-missing"
+              className="rounded-xl border border-gray-200 bg-white p-4 shadow-sm"
+            >
+              <h3 id="what-is-missing" className="text-sm font-semibold text-gray-900">
+                What is missing
+              </h3>
+              <p className="mt-1 text-sm text-gray-600">
+                Complete by this module&apos;s rule means every required field is present and
+                the sale carries evidence the rule accepts: a drawn signature, or a receipt
+                committed through an import that asserted the paper agreement.
+                {appSays !== complete && (
+                  <> The sales app marks {NUMBER.format(appSays)} completed; its rule differs.</>
+                )}
+              </p>
+              <ul className="mt-3 flex flex-wrap gap-2">
+                {missing.map((r) => (
+                  <li key={r.dimension.field}>
+                    <Link
+                      to="/data-center/stove-records"
+                      search={{
+                        missingField: r.dimension.field,
+                        label: `Missing ${fieldWords(r.dimension.field)}`,
+                      }}
+                      className="inline-flex items-center gap-1.5 rounded-full border border-(--dc-accent)/40 bg-(--dc-accent-soft)/40 px-3 py-1 text-xs font-medium text-(--dc-accent-strong) hover:bg-(--dc-accent-soft)"
+                    >
+                      <span>{fieldWords(r.dimension.field)}</span>
+                      <span className="tabular-nums text-gray-700">{NUMBER.format(r.value)}</span>
+                      <ArrowUpRight className="h-3 w-3" aria-hidden="true" />
+                    </Link>
+                  </li>
+                ))}
+              </ul>
+            </section>
+          )}
         </>
       )}
     </div>
