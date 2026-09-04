@@ -69,7 +69,9 @@ test.describe("entry is per user, case by case", () => {
       // Assert on module content, not the heading: DashboardLayout renders
       // "Data Center" as the page title in every state, denied included, so
       // matching that would be testing the layout chrome rather than the gate.
-      await expect(page.getByText("Sold Stove Records")).toHaveCount(0);
+      // Exact, because the host top bar now carries "Computation and dashboards
+      // over sold stove records" and a substring match would count it.
+      await expect(page.getByText("Sold Stove Records", { exact: true })).toHaveCount(0);
       await expect(page.getByRole("link", { name: /^Open / })).toHaveCount(0);
     });
   }
