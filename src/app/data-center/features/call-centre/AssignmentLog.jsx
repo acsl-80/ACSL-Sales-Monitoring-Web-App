@@ -42,6 +42,9 @@ const STATE_TONE = {
   reclaimed: "bg-purple-100 text-purple-800",
 };
 
+const PAGE_SIZES = [25, 50, 100];
+
+
 /** The four states a record can settle in, shortest label first on a phone. */
 const VERIFICATION = ["fully_verified", "partially_verified", "unreachable", "not_verified"].map((value) => ({
   value,
