@@ -11,6 +11,7 @@ import {
   TriangleAlert, CircleDashed, CircleCheck, CircleAlert,
   ChevronUp, Wallet,
 } from "lucide-react";
+import { Section, Detail, Grid, Empty } from "./parts";
 
 /**
  * One stove, everything that ever happened to it.
@@ -51,65 +52,6 @@ const OUTCOME_TONE = {
 
 /* ------------------------------------------------------------------ pieces */
 
-function Section({ icon: Icon, title, note, children, right }) {
-  return (
-    <section className="overflow-hidden rounded-xl border border-gray-200 border-t-[3px] border-t-(--dc-accent) bg-white shadow-sm">
-      <header className="flex flex-wrap items-center justify-between gap-2 border-b border-gray-100 bg-(--dc-accent-soft)/25 px-4 py-2.5">
-        <div>
-          <h2 className="flex items-center gap-1.5 text-sm font-semibold text-gray-900">
-            <Icon className="h-4 w-4 text-(--dc-accent)" /> {title}
-          </h2>
-          {note && <p className="mt-0.5 text-xs text-gray-600">{note}</p>}
-        </div>
-        {right}
-      </header>
-      <div className="p-4">{children}</div>
-    </section>
-  );
-}
-
-/**
- * A labelled value, and the one thing that makes this page what it is: when a
- * value is itself something you can go and look at, it is a link, not text.
- */
-function Detail({ label, value, href, title }) {
-  const shown = value ?? null;
-  return (
-    <div className="min-w-0">
-      <p className="text-xs font-medium uppercase tracking-wide text-gray-600">{label}</p>
-      {shown == null || shown === "" ? (
-        <p className="mt-0.5 text-sm text-gray-400">not recorded</p>
-      ) : href ? (
-        <Link
-          href={href}
-          title={title}
-          className="mt-0.5 inline-flex items-baseline gap-1 text-sm font-medium text-(--dc-accent) underline decoration-(--dc-accent)/30 underline-offset-2 transition hover:decoration-(--dc-accent)"
-        >
-          <span className="break-words">{shown}</span>
-          <ExternalLink className="h-3 w-3 shrink-0 translate-y-0.5" aria-hidden />
-        </Link>
-      ) : (
-        <p className="mt-0.5 break-words text-sm text-gray-900">{shown}</p>
-      )}
-    </div>
-  );
-}
-
-function Grid({ children }) {
-  return (
-    <div className="grid grid-cols-2 gap-x-4 gap-y-3 sm:grid-cols-3 lg:grid-cols-4">
-      {children}
-    </div>
-  );
-}
-
-function Empty({ children }) {
-  return (
-    <p className="rounded-lg border border-dashed border-(--dc-accent)/40 bg-(--dc-accent-soft)/15 px-4 py-6 text-center text-sm text-gray-600">
-      {children}
-    </p>
-  );
-}
 
 /**
  * The instalments behind the running total.

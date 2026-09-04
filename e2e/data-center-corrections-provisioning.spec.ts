@@ -62,10 +62,14 @@ test.describe("linking a sales rep opens the door", () => {
       });
       expect(unlinked.status).toBe(200);
 
-      const gone = await branchSql<{ access_role: string | null }>(
+      // Unlinking takes nothing away: a level is removed on the Access panel
+      // by a person, never as the side effect of a routing edit (the review
+      // of slice 1 found the automatic revoke would also remove a level a
+      // super admin had granted by hand).
+      const kept = await branchSql<{ access_role: string | null }>(
         `select access_role from data_center.module_access where user_id = '${target.id}'`,
       );
-      expect(gone.length, "unlinking should take the provisioned level back").toBe(0);
+      expect(kept[0]?.access_role, "unlinking leaves the level in place").toBe("sales_rep");
     } finally {
       const previous = before[0]?.user_id;
       await callEdgeFunction(page, "data-center-admin", {
@@ -147,10 +151,11 @@ test.describe("linking a sales rep opens the door", () => {
         enabled: null,
       });
       expect(removed.status).toBe(200);
-      const gone = await branchSql(
-        `select 1 from data_center.module_access where user_id = '${target.id}'`,
+      // Removing the recipient leaves the level, for the same reason.
+      const kept = await branchSql<{ access_role: string }>(
+        `select access_role from data_center.module_access where user_id = '${target.id}'`,
       );
-      expect(gone.length).toBe(0);
+      expect(kept[0]?.access_role).toBe("sales_rep");
     } finally {
       await callEdgeFunction(page, "data-center-admin", {
         action: "send_back_recipient_set",

@@ -1135,7 +1135,14 @@ export type SaleFieldSpec = {
 export type CorrectionDetail = {
   saleId: string;
   episodes: CorrectionRow[];
+  /** The editable fields of the sale, as `data_center.sale_snapshot` tells them. */
   sale: Record<string, unknown> | null;
+  /** Table 2's row for the sale: buyer, stove, money, partner, the call centre's columns. */
+  record: Record<string, unknown> | null;
+  /** The transfer the stove came in on, or null when the serial matches no transfer. */
+  transfer: Record<string, unknown> | null;
+  /** The last five call attempts, newest first. */
+  attempts: { attempt_no: number; attempted_at: string; note: string | null; outcome: string | null; agent: string | null }[];
   catalogue: SaleFieldSpec[];
   reasonFields: Record<string, string[]>;
   can: { fix: boolean; claim: boolean; review: boolean; withdraw: boolean; open: boolean; editSale: boolean };
@@ -1199,6 +1206,50 @@ export const dataCenterCorrections = {
 
   review: (saleId: string, outcome: "recall" | "no_recall" | "reopen", note?: string | null) =>
     call<{ episode: CorrectionRow }>("data-center-corrections", "review", { saleId, outcome, note: note ?? null }),
+};
+
+/**
+ * The sale, edited where the sales app edits it.
+ *
+ * The module never writes `public.sales` itself. The corrections workspace
+ * saves through the host's `update-sale` function, the way the workbench
+ * commits through `create-sale`: phone uniqueness, the address write, the
+ * status recompute and the `sales_history` audit stay in the one place they
+ * already live. The host role decides who may (the same roles the sales app
+ * lets edit an end-user record); the module only carries the token.
+ */
+export const dataCenterSales = {
+  updateSale: async (saleId: string, payload: Record<string, unknown>) => {
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
+    try {
+      const response = await fetch(
+        `${SUPABASE_URL}/functions/v1/update-sale?id=${encodeURIComponent(saleId)}`,
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json", Authorization: await authHeader() },
+          body: JSON.stringify(payload),
+          signal: controller.signal,
+        },
+      );
+      let body: { success?: boolean; error?: string; message?: string; data?: unknown } | null = null;
+      try {
+        body = await response.json();
+      } catch {
+        body = null;
+      }
+      if (!response.ok || body?.success === false) {
+        throw new DataCenterError(
+          body?.error ?? body?.message ?? `The sales app refused the edit (HTTP ${response.status}).`,
+          response.status,
+          response.status === 409 ? "conflict" : response.status === 403 ? "no_feature" : "update_failed",
+        );
+      }
+      return body;
+    } finally {
+      clearTimeout(timer);
+    }
+  },
 };
 
 export const dataCenterCall = {

@@ -472,7 +472,15 @@ export default function CorrectionsList({ initialTab = "open" }) {
                         {row.seq > 1 && <div className="text-xs text-gray-400">episode {row.seq}</div>}
                       </td>
                       <td className="px-3 py-2.5">
-                        <RowActions row={row} data={data} reload={load} />
+                        <div className="flex flex-col items-end gap-1.5">
+                          <Link
+                            href={`/data-center/corrections/${encodeURIComponent(row.sale_id)}`}
+                            className="inline-flex items-center gap-1 rounded-md bg-(--dc-accent) px-2.5 py-1 text-xs font-medium text-white transition hover:bg-(--dc-accent-strong)"
+                          >
+                            Open record <ArrowRight className="h-3 w-3" />
+                          </Link>
+                          <RowActions row={row} data={data} reload={load} />
+                        </div>
                       </td>
                     </tr>
                   );

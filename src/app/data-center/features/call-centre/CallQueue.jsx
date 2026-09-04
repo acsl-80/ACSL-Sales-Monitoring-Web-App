@@ -44,6 +44,7 @@ const COLUMNS = [
 
 const CORRECTION_TONE = {
   open: "bg-red-100 text-red-700",
+  fixed: "bg-amber-100 text-amber-800",
   resolved: "bg-blue-100 text-blue-700",
   none: "bg-gray-100 text-gray-500",
 };

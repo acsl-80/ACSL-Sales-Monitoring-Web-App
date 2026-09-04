@@ -342,7 +342,8 @@ export default function CallRecordEditor({ saleId, canEdit, onClose, onSaved }) 
   const [correctionReasonId, setCorrectionReasonId] = useState("");
   const canLog = Boolean(nextOutcome) && (!otherIsPicked || nextNote.trim().length > 0);
   const correctionReasons = schema?.options?.correction_reason ?? [];
-  const correctionOpen = record?.correction_state === "open";
+  // Phase 24: "fixed" is still open from the call centre's side, awaiting review.
+  const correctionOpen = record?.correction_state === "open" || record?.correction_state === "fixed";
 
   return (
     <Dialog open onOpenChange={(next) => { if (!next) onClose(); }}>

@@ -80,7 +80,8 @@ export const GROUP_WORDS: Record<string, string> = {
 /** A send-back's state, as a flag beside the outcome. */
 export const CORRECTION_WORDS: Record<string, string> = {
   open: "Sent back",
-  resolved: "Fixed",
+  fixed: "Fixed, awaiting review",
+  resolved: "Closed",
   none: "",
 };
 

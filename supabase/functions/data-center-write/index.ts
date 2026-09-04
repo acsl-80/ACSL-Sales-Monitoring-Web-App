@@ -326,8 +326,38 @@ serve(async (req) => {
        * rep holds (slice 7b). Opening a send-back stays with the call centre.
        */
       const closingSendBack = String(body.action) === "correction" && body.open === false;
+      /*
+       * Phase 24: a disputed stove ID is fixed by the person the send-back is
+       * routed to, and that person holds corrections.fix rather than
+       * call_records.edit. The rematch door opens for them only while an open
+       * episode on that sale names stove_serial_no and is routed to them, or
+       * they see everything (a router, a standing recipient).
+       */
+      let routedSerialFix = false;
+      if (
+        String(body.action) === "serial_rematch" &&
+        !features.includes(needed) &&
+        features.includes("corrections.fix") &&
+        body.saleId
+      ) {
+        const r = await conn.queryObject<{ ok: boolean }>({
+          text: `select exists (
+                   select 1 from data_center.v_corrections c
+                    where c.sale_id = $1 and c.state = 'open'
+                      and 'stove_serial_no' = any(c.disputed_fields)
+                      and (c.current_rep_user_id = $2 or c.assigned_to = $2
+                           or exists (select 1 from data_center.send_back_recipients r
+                                       where r.user_id = $2 and r.is_enabled)
+                           or $3::boolean)
+                 ) as ok`,
+          args: [String(body.saleId), userId, features.includes("corrections.route")],
+        });
+        routedSerialFix = Boolean(r.rows[0]?.ok);
+      }
       const allowed =
-        features.includes(needed) || (closingSendBack && features.includes("corrections.fix"));
+        features.includes(needed) ||
+        (closingSendBack && features.includes("corrections.fix")) ||
+        routedSerialFix;
 
       if (!allowed) {
         return json(
@@ -873,6 +903,29 @@ serve(async (req) => {
         const saleId = String(body.saleId ?? "");
         const open = body.open !== false;
         if (!saleId) throw new BadRequest("saleId is required");
+
+        /*
+         * Saying it is fixed is the routed person's act, or that of somebody
+         * who sees everything. A caller who reached this door on
+         * corrections.fix alone must be the one the episode is routed to; a
+         * caller with call_records.edit is the call centre and passes.
+         */
+        if (!open && !features.includes("call_records.edit")) {
+          const routed = await conn.queryObject<{ ok: boolean }>({
+            text: `select (c.current_rep_user_id = $2 or c.assigned_to = $2
+                           or exists (select 1 from data_center.send_back_recipients r
+                                       where r.user_id = $2 and r.is_enabled)
+                           or $3::boolean) as ok
+                     from data_center.v_corrections c
+                    where c.sale_id = $1
+                    order by c.seq desc
+                    limit 1`,
+            args: [saleId, userId, features.includes("corrections.route")],
+          });
+          if (!routed.rows[0]?.ok) {
+            return json({ error: "This record is not routed to you.", code: "not_routed" }, 403, cors);
+          }
+        }
 
         await begin();
         try {

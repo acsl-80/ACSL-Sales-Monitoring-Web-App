@@ -6,10 +6,10 @@ lives on each PR.
 
 ## Phase 24 (opened 2026-09-04)
 
-- [ ] 0 Docs and tracker: this file, `decisions.md`, PLAN.md and ROADMAP.md entries. in review
-- [ ] 0.5 Design canvas, ten surfaces in the module's theme, approved before code. canvas published 2026-09-04, awaiting his review
-- [ ] 1 Corrections lifecycle, function, backfill, access on link. green on the preview, in review (PR #67)
-- [ ] 2 Correction workspace: disputed record, edit through update-sale, serial through rematch. todo
+- [x] 0 Docs and tracker: this file, `decisions.md`, PLAN.md and ROADMAP.md entries. merged, live (PR #66, 2026-09-04)
+- [ ] 0.5 Design canvas, ten surfaces in the module's theme, approved before code. published 2026-09-04, awaiting his review
+- [x] 1 Corrections lifecycle, function, backfill, access on link. merged, live (PR #67, 2026-09-04): 30 episodes backfilled, 11 reps given the door
+- [ ] 2 Correction workspace: disputed record, edit through update-sale, serial through rematch. spec red, awaiting the preview run
 - [ ] 3 Review and recall: review panel, derived recall allowance, awaiting-review preset and tile. todo
 - [ ] 4 Send-back panel and work-waiting banner. todo
 - [ ] 5a Engine picks from module_access; capacity on the manual door; agent profiles; gates. todo

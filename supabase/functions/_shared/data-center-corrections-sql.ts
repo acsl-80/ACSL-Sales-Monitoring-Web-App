@@ -141,28 +141,42 @@ export async function openCorrection(conn: PoolClient, input: {
   }
 
   const route = await routeFor(conn, input.saleId);
-  const r = await conn.queryObject<Episode>({
-    text: `insert into data_center.corrections
-             (sale_id, seq, state, reason_id, disputed_fields, note, opened_at, opened_by,
-              routed_rep_key, routed_rep_user_id, before, updated_by)
-           values ($1,
-                   coalesce((select max(seq) from data_center.corrections where sale_id = $1), 0) + 1,
-                   'open', $2, $3, $4, now(), $5, $6, $7,
-                   data_center.sale_snapshot($1), $5)
-           returning id::text, sale_id::text, seq, state, reason_id::text, disputed_fields, note,
-                     opened_at::text, opened_by::text, routed_rep_user_id::text,
-                     assigned_to::text, fixed_by::text`,
-    args: [
-      input.saleId,
-      input.reasonId,
-      fields,
-      input.note,
-      input.actorId,
-      route.rep_key,
-      route.rep_user_id,
-    ],
-  });
-  return r.rows[0];
+  try {
+    const r = await conn.queryObject<Episode>({
+      text: `insert into data_center.corrections
+               (sale_id, seq, state, reason_id, disputed_fields, note, opened_at, opened_by,
+                routed_rep_key, routed_rep_user_id, before, updated_by)
+             values ($1,
+                     coalesce((select max(seq) from data_center.corrections where sale_id = $1), 0) + 1,
+                     'open', $2, $3, $4, now(), $5, $6, $7,
+                     data_center.sale_snapshot($1), $5)
+             returning id::text, sale_id::text, seq, state, reason_id::text, disputed_fields, note,
+                       opened_at::text, opened_by::text, routed_rep_user_id::text,
+                       assigned_to::text, fixed_by::text`,
+      args: [
+        input.saleId,
+        input.reasonId,
+        fields,
+        input.note,
+        input.actorId,
+        route.rep_key,
+        route.rep_user_id,
+      ],
+    });
+    return r.rows[0];
+  } catch (err) {
+    // Two opens at once: the partial unique index (one live episode per sale)
+    // refuses the loser, and the loser is told the same thing a late reader is.
+    if ((err as { fields?: { code?: string } })?.fields?.code === "23505") {
+      throw new CorrectionError("This record is already with Sales.", 409, "already_open");
+    }
+    throw err;
+  }
+}
+
+/** The row moved under us: somebody else changed the state first. */
+function stale(): never {
+  throw new CorrectionError("Somebody else changed this correction first. Reload to see where it stands.", 409, "stale");
 }
 
 /** Take an open episode: it now has somebody's name on it. */
@@ -171,13 +185,14 @@ export async function claimCorrection(conn: PoolClient, saleId: string, actorId:
   if (!current || current.state !== "open") {
     throw new CorrectionError("Nothing is waiting on Sales for this record.", 409, "not_open");
   }
-  await conn.queryObject({
+  const r = await conn.queryObject({
     text: `update data_center.corrections
               set assigned_to = $2, claimed_at = coalesce(claimed_at, now()),
                   updated_at = now(), updated_by = $2
-            where id = $1`,
+            where id = $1 and state = 'open'`,
     args: [current.id, actorId],
   });
+  if (r.rowCount === 0) stale();
   return { ...current, assigned_to: actorId };
 }
 
@@ -202,15 +217,16 @@ export async function fixCorrection(conn: PoolClient, input: {
       "not_open",
     );
   }
-  await conn.queryObject({
+  const r = await conn.queryObject({
     text: `update data_center.corrections
               set state = 'fixed', fixed_at = now(), fixed_by = $2, fix_note = $3,
                   fixed_on_behalf = $4, assigned_to = coalesce(assigned_to, $2),
                   after = data_center.sale_snapshot(sale_id),
                   updated_at = now(), updated_by = $2
-            where id = $1`,
+            where id = $1 and state = 'open'`,
     args: [current.id, input.actorId, input.note, input.onBehalf],
   });
+  if (r.rowCount === 0) stale();
   return { ...current, state: "fixed", fixed_by: input.actorId };
 }
 
@@ -235,17 +251,18 @@ export async function reviewCorrection(conn: PoolClient, input: {
     throw new CorrectionError("This record is not waiting for review.", 409, "not_fixed");
   }
   const outcome = input.outcome === "reopen" ? "reopened" : input.outcome;
-  await conn.queryObject({
-    text: `update data_center.corrections
+  const r = await conn.queryObject({
+    text: `update data_center.corrections c
               set state = 'resolved', reviewed_at = now(), reviewed_by = $2,
                   review_note = $3, review_outcome = $4,
-                  attempts_at_close = (select coalesce(attempt_count, 0)
-                                         from data_center.call_records where sale_id = sale_id
-                                          and sale_id = data_center.corrections.sale_id),
+                  attempts_at_close = (select coalesce(cr.attempt_count, 0)
+                                         from data_center.call_records cr
+                                        where cr.sale_id = c.sale_id),
                   updated_at = now(), updated_by = $2
-            where id = $1`,
+            where c.id = $1 and c.state = 'fixed'`,
     args: [current.id, input.actorId, input.note, outcome],
   });
+  if (r.rowCount === 0) stale();
 
   if (input.outcome === "recall") {
     // The number changed, so "unreachable" no longer describes anything.
@@ -295,13 +312,14 @@ export async function withdrawCorrection(conn: PoolClient, input: {
   if (!current || current.state === "resolved") {
     throw new CorrectionError("Nothing is open on this record.", 409, "not_open");
   }
-  await conn.queryObject({
+  const r = await conn.queryObject({
     text: `update data_center.corrections
               set state = 'resolved', reviewed_at = now(), reviewed_by = $2,
                   review_note = $3, review_outcome = 'withdrawn',
                   updated_at = now(), updated_by = $2
-            where id = $1`,
+            where id = $1 and state in ('open', 'fixed')`,
     args: [current.id, input.actorId, input.note],
   });
+  if (r.rowCount === 0) stale();
   return { ...current, state: "resolved" };
 }

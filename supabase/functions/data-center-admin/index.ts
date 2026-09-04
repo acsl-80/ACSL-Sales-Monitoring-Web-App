@@ -769,26 +769,14 @@ serve(async (req) => {
           }
 
           // A standing recipient needs a way in as much as a rep does. The
-          // sales_rep level is provisioned when they hold none, and taken back
-          // when they stop receiving and nothing else justifies it.
-          const revokeIfIdle = async () => {
-            await conn.queryObject({
-              text: `delete from data_center.module_access m
-                      where m.user_id = $1 and m.access_role = 'sales_rep'
-                        and not exists (select 1 from data_center.sales_rep_accounts a
-                                         where a.user_id = $1 or a.delegate_user_id = $1)
-                        and not exists (select 1 from data_center.send_back_recipients r
-                                         where r.user_id = $1 and r.is_enabled)`,
-              args: [target],
-            });
-          };
-
+          // sales_rep level is provisioned when they hold none. Removing the
+          // recipient leaves the level: levels are taken away on the Access
+          // panel, by a person.
           if (body.enabled === null) {
             await conn.queryObject({
               text: `delete from data_center.send_back_recipients where user_id = $1`,
               args: [target],
             });
-            await revokeIfIdle();
             return json({ data: { userId: target, removed: true } }, 200, cors);
           }
 
@@ -809,8 +797,6 @@ serve(async (req) => {
                      on conflict (user_id) do nothing`,
               args: [target, callerId],
             });
-          } else {
-            await revokeIfIdle();
           }
           return json({ data: saved.rows[0] }, 200, cors);
         }
@@ -887,20 +873,23 @@ serve(async (req) => {
                 args: [target, callerId],
               });
             }
+            // Unlinking takes nothing away. A level is removed on the Access
+            // panel, by a person, never as the side effect of a routing edit:
+            // the review of slice 1 found the automatic revoke would also
+            // delete a sales_rep level a super admin had granted by hand.
             const wasLinked = previous.rows[0]?.user_id ?? null;
-            if (wasLinked && wasLinked !== target) {
-              await conn.queryObject({
-                text: `delete from data_center.module_access m
-                        where m.user_id = $1 and m.access_role = 'sales_rep'
-                          and not exists (select 1 from data_center.sales_rep_accounts a
-                                           where a.user_id = $1 or a.delegate_user_id = $1)
-                          and not exists (select 1 from data_center.send_back_recipients r
-                                           where r.user_id = $1 and r.is_enabled)`,
-                args: [wasLinked],
-              });
-            }
             await conn.queryObject("commit");
-            return json({ data: { ...(saved.rows[0] as object), provisioned: Boolean(target) } }, 200, cors);
+            return json(
+              {
+                data: {
+                  ...(saved.rows[0] as object),
+                  provisioned: Boolean(target),
+                  previousUserId: wasLinked,
+                },
+              },
+              200,
+              cors,
+            );
           } catch (err) {
             await conn.queryObject("rollback");
             throw err;

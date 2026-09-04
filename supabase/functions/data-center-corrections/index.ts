@@ -303,6 +303,53 @@ serve(async (req) => {
             text: `select data_center.sale_snapshot($1) as snapshot`,
             args: [saleId],
           });
+          /*
+           * The record as the workspace shows it: Table 2's row for the sale,
+           * the transfer it came in on, and the last few calls. Served here
+           * rather than through stove_detail because that needs records.view,
+           * which a sales rep does not hold: the rep sees the one record that
+           * came back to them, and nothing else in the register.
+           */
+          const record = await conn.queryObject({
+            text: `select v.sale_id::text, v.transaction_id, v.sales_date::text, v.stove_serial_no,
+                          v.end_user_name, v.aka, v.primary_phone, v.alternative_phone,
+                          v.buyer_name, v.buyer_phone, v.partner_name, v.retailer_branch,
+                          v.user_state, v.user_lga, v.user_residential_address,
+                          v.amount, v.total_paid, v.payment_status, v.is_installment,
+                          v.sale_status, v.platform, v.created_at::text, v.organization_id::text,
+                          v.sales_model, v.sale_agent_name, v.previous_stove_type, v.previous_stove_other,
+                          v.pot_quantity, v.heat_retention_device, v.factory, v.stove_stock_status,
+                          v.verification_outcome, v.corrected_phone, v.corrected_alt_phone,
+                          v.corrected_end_user_name, v.corrected_address, v.corrected_state, v.corrected_lga,
+                          v.ward, v.landmark, v.stated_serial, v.other_comments,
+                          v.call_outcome, v.call_agent, v.attempt_count, v.last_attempt_at::text,
+                          v.correction_state, v.serial_matches, v.phone_was_corrected
+                     from data_center.v_call_center v
+                    where v.sale_id = $1`,
+            args: [saleId],
+          });
+          const transfer = await conn.queryObject({
+            text: `select f.transaction_id, f.partner_name, f.sales_rep, f.transfer_date::text,
+                          f.sales_date, f.issued_count, f.digitalised_count, f.verified_count,
+                          f.transfer_state, f.transfer_branch
+                     from public.sales s
+                     join data_center.v_transfer_stoves b on b.stove_id = upper(trim(s.stove_serial_no))
+                     join data_center.transfer_funnel f on f.transfer_id = b.transfer_id
+                    where s.id = $1
+                    limit 1`,
+            args: [saleId],
+          });
+          const attempts = await conn.queryObject({
+            text: `select a.attempt_no, a.attempted_at::text, a.note,
+                          o.label as outcome, p.full_name as agent
+                     from data_center.call_attempts a
+                     left join data_center.option_values o on o.id = a.outcome_id
+                     left join public.profiles p on p.id = a.agent_id
+                    where a.sale_id = $1
+                    order by a.attempt_no desc
+                    limit 5`,
+            args: [saleId],
+          });
           const newest = episodes.rows[0] as { state?: string; current_rep_user_id?: string | null } | undefined;
           const routedToMe = Boolean(newest && newest.current_rep_user_id === userId);
           return json({
@@ -310,6 +357,9 @@ serve(async (req) => {
               saleId,
               episodes: episodes.rows,
               sale: sale.rows[0]?.snapshot ?? null,
+              record: record.rows[0] ?? null,
+              transfer: transfer.rows[0] ?? null,
+              attempts: attempts.rows,
               catalogue: SALE_FIELDS,
               reasonFields: reasonMap.rows[0]?.value ?? {},
               can: {
@@ -326,6 +376,8 @@ serve(async (req) => {
       }
 
       case "work_waiting": {
+        const refused = requireAny("corrections.fix", "call_records.view");
+        if (refused) return refused;
         return await withReadConnection(async (conn) => {
           const r = await conn.queryObject<{
             mine_open: number; mine_fixed: number; review: number; open_all: number;
@@ -336,7 +388,7 @@ serve(async (req) => {
                        where c.state = 'open' and c.is_archived is not true
                          and (c.current_rep_user_id = $1 or c.assigned_to = $1)) as mine_open,
                      (select count(*)::int from data_center.v_corrections c
-                       where c.state = 'fixed' and c.fixed_by = $1) as mine_fixed,
+                       where c.state = 'fixed' and c.fixed_by = $1 and c.is_archived is not true) as mine_fixed,
                      (select count(*)::int from data_center.v_corrections c
                        where c.state = 'fixed' and c.is_archived is not true) as review,
                      (select count(*)::int from data_center.v_corrections c

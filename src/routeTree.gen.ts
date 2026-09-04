@@ -77,6 +77,7 @@ import { Route as AdminAppConfigIndexRouteImport } from './routes/admin/app-conf
 import { Route as AdminAgreementImagesIndexRouteImport } from './routes/admin/agreement-images/index'
 import { Route as AdminAgentsIndexRouteImport } from './routes/admin/agents/index'
 import { Route as DataCenterStoveStoveIdRouteImport } from './routes/data-center/stove.$stoveId'
+import { Route as DataCenterCorrectionsSaleIdRouteImport } from './routes/data-center/corrections.$saleId'
 import { Route as SuperAdminAgentSalesCreateIndexRouteImport } from './routes/super-admin-agent/sales/create/index'
 import { Route as DocsSuperadminSalesIndexRouteImport } from './routes/docs/superadmin/sales/index'
 import { Route as DocsAdminSalesIndexRouteImport } from './routes/docs/admin/sales/index'
@@ -439,6 +440,12 @@ const DataCenterStoveStoveIdRoute = DataCenterStoveStoveIdRouteImport.update({
   path: '/data-center/stove/$stoveId',
   getParentRoute: () => rootRouteImport,
 } as any)
+const DataCenterCorrectionsSaleIdRoute =
+  DataCenterCorrectionsSaleIdRouteImport.update({
+    id: '/$saleId',
+    path: '/$saleId',
+    getParentRoute: () => DataCenterCorrectionsRoute,
+  } as any)
 const SuperAdminAgentSalesCreateIndexRoute =
   SuperAdminAgentSalesCreateIndexRouteImport.update({
     id: '/super-admin-agent/sales/create/',
@@ -474,7 +481,7 @@ export interface FileRoutesByFullPath {
   '/agents/profiles': typeof AgentsProfilesRoute
   '/data-center/analysis': typeof DataCenterAnalysisRoute
   '/data-center/call-centre': typeof DataCenterCallCentreRoute
-  '/data-center/corrections': typeof DataCenterCorrectionsRoute
+  '/data-center/corrections': typeof DataCenterCorrectionsRouteWithChildren
   '/data-center/dashboard': typeof DataCenterDashboardRoute
   '/data-center/import': typeof DataCenterImportRoute
   '/data-center/partner-records': typeof DataCenterPartnerRecordsRoute
@@ -509,6 +516,7 @@ export interface FileRoutesByFullPath {
   '/unauthorized/': typeof UnauthorizedIndexRoute
   '/user-guide/': typeof UserGuideIndexRoute
   '/user-management/': typeof UserManagementIndexRoute
+  '/data-center/corrections/$saleId': typeof DataCenterCorrectionsSaleIdRoute
   '/data-center/stove/$stoveId': typeof DataCenterStoveStoveIdRoute
   '/admin/agents/': typeof AdminAgentsIndexRoute
   '/admin/agreement-images/': typeof AdminAgreementImagesIndexRoute
@@ -549,7 +557,7 @@ export interface FileRoutesByTo {
   '/agents/profiles': typeof AgentsProfilesRoute
   '/data-center/analysis': typeof DataCenterAnalysisRoute
   '/data-center/call-centre': typeof DataCenterCallCentreRoute
-  '/data-center/corrections': typeof DataCenterCorrectionsRoute
+  '/data-center/corrections': typeof DataCenterCorrectionsRouteWithChildren
   '/data-center/dashboard': typeof DataCenterDashboardRoute
   '/data-center/import': typeof DataCenterImportRoute
   '/data-center/partner-records': typeof DataCenterPartnerRecordsRoute
@@ -584,6 +592,7 @@ export interface FileRoutesByTo {
   '/unauthorized': typeof UnauthorizedIndexRoute
   '/user-guide': typeof UserGuideIndexRoute
   '/user-management': typeof UserManagementIndexRoute
+  '/data-center/corrections/$saleId': typeof DataCenterCorrectionsSaleIdRoute
   '/data-center/stove/$stoveId': typeof DataCenterStoveStoveIdRoute
   '/admin/agents': typeof AdminAgentsIndexRoute
   '/admin/agreement-images': typeof AdminAgreementImagesIndexRoute
@@ -625,7 +634,7 @@ export interface FileRoutesById {
   '/agents/profiles': typeof AgentsProfilesRoute
   '/data-center/analysis': typeof DataCenterAnalysisRoute
   '/data-center/call-centre': typeof DataCenterCallCentreRoute
-  '/data-center/corrections': typeof DataCenterCorrectionsRoute
+  '/data-center/corrections': typeof DataCenterCorrectionsRouteWithChildren
   '/data-center/dashboard': typeof DataCenterDashboardRoute
   '/data-center/import': typeof DataCenterImportRoute
   '/data-center/partner-records': typeof DataCenterPartnerRecordsRoute
@@ -660,6 +669,7 @@ export interface FileRoutesById {
   '/unauthorized/': typeof UnauthorizedIndexRoute
   '/user-guide/': typeof UserGuideIndexRoute
   '/user-management/': typeof UserManagementIndexRoute
+  '/data-center/corrections/$saleId': typeof DataCenterCorrectionsSaleIdRoute
   '/data-center/stove/$stoveId': typeof DataCenterStoveStoveIdRoute
   '/admin/agents/': typeof AdminAgentsIndexRoute
   '/admin/agreement-images/': typeof AdminAgreementImagesIndexRoute
@@ -737,6 +747,7 @@ export interface FileRouteTypes {
     | '/unauthorized/'
     | '/user-guide/'
     | '/user-management/'
+    | '/data-center/corrections/$saleId'
     | '/data-center/stove/$stoveId'
     | '/admin/agents/'
     | '/admin/agreement-images/'
@@ -812,6 +823,7 @@ export interface FileRouteTypes {
     | '/unauthorized'
     | '/user-guide'
     | '/user-management'
+    | '/data-center/corrections/$saleId'
     | '/data-center/stove/$stoveId'
     | '/admin/agents'
     | '/admin/agreement-images'
@@ -887,6 +899,7 @@ export interface FileRouteTypes {
     | '/unauthorized/'
     | '/user-guide/'
     | '/user-management/'
+    | '/data-center/corrections/$saleId'
     | '/data-center/stove/$stoveId'
     | '/admin/agents/'
     | '/admin/agreement-images/'
@@ -928,7 +941,7 @@ export interface RootRouteChildren {
   AgentsProfilesRoute: typeof AgentsProfilesRoute
   DataCenterAnalysisRoute: typeof DataCenterAnalysisRoute
   DataCenterCallCentreRoute: typeof DataCenterCallCentreRoute
-  DataCenterCorrectionsRoute: typeof DataCenterCorrectionsRoute
+  DataCenterCorrectionsRoute: typeof DataCenterCorrectionsRouteWithChildren
   DataCenterDashboardRoute: typeof DataCenterDashboardRoute
   DataCenterImportRoute: typeof DataCenterImportRoute
   DataCenterPartnerRecordsRoute: typeof DataCenterPartnerRecordsRoute
@@ -1476,6 +1489,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof DataCenterStoveStoveIdRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/data-center/corrections/$saleId': {
+      id: '/data-center/corrections/$saleId'
+      path: '/$saleId'
+      fullPath: '/data-center/corrections/$saleId'
+      preLoaderRoute: typeof DataCenterCorrectionsSaleIdRouteImport
+      parentRoute: typeof DataCenterCorrectionsRoute
+    }
     '/super-admin-agent/sales/create/': {
       id: '/super-admin-agent/sales/create/'
       path: '/super-admin-agent/sales/create'
@@ -1514,13 +1534,26 @@ declare module '@tanstack/react-router' {
   }
 }
 
+interface DataCenterCorrectionsRouteChildren {
+  DataCenterCorrectionsSaleIdRoute: typeof DataCenterCorrectionsSaleIdRoute
+}
+
+const DataCenterCorrectionsRouteChildren: DataCenterCorrectionsRouteChildren = {
+  DataCenterCorrectionsSaleIdRoute: DataCenterCorrectionsSaleIdRoute,
+}
+
+const DataCenterCorrectionsRouteWithChildren =
+  DataCenterCorrectionsRoute._addFileChildren(
+    DataCenterCorrectionsRouteChildren,
+  )
+
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
   AgentsPartnerAgentsProfilesRoute: AgentsPartnerAgentsProfilesRoute,
   AgentsProfilesRoute: AgentsProfilesRoute,
   DataCenterAnalysisRoute: DataCenterAnalysisRoute,
   DataCenterCallCentreRoute: DataCenterCallCentreRoute,
-  DataCenterCorrectionsRoute: DataCenterCorrectionsRoute,
+  DataCenterCorrectionsRoute: DataCenterCorrectionsRouteWithChildren,
   DataCenterDashboardRoute: DataCenterDashboardRoute,
   DataCenterImportRoute: DataCenterImportRoute,
   DataCenterPartnerRecordsRoute: DataCenterPartnerRecordsRoute,
@@ -1592,13 +1625,3 @@ const rootRouteChildren: RootRouteChildren = {
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)
   ._addFileTypes<FileRouteTypes>()
-
-import type { getRouter } from './router.tsx'
-import type { startInstance } from './start.ts'
-declare module '@tanstack/react-start' {
-  interface Register {
-    ssr: true
-    router: Awaited<ReturnType<typeof getRouter>>
-    config: Awaited<ReturnType<typeof startInstance.getOptions>>
-  }
-}
