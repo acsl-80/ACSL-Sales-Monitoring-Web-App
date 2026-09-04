@@ -64,25 +64,28 @@ export async function handleAgents(ctx: AgentsContext): Promise<Response> {
                   group by 1, 2
                   order by callable desc, r.partner_name`,
         });
-        const defaults = await conn.queryObject<{ batch_size: number; default_cap: number; ceiling: number }>({
+        // One statement for every setting the console needs: the module measured
+        // statements per request as the cost worth minimising. The hand-out
+        // order rides along, read as absent when the config is not a list.
+        const defaults = await conn.queryObject<{
+          batch_size: number; default_cap: number; ceiling: number;
+          order: string[] | null; options: { value: string; label: string }[] | null;
+        }>({
           text: `select coalesce((select (value #>> '{}')::int from data_center.workflow_config
                                    where key = 'assignment.batch_size'), 20) as batch_size,
                         coalesce((select (value #>> '{}')::int from data_center.workflow_config
                                    where key = 'assignment.max_open_batches'), 1) as default_cap,
                         coalesce((select (value #>> '{}')::int from data_center.workflow_config
-                                   where key = 'assignment.capacity_ceiling'), 10) as ceiling`,
-        });
-        const d = defaults.rows[0];
-        // The hand-out order: the configured default and the labels for every
-        // order the picker knows, so the dialog can offer them as words.
-        const priority = await conn.queryObject<{ order: string[] | null; options: { value: string; label: string }[] | null }>({
-          text: `select (select array(select jsonb_array_elements_text(value -> 'order'))
+                                   where key = 'assignment.capacity_ceiling'), 10) as ceiling,
+                        (select case when jsonb_typeof(value -> 'order') = 'array'
+                                     then array(select jsonb_array_elements_text(value -> 'order')) end
                            from data_center.workflow_config where key = 'assignment.priority') as "order",
                         (select jsonb_agg(jsonb_build_object('value', v.value, 'label', v.label) order by v.sort_order)
                            from data_center.option_values v
                           where v.list_key = 'assignment_priority' and v.is_active) as options`,
         });
-        const pr = priority.rows[0];
+        const d = defaults.rows[0];
+        const pr = d;
         return json(
           {
             data: {

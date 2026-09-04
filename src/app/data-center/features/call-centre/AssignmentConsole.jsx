@@ -88,7 +88,15 @@ function AssignDialog({ agent, pool, batchSize, priority, onDone, onClose }) {
   // as the tie-break.
   const orderOptions = priority?.options ?? [];
   const defaultOrder = priority?.order ?? [];
-  const [orderFirst, setOrderFirst] = useState(defaultOrder[0] ?? orderOptions[0]?.value ?? "");
+  // Untouched, the dialog sends no order and the picker applies the
+  // configured one, including any per-partner override. Only a choice the
+  // supervisor made travels. The shown default falls back to an offered
+  // option so the words on screen are the words that are sent.
+  const shownDefault = orderOptions.some((o) => o.value === defaultOrder[0])
+    ? defaultOrder[0]
+    : orderOptions[0]?.value ?? "";
+  const [orderFirst, setOrderFirst] = useState(shownDefault);
+  const [orderTouched, setOrderTouched] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState(null);
   const [done, setDone] = useState([]);
@@ -104,7 +112,7 @@ function AssignDialog({ agent, pool, batchSize, priority, onDone, onClose }) {
     setBusy(true);
     setError(null);
     try {
-      const order = orderFirst
+      const order = orderTouched && orderFirst
         ? [orderFirst, ...defaultOrder.filter((t) => t !== orderFirst)]
         : null;
       const result = await dataCenterAssign.assignManual(
@@ -240,7 +248,10 @@ function AssignDialog({ agent, pool, batchSize, priority, onDone, onClose }) {
                     <select
                       id="assign-order"
                       value={orderFirst}
-                      onChange={(e) => setOrderFirst(e.target.value)}
+                      onChange={(e) => {
+                        setOrderFirst(e.target.value);
+                        setOrderTouched(true);
+                      }}
                       className="rounded-md border border-gray-300 bg-white px-2.5 py-1.5 text-sm focus:border-(--dc-accent) focus:outline-none"
                     >
                       {orderOptions.map((o) => (

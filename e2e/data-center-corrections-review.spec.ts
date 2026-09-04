@@ -69,6 +69,13 @@ async function seedFixed(sale: Sale, heard: string | null) {
       returning batch_id::text`,
   );
   await branchSql(`delete from data_center.corrections where sale_id = '${sale.sale_id}'`);
+  // Since phase 24 slice 5b a call draft saved within the hold keeps a record
+  // out of the pool (somebody is half-way through it). Set any draft aside
+  // for the test and put it back after, so the allowance is what is measured.
+  const drafts = await branchSql<{ row: Record<string, unknown> }>(
+    `select row_to_json(d) as row from data_center.call_drafts d where d.sale_id = '${sale.sale_id}'`,
+  );
+  await branchSql(`delete from data_center.call_drafts where sale_id = '${sale.sale_id}'`);
   await branchSql(
     `update data_center.call_records
         set attempt_count = ${limit}, verification_outcome = 'not_verified', corrected_phone = ${q(heard)}
@@ -101,6 +108,12 @@ async function seedFixed(sale: Sale, heard: string | null) {
           where sale_id = '${sale.sale_id}'
             and batch_id in (${parked.map((p) => `'${p.batch_id}'`).join(",")})`,
       );
+    }
+    for (const d of drafts) {
+      const json = JSON.stringify(d.row).replace(/'/g, "''");
+      await branchSql(
+        `insert into data_center.call_drafts select * from json_populate_record(null::data_center.call_drafts, '${json}') on conflict (sale_id) do nothing`,
+      ).catch(() => {});
     }
   };
   return { limit, restore };

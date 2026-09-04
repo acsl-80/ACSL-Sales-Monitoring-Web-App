@@ -138,10 +138,14 @@ declare
   order_sql text;
 begin
   -- The caller's order, else the partner's override, else the default.
+  -- A value of the wrong shape (a string where a list belongs) is read as
+  -- absent rather than raising inside the engine.
   tokens := coalesce(
-    p_order,
-    nullif(array(select jsonb_array_elements_text(cfg -> 'by_partner' -> p_org::text)), '{}'::text[]),
-    nullif(array(select jsonb_array_elements_text(cfg -> 'order')), '{}'::text[]),
+    nullif(p_order, '{}'::text[]),
+    case when jsonb_typeof(cfg -> 'by_partner' -> p_org::text) = 'array'
+         then nullif(array(select jsonb_array_elements_text(cfg -> 'by_partner' -> p_org::text)), '{}'::text[]) end,
+    case when jsonb_typeof(cfg -> 'order') = 'array'
+         then nullif(array(select jsonb_array_elements_text(cfg -> 'order')), '{}'::text[]) end,
     array['oldest_sale']);
 
   -- Each token maps through a fixed case to a whitelisted fragment. Anything
@@ -156,12 +160,12 @@ begin
       else null
     end;
     if frag is null then
-      raise exception 'assignment.priority names %, which is not an order the picker knows', tok
+      raise exception 'The hand-out order names %, which the picker does not know. An administrator can correct assignment.priority in Settings.', tok
         using errcode = 'check_violation', hint = 'bad_order';
     end if;
     frags := frags || frag;
   end loop;
-  order_sql := array_to_string(frags, ', ') || ', r.sale_id';
+  order_sql := coalesce(nullif(array_to_string(frags, ', '), '') || ', ', '') || 'r.sale_id';
 
   return query execute format(
     'select r.sale_id, (row_number() over (order by %s))::int as pos
@@ -258,6 +262,7 @@ begin
                        where r.organization_id = chosen_org) then
       select r.organization_id into chosen_org
         from data_center.v_callable_records r
+       where r.organization_id is not null
        group by r.organization_id
        order by count(*) desc, r.organization_id
        limit 1;

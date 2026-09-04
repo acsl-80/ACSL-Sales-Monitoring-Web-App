@@ -66,7 +66,13 @@ function pgRefusal(err: unknown): { error: string; code: string } | null {
   const f = (err as { fields?: { code?: string; message?: string; hint?: string } })?.fields;
   if (!f?.code) return null;
   if (f.code === "23514") {
-    const code = f.hint === "over_capacity" ? "over_capacity" : f.hint === "paused" ? "paused" : "refused";
+    const code = f.hint === "over_capacity"
+      ? "over_capacity"
+      : f.hint === "paused"
+      ? "paused"
+      : f.hint === "bad_order"
+      ? "bad_order"
+      : "refused";
     return { error: f.message ?? "Refused", code };
   }
   if (f.code === "55P03") return { error: f.message ?? "Work is being handed out right now", code: "busy" };
@@ -186,6 +192,7 @@ serve(async (req) => {
           const denied = requireAssignment();
           if (denied) return denied;
         }
+        try {
         return await withConnection(async (conn) => {
           const reclaimed = await conn.queryObject<{ n: number }>({
             text: "select data_center.reclaim_stale_batches() as n",
@@ -207,6 +214,13 @@ serve(async (req) => {
             cors,
           );
         });
+        } catch (err) {
+          // A hand-out order the picker does not know is a refusal that names
+          // the setting, not a failure.
+          const refusal = pgRefusal(err);
+          if (refusal) return json(refusal, 409, cors);
+          throw err;
+        }
       }
 
       /** Take back quiet batches without assigning anything new. */
