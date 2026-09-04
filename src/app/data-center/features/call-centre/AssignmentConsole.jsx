@@ -14,6 +14,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import ConfirmDialog from "../../components/ConfirmDialog";
+import { Pause, Play } from "lucide-react";
 import {
   Loader2,
   UserPlus,
@@ -84,6 +85,10 @@ function AssignDialog({ agent, pool, batchSize, onDone, onClose }) {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState(null);
   const [done, setDone] = useState([]);
+  // Capacity is a refusal with a door in it: when the server says the agent
+  // is at capacity, the supervisor may give a reason and hand out more.
+  const [needsReason, setNeedsReason] = useState(false);
+  const [reason, setReason] = useState("");
 
   const partner = pool.find((p) => p.organization_id === orgId);
   const cap = partner ? Math.min(Number(size) || 0, partner.callable) : Number(size) || 0;
@@ -92,7 +97,12 @@ function AssignDialog({ agent, pool, batchSize, onDone, onClose }) {
     setBusy(true);
     setError(null);
     try {
-      const result = await dataCenterAssign.assignManual(agent.agent_id, orgId, cap);
+      const result = await dataCenterAssign.assignManual(
+        agent.agent_id,
+        orgId,
+        cap,
+        needsReason && reason.trim() ? reason.trim() : null,
+      );
       if (result.size === 0) {
         setError("That partner had nothing left by the time the batch was made.");
       } else {
@@ -102,6 +112,7 @@ function AssignDialog({ agent, pool, batchSize, onDone, onClose }) {
       await onDone();
     } catch (err) {
       setError(err instanceof DataCenterError ? err.message : "Could not assign that batch.");
+      if (err instanceof DataCenterError && err.code === "over_capacity") setNeedsReason(true);
     } finally {
       setBusy(false);
     }
@@ -136,6 +147,22 @@ function AssignDialog({ agent, pool, batchSize, onDone, onClose }) {
           )}
 
           {error && <p className="mb-3 text-sm text-red-600">{error}</p>}
+          {needsReason && (
+            <div className="mb-3 rounded-lg border border-amber-300 bg-amber-50 p-3">
+              <label htmlFor="assign-override-reason" className="block text-xs font-semibold uppercase tracking-wide text-amber-900">
+                Why hand out more than their capacity
+              </label>
+              <textarea
+                id="assign-override-reason"
+                rows={2}
+                value={reason}
+                onChange={(e) => setReason(e.target.value)}
+                placeholder="Covering for a colleague, a partner that must finish today..."
+                className="mt-1 w-full rounded-md border border-amber-300 bg-white px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-amber-300"
+              />
+              <p className="mt-1 text-xs text-amber-900">The reason lands on the batch, so the log says why. Assign again to send it.</p>
+            </div>
+          )}
 
           {pool.length === 0 ? (
             <div className="rounded-lg border border-dashed border-(--dc-accent)/40 bg-(--dc-accent-soft)/20 px-4 py-8 text-center text-sm text-gray-600">
@@ -479,8 +506,21 @@ export default function AssignmentConsole({ canEdit }) {
     load();
   }, [load]);
 
+  const togglePause = async (agent) => {
+    try {
+      await dataCenterAssign.setAgentProfile(agent.agent_id, {
+        isEnabled: !agent.is_enabled,
+        note: agent.is_enabled ? "Paused from the console" : null,
+      });
+      await load();
+    } catch (err) {
+      setError(err instanceof DataCenterError ? err.message : "Could not change that.");
+    }
+  };
+
   const agents = data?.agents ?? [];
   const pool = data?.pool ?? [];
+  const defaultCap = data?.defaultCap ?? 1;
   const paged = usePaged(agents, 10);
   const waiting = pool.reduce((n, p) => n + p.callable, 0);
 
@@ -586,8 +626,15 @@ export default function AssignmentConsole({ canEdit }) {
                           <span className="block text-xs text-amber-700">Not taking work</span>
                         )}
                       </td>
-                      <td className="px-3 py-2 text-right tabular-nums text-gray-700">
-                        {agent.open_batches}
+                      <td
+                        className={`px-3 py-2 text-right tabular-nums ${
+                          agent.open_batches > (agent.max_open_batches ?? defaultCap)
+                            ? "font-semibold text-red-700"
+                            : "text-gray-700"
+                        }`}
+                        title={agent.open_batches > (agent.max_open_batches ?? defaultCap) ? "Over capacity: reclaim or reassign" : undefined}
+                      >
+                        {agent.open_batches} of {agent.max_open_batches ?? defaultCap}
                       </td>
                       <td className="px-3 py-2 text-right tabular-nums font-medium text-gray-900">
                         {agent.records_held}
@@ -597,6 +644,15 @@ export default function AssignmentConsole({ canEdit }) {
                       </td>
                       {canEdit && (
                         <td className="px-3 py-2 text-right">
+                          <button
+                            type="button"
+                            onClick={() => togglePause(agent)}
+                            aria-label={`${agent.is_enabled ? "Pause" : "Resume"} ${agent.full_name || agent.email}`}
+                            className="mr-1.5 inline-flex items-center gap-1 whitespace-nowrap rounded-md border border-gray-300 px-2.5 py-1.5 text-xs font-medium text-gray-700 transition hover:bg-gray-50"
+                          >
+                            {agent.is_enabled ? <Pause className="h-3.5 w-3.5" /> : <Play className="h-3.5 w-3.5" />}
+                            {agent.is_enabled ? "Pause" : "Resume"}
+                          </button>
                           <button
                             type="button"
                             onClick={() => setAssigning(agent)}

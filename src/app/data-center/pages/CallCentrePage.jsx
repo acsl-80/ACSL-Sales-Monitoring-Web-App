@@ -8,6 +8,7 @@ import MyWork from "../features/call-centre/MyWork";
 import SharedPhones from "../features/call-centre/SharedPhones";
 import { useFeature } from "../lib/access";
 import { DATA_CENTER_FEATURES } from "../lib/features";
+import { callCentreLayout } from "../lib/callCentreLayout";
 
 /** The queue's own presets, named so a drill banner can say which one it took. */
 const PRESET_LABELS = {
@@ -29,7 +30,7 @@ const STATUS_LABELS = {
 };
 
 function Inner() {
-  const { can, isSuperAdmin, accessRole } = useFeature();
+  const { can } = useFeature();
   const search = useSearch({ from: "/data-center/call-centre" });
   const navigate = useNavigate();
 
@@ -83,7 +84,9 @@ function Inner() {
    * Both see both. This is an ordering, not a permission: the server decides
    * what anybody may read, and this decides what they meet first.
    */
-  const agentFirst = accessRole === "call_agent" && !isSuperAdmin;
+  const canManage = can(DATA_CENTER_FEATURES.ASSIGNMENT_MANAGE);
+  const layout = callCentreLayout({ canEdit: can(DATA_CENTER_FEATURES.CALL_RECORDS_EDIT), canManage });
+  const agentFirst = layout === "agent";
 
   return (
     <div className="space-y-4">
@@ -98,9 +101,9 @@ function Inner() {
       {/* The console before the log, because who holds what right now is asked
           far more often than what happened last week. Both need records.view on
           the server; gating on the same key here keeps the page honest, since
-          nothing renders that the endpoint would 403. The levers inside are
-          super admin only, decided again server-side. */}
-      {isSuperAdmin && <AssignmentConsole canEdit />}
+          nothing renders that the endpoint would 403. The levers inside need
+          assignment.manage, decided again server-side. */}
+      {canManage && <AssignmentConsole canEdit />}
       {/* A supervisor gets it after the console: they ask about everybody
           first and about their own queue rarely, which is the opposite of an
           agent and the reason this is ordered rather than hidden. */}
@@ -113,7 +116,7 @@ function Inner() {
       {can(DATA_CENTER_FEATURES.RECORDS_VIEW) && <SharedPhones />}
       {can(DATA_CENTER_FEATURES.RECORDS_VIEW) && (
         <AssignmentLog
-          canRun={isSuperAdmin}
+          canRun={canManage}
           canEdit={can(DATA_CENTER_FEATURES.CALL_RECORDS_EDIT)}
         />
       )}

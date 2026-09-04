@@ -1934,6 +1934,8 @@ export type AssignmentAgent = {
   access_role: string;
   is_enabled: boolean;
   max_open_batches: number | null;
+  /** Why they are paused, or whatever the scheduler wrote. */
+  note: string | null;
   open_batches: number;
   records_held: number;
   last_activity_at: string | null;
@@ -1993,6 +1995,10 @@ export const dataCenterAssign = {
       agents: AssignmentAgent[];
       pool: AssignmentPoolPartner[];
       batchSize: number;
+      /** `assignment.max_open_batches`, the capacity of an agent with no profile row. */
+      defaultCap: number;
+      /** `assignment.capacity_ceiling`, the most a per-agent capacity may be set to. */
+      capacityCeiling: number;
     }>("data-center-assign", "agents"),
 
   /** One agent opened up: every batch they hold and every record in it. */
@@ -2000,12 +2006,27 @@ export const dataCenterAssign = {
     call<{ items: AssignmentDetailItem[] }>("data-center-assign", "agent_detail", { agentId }),
 
   /** Hand one partner's records to one agent. `size` defaults to the configured batch. */
-  assignManual: (agentId: string, organizationId: string, size?: number) =>
+  assignManual: (agentId: string, organizationId: string, size?: number, overrideReason?: string | null) =>
     call<{ batchId: string | null; size: number }>("data-center-assign", "assign_manual", {
       agentId,
       organizationId,
       size,
+      overrideReason: overrideReason ?? null,
     }),
+
+  /**
+   * Pause or resume an agent, set their capacity, leave a note. Only the
+   * keys sent change. Capacity is bounded by `assignment.capacity_ceiling`.
+   */
+  setAgentProfile: (
+    agentId: string,
+    input: { isEnabled?: boolean; maxOpenBatches?: number | null; note?: string | null },
+  ) =>
+    call<{ profile: { agent_id: string; is_enabled: boolean; max_open_batches: number | null; note: string | null } }>(
+      "data-center-assign",
+      "agent_profile_set",
+      { agentId, ...input },
+    ),
 
   unassignBatch: (batchId: string, reason?: string) =>
     call<{ released: number }>("data-center-assign", "unassign_batch", { batchId, reason }),

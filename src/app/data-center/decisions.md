@@ -53,6 +53,22 @@ number. When the two differ nothing happens on its own: the review panel
 shows both and the reviewer chooses. The record is never edited by the
 module; `public.sales.phone` stays where the sales app put it.
 
+## D22. The engine picks from module access, and capacity is a refusal with a door in it (2026-09-04)
+
+`assign_batches` chose its agents from `call_agent_profiles` with an inner
+join to `module_access`. No profile row had ever been written in production,
+so the engine found nobody, and every one of the open batches was handed out
+by hand, five agents ending three over a capacity of one. The agents read and
+the staleness sweep already treated a missing row as "enabled, default
+capacity"; the engine now reads the same rule, so three readers agree.
+
+The manual door refuses a paused agent outright and refuses more than the
+agent's capacity unless the supervisor gives a reason. The reason lands on
+the batch (`override_reason`) so the log says why, rather than a hard wall
+that would be worked around by pausing the rule. Nothing is backfilled: the
+five agents over capacity show as "3 of 1" on the console until somebody
+reclaims or reassigns.
+
 ## Observations recorded, not acted on
 
 - 181 live sales carry a payment model outside their partner's entitlement.

@@ -107,5 +107,5 @@ test("a data manager sees the console and the levers, a call centre editor does 
   await signIn(page, USERS.dataManager);
   await page.goto("/data-center/call-centre");
   await expect(page.getByRole("heading", { name: "Agents and their work" })).toBeVisible({ timeout: 30_000 });
-  await expect(page.getByRole("button", { name: /^Assign now$|^Run/ }).first()).toBeVisible();
+  await expect(page.getByRole("button", { name: "Assign now" })).toBeVisible();
 });

@@ -18,6 +18,7 @@ import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.39.3";
 import { withConnection, withReadConnection } from "../_shared/data-center-db.ts";
 import { featuresFor } from "../_shared/data-center-roles.ts";
+import { handleAgents } from "./agents.ts";
 
 const DEFAULT_ORIGINS = [
   "https://sales.atmosfair.com.ng",
@@ -53,6 +54,23 @@ function json(body: unknown, status: number, cors: Record<string, string>) {
     status,
     headers: { ...cors, "Content-Type": "application/json" },
   });
+}
+
+/**
+ * A refusal raised by a SQL function, told to the caller as what it is.
+ * The manual door raises check_violation with a hint naming the rule
+ * (paused, over_capacity); the lock raises lock_not_available. Neither is
+ * a 500, and the console needs the code to offer the right next step.
+ */
+function pgRefusal(err: unknown): { error: string; code: string } | null {
+  const f = (err as { fields?: { code?: string; message?: string; hint?: string } })?.fields;
+  if (!f?.code) return null;
+  if (f.code === "23514") {
+    const code = f.hint === "over_capacity" ? "over_capacity" : f.hint === "paused" ? "paused" : "refused";
+    return { error: f.message ?? "Refused", code };
+  }
+  if (f.code === "55P03") return { error: f.message ?? "Work is being handed out right now", code: "busy" };
+  return null;
 }
 
 serve(async (req) => {
@@ -141,6 +159,11 @@ serve(async (req) => {
       batchId?: string;
       saleId?: string;
       reason?: string;
+      /** Why a supervisor is handing out more than the agent's capacity. */
+      overrideReason?: string | null;
+      isEnabled?: boolean | null;
+      maxOpenBatches?: number | null;
+      note?: string | null;
     } = {};
     try {
       body = await req.json();
@@ -312,92 +335,18 @@ serve(async (req) => {
       }
 
       /**
-       * The console's own read: every call agent with what they are holding,
-       * and every partner with what is still waiting. Two questions that are
-       * always asked together, because assigning is choosing one of each.
+       * The agents: who may take work, what they hold, and their profile
+       * (taking work or paused, capacity, a note). In agents.ts; the gate
+       * is decided here.
        */
-      case "agents": {
+      case "agents":
+      case "agent_detail":
+      case "agent_profile_set": {
         {
           const denied = requireAssignment();
           if (denied) return denied;
         }
-        return await withReadConnection(async (conn) => {
-          const agents = await conn.queryObject({
-            text: `select m.user_id::text as agent_id,
-                          p.full_name, p.email, p.role as app_role,
-                          m.access_role,
-                          coalesce(cap.is_enabled, true) as is_enabled,
-                          cap.max_open_batches,
-                          (select count(*)::int from data_center.assignment_batches b
-                            where b.assigned_to = m.user_id and b.state = 'open') as open_batches,
-                          (select count(*)::int from data_center.assignment_batches b
-                             join data_center.assignment_items i on i.batch_id = b.id
-                            where b.assigned_to = m.user_id and b.state = 'open' and i.is_active
-                          ) as records_held,
-                          (select max(b.last_activity_at) from data_center.assignment_batches b
-                            where b.assigned_to = m.user_id and b.state = 'open') as last_activity_at
-                     from data_center.module_access m
-                     join public.profiles p on p.id = m.user_id
-                     left join data_center.call_agent_profiles cap on cap.user_id = m.user_id
-                    where m.access_role in ('call_agent', 'editor')
-                    order by p.full_name nulls last`,
-          });
-          const pool = await conn.queryObject({
-            text: `select r.organization_id::text, r.partner_name, count(*)::int as callable,
-                          min(r.sales_date) as oldest
-                     from data_center.v_callable_records r
-                    group by 1, 2
-                    order by callable desc, r.partner_name`,
-          });
-          const defaults = await conn.queryObject<{ batch_size: number }>({
-            text: `select coalesce((select (value #>> '{}')::int
-                                      from data_center.workflow_config
-                                     where key = 'assignment.batch_size'), 20) as batch_size`,
-          });
-          return json(
-            {
-              data: {
-                agents: agents.rows,
-                pool: pool.rows,
-                batchSize: Number(defaults.rows[0]?.batch_size ?? 20),
-              },
-            },
-            200,
-            cors,
-          );
-        });
-      }
-
-      /**
-       * One agent, opened up: the batches they hold, and the records in each.
-       *
-       * One read rather than a read per batch. An agent holds tens of records,
-       * not thousands, so the whole tree fits in one response and the drill
-       * from partner to serial costs nothing once it is open.
-       */
-      case "agent_detail": {
-        {
-          const denied = requireAssignment();
-          if (denied) return denied;
-        }
-        if (!body.agentId) {
-          return json({ error: "agentId is required", code: "bad_input" }, 400, cors);
-        }
-        return await withReadConnection(async (conn) => {
-          const r = await conn.queryObject({
-            text: `select l.batch_id::text, l.organization_id::text, l.partner_name,
-                          l.assigned_at, l.batch_size, l.last_activity_at,
-                          l.sale_id::text, l.position, l.stove_serial_no, l.sales_date,
-                          l.number_on_record, l.verification_outcome, l.call_outcome,
-                          l.attempt_count
-                     from data_center.v_assignment_log l
-                    where l.agent_id = $1 and l.batch_state = 'open' and l.is_active
-                    order by l.assigned_at desc, l.position
-                    limit 1000`,
-            args: [body.agentId],
-          });
-          return json({ data: { items: r.rows } }, 200, cors);
-        });
+        return await handleAgents({ action: body.action, body, userId, cors, json });
       }
 
       /**
@@ -418,19 +367,26 @@ serve(async (req) => {
             cors,
           );
         }
-        return await withConnection(async (conn) => {
-          const r = await conn.queryObject<{ batch_id: string | null; size: number }>({
-            text: `select batch_id::text, size
-                     from data_center.assign_batch_manual($1, $2, $3, $4)`,
-            args: [body.agentId, body.organizationId, body.size ?? null, userId],
+        try {
+          return await withConnection(async (conn) => {
+            const r = await conn.queryObject<{ batch_id: string | null; size: number }>({
+              text: `select batch_id::text, size
+                       from data_center.assign_batch_manual($1, $2, $3, $4, $5)`,
+              args: [body.agentId, body.organizationId, body.size ?? null, userId, body.overrideReason ?? null],
+            });
+            const row = r.rows[0];
+            return json(
+              { data: { batchId: row?.batch_id ?? null, size: Number(row?.size ?? 0) } },
+              200,
+              cors,
+            );
           });
-          const row = r.rows[0];
-          return json(
-            { data: { batchId: row?.batch_id ?? null, size: Number(row?.size ?? 0) } },
-            200,
-            cors,
-          );
-        });
+        } catch (err) {
+          // A paused agent or one at capacity is a refusal, not a failure.
+          const refusal = pgRefusal(err);
+          if (refusal) return json(refusal, 409, cors);
+          throw err;
+        }
       }
 
       /**

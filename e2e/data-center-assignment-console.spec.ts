@@ -145,6 +145,9 @@ test.describe("assigning by hand goes through the engine's own tables", () => {
       agentId: agent.agent_id,
       organizationId: partner.organization_id,
       size: want,
+      // Phase 24: the engine's batch already fills this agent's capacity of
+      // one; a second by hand needs a reason, which lands on the batch.
+      overrideReason: "e2e: a second batch on top of the engine's",
     });
     expect(assigned.status).toBe(200);
     const batch = (assigned.body as { data: { batchId: string | null; size: number } }).data;
