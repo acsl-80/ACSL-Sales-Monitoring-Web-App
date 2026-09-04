@@ -61,11 +61,11 @@ test.describe("the assignment log", () => {
     await page.getByRole("button", { name: "Assign now" }).click();
     // Since slice 7b the lever asks first; this is the yes.
     const ask = page.getByRole("alertdialog");
-    await expect(ask).toContainText("Assign the pool now?", { timeout: 10_000 });
-    await ask.getByRole("button", { name: "Assign", exact: true }).click();
+    await expect(ask).toContainText("Run the engine now?", { timeout: 10_000 });
+    await ask.getByRole("button", { name: "Run", exact: true }).click();
 
     const answered = page.getByText(/assigned\.|Nothing to hand out/i);
-    const failed = page.getByText(/Assignment failed|Reclaim failed/i);
+    const failed = page.getByText(/The engine could not run|Reclaim failed/i);
     await expect(answered.or(failed)).toBeVisible({ timeout: 20_000 });
     await expect(
       failed,

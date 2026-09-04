@@ -27,8 +27,10 @@ test.describe("the assignment console shows who holds what", () => {
     // column too, and an unscoped header lookup finds both.
     const console_ = page
       .getByRole("heading", { name: "Agents and their work" })
-      .locator("xpath=ancestor::div[contains(@class,'rounded-xl')][1]");
-    for (const column of ["Agent", "Level", "Batches", "Records held", "Last activity"]) {
+      .locator("xpath=ancestor::*[contains(@class,'rounded-xl')][1]");
+    // Phase 24: the agents panel. State is presence; capacity sits beside the
+    // open batches; last save replaces last activity.
+    for (const column of ["Agent", "State", "Open batches", "Held", "Done today", "Last save", "On record"]) {
       await expect(
         console_.getByRole("columnheader", { name: column, exact: true }),
       ).toBeVisible();
@@ -62,7 +64,7 @@ test.describe("the assignment console shows who holds what", () => {
       page.getByRole("heading", { name: "Agents and their work" }),
     ).toBeVisible({ timeout: 20_000 });
 
-    await page.getByRole("button", { name: "Assign", exact: true }).first().click();
+    await page.getByRole("button", { name: "Hand out", exact: true }).first().click();
 
     await expect(page.getByRole("dialog")).toBeVisible();
     await expect(page.getByText(/Assign work to /)).toBeVisible();

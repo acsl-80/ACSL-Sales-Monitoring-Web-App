@@ -3,6 +3,7 @@ import { metricRows } from "../../../lib/metricValue";
 import { usePaged } from "../../../lib/usePaged";
 import Pagination from "../../../components/Pagination";
 import { dateOf } from "../../../lib/when";
+import ExportButton from "../../../components/ExportButton";
 import AssignDialog from "./AssignDialog";
 import { UserPlus } from "lucide-react";
 
@@ -15,6 +16,15 @@ import { UserPlus } from "lucide-react";
  * small tables through the agents read. "Hand out" opens the same dialog an
  * agent's row opens, with the partner chosen and the agent to pick.
  */
+const POOL_COLUMNS = [
+  { key: "partner_name", label: "Partner" },
+  { key: "callable", label: "Callable" },
+  { key: "recent", label: "New lately" },
+  { key: "oldest", label: "Oldest sale" },
+  { key: "onIt", label: "On it now", get: (r) => r.onIt.join("; ") },
+  { key: "organization_id", label: "Organisation id" },
+];
+
 export default function PoolByPartner({ metrics, agents, canManage, reload }) {
   const [handing, setHanding] = useState(null);
   const m = metrics?.metrics ?? [];
@@ -49,6 +59,9 @@ export default function PoolByPartner({ metrics, agents, canManage, reload }) {
       <header className="flex flex-wrap items-center gap-2 border-b border-gray-100 bg-(--dc-accent-soft)/30 px-4 py-2.5">
         <h2 className="text-sm font-semibold text-gray-900">Pool by partner</h2>
         <span className="text-xs text-gray-600">unassigned and callable, from the last compute</span>
+        <div className="ml-auto">
+          <ExportButton columns={POOL_COLUMNS} rows={() => rows} filename="pool-by-partner.csv" label="Export pool" disabled={rows.length === 0} />
+        </div>
       </header>
       {rows.length === 0 ? (
         <p className="px-4 py-6 text-sm text-gray-600">

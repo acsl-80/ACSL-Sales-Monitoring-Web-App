@@ -8,6 +8,7 @@ import AgentDetail from "./AgentDetail";
 import AssignDialog from "../pool/AssignDialog";
 import { plural } from "../../../lib/plural";
 import { whenOf } from "../../../lib/when";
+import ExportButton from "../../../components/ExportButton";
 import {
   ChevronDown, ChevronRight, Loader2, Pause, Play, RotateCcw, UserPlus,
 } from "lucide-react";
@@ -33,6 +34,20 @@ const PRESENCE = {
   away: { label: "Away", dot: "bg-gray-400", text: "text-gray-600" },
   paused: { label: "Paused", dot: "bg-amber-600", text: "text-amber-900" },
 };
+
+const AGENT_COLUMNS = [
+  { key: "full_name", label: "Agent" },
+  { key: "email", label: "Email" },
+  { key: "access_role", label: "Level" },
+  { key: "presence", label: "State" },
+  { key: "is_enabled", label: "Taking work", get: (r) => (r.is_enabled ? "yes" : "no") },
+  { key: "open_batches", label: "Open batches" },
+  { key: "max_open_batches", label: "Capacity" },
+  { key: "records_held", label: "Records held" },
+  { key: "attempts_today", label: "Done today" },
+  { key: "last_seen_at", label: "Last save" },
+  { key: "current_serial", label: "On record" },
+];
 
 function Presence({ state }) {
   const p = PRESENCE[state] ?? PRESENCE.away;
@@ -155,6 +170,13 @@ export default function AgentsPanel({ data, canManage, reload }) {
             </button>
           </div>
         )}
+        <ExportButton
+          columns={AGENT_COLUMNS}
+          rows={() => agents}
+          filename="call-agents.csv"
+          label="Export agents"
+          disabled={agents.length === 0}
+        />
       </header>
       {notice && <p className="mx-4 mt-3 rounded-md bg-(--dc-accent-soft)/60 px-3 py-2 text-xs text-(--dc-accent-strong)">{notice}</p>}
       {error && <p className="mx-4 mt-3 rounded-md bg-red-50 px-3 py-2 text-xs text-red-700">{error}</p>}
