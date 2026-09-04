@@ -140,7 +140,7 @@ test("the picker honours newest digitised first against the SQL oracle, and the 
 
   await page.goto("/data-center/call-centre");
   await expect(page.getByRole("heading", { name: "Agents and their work" })).toBeVisible({ timeout: 30_000 });
-  await page.getByRole("button", { name: /^Assign$/ }).first().click();
+  await page.getByRole("button", { name: /^Hand out$/ }).first().click();
   const order = page.getByRole("combobox", { name: "Hand-out order" });
   await expect(order).toBeVisible({ timeout: 15_000 });
   await expect(order.locator("option", { hasText: "Newest digitised first" })).toHaveCount(1);

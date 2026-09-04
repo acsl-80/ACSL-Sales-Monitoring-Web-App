@@ -266,61 +266,26 @@ test.describe("the assignment log can be worked from", () => {
     }
   });
 
-  test("a row opens the record, and the quick edit logs a call", async ({ page }) => {
+  test("a row opens the record", async ({ page }) => {
     await signIn(page, USERS.admin);
     await page.goto("/data-center/call-centre");
     await expect(page.getByText("Assignment Log")).toBeVisible({ timeout: 20_000 });
 
     /*
-     * Wait for the log to have LOADED, not merely to exist.
+     * Wait for the log to have LOADED, not merely to exist: the footer counts
+     * the rows it drew, so it is the signal that the data is there. Phase 24
+     * removed the quick edit from the log (history only; the work happens in
+     * the record), so what is left to prove is that a row is a door.
      *
-     * "Assignment Log" is static chrome in the panel header and renders before
-     * the fetch returns. Counting the quick-edit buttons straight after it
-     * found none every single time, and the skip below then reported green
-     * over a feature nobody had ever checked - on a preview holding 52 batches
-     * and 41 items, so the reason given ("nothing assigned") was not even
-     * true. This is the failure CLAUDE.md describes: when a helper can fail,
-     * make it wait on something that only exists once the data is there.
-     *
-     * The footer counts the rows it drew, so it is that signal.
+     * A CELL, not the row: the row's centre can land on the stove serial link,
+     * which stops propagation on purpose. The first cell holds a state chip
+     * and can never hold a link, and a click on it still bubbles to the row.
      */
     await expect(page.getByText(/\d+ records? on page \d+/)).toBeVisible({ timeout: 20_000 });
-
-    const quick = page.getByRole("button", { name: /^Quick edit / }).first();
-    test.skip((await quick.count()) === 0, "Nothing assigned to work from");
-
-    // The quick edit is the two things anyone actually does here, without
-    // opening the record at all.
-    await quick.click();
-    await expect(page.getByLabel("Log a call")).toBeVisible();
-    await expect(page.getByText("Settle the verification")).toBeVisible();
-    await page.keyboard.press("Escape");
-
-    /*
-     * And the row itself opens the same enrichment editor the queue opens.
-     *
-     * The row is taken FROM the button rather than filtered by it.
-     * `filter({ has: quick })` reads as "the row containing this button" and
-     * means "every row containing any matching button", which on a page of
-     * twenty-five assignments is twenty-five rows and a strict-mode violation.
-     */
-    /*
-     * A CELL, not the row.
-     *
-     * `.click()` on the <tr> targets its geometric centre, and the sixth
-     * column is the stove serial - a Link whose onClick calls
-     * stopPropagation, deliberately, so that opening the stove's history and
-     * opening the call record are different gestures. When the data makes the
-     * columns wide enough that the row's centre lands on that link, the click
-     * navigates to the stove record and no dialog ever appears.
-     *
-     * It passed for months because the seeded rows happened to be narrow. It
-     * started failing when new specs changed which rows the log draws, which
-     * is the test being fragile rather than the product being wrong. The first
-     * cell holds a state chip and can never hold a link, and a click on it
-     * still bubbles to the row.
-     */
-    await quick.locator("xpath=ancestor::tr[1]").locator("td").first().click();
+    const log = page.getByText("Assignment Log").locator("xpath=ancestor::*[contains(@class,'rounded-xl')][1]");
+    const firstRow = log.locator("tbody tr").first();
+    await expect(firstRow).toBeVisible();
+    await firstRow.locator("td").first().click();
     await expect(page.getByRole("dialog")).toBeVisible({ timeout: 20_000 });
     await page.keyboard.press("Escape");
     await expect(page.getByRole("dialog")).toHaveCount(0);
