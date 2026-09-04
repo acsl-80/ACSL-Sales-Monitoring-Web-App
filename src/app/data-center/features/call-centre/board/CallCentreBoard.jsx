@@ -33,6 +33,15 @@ function Tile({ label, value, sub, href, tone = "plain" }) {
     </>
   );
   const cls = `relative block rounded-xl border p-3 text-left transition ${tones[tone]}`;
+  // An in-page anchor is not a route: the router would fold the hash into
+  // the path and drop the queue's search. A plain anchor scrolls.
+  if (href && href.startsWith("#")) {
+    return (
+      <a href={href} className={cls} data-board-tile={label}>
+        {body}
+      </a>
+    );
+  }
   return href ? (
     <Link href={href} className={cls} data-board-tile={label}>
       {body}
@@ -70,7 +79,9 @@ export default function CallCentreBoard({ metrics, agents, waiting, canManage, o
         <h2 className="text-sm font-semibold text-gray-900">Board</h2>
         <span className="text-xs text-gray-600">every figure opens the rows behind it</span>
         <span className="ml-auto text-xs text-gray-500">
-          {metrics?.computedAt ? `computed ${whenOf(metrics.computedAt)}` : "no figures yet"}
+          {metrics?.poolComputedAt ?? metrics?.computedAt
+            ? `pool computed ${whenOf(metrics.poolComputedAt ?? metrics.computedAt)}`
+            : "no figures yet"}
           {agents?.refreshSeconds ? `, refreshes every ${agents.refreshSeconds} s` : ""}
         </span>
         {canManage && (

@@ -3,17 +3,16 @@ import { SearchableSelect } from "@/components/ui/searchable-select";
 import Link from "@/compat/Link";
 import PeriodFilter from "../../components/PeriodFilter";
 import { usePeriod } from "../../lib/usePeriod";
-import { dataCenterAssign, dataCenterWrite, DataCenterError } from "../../lib/client";
+import { dataCenterAssign, DataCenterError } from "../../lib/client";
 import { plural } from "../../lib/plural";
 import { outcomeLabel, outcomeText, OUTCOME_WORDS, BATCH_STATE_WORDS } from "../../lib/outcome";
 import { dateOf, whenOf } from "../../lib/when";
 import ExportButton from "../../components/ExportButton";
 import ConfirmDialog from "../../components/ConfirmDialog";
 import CallRecordEditor from "./CallRecordEditor";
-import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import {
-  ClipboardList, Loader2, AlertTriangle, Play, RotateCcw, X,
-  ChevronLeft, ChevronRight, Pencil, PhoneCall, Check, Users,
+  ClipboardList, Loader2, AlertTriangle, X,
+  ChevronLeft, ChevronRight, Users,
 } from "lucide-react";
 
 /**
@@ -46,10 +45,6 @@ const PAGE_SIZES = [25, 50, 100];
 
 
 /** The four states a record can settle in, shortest label first on a phone. */
-const VERIFICATION = ["fully_verified", "partially_verified", "unreachable", "not_verified"].map((value) => ({
-  value,
-  label: OUTCOME_WORDS[value],
-}));
 
 const EXPORT_COLUMNS = [
   { key: "batch_state", label: "Batch state" },
@@ -71,7 +66,6 @@ const EXPORT_COLUMNS = [
   { key: "sale_id", label: "Sale id" },
 ];
 
-/* --------------------------------------------------------------- quick edit */
 
 export default function AssignmentLog({ canEdit = false }) {
   const [rows, setRows] = useState([]);
@@ -85,7 +79,6 @@ export default function AssignmentLog({ canEdit = false }) {
   const [error, setError] = useState(null);
   const [notice, setNotice] = useState(null);
   const [batchState, setBatchState] = useState("");
-  const [outcomes, setOutcomes] = useState([]);
   // The cursor that produced the page currently on screen. Kept beside the
   // history rather than inside it: "where am I" and "where have I been" are
   // two questions, and conflating them is how a Previous button ends up one
@@ -208,16 +201,6 @@ export default function AssignmentLog({ canEdit = false }) {
     setCurrentCursorRef(null);
     load(null);
   }, [load]);
-
-  // The outcome list, once, for the quick edit. Same registry the editor reads,
-  // so a choice added in Settings appears in both.
-  useEffect(() => {
-    if (!canEdit) return;
-    dataCenterWrite
-      .formSchema()
-      .then((s) => setOutcomes(s?.options?.call_outcome ?? []))
-      .catch(() => setOutcomes([]));
-  }, [canEdit]);
 
   const goNext = () => {
     if (!cursor) return;

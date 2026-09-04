@@ -245,5 +245,3 @@ export default function AgentDetail({ agent, onChanged, onOpenRecord }) {
     </div>
   );
 }
-
-/* ------------------------------------------------------------------ console */

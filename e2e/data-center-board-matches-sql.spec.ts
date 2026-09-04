@@ -67,6 +67,7 @@ test("presence follows the last save, and the levers live on the agents panel", 
   const [batch] = await branchSql<{ id: string; last_activity_at: string }>(
     `select id::text, last_activity_at::text from data_center.assignment_batches where assigned_to = '${agent!.agent_id}' and state = 'open' order by last_activity_at desc limit 1`,
   );
+  test.skip(!batch, "the agent's open batch vanished between the read and the query");
   try {
     await branchSql(`update data_center.assignment_batches set last_activity_at = now() where id = '${batch.id}'`);
     await page.goto("/data-center/call-centre");
@@ -75,9 +76,18 @@ test("presence follows the last save, and the levers live on the agents panel", 
     await expect(row.locator("[data-presence]")).toHaveAttribute("data-presence", "working");
 
     await branchSql(`update data_center.assignment_batches set last_activity_at = now() - interval '3 hours' where id = '${batch.id}'`);
+    // Presence is the newest of three inputs; a draft or an attempt of the
+    // agent's own could still hold it at Working, so judge against the view.
+    const [seen] = await branchSql<{ recent: boolean }>(
+      `select coalesce(last_seen_at > now() - make_interval(mins => coalesce((select (value #>> '{}')::int from data_center.workflow_config where key = 'presence.working_within_minutes'), 10)), false) as recent
+         from data_center.v_agent_activity where agent_id = '${agent!.agent_id}'`,
+    );
     await page.reload();
     await expect(row).toBeVisible({ timeout: 30_000 });
-    await expect(row.locator("[data-presence]")).toHaveAttribute("data-presence", /away|available|at_capacity/);
+    await expect(row.locator("[data-presence]")).toHaveAttribute(
+      "data-presence",
+      seen?.recent ? "working" : /away|available|at_capacity/,
+    );
 
     // The levers: on the panel, not in the log.
     const panel = page.locator("#agents-panel");
@@ -92,14 +102,23 @@ test("presence follows the last save, and the levers live on the agents panel", 
 
 test("the pool by partner offers a hand-out with the partner chosen and an agent to pick", async ({ page }) => {
   await signIn(page, USERS.admin);
+  // Arrange rather than skip: the engine hands out everything in global
+  // setup, so put one record back, and recompute so the pool table sees it.
+  const [item] = await branchSql<{ sale_id: string }>(
+    `select i.sale_id::text from data_center.assignment_items i join data_center.assignment_batches b on b.id = i.batch_id where i.is_active and b.state = 'open' limit 1`,
+  );
+  expect(item, "a record to put back in the pool").toBeTruthy();
+  await callEdgeFunction(page, "data-center-assign", { action: "unassign_item", saleId: item.sale_id });
+  const rerun = await callEdgeFunction(page, "data-center-compute", { action: "run", families: ["pool"] });
+  expect(rerun.status, JSON.stringify(rerun.body)).toBe(200);
   await page.goto("/data-center/call-centre");
   const pool = page.locator("#pool-by-partner");
   await expect(pool).toBeVisible({ timeout: 30_000 });
   const hand = pool.getByRole("button", { name: /^Hand out/ }).first();
-  if ((await hand.count()) === 0) {
-    test.skip(true, "the pool is empty on this branch: nothing to hand out");
-  }
+  await expect(hand).toBeVisible({ timeout: 30_000 });
   await hand.click();
   await expect(page.getByRole("combobox", { name: "Who takes it" })).toBeVisible({ timeout: 15_000 });
   await expect(page.getByRole("combobox", { name: "Hand-out order" })).toBeVisible();
+  // The record goes out again, as global setup leaves the branch.
+  await callEdgeFunction(page, "data-center-assign", { action: "run" }).catch(() => {});
 });

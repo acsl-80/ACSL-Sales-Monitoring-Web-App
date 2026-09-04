@@ -255,13 +255,3 @@ export default function AssignDialog({ agent = null, agents = [], initialOrgId =
     </Dialog>
   );
 }
-
-/* ------------------------------------------------------------- agent detail */
-
-/**
- * One agent, opened: their batches by partner, and the records in each.
- *
- * Three levels of the same tree rather than three screens. Which partner, then
- * which serials, then the record itself, because that is the order the question
- * is actually asked in.
- */

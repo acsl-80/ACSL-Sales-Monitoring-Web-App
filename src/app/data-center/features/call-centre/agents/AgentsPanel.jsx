@@ -260,7 +260,9 @@ export default function AgentsPanel({ data, canManage, reload }) {
       <p className="flex flex-wrap gap-x-4 gap-y-1 border-t border-gray-100 bg-gray-50 px-4 py-2 text-xs text-gray-600">
         <span>Working: saved within {data.presence?.workingWithinMinutes ?? 10} min</span>
         <span>Available: under capacity, nothing recent</span>
+        <span>At capacity: nothing recent, no room for a batch</span>
         <span>Away: nothing for {data.presence?.awayAfterMinutes ?? 60} min</span>
+        <span>Paused: not taking work</span>
         <span className="ml-auto">Windows and capacity live in Settings</span>
       </p>
 

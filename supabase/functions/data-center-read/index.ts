@@ -561,7 +561,14 @@ serve(async (req) => {
                      (select to_jsonb(r) from (
                         select finished_at, status, duration_ms
                         from data_center.metric_runs order by started_at desc limit 1) r) as last_run,
-                     (select max(run_finished_at) from data_center.v_current_metrics) as computed_at`,
+                     -- Per family, not per run: a pool-only run carries the other
+                     -- families forward with the moment they were computed, so
+                     -- "computed at" and staleness read the sales families' own
+                     -- timestamp rather than the newest run's.
+                     (select max(computed_at) from data_center.v_current_metrics
+                       where metric_key not like 'pool.%') as computed_at,
+                     (select max(computed_at) from data_center.v_current_metrics
+                       where metric_key like 'pool.%') as pool_computed_at`,
             args: [periodFrom, periodTo],
           });
 
@@ -582,6 +589,7 @@ serve(async (req) => {
                 metrics,
                 periodicKeys: (row?.periodic_keys ?? []) as string[],
                 computedAt: finishedAt,
+                poolComputedAt: row?.pool_computed_at ?? null,
                 isStale,
                 staleAfterHours: hours,
                 lastRun: row?.last_run ?? null,
@@ -716,7 +724,12 @@ serve(async (req) => {
                      (select to_jsonb(r) from (
                         select finished_at, status, duration_ms
                           from data_center.metric_runs order by started_at desc limit 1) r) as last_run,
-                     (select max(run_finished_at) from data_center.v_current_metrics) as computed_at`,
+                     -- Per family, not per run: a pool-only run carries the other
+                     -- families forward with the moment they were computed, so
+                     -- "computed at" and staleness read the sales families' own
+                     -- timestamp rather than the newest run's.
+                     (select max(computed_at) from data_center.v_current_metrics
+                       where metric_key not like 'pool.%') as computed_at`,
             args: [from, to],
           });
 

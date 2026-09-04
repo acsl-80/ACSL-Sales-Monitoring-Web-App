@@ -2167,7 +2167,10 @@ export type DashboardData = {
    * shows an all-time figure however the page is narrowed, and says so.
    */
   periodicKeys: string[];
+  /** When the sales families were computed; a pool-only run does not move it. */
   computedAt: string | null;
+  /** When the pool family was computed, which the board's Recompute moves. */
+  poolComputedAt: string | null;
   /** True when the newest run is older than metrics.stale_after_hours. */
   isStale: boolean;
   staleAfterHours: number;

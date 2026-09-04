@@ -109,7 +109,7 @@ export default function PoolByPartner({ metrics, agents, canManage, reload }) {
         <AssignDialog
           agents={agents?.agents ?? []}
           initialOrgId={handing.organization_id}
-          pool={agents?.pool ?? []}
+          pool={rows.map((r) => ({ organization_id: r.organization_id, partner_name: r.partner_name, callable: r.callable, oldest: r.oldest }))}
           batchSize={batchSize}
           priority={agents?.priority}
           onDone={reload}

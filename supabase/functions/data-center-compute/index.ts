@@ -175,7 +175,9 @@ serve(async (req) => {
         const LOCK_KEY = 8_150_620; // arbitrary, but must stay stable
 
         const started = Date.now();
-        const result = await withConnection(async (conn) => {
+        let result: { busy: true } | { busy: false; runId: string; written: number; duration: number };
+        try {
+        result = await withConnection(async (conn) => {
           const lock = await conn.queryObject<{ locked: boolean }>({
             text: "select pg_try_advisory_lock($1) as locked",
             args: [LOCK_KEY],
@@ -255,6 +257,15 @@ serve(async (req) => {
             }).catch(() => {});
           }
         });
+        } catch (err) {
+          // The function refuses a partial run it cannot honour (no full run
+          // yet, an unknown family). That is an answer, not a failure.
+          const f = (err as { fields?: { code?: string; message?: string; hint?: string } })?.fields;
+          if (f?.code === "23514") {
+            return json({ error: f.message ?? "Refused", code: f.hint ?? "refused" }, 409, cors);
+          }
+          throw err;
+        }
 
         if (result.busy) {
           return json(

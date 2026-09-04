@@ -22,9 +22,12 @@ export function useControlCentre({ canManage, canReview }) {
   const [error, setError] = useState(null);
 
   const load = useCallback(async () => {
+    // Only the control centre reads these, and only a manager renders it;
+    // an agent's page issues nothing here and My Work polls itself.
+    if (!canManage) return;
     const jobs = [
       dataCenterDashboard.get().then(setMetrics),
-      canManage ? dataCenterAssign.agents().then(setAgents) : Promise.resolve(),
+      dataCenterAssign.agents().then(setAgents),
       canReview ? dataCenterCorrections.workWaiting().then(setWaiting).catch(() => setWaiting(null)) : Promise.resolve(),
     ];
     try {
@@ -39,7 +42,7 @@ export function useControlCentre({ canManage, canReview }) {
     load();
   }, [load]);
 
-  usePolling(load, agents?.refreshSeconds ?? 60);
+  usePolling(load, canManage ? agents?.refreshSeconds ?? 60 : 0);
 
   return { metrics, agents, waiting, error, reload: load };
 }
