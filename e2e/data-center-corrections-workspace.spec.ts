@@ -56,8 +56,10 @@ async function asRoutedRep(sale: Sale, disputed: string[]) {
         and a.organization_id = (select organization_id from public.sales where id = '${sale.sale_id}')`,
   );
   await branchSql(
-    `insert into public.acsl_agent_organizations (agent_id, organization_id)
-     select '${ACSL_AGENT_ID}', organization_id from public.sales where id = '${sale.sale_id}'
+    `insert into public.acsl_agent_organizations (agent_id, organization_id, assigned_by)
+     select '${ACSL_AGENT_ID}', organization_id,
+            (select id from public.profiles where email = 'admin@preview.acsl.test' limit 1)
+       from public.sales where id = '${sale.sale_id}'
      on conflict (agent_id, organization_id) do nothing`,
   );
   await branchSql(`delete from data_center.corrections where sale_id = '${sale.sale_id}'`);
