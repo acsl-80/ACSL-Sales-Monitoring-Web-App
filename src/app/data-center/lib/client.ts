@@ -1207,7 +1207,8 @@ export const dataCenterCorrections = {
         standing: number;
       };
       fields: string[];
-      current: { state: string } | null;
+      /** The newest episode as the list shows it, or null when the record was never sent back. */
+      current: CorrectionRow | null;
     }>("data-center-corrections", "route_preview", { saleId, reasonId: reasonId ?? null }),
 
   open: (saleId: string, input: { reasonId?: string | null; fields?: string[]; note?: string | null }) =>

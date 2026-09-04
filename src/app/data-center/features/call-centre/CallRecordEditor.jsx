@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { SearchableSelect } from "@/components/ui/searchable-select";
 import AgentBrief from "./AgentBrief";
 import SerialRematch from "./SerialRematch";
+import SendBackPanel from "./SendBackPanel";
 import Link from "@/compat/Link";
 import { dataCenterWrite, DataCenterError } from "../../lib/client";
 import { OUTCOME_WORDS, OUTCOME_PILL } from "../../lib/outcome";
@@ -305,19 +306,6 @@ export default function CallRecordEditor({ saleId, canEdit, onClose, onSaved }) 
     }
   };
 
-  const toggleCorrection = async (open) => {
-    setSaving(true);
-    try {
-      await dataCenterWrite.correction(saleId, open, correctionReasonId || null, null);
-      await load();
-      setNotice(open ? "Sent back to Sales." : "Correction marked resolved.");
-    } catch (err) {
-      setError(err instanceof DataCenterError ? err.message : "Could not update the correction.");
-    } finally {
-      setSaving(false);
-    }
-  };
-
   const callOutcomes = schema?.options?.call_outcome ?? [];
 
   /**
@@ -333,17 +321,10 @@ export default function CallRecordEditor({ saleId, canEdit, onClose, onSaved }) 
   const otherIsPicked =
     callOutcomes.find((o) => o.id === nextOutcome)?.value === "other";
   // An attempt needs an outcome; "something else" needs the words as well.
-  /*
-   * The reason for a send-back is an argument to the correction action, not
-   * a field on the record. Held here rather than in `values`, where it was
-   * autosaved into the draft, replayed on every open, and refused by the
-   * record save as an unknown field for ever after.
-   */
-  const [correctionReasonId, setCorrectionReasonId] = useState("");
   const canLog = Boolean(nextOutcome) && (!otherIsPicked || nextNote.trim().length > 0);
+  // Every active reason, offered as chips by the send-back panel; the panel
+  // holds the choice itself so nothing about a send-back travels in the draft.
   const correctionReasons = schema?.options?.correction_reason ?? [];
-  // Phase 24: "fixed" is still open from the call centre's side, awaiting review.
-  const correctionOpen = record?.correction_state === "open" || record?.correction_state === "fixed";
 
   return (
     <Dialog open onOpenChange={(next) => { if (!next) onClose(); }}>
@@ -702,97 +683,17 @@ export default function CallRecordEditor({ saleId, canEdit, onClose, onSaved }) 
               />
             </Field>
 
-            {/* Hand back to Sales. The loop, as a button rather than an email. */}
-            <div className="rounded-lg border border-gray-200 p-3">
-              <h3 className="mb-2 text-xs font-semibold uppercase tracking-wide text-gray-500">
-                Send back to Sales
-              </h3>
-              {correctionOpen ? (
-                <div className="flex items-center justify-between gap-3">
-                  <p className="text-sm text-amber-800">
-                    Waiting on Sales since{" "}
-                    {dateOf(record?.correction_requested_at)}
-                    {record?.correction_reason ? ` · ${record.correction_reason}` : ""}
-                  </p>
-                  {canEdit && (
-                    <button
-                      type="button"
-                      disabled={saving}
-                      onClick={() => toggleCorrection(false)}
-                      className="inline-flex shrink-0 items-center gap-1 rounded-md border border-(--dc-primary)/30 px-2.5 py-1 text-xs font-medium text-(--dc-primary) hover:bg-(--dc-primary)/10 disabled:opacity-50"
-                    >
-                      <RotateCcw className="h-3 w-3" /> Mark fixed
-                    </button>
-                  )}
-                </div>
-              ) : (
-                <div className="flex items-end gap-2">
-                  <div className="flex-1">
-                    <SearchableSelect
-                      ariaLabel="Reason for sending it back"
-                      disabled={!canEdit}
-                      value={correctionReasonId}
-                      onChange={setCorrectionReasonId}
-                      placeholder="Reason..."
-                      searchPlaceholder="Type part of a reason"
-                      emptyLabel="No reason matches that"
-                      options={correctionReasons.map((o) => ({ value: o.id, label: o.label }))}
-                    />
-                  </div>
-                  {canEdit && (
-                    <button
-                      type="button"
-                      disabled={saving || !correctionReasonId}
-                      onClick={() => toggleCorrection(true)}
-                      className="rounded-md border border-amber-400/60 px-2.5 py-1.5 text-xs font-medium text-amber-800 hover:bg-amber-50 disabled:opacity-50"
-                    >
-                      Send back
-                    </button>
-                  )}
-                  {/*
-                    Where it goes, before it goes.
-
-                    An agent pressing this used to have no idea whether anybody
-                    was on the other end - and until now nobody was: the record
-                    changed state and nothing told a soul. Naming the rep and
-                    the standing list is what makes this a hand-off rather than
-                    a filing action.
-                  */}
-                  <p className="w-full text-xs text-amber-800">
-                    {/*
-                      The honest version of who is on the other end.
-
-                      Three different sentences because there are three
-                      different situations, and the one that matters is the
-                      third: nobody set up to receive these, and a rep the
-                      system cannot notify. Saying "sent back to Sales" there
-                      would be describing a hand-off that does not happen.
-                    */}
-                    {record?.standing_recipients > 0 ? (
-                      <>
-                        Goes to the{" "}
-                        <span className="font-semibold">
-                          {record.standing_recipients} set up to treat send-backs
-                        </span>
-                        {record?.sales_rep_has_account
-                          ? `, and to ${record.sales_rep_account_name ?? record.sales_rep}, the rep on this consignment`
-                          : record?.sales_rep
-                            ? `. ${record.sales_rep} is the rep on this consignment but has no account linked, so they will not see it`
-                            : ""}
-                        .
-                      </>
-                    ) : (
-                      <span className="font-semibold">
-                        Nobody is set up to receive send-backs yet
-                        {record?.sales_rep_has_account
-                          ? `, so only ${record.sales_rep_account_name} will see this.`
-                          : ", so this record will change state and reach no one. Ask an administrator to set the list under Settings."}
-                      </span>
-                    )}
-                  </p>
-                </div>
-              )}
-              </div>
+            {/* Hand back to Sales. The loop, as a panel rather than a dropdown. */}
+            <SendBackPanel
+              saleId={saleId}
+              record={record}
+              reasons={correctionReasons}
+              canEdit={canEdit}
+              onChanged={async (message) => {
+                await load();
+                setNotice(message);
+              }}
+            />
             </div>
           </div>
         )}

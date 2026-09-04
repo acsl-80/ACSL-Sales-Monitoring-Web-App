@@ -464,8 +464,18 @@ serve(async (req) => {
         return await withReadConnection(async (conn) => {
           const route = await routeFor(conn, saleId);
           const fields = await fieldsForReason(conn, body.reasonId ? String(body.reasonId) : null);
-          const current = await newestEpisode(conn, saleId);
-          return json({ data: { route, fields, current } }, 200, cors);
+          // The newest episode with its names and labels, so the panel inside
+          // the call editor can show who has it and what Sales said without a
+          // second read.
+          const current = await conn.queryObject({
+            text: `select ${ROW_COLUMNS}
+                     from data_center.v_corrections c
+                    where c.sale_id = $1
+                    order by c.seq desc
+                    limit 1`,
+            args: [saleId],
+          });
+          return json({ data: { route, fields, current: current.rows[0] ?? null } }, 200, cors);
         });
       }
 

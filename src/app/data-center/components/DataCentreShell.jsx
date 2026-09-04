@@ -12,7 +12,7 @@ import {
   BreadcrumbPage,
   BreadcrumbSeparator,
 } from "@/components/ui/breadcrumb";
-import SendBackBanner from "../features/corrections/SendBackBanner";
+import WorkWaitingBanner from "../features/corrections/WorkWaitingBanner";
 import { ArrowLeft, Loader2, AlertTriangle, ShieldOff, Eye, Pencil } from "lucide-react";
 
 /**
@@ -140,7 +140,7 @@ function Shell({ title, description, breadcrumb, feature, children }) {
       )}
 
       {/*
-        Records sent back, above whatever this page is for.
+        Work waiting on a person, above whatever this page is for.
 
         It renders on every page in the module rather than only on the one that
         lists them, because the person who has to answer a send-back did not
@@ -149,7 +149,7 @@ function Shell({ title, description, breadcrumb, feature, children }) {
         there is nothing waiting, and nothing for the people it does not
         concern, which is most of them.
       */}
-      <SendBackBanner />
+      <WorkWaitingBanner />
 
       <div className="mb-6 mt-4 flex flex-wrap items-center gap-3 border-b-2 border-(--dc-accent)/20 pb-4">
         <div className="min-w-0 flex-1">
