@@ -84,6 +84,7 @@ Deno.serve(async (req) => {
       "partner",
       "partner_agent",
       "admin",
+      "super_admin_agent",
     ];
     if (!ALLOWED.includes(profile.role)) {
       return jsonError("You do not have permission to edit sales", 403);
@@ -95,7 +96,7 @@ Deno.serve(async (req) => {
     const { data: sale, error: saleErr } = await supabase
       .from("sales")
       .select(
-        `id, organization_id, address_id, phone,
+        `id, organization_id, address_id, phone, created_by,
          transaction_id, stove_serial_no, partner_name, sales_date, amount,
          contact_person, contact_phone, end_user_name, state_backup, lga_backup,
          signature, is_installment, total_paid,
@@ -114,6 +115,13 @@ Deno.serve(async (req) => {
       sale.organization_id !== profile.organization_id
     ) {
       return jsonError("You can only edit sales for your own organization", 403);
+    }
+    // A partner agent edits the sales they recorded. Under the old row
+    // policies that was the only update the database let through for the
+    // role; the service client would have widened it to the whole partner,
+    // which nobody asked for.
+    if (profile.role === "partner_agent" && sale.created_by !== userId) {
+      return jsonError("You can only edit sales you recorded", 403);
     }
     // ACSL agents and managers edit the partners assigned to them (directly,
     // by state, or through their team), the same rule the read paths apply.
@@ -205,18 +213,28 @@ Deno.serve(async (req) => {
 
     // Update address (if provided and sale has one)
     if (addressData && sale.address_id) {
-      const { error: addrErr } = await supabase
-        .from("addresses")
-        .update({
-          full_address: addressData.fullAddress ?? null,
-          street: addressData.street ?? null,
-          city: addressData.city ?? null,
-          state: addressData.state ?? null,
-          country: addressData.country ?? null,
-          latitude: addressData.latitude ?? null,
-          longitude: addressData.longitude ?? null,
-        })
-        .eq("id", sale.address_id);
+      // Only the keys sent are written. A body carrying fullAddress alone
+      // corrects the text and leaves street, city, country and the
+      // coordinates as they were, rather than nulling them.
+      const addressUpdate: Record<string, unknown> = {};
+      const addressKeys: [string, string][] = [
+        ["fullAddress", "full_address"],
+        ["street", "street"],
+        ["city", "city"],
+        ["state", "state"],
+        ["country", "country"],
+        ["latitude", "latitude"],
+        ["longitude", "longitude"],
+      ];
+      for (const [from, to] of addressKeys) {
+        if (addressData[from] !== undefined) addressUpdate[to] = addressData[from] ?? null;
+      }
+      const { error: addrErr } = Object.keys(addressUpdate).length === 0
+        ? { error: null }
+        : await supabase
+          .from("addresses")
+          .update(addressUpdate)
+          .eq("id", sale.address_id);
       if (addrErr) {
         console.error("Address update failed:", addrErr);
         return jsonError("Failed to update address", 500);
@@ -227,16 +245,19 @@ Deno.serve(async (req) => {
     // we never accidentally null out untouched columns.
     const saleUpdate: Record<string, unknown> = {
       end_user_name: endUserName,
-      aka: aka ?? null,
       phone,
-      other_phone: otherPhone ?? null,
       contact_person: contactPerson,
       contact_phone: contactPhone,
-      state_backup: stateBackup ?? null,
-      lga_backup: lgaBackup ?? null,
       updated_at: new Date().toISOString(),
       updated_by: userId,
     };
+    // Written only when sent. The host's edit form sends all four every time;
+    // a partial body (the Data Center's correction workspace sends the fields
+    // it changed) must not null what it did not mention.
+    if (aka !== undefined) saleUpdate.aka = aka ?? null;
+    if (otherPhone !== undefined) saleUpdate.other_phone = otherPhone ?? null;
+    if (stateBackup !== undefined) saleUpdate.state_backup = stateBackup ?? null;
+    if (lgaBackup !== undefined) saleUpdate.lga_backup = lgaBackup ?? null;
     if (salesDate !== undefined) saleUpdate.sales_date = salesDate;
     if (amount !== undefined && amount !== null && amount !== "") {
       const parsed = Number(amount);

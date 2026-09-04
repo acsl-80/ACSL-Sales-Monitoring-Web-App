@@ -81,7 +81,10 @@ export default function SaleEditPanel({ saleId, sale, disputed, canEditSale, onl
   const [error, setError] = useState(null);
 
   const disputedFields = EDITABLE.filter((f) => disputed.has(f.key));
-  const otherFields = EDITABLE.filter((f) => !disputed.has(f.key));
+  // Money is offered only when the send-back disputes it: update-sale keeps
+  // total_paid and payment_status coherent with the amount, so a stray edit
+  // to the amount rewrites what was paid.
+  const otherFields = EDITABLE.filter((f) => !disputed.has(f.key) && f.group !== "money");
   const changed = EDITABLE.filter((f) => String(form[f.key] ?? "") !== String(initial[f.key] ?? ""));
 
   const set = (key, value) => setForm((prev) => ({ ...prev, [key]: value }));
@@ -96,7 +99,12 @@ export default function SaleEditPanel({ saleId, sale, disputed, canEditSale, onl
     try {
       if (changed.length > 0 && !onlyNote) {
         const payload = {};
-        for (const key of REQUIRED) payload[byKey[key].payload] = form[key] ?? "";
+        // The four required fields, and the four update-sale used to write
+        // unconditionally: sent every time, as the host's own form sends them,
+        // so an older deployment of the function nulls nothing.
+        for (const key of [...REQUIRED, "aka", "other_phone", "state_backup", "lga_backup"]) {
+          payload[byKey[key].payload] = form[key] === "" ? null : form[key];
+        }
         for (const f of changed) {
           if (f.key === "full_address") payload.addressData = { fullAddress: form.full_address };
           else if (f.payload) payload[f.payload] = form[f.key] === "" ? null : form[f.key];

@@ -265,7 +265,11 @@ insert into data_center.corrections
   (sale_id, seq, state, reason_id, disputed_fields, note, opened_at, opened_by,
    routed_rep_key, routed_rep_user_id, before,
    reviewed_at, reviewed_by, review_outcome, created_at, updated_at)
-select
+-- One row per sale even when a serial sits in two transfers (the newest
+-- transfer wins), or the unique (sale_id, seq) would refuse the second.
+-- Bounded on 2026-09-04 after review; production had already run this with
+-- no such serial, so the rows it wrote are the ones this would write.
+select distinct on (src.sale_id)
   src.sale_id,
   1,
   case when src.correction_resolved_at is null then 'open' else 'resolved' end,
@@ -289,7 +293,8 @@ from src
 cross join cfg
 left join data_center.v_transfer_stoves b on b.stove_id = upper(trim(src.stove_serial_no))
 left join data_center.transfer_funnel f on f.transfer_id = b.transfer_id
-left join data_center.sales_rep_accounts ra on ra.rep_key = lower(trim(f.sales_rep));
+left join data_center.sales_rep_accounts ra on ra.rep_key = lower(trim(f.sales_rep))
+order by src.sale_id, f.transfer_date desc nulls last;
 
 
 -- ---------------------------------------------------------------------------
