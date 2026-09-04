@@ -7,7 +7,7 @@ lives on each PR.
 ## Phase 24 (opened 2026-09-04)
 
 - [ ] 0 Docs and tracker: this file, `decisions.md`, PLAN.md and ROADMAP.md entries. in review
-- [ ] 0.5 Design canvas, ten surfaces in the module's theme, approved before code. todo
+- [ ] 0.5 Design canvas, ten surfaces in the module's theme, approved before code. canvas published 2026-09-04, awaiting his review
 - [ ] 1 Corrections lifecycle, function, backfill, access on link. todo
 - [ ] 2 Correction workspace: disputed record, edit through update-sale, serial through rematch. todo
 - [ ] 3 Review and recall: review panel, derived recall allowance, awaiting-review preset and tile. todo
