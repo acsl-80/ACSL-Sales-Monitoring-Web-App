@@ -910,7 +910,7 @@ serve(async (req) => {
          * corrections.fix alone must be the one the episode is routed to; a
          * caller with call_records.edit is the call centre and passes.
          */
-        if (!open && !features.includes("call_records.edit")) {
+        if (!open && !superAdmin && !features.includes("call_records.edit")) {
           const routed = await conn.queryObject<{ ok: boolean }>({
             text: `select (c.current_rep_user_id = $2 or c.assigned_to = $2
                            or exists (select 1 from data_center.send_back_recipients r

@@ -40,7 +40,11 @@ function Control({ field, value, onChange, disputed, input }) {
     <div>
       <label htmlFor={id} className={`block text-xs font-medium uppercase tracking-wide ${disputed ? "text-amber-900" : "text-gray-600"}`}>
         {field.label}
-        {disputed && <span className="ml-1.5 rounded-full bg-amber-200 px-1.5 py-0.5 text-[10px] font-semibold normal-case tracking-normal text-amber-900">disputed</span>}
+        {disputed && (
+          <span aria-hidden className="ml-1.5 rounded-full bg-amber-200 px-1.5 py-0.5 text-[10px] font-semibold normal-case tracking-normal text-amber-900">
+            disputed
+          </span>
+        )}
       </label>
       {field.key === "heat_retention_device" ? (
         <label className="mt-1 inline-flex items-center gap-2 text-sm text-gray-800">

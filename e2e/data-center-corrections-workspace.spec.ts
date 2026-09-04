@@ -48,6 +48,18 @@ async function asRoutedRep(sale: Sale, disputed: string[]) {
      values ('${repKey}', '${repName}', '${ACSL_AGENT_ID}', now())
      on conflict (rep_key) do update set user_id = excluded.user_id, linked_at = now()`,
   );
+  // update-sale reads the sale under the caller's own sales-app scope, so the
+  // agent must be assigned to the sale's partner, as a real rep is.
+  const [assigned] = await branchSql<{ n: number }>(
+    `select count(*)::int as n from public.acsl_agent_organizations a
+      where a.agent_id = '${ACSL_AGENT_ID}'
+        and a.organization_id = (select organization_id from public.sales where id = '${sale.sale_id}')`,
+  );
+  await branchSql(
+    `insert into public.acsl_agent_organizations (agent_id, organization_id)
+     select '${ACSL_AGENT_ID}', organization_id from public.sales where id = '${sale.sale_id}'
+     on conflict (agent_id, organization_id) do nothing`,
+  );
   await branchSql(`delete from data_center.corrections where sale_id = '${sale.sale_id}'`);
   await branchSql(
     `insert into data_center.corrections
@@ -57,6 +69,12 @@ async function asRoutedRep(sale: Sale, disputed: string[]) {
   );
   return async () => {
     await branchSql(`delete from data_center.corrections where sale_id = '${sale.sale_id}'`).catch(() => {});
+    if (!assigned || Number(assigned.n) === 0) {
+      await branchSql(
+        `delete from public.acsl_agent_organizations where agent_id = '${ACSL_AGENT_ID}'
+           and organization_id = (select organization_id from public.sales where id = '${sale.sale_id}')`,
+      );
+    }
     await branchSql(`delete from data_center.sales_rep_accounts where rep_key = '${repKey}'`);
     if (access?.access_role) {
       await branchSql(

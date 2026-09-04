@@ -1239,10 +1239,17 @@ export const dataCenterSales = {
         body = null;
       }
       if (!response.ok || body?.success === false) {
+        // update-sale reads the sale under the caller's own sales-app scope,
+        // so "not found" here means "not yours to see there": a rep whose
+        // assigned partners do not include this sale. Say that, not 404.
+        const message =
+          response.status === 404
+            ? "The sales app does not show you this sale, so it cannot be edited from here. Ask an administrator or a standing recipient to save the fix on your behalf."
+            : body?.error ?? body?.message ?? `The sales app refused the edit (HTTP ${response.status}).`;
         throw new DataCenterError(
-          body?.error ?? body?.message ?? `The sales app refused the edit (HTTP ${response.status}).`,
+          message,
           response.status,
-          response.status === 409 ? "conflict" : response.status === 403 ? "no_feature" : "update_failed",
+          response.status === 409 ? "conflict" : response.status === 403 ? "no_feature" : response.status === 404 ? "out_of_scope" : "update_failed",
         );
       }
       return body;
