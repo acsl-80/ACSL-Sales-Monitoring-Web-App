@@ -60,12 +60,14 @@ test("the Partner facet narrows every Partner cell, the URL carries it, and back
   await expect(page.getByText(/Narrowed to/)).toHaveCount(0);
 });
 
-test("Held by is offered to whoever may see the agents, and to nobody else", async ({ page }) => {
+test("Held by is offered to whoever may see the agents", async ({ page }) => {
   await signIn(page, USERS.admin);
   await page.goto("/data-center/call-centre");
   await expect(page.getByRole("combobox", { name: "Partner" })).toBeVisible({ timeout: 30_000 });
   await expect(page.getByRole("combobox", { name: "Held by" })).toBeVisible({ timeout: 30_000 });
+});
 
+test("Held by is not offered to an editor who cannot see the agents", async ({ page }) => {
   await signIn(page, USERS.callCentre);
   await page.goto("/data-center/call-centre");
   await expect(page.getByRole("combobox", { name: "Partner" })).toBeVisible({ timeout: 30_000 });
