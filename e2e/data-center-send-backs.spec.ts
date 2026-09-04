@@ -269,10 +269,13 @@ test.describe("the loop closes", () => {
     await expect(page.getByRole("heading", { name: "Stove Records" })).toBeVisible({
       timeout: 30_000,
     });
-    await expect(page.getByText(/sent back from the call centre/)).toBeVisible({
-      timeout: 20_000,
-    });
-    await expect(page.getByRole("link", { name: /Open the list/ })).toBeVisible();
+    // Phase 24: the work-waiting banner, whose every count is a link to the
+    // tab that holds those records.
+    const banner = page.locator("[data-work-waiting]");
+    await expect(banner).toBeVisible({ timeout: 20_000 });
+    const everyone = banner.getByRole("link", { name: /Waiting on Sales, everyone/ });
+    await expect(everyone).toBeVisible();
+    await expect(everyone).toHaveAttribute("href", /\/data-center\/corrections\?tab=open/);
 
     await callEdgeFunction(page, "data-center-write", {
       action: "correction",
