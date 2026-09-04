@@ -23,8 +23,17 @@ insert into data_center.workflow_config (key, value, description) values
   ('presence.away_after_minutes', '60'::jsonb,
    'An agent with nothing saved for this many minutes reads as Away.'),
   ('call_centre.refresh_seconds', '60'::jsonb,
-   'How often the call centre board, the agents panel and My Work re-read while the tab is visible. 0 turns it off.')
+   'How often the call centre board, the agents panel and My Work re-read while the tab is visible. 0 turns it off.'),
+  ('call_centre.timezone', '"Africa/Lagos"'::jsonb,
+   'The time zone that decides where "today" starts for the agents panel''s done-today count.')
 on conflict (key) do nothing;
+
+-- The activity view filters attempts by who logged them and batches by who
+-- holds them, on a timer. Index what it filters on.
+create index if not exists call_attempts_created_by_idx
+  on data_center.call_attempts (created_by, attempted_at desc);
+create index if not exists assignment_batches_agent_activity_idx
+  on data_center.assignment_batches (assigned_to, last_activity_at desc);
 
 -- ---------------------------------------------------------------------------
 -- Agent activity, from the small tables only.
@@ -36,19 +45,15 @@ select
   d.saved_at        as last_draft_saved_at,
   d.sale_id         as last_draft_sale_id,
   ds.stove_serial_no as last_draft_serial,
-  (select max(b.last_activity_at) from data_center.assignment_batches b
-    where b.assigned_to = m.user_id) as last_batch_activity_at,
-  (select max(a.attempted_at) from data_center.call_attempts a
-    where a.created_by = m.user_id) as last_attempt_at,
-  (select count(*)::int from data_center.call_attempts a
-    where a.created_by = m.user_id
-      and a.attempted_at >= date_trunc('day', now())) as attempts_today,
-  greatest(
-    d.saved_at,
-    (select max(b.last_activity_at) from data_center.assignment_batches b where b.assigned_to = m.user_id),
-    (select max(a.attempted_at) from data_center.call_attempts a where a.created_by = m.user_id)
-  ) as last_seen_at
+  b.last_batch_activity_at,
+  a.last_attempt_at,
+  coalesce(a.attempts_today, 0) as attempts_today,
+  greatest(d.saved_at, b.last_batch_activity_at, a.last_attempt_at) as last_seen_at
 from data_center.module_access m
+cross join (
+  select coalesce((select value #>> '{}' from data_center.workflow_config
+                    where key = 'call_centre.timezone'), 'Africa/Lagos') as tz
+) cfg
 left join lateral (
   select x.sale_id, x.saved_at
     from data_center.call_drafts x
@@ -57,6 +62,19 @@ left join lateral (
    limit 1
 ) d on true
 left join public.sales ds on ds.id = d.sale_id
+left join lateral (
+  select max(x.last_activity_at) as last_batch_activity_at
+    from data_center.assignment_batches x
+   where x.assigned_to = m.user_id
+) b on true
+left join lateral (
+  -- One pass over this agent's attempts: the newest, and how many fell on
+  -- today where the call centre sits, not on UTC's today.
+  select max(x.attempted_at) as last_attempt_at,
+         count(*) filter (where timezone(cfg.tz, x.attempted_at)::date = timezone(cfg.tz, now())::date)::int as attempts_today
+    from data_center.call_attempts x
+   where x.created_by = m.user_id
+) a on true
 where m.access_role in ('call_agent', 'editor');
 
 comment on view data_center.v_agent_activity is
@@ -100,7 +118,11 @@ begin
       from data_center.v_callable_records
     union all
     select 'pool.recall_due', '{}'::jsonb, count(*)::numeric
-      from data_center.v_callable_records where recall_due
+      from data_center.v_call_center c
+     where c.is_archived is not true
+       and exists (select 1 from data_center.corrections x
+                    where x.sale_id = c.sale_id and x.state = 'resolved' and x.review_outcome = 'recall'
+                      and x.reviewed_at > coalesce(c.last_attempt_at, '-infinity'::timestamptz))
     union all
     select 'pool.recent', '{}'::jsonb, count(*)::numeric
       from data_center.v_callable_records
@@ -131,20 +153,31 @@ begin
   get diagnostics n = row_count; written := written + n;
 
   if p_families is not null then
-    -- A partial run: the pool family only. The readers take the newest
-    -- finished run as the current set, so every other family's rows are
-    -- carried forward from the last full run under this run id, unchanged.
-    -- One run id stays one consistent set, and the dashboard never goes
-    -- blank because the board pressed Recompute.
-    insert into data_center.metric_snapshots (run_id, metric_key, dimension, value_num, value_text)
-    select p_run_id, s.metric_key, s.dimension, s.value_num, s.value_text
+    -- A partial run: named families only, and today the only name is pool.
+    if exists (select 1 from unnest(p_families) f where f <> 'pool') then
+      raise exception 'compute_metrics knows the family pool; % is not one', array_to_string(p_families, ', ')
+        using errcode = 'check_violation', hint = 'bad_family';
+    end if;
+    -- The readers take the newest finished run as the current set, so every
+    -- other family's rows are carried forward from the last full run under
+    -- this run id, with the moment they were computed kept on them. One run
+    -- id stays one consistent set, the dashboard never goes blank because
+    -- the board pressed Recompute, and its "computed at" stays honest
+    -- because it reads computed_at, not the run. Without a full run to copy
+    -- from there is nothing honest to show, so the partial run refuses.
+    if not exists (select 1 from data_center.metric_runs r where r.status = 'ok' and r.id <> p_run_id) then
+      raise exception 'No full computation has run yet. Run the full computation first.'
+        using errcode = 'check_violation', hint = 'no_full_run';
+    end if;
+    insert into data_center.metric_snapshots (run_id, metric_key, dimension, value_num, value_text, computed_at)
+    select p_run_id, s.metric_key, s.dimension, s.value_num, s.value_text, s.computed_at
       from data_center.metric_snapshots s
      where s.run_id = (select r.id from data_center.metric_runs r
                         where r.status = 'ok' and r.id <> p_run_id
                         order by r.finished_at desc nulls last
                         limit 1)
        and s.metric_key not like 'pool.%';
-    get diagnostics n = row_count; written := written + n;
+    -- Carried rows are not written rows; the run's count says what it computed.
     return written;
   end if;
 

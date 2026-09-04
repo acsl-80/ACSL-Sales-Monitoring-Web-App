@@ -60,8 +60,7 @@ export async function handleAgents(ctx: AgentsContext): Promise<Response> {
                         case
                           when not coalesce(cap.is_enabled, true) then 'paused'
                           when act.last_seen_at > now() - make_interval(mins => cfg.working) then 'working'
-                          when act.last_seen_at is null
-                            or act.last_seen_at < now() - make_interval(mins => cfg.away) then 'away'
+                          when act.last_seen_at < now() - make_interval(mins => cfg.away) then 'away'
                           when (select count(*) from data_center.assignment_batches b
                                  where b.assigned_to = m.user_id and b.state = 'open')
                                < coalesce(cap.max_open_batches, cfg.default_cap) then 'available'
