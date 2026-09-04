@@ -50,10 +50,35 @@ export async function handleAgents(ctx: AgentsContext): Promise<Response> {
                           where b.assigned_to = m.user_id and b.state = 'open' and i.is_active
                         ) as records_held,
                         (select max(b.last_activity_at) from data_center.assignment_batches b
-                          where b.assigned_to = m.user_id and b.state = 'open') as last_activity_at
+                          where b.assigned_to = m.user_id and b.state = 'open') as last_activity_at,
+                        act.last_seen_at,
+                        act.last_draft_serial as current_serial,
+                        act.last_draft_sale_id::text as current_sale_id,
+                        coalesce(act.attempts_today, 0) as attempts_today,
+                        -- Presence, derived: no channel, no heartbeat beyond the
+                        -- editor's own autosave. The windows are settings.
+                        case
+                          when not coalesce(cap.is_enabled, true) then 'paused'
+                          when act.last_seen_at > now() - make_interval(mins => cfg.working) then 'working'
+                          when act.last_seen_at is null
+                            or act.last_seen_at < now() - make_interval(mins => cfg.away) then 'away'
+                          when (select count(*) from data_center.assignment_batches b
+                                 where b.assigned_to = m.user_id and b.state = 'open')
+                               < coalesce(cap.max_open_batches, cfg.default_cap) then 'available'
+                          else 'at_capacity'
+                        end as presence
                    from data_center.module_access m
                    join public.profiles p on p.id = m.user_id
                    left join data_center.call_agent_profiles cap on cap.user_id = m.user_id
+                   left join data_center.v_agent_activity act on act.agent_id = m.user_id
+                   cross join (
+                     select coalesce((select (value #>> '{}')::int from data_center.workflow_config
+                                       where key = 'presence.working_within_minutes'), 10) as working,
+                            coalesce((select (value #>> '{}')::int from data_center.workflow_config
+                                       where key = 'presence.away_after_minutes'), 60) as away,
+                            coalesce((select (value #>> '{}')::int from data_center.workflow_config
+                                       where key = 'assignment.max_open_batches'), 1) as default_cap
+                   ) cfg
                   where m.access_role in ('call_agent', 'editor')
                   order by p.full_name nulls last`,
         });
@@ -70,6 +95,8 @@ export async function handleAgents(ctx: AgentsContext): Promise<Response> {
         const defaults = await conn.queryObject<{
           batch_size: number; default_cap: number; ceiling: number;
           order: string[] | null; options: { value: string; label: string }[] | null;
+          refresh_seconds: number; working: number; away: number;
+          on_it: Record<string, string[]> | null;
         }>({
           text: `select coalesce((select (value #>> '{}')::int from data_center.workflow_config
                                    where key = 'assignment.batch_size'), 20) as batch_size,
@@ -82,7 +109,21 @@ export async function handleAgents(ctx: AgentsContext): Promise<Response> {
                            from data_center.workflow_config where key = 'assignment.priority') as "order",
                         (select jsonb_agg(jsonb_build_object('value', v.value, 'label', v.label) order by v.sort_order)
                            from data_center.option_values v
-                          where v.list_key = 'assignment_priority' and v.is_active) as options`,
+                          where v.list_key = 'assignment_priority' and v.is_active) as options,
+                        coalesce((select (value #>> '{}')::int from data_center.workflow_config
+                                   where key = 'call_centre.refresh_seconds'), 60) as refresh_seconds,
+                        coalesce((select (value #>> '{}')::int from data_center.workflow_config
+                                   where key = 'presence.working_within_minutes'), 10) as working,
+                        coalesce((select (value #>> '{}')::int from data_center.workflow_config
+                                   where key = 'presence.away_after_minutes'), 60) as away,
+                        -- Who holds an open batch of which partner: the pool table's "on it now".
+                        (select jsonb_object_agg(x.org, x.names)
+                           from (select b.organization_id::text as org,
+                                        array_agg(distinct coalesce(pr.full_name, pr.email)) as names
+                                   from data_center.assignment_batches b
+                                   join public.profiles pr on pr.id = b.assigned_to
+                                  where b.state = 'open'
+                                  group by 1) x) as on_it`,
         });
         const d = defaults.rows[0];
         const pr = d;
@@ -95,6 +136,9 @@ export async function handleAgents(ctx: AgentsContext): Promise<Response> {
               defaultCap: Number(d?.default_cap ?? 1),
               capacityCeiling: Number(d?.ceiling ?? 10),
               priority: { order: pr?.order ?? [], options: pr?.options ?? [] },
+              refreshSeconds: Number(d?.refresh_seconds ?? 60),
+              presence: { workingWithinMinutes: Number(d?.working ?? 10), awayAfterMinutes: Number(d?.away ?? 60) },
+              onIt: d?.on_it ?? {},
             },
           },
           200,

@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import Link from "@/compat/Link";
 import { dataCenterAssign, DataCenterError } from "../../lib/client";
+import { usePolling } from "../../lib/usePolling";
 import CallRecordEditor from "./CallRecordEditor";
 import { plural } from "../../lib/plural";
 import {
@@ -98,12 +99,14 @@ export default function MyWork({ canEdit, hideWhenEmpty = false }) {
   const [items, setItems] = useState(null);
   const [error, setError] = useState(null);
   const [openSale, setOpenSale] = useState(null);
+  const [refresh, setRefresh] = useState(60);
 
   const load = useCallback(() => {
     dataCenterAssign
       .myBatches()
       .then((r) => {
         setItems(r.items ?? []);
+        setRefresh(r.refreshSeconds ?? 60);
         setError(null);
       })
       .catch((err) =>
@@ -112,6 +115,9 @@ export default function MyWork({ canEdit, hideWhenEmpty = false }) {
   }, []);
 
   useEffect(load, [load]);
+  // The queue moves under an agent while they work; re-read at the pace
+  // Settings names, while the tab is visible.
+  usePolling(load, refresh);
 
   // Open work is grouped by partner; finished batches sit under their own
   // heading below it, so what is done reads as done.

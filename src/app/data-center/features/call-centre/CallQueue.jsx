@@ -108,6 +108,8 @@ const PRESETS = [
   { key: "correction", label: "Waiting on Sales", filters: { correctionState: "open" } },
   /** Sales says it is fixed; the call centre has not yet looked. */
   { key: "review", label: "Awaiting review", filters: { correctionState: "fixed" } },
+  /** Closed with ring again after the last call: due a call whatever the count says. */
+  { key: "recall_due", label: "Recall due", filters: { recallDue: true } },
   /**
    * Where finished work lives.
    *

@@ -1936,6 +1936,13 @@ export type AssignmentAgent = {
   max_open_batches: number | null;
   /** Why they are paused, or whatever the scheduler wrote. */
   note: string | null;
+  /** Derived at read time from the last save against the presence settings. */
+  presence: "working" | "available" | "at_capacity" | "away" | "paused";
+  last_seen_at: string | null;
+  /** The stove of the last draft they saved, said as a last save rather than a live cursor. */
+  current_serial: string | null;
+  current_sale_id: string | null;
+  attempts_today: number;
   open_batches: number;
   records_held: number;
   last_activity_at: string | null;
@@ -2001,6 +2008,11 @@ export const dataCenterAssign = {
       capacityCeiling: number;
       /** The configured hand-out order and the labels of every order the picker knows. */
       priority: { order: string[]; options: { value: string; label: string }[] };
+      /** `call_centre.refresh_seconds`; 0 turns polling off. */
+      refreshSeconds: number;
+      presence: { workingWithinMinutes: number; awayAfterMinutes: number };
+      /** Partner id to the names of the agents holding an open batch of it. */
+      onIt: Record<string, string[]>;
     }>("data-center-assign", "agents"),
 
   /** One agent opened up: every batch they hold and every record in it. */
@@ -2106,6 +2118,8 @@ export const dataCenterAssign = {
         draft_saved_by_name: string | null;
         draft_is_mine: boolean | null;
       }[];
+      /** `call_centre.refresh_seconds`; 0 turns polling off. */
+      refreshSeconds: number;
     }>("data-center-assign", "my_batches"),
 
   /** The log. Keyset paginated; pass back `nextCursor` for the next page. */
@@ -2193,11 +2207,16 @@ export const dataCenterDashboard = {
   /** Recent computation runs, so a dashboard can say how current it is. */
   runs: () => call<{ runs: MetricRun[] }>("data-center-compute", "status"),
 
-  /** Recompute now. Super admin only: it reads every sale. */
-  run: () =>
+  /**
+   * Recompute now. The full run is a super admin's: it reads every sale.
+   * A run of named families (today `["pool"]`, the board's Recompute)
+   * writes that family alone and belongs to whoever may hand out work.
+   */
+  run: (families?: string[]) =>
     call<{ runId: string; metricsWritten: number; durationMs: number }>(
       "data-center-compute",
       "run",
+      families && families.length > 0 ? { families } : {},
     ),
 };
 

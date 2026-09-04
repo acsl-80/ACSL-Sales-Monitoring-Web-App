@@ -27,6 +27,7 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.39.3";
 import { withConnection, withReadConnection } from "../_shared/data-center-db.ts";
+import { featuresFor } from "../_shared/data-center-roles.ts";
 
 const DEFAULT_ORIGINS = [
   "https://sales.atmosfair.com.ng",
@@ -99,7 +100,7 @@ serve(async (req) => {
     }
     const superAdmin = profile.role === "super_admin";
 
-    let body: { action?: string } = {};
+    let body: { action?: string; families?: unknown } = {};
     try {
       body = await req.json();
     } catch {
@@ -133,8 +134,31 @@ serve(async (req) => {
        * rather than a button anyone gets.
        */
       case "run": {
+        // A run of named families only: today the pool family, which the
+        // board's Recompute presses. The full run reads every sale and stays
+        // a super admin's act; the pool run belongs to whoever may hand out
+        // work, because it is their board.
+        const families = Array.isArray(body.families) && body.families.length > 0
+          ? body.families.map(String)
+          : null;
         if (!superAdmin) {
-          return json({ error: "Only a super admin can run the computation", code: "forbidden" }, 403, cors);
+          const poolOnly = families !== null && families.every((f) => f === "pool");
+          const allowed = poolOnly && (await withReadConnection(async (conn) => {
+            const r = await conn.queryObject<{ access_role: string; keys: string[] }>({
+              text: `select m.access_role,
+                            coalesce(array_agg(g.feature_key) filter (where g.feature_key is not null), '{}') as keys
+                       from data_center.module_access m
+                       left join data_center.feature_grants g on g.user_id = m.user_id
+                      where m.user_id = $1
+                      group by m.access_role`,
+              args: [userId],
+            });
+            const row = r.rows[0];
+            return row ? featuresFor(row.access_role, row.keys).includes("assignment.manage") : false;
+          }));
+          if (!allowed) {
+            return json({ error: "Only a super admin can run the computation", code: "forbidden" }, 403, cors);
+          }
         }
 
         // One run at a time, enforced by an advisory lock rather than by
@@ -166,36 +190,42 @@ serve(async (req) => {
 
           try {
             const r = await conn.queryObject<{ compute_metrics: number }>({
-              text: "select data_center.compute_metrics($1) as compute_metrics",
-              args: [runId],
+              text: "select data_center.compute_metrics($1, $2) as compute_metrics",
+              args: [runId, families],
             });
             const written = Number(r.rows[0]?.compute_metrics ?? 0);
 
-            // The reconciliation funnel is computed too, so it refreshes here:
-            // same connection, same advisory lock, same "as of" moment. A
-            // dashboard and a Partner Records page that disagree about how
-            // current they are would be worse than either being stale.
-            await conn.queryObject("select data_center.refresh_transfer_funnel()");
+            // A partial run stops at the family it asked for; the funnel, the
+            // scorecards and the analysis are the full run's.
+            let scorecardRows = 0;
+            let analysisRows = 0;
+            if (families === null) {
+              // The reconciliation funnel is computed too, so it refreshes here:
+              // same connection, same advisory lock, same "as of" moment. A
+              // dashboard and a Partner Records page that disagree about how
+              // current they are would be worse than either being stale.
+              await conn.queryObject("select data_center.refresh_transfer_funnel()");
 
-            // The scorecards read the funnel just refreshed, which is why the
-            // order matters: funnel first, then the sums over it. Same run id,
-            // so the dashboard swaps to the new set atomically with the rest.
-            const sc = await conn.queryObject<{ n: number }>({
-              text: "select data_center.compute_scorecards($1) as n",
-              args: [runId],
-            });
-            const scorecardRows = Number(sc.rows[0]?.n ?? 0);
+              // The scorecards read the funnel just refreshed, which is why the
+              // order matters: funnel first, then the sums over it. Same run id,
+              // so the dashboard swaps to the new set atomically with the rest.
+              const sc = await conn.queryObject<{ n: number }>({
+                text: "select data_center.compute_scorecards($1) as n",
+                args: [runId],
+              });
+              scorecardRows = Number(sc.rows[0]?.n ?? 0);
 
-            // Analysis last, in the same run and under the same lock. It reads
-            // sales and stock directly rather than the funnel, so it does not
-            // depend on the step above - but it must share the run id, or the
-            // Analysis page and the Dashboard would be able to disagree about
-            // which afternoon they are describing.
-            const an = await conn.queryObject<{ n: number }>({
-              text: "select data_center.compute_analysis($1) as n",
-              args: [runId],
-            });
-            const analysisRows = Number(an.rows[0]?.n ?? 0);
+              // Analysis last, in the same run and under the same lock. It reads
+              // sales and stock directly rather than the funnel, so it does not
+              // depend on the step above - but it must share the run id, or the
+              // Analysis page and the Dashboard would be able to disagree about
+              // which afternoon they are describing.
+              const an = await conn.queryObject<{ n: number }>({
+                text: "select data_center.compute_analysis($1) as n",
+                args: [runId],
+              });
+              analysisRows = Number(an.rows[0]?.n ?? 0);
+            }
 
             const duration = Date.now() - started;
             await conn.queryObject({

@@ -346,7 +346,11 @@ serve(async (req) => {
                     limit 200`,
             args: [userId],
           });
-          return json({ data: { items: r.rows } }, 200, cors);
+          const cfg = await conn.queryObject<{ n: number }>({
+            text: `select coalesce((select (value #>> '{}')::int from data_center.workflow_config
+                                     where key = 'call_centre.refresh_seconds'), 60) as n`,
+          });
+          return json({ data: { items: r.rows, refreshSeconds: Number(cfg.rows[0]?.n ?? 60) } }, 200, cors);
         });
       }
 

@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { Link } from "@tanstack/react-router";
 import { dataCenterDashboard, DataCenterError } from "../../lib/client";
+import { metricValue } from "../../lib/metricValue";
 import Scorecard, { scorecardRows } from "./Scorecard";
 import ExportScorecards from "./ExportScorecards";
 import { MEASURES, SCOPES, withScope, explain } from "../../lib/measures";
@@ -27,15 +28,7 @@ import {
 
 const NUMBER = new Intl.NumberFormat("en-NG");
 
-function value(metrics, key, dimension = null) {
-  const found = metrics.find(
-    (m) =>
-      m.metric_key === key &&
-      (dimension === null ||
-        Object.entries(dimension).every(([k, v]) => m.dimension?.[k] === v)),
-  );
-  return found ? Number(found.value_num ?? 0) : 0;
-}
+const value = metricValue;
 
 function series(metrics, key, dimensionKey) {
   return metrics

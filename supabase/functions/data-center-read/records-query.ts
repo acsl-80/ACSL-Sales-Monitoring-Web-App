@@ -102,6 +102,8 @@ export interface RecordsFilters {
   completed?: boolean;
   /** Records whose stove ID was taken by another caller's rematch. */
   serialUnconfirmed?: boolean;
+  /** true selects records whose newest ring-again close is newer than their last call. */
+  recallDue?: boolean;
 }
 
 /**
@@ -493,6 +495,7 @@ export function buildRecordsQuery(
     f.attemptsAtLeast !== undefined ||
     f.attemptsAtMost !== undefined ||
     f.completed !== undefined ||
+    f.recallDue !== undefined ||
     f.serialUnconfirmed !== undefined;
 
   if (table === "records" && callCentreOnly) {
@@ -533,6 +536,14 @@ export function buildRecordsQuery(
       );
     }
 
+    if (f.recallDue !== undefined) {
+      // Sales fixed it and the call centre closed it with "ring again" after
+      // the last attempt: the record is due a call whatever its count says.
+      const due =
+        "exists (select 1 from data_center.corrections x where x.sale_id = s.id and x.state = 'resolved' " +
+        "and x.review_outcome = 'recall' and x.reviewed_at > coalesce(cr.last_attempt_at, '-infinity'::timestamptz))";
+      where.push(f.recallDue ? due : `not ${due}`);
+    }
     if (f.serialUnconfirmed !== undefined) {
       where.push(
         f.serialUnconfirmed

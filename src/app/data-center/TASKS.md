@@ -14,8 +14,8 @@ lives on each PR.
 - [x] 3 Review and recall: review panel, derived recall allowance, phone reconciliation, awaiting-review preset and tile. merged, live (PR #70, 2026-09-04): migration applied, three functions deployed, bundle crawl confirmed
 - [x] 4 Send-back panel and work-waiting banner. merged, live (PR #71, 2026-09-04): corrections v4 deployed, bundle crawl confirmed
 - [x] 5a Engine picks from module_access; capacity on the manual door; agent profiles; gates. merged, live (PR #72, 2026-09-04): migration applied (5 agents over capacity left as they are, 7 candidates for the engine), assign v4 deployed, bundle crawl confirmed
-- [ ] 5b Pool v3 (with Sales, half-typed and just-rung records left out; digitised_at, recall_due) and pick_callable with a configured order. green on the preview, in review (PR #73); the Claude review's findings acted on; awaiting the owner's word
-- [ ] 6a Control centre: board, agents with presence, pool by partner, lanes, polling. todo
+- [x] 5b Pool v3 (with Sales, half-typed and just-rung records left out; digitised_at, recall_due) and pick_callable with a configured order. merged, live (PR #73, 2026-09-04): migration applied, callable 1,502 unchanged on the day, assign v5 deployed, bundle crawl confirmed
+- [ ] 6a Control centre: board, agents with presence, pool by partner, lanes, polling. in progress
 - [ ] 6b Queue facets in the URL. todo
 - [ ] 7a Completeness evidence config and the tile's plain line. todo
 - [ ] 7b The sales app's status rule (D17). needs the owner's word

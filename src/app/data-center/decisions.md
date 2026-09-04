@@ -88,6 +88,26 @@ index on `public` stays the one. If a plan ever shows the sort as the cost, the
 earlier index migration's pattern applies: a plain index in the migration for
 fresh databases, a CONCURRENTLY script run by hand on production.
 
+## D24. Presence is derived, and the board's numbers come from the one engine (2026-09-04)
+
+The control centre says who is Working, Available, At capacity, Away or
+Paused without a channel or a heartbeat. The editor's autosave, a batch's
+last activity and a logged attempt already leave timestamps; the newest of
+them is `last_seen_at` in `v_agent_activity`, and the agents read grades it
+against `presence.working_within_minutes` and `presence.away_after_minutes`.
+"On record" is the last draft's stove, said as a last save, because drafts
+are deleted on save and a live cursor would be an invention.
+
+The board's counts over sales (callable, recently digitised, never called,
+by partner) are a family in `compute_metrics`, not a second engine on the
+page. The function takes an optional list of families; `array['pool']` is
+what the board's Recompute presses, writes that family alone and returns,
+and whoever may hand out work may press it. The full run stays a super
+admin's and is unchanged. Live numbers (open batches, who is on which
+partner, the work waiting on people) come from the small tables through
+reads that already existed. The page refreshes all of it together at
+`call_centre.refresh_seconds` while the tab is visible.
+
 ## Observations recorded, not acted on
 
 - 181 live sales carry a payment model outside their partner's entitlement.

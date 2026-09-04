@@ -2,7 +2,11 @@ import { useMemo } from "react";
 import { useNavigate, useSearch } from "@tanstack/react-router";
 import DataCentreShell from "../components/DataCentreShell";
 import CallQueue from "../features/call-centre/CallQueue";
-import AssignmentConsole from "../features/call-centre/AssignmentConsole";
+import CallCentreBoard from "../features/call-centre/board/CallCentreBoard";
+import AgentsPanel from "../features/call-centre/agents/AgentsPanel";
+import PoolByPartner from "../features/call-centre/pool/PoolByPartner";
+import { SendBacksLane, RecallsLane } from "../features/call-centre/lanes/Lanes";
+import { useControlCentre } from "../features/call-centre/lib/useControlCentre";
 import AssignmentLog from "../features/call-centre/AssignmentLog";
 import MyWork from "../features/call-centre/MyWork";
 import SharedPhones from "../features/call-centre/SharedPhones";
@@ -17,6 +21,7 @@ const PRESET_LABELS = {
   exhausted: "chased three times and still not verified",
   correction: "waiting on Sales",
   review: "fixed by Sales, awaiting review",
+  recall_due: "due a call again after a fix",
   completed: "finished by the call centre",
   unconfirmed: "a stove ID another caller took",
 };
@@ -88,38 +93,49 @@ function Inner() {
   const layout = callCentreLayout({ canEdit: can(DATA_CENTER_FEATURES.CALL_RECORDS_EDIT), canManage });
   const agentFirst = layout === "agent";
 
+  const canEdit = can(DATA_CENTER_FEATURES.CALL_RECORDS_EDIT);
+  const cc = useControlCentre({ canManage, canReview: canEdit });
+
   return (
     <div className="space-y-4">
-      {can(DATA_CENTER_FEATURES.CALL_RECORDS_EDIT) && agentFirst && (
-        <MyWork canEdit={can(DATA_CENTER_FEATURES.CALL_RECORDS_EDIT)} />
+      {cc.error && <p className="rounded-md bg-red-50 px-3 py-2 text-xs text-red-700">{cc.error}</p>}
+
+      {/* Agents meet their own work first: the buyer is waiting on them. */}
+      {canEdit && agentFirst && <MyWork canEdit={canEdit} />}
+
+      {/* Whoever hands out work meets the control centre first: the board,
+          the agents, the pool by partner, and the lanes of work that came
+          back. All four draw from one refresh, so nothing here disagrees
+          with its neighbour by a few seconds. */}
+      {canManage && (
+        <>
+          <CallCentreBoard metrics={cc.metrics} agents={cc.agents} waiting={cc.waiting} canManage onRecomputed={cc.reload} />
+          <AgentsPanel data={cc.agents} canManage reload={cc.reload} />
+          <div className="grid gap-4 xl:grid-cols-[minmax(0,3fr)_minmax(0,2fr)]">
+            <PoolByPartner metrics={cc.metrics} agents={cc.agents} canManage reload={cc.reload} />
+            <div className="space-y-4">
+              <SendBacksLane waiting={cc.waiting} metrics={cc.metrics} />
+              <RecallsLane waiting={cc.waiting} metrics={cc.metrics} />
+            </div>
+          </div>
+        </>
       )}
-      <CallQueue
-        key={drill?.preset ?? "all"}
-        canEdit={can(DATA_CENTER_FEATURES.CALL_RECORDS_EDIT)}
-        drill={drill}
-      />
-      {/* The console before the log, because who holds what right now is asked
-          far more often than what happened last week. Both need records.view on
-          the server; gating on the same key here keeps the page honest, since
-          nothing renders that the endpoint would 403. The levers inside need
-          assignment.manage, decided again server-side. */}
-      {canManage && <AssignmentConsole canEdit />}
-      {/* A supervisor gets it after the console: they ask about everybody
-          first and about their own queue rarely, which is the opposite of an
-          agent and the reason this is ordered rather than hidden. */}
-      {can(DATA_CENTER_FEATURES.CALL_RECORDS_EDIT) && !agentFirst && (
-        <MyWork canEdit={can(DATA_CENTER_FEATURES.CALL_RECORDS_EDIT)} hideWhenEmpty />
-      )}
+
+      <CallQueue key={drill?.preset ?? "all"} canEdit={canEdit} drill={drill} />
+
+      {/* A supervisor gets their own queue after everybody's: they ask about
+          everybody first and about themselves rarely, which is the opposite
+          of an agent and the reason this is ordered rather than hidden. */}
+      {canEdit && !agentFirst && <MyWork canEdit={canEdit} hideWhenEmpty />}
+
       {/* The register sits with the call centre because that is where a
           shared number stops being a suspicion and becomes a fact: somebody
           rings it and finds out whether it is one household or one typo. */}
       {can(DATA_CENTER_FEATURES.RECORDS_VIEW) && <SharedPhones />}
-      {can(DATA_CENTER_FEATURES.RECORDS_VIEW) && (
-        <AssignmentLog
-          canRun={canManage}
-          canEdit={can(DATA_CENTER_FEATURES.CALL_RECORDS_EDIT)}
-        />
-      )}
+
+      {/* History only. The levers moved to the agents panel, beside the
+          people they affect. */}
+      {can(DATA_CENTER_FEATURES.RECORDS_VIEW) && <AssignmentLog canEdit={canEdit} />}
     </div>
   );
 }

@@ -70,158 +70,7 @@ const EXPORT_COLUMNS = [
 
 /* --------------------------------------------------------------- quick edit */
 
-/**
- * The two things anyone does to a record here, without opening it.
- *
- * Logging a call is append-only, so it needs nothing but an outcome. Settling
- * the verification needs the record's version, which is read at the moment of
- * saving rather than held: the server refuses a stale version rather than
- * merging, and a version fetched when the page loaded is stale by definition.
- */
-function QuickEdit({ row, outcomes, onDone }) {
-  const [open, setOpen] = useState(false);
-  const [outcomeId, setOutcomeId] = useState("");
-  const [note, setNote] = useState("");
-  const [busy, setBusy] = useState(false);
-  const [error, setError] = useState(null);
-
-  const needsNote = outcomes.find((o) => o.id === outcomeId)?.value === "other";
-
-  const run = async (work) => {
-    setBusy(true);
-    setError(null);
-    try {
-      await work();
-      setOutcomeId("");
-      setNote("");
-      setOpen(false);
-      await onDone();
-    } catch (err) {
-      setError(err instanceof DataCenterError ? err.message : "That did not save.");
-    } finally {
-      setBusy(false);
-    }
-  };
-
-  const logCall = () =>
-    run(() =>
-      dataCenterWrite.logAttempt(row.sale_id, {
-        outcomeId: outcomeId || null,
-        note: note.trim() || null,
-      }),
-    );
-
-  const settle = (value) =>
-    run(async () => {
-      const current = await dataCenterWrite.callRecord(row.sale_id);
-      await dataCenterWrite.saveCallRecord(
-        row.sale_id,
-        { verification_outcome: value },
-        // The view names it call_record_version; `version` was never set,
-        // so the optimistic lock was silently skipped on this path.
-        current?.record?.call_record_version ?? null,
-      );
-    });
-
-  return (
-    <Popover open={open} onOpenChange={setOpen}>
-      <PopoverTrigger asChild>
-        <button
-          type="button"
-          aria-label={`Quick edit ${row.stove_serial_no}`}
-          onClick={(e) => e.stopPropagation()}
-          className="rounded p-1 text-gray-500 transition hover:bg-(--dc-accent-soft) hover:text-(--dc-accent)"
-        >
-          <Pencil className="h-4 w-4" />
-        </button>
-      </PopoverTrigger>
-      <PopoverContent
-        align="end"
-        onClick={(e) => e.stopPropagation()}
-        className="dc-root w-[min(22rem,90vw)] p-3"
-        data-area="call-centre"
-      >
-        <p className="mb-2 text-xs font-semibold uppercase tracking-wide">
-          <Link
-            href={`/data-center/stove/${encodeURIComponent(row.stove_serial_no)}`}
-            className="text-(--dc-accent-strong) underline decoration-(--dc-accent)/30 underline-offset-2 hover:decoration-(--dc-accent)"
-          >
-            {row.stove_serial_no}
-          </Link>
-        </p>
-        {error && <p className="mb-2 text-xs text-red-600">{error}</p>}
-
-        <label className="mb-1 block text-xs font-medium text-gray-700" htmlFor={`qo-${row.sale_id}`}>
-          Log a call
-        </label>
-        <div className="flex gap-1.5">
-          <div className="min-w-0 flex-1">
-            <SearchableSelect
-              id={`qo-${row.sale_id}`}
-              ariaLabel="Log a call"
-              value={outcomeId}
-              onChange={setOutcomeId}
-              placeholder="Outcome..."
-              searchPlaceholder="Type part of an outcome"
-              emptyLabel="No outcome matches that"
-              options={outcomes.map((o) => ({ value: o.id, label: o.label }))}
-            />
-          </div>
-          <button
-            type="button"
-            disabled={busy || (needsNote && !note.trim())}
-            onClick={logCall}
-            className="inline-flex shrink-0 items-center gap-1 rounded-md bg-(--dc-accent) px-2 py-1.5 text-xs font-medium text-white transition hover:bg-(--dc-accent-strong) disabled:opacity-40"
-          >
-            <PhoneCall className="h-3 w-3" /> Log
-          </button>
-        </div>
-
-        {/* The tenth outcome exists so nobody invents one in a constrained
-            column, which only works if it asks what happened. */}
-        {needsNote && (
-          <textarea
-            rows={2}
-            value={note}
-            onChange={(e) => setNote(e.target.value)}
-            placeholder="Say what the outcome was"
-            aria-label="What happened on this call"
-            className="mt-1.5 w-full rounded-md border border-gray-300 px-2 py-1.5 text-xs focus:border-(--dc-accent) focus:outline-none"
-          />
-        )}
-
-        <p className="mb-1 mt-3 text-xs font-medium text-gray-700">Settle the verification</p>
-        <div className="flex flex-wrap gap-1">
-          {VERIFICATION.map((v) => {
-            const current = row.verification_outcome === v.value;
-            return (
-              <button
-                key={v.value}
-                type="button"
-                disabled={busy || current}
-                onClick={() => settle(v.value)}
-                className={`inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-xs font-medium transition disabled:opacity-60 ${
-                  current
-                    ? "border-(--dc-accent) bg-(--dc-accent-soft) text-(--dc-accent-strong)"
-                    : "border-gray-300 text-gray-700 hover:border-(--dc-accent)/40 hover:bg-(--dc-accent-soft)/50"
-                }`}
-              >
-                {current && <Check className="h-3 w-3" />}
-                {v.label}
-              </button>
-            );
-          })}
-        </div>
-      </PopoverContent>
-    </Popover>
-  );
-}
-
-/* -------------------------------------------------------------------- table */
-
-const PAGE_SIZES = [25, 50, 100];
-
-export default function AssignmentLog({ canRun, canEdit = false }) {
+export default function AssignmentLog({ canEdit = false }) {
   const [rows, setRows] = useState([]);
   const [cursor, setCursor] = useState(null);
   const [history, setHistory] = useState([]);
@@ -382,50 +231,8 @@ export default function AssignmentLog({ canRun, canEdit = false }) {
     load(back);
   };
 
-  /** Which lever is waiting for a yes: assign, reclaim, or a move with its records. */
+  /** The move waiting for a yes, with its records. */
   const [confirmAction, setConfirmAction] = useState(null);
-
-  const runAssignment = async () => {
-    setBusy(true);
-    setNotice(null);
-    try {
-      const out = await dataCenterAssign.run();
-      setNotice(
-        `${plural(out.batches.length, "batch", "batches")} assigned` +
-          (out.reclaimed ? `, ${out.reclaimed} reclaimed first` : "") +
-          (out.batches.length === 0 && !out.reclaimed
-            ? ". Nothing to hand out: agents are at capacity or the pool is empty."
-            : "."),
-      );
-      setHistory([]);
-      setCurrentCursorRef(null);
-      await load(null);
-    } catch (err) {
-      setError(err instanceof DataCenterError ? err.message : "Assignment failed.");
-    } finally {
-      setBusy(false);
-    }
-  };
-
-  const runReclaim = async () => {
-    setBusy(true);
-    setNotice(null);
-    try {
-      const out = await dataCenterAssign.reclaim();
-      setNotice(
-        out.reclaimed
-          ? `${plural(out.reclaimed, "quiet batch", "quiet batches")} reclaimed. Their records are back in the pool.`
-          : "Nothing to reclaim: every open batch has recent activity.",
-      );
-      setHistory([]);
-      setCurrentCursorRef(null);
-      await load(null);
-    } catch (err) {
-      setError(err instanceof DataCenterError ? err.message : "Reclaim failed.");
-    } finally {
-      setBusy(false);
-    }
-  };
 
   const page = history.length + 1;
 
@@ -433,35 +240,19 @@ export default function AssignmentLog({ canRun, canEdit = false }) {
     <div className="overflow-hidden rounded-xl border border-gray-200 border-t-[3px] border-t-(--dc-accent) bg-white shadow-sm">
       <ConfirmDialog
         open={confirmAction !== null}
-        title={
-          confirmAction?.kind === "assign"
-            ? "Assign the pool now?"
-            : confirmAction?.kind === "reclaim"
-              ? "Reclaim quiet batches?"
-              : `Move ${plural(confirmAction?.what?.saleIds?.length ?? 0, "record")} to ${
-                  agents.find((a) => a.agent_id === moveTo)?.full_name ?? "that agent"
-                }?`
-        }
-        description={
-          confirmAction?.kind === "assign"
-            ? "Every agent with room takes a batch from the pool of unassigned records. Their lists change the moment it runs."
-            : confirmAction?.kind === "reclaim"
-              ? "Every open batch with no activity for the stale age goes back to the pool, and its agent loses it. Calls already logged stay on the records."
-              : "They leave their current agent's list and appear on the new one's at once. Calls already logged stay on the records."
-        }
+        title={`Move ${plural(confirmAction?.what?.saleIds?.length ?? 0, "record")} to ${
+          agents.find((a) => a.agent_id === moveTo)?.full_name ?? "that agent"
+        }?`}
+        description="They leave their current agent's list and appear on the new one's at once. Calls already logged stay on the records."
         cancelLabel="Not now"
-        actionLabel={
-          confirmAction?.kind === "assign" ? "Assign" : confirmAction?.kind === "reclaim" ? "Reclaim" : "Move them"
-        }
+        actionLabel="Move them"
         busy={busy}
         onCancel={() => setConfirmAction(null)}
         onConfirm={() => {
           const action = confirmAction;
           setConfirmAction(null);
           if (!action) return;
-          if (action.kind === "assign") runAssignment();
-          else if (action.kind === "reclaim") runReclaim();
-          else reassign(action.what);
+          reassign(action.what);
         }}
       />
       <div className="border-b border-gray-100 bg-(--dc-accent-soft)/30 px-4 py-3">
@@ -474,27 +265,6 @@ export default function AssignmentLog({ canRun, canEdit = false }) {
             </span>
           )}
           <div className="flex w-full flex-wrap items-center gap-2 sm:ml-auto sm:w-auto">
-            {canRun && (
-              <>
-                <button
-                  type="button"
-                  disabled={busy}
-                  onClick={() => setConfirmAction({ kind: "assign" })}
-                  className="inline-flex items-center gap-1.5 rounded-md bg-(--dc-accent) px-2.5 py-1.5 text-xs font-medium text-white hover:bg-(--dc-accent-strong) disabled:opacity-50"
-                >
-                  {busy ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Play className="h-3.5 w-3.5" />}
-                  Assign now
-                </button>
-                <button
-                  type="button"
-                  disabled={busy}
-                  onClick={() => setConfirmAction({ kind: "reclaim" })}
-                  className="inline-flex items-center gap-1.5 rounded-md border border-(--dc-accent)/30 px-2.5 py-1.5 text-xs font-medium text-(--dc-accent) transition hover:bg-(--dc-accent-soft)/60 disabled:opacity-50"
-                >
-                  <RotateCcw className="h-3.5 w-3.5" /> Reclaim quiet batches
-                </button>
-              </>
-            )}
             <ExportButton
               columns={EXPORT_COLUMNS}
               rows={() => rows}
@@ -663,7 +433,6 @@ export default function AssignmentLog({ canRun, canEdit = false }) {
                     </th>
                   ),
                 )}
-                {canEdit && <th scope="col" className="w-12 px-3 py-2" />}
                 {canEdit && (
                   <th scope="col" className="w-10 px-3 py-2">
                     <span className="sr-only">Choose</span>
@@ -729,15 +498,6 @@ export default function AssignmentLog({ canRun, canEdit = false }) {
                   <td className="px-3 py-2 tabular-nums text-gray-700">{r.attempt_count ?? 0}</td>
                   <td className="px-3 py-2 text-gray-500">{whenOf(r.last_attempt_at)}</td>
                   <td className="px-3 py-2 text-gray-500">{r.last_attempt_by ?? "-"}</td>
-                  {canEdit && (
-                    <td className="px-3 py-2 text-right">
-                      <QuickEdit
-                        row={r}
-                        outcomes={outcomes}
-                        onDone={() => load(currentCursorRef)}
-                      />
-                    </td>
-                  )}
                   {canEdit && (
                     <td className="px-3 py-2">
                       {/*
