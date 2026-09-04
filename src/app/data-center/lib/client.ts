@@ -2063,8 +2063,17 @@ export const dataCenterAssign = {
         user_state: string | null;
         user_lga: string | null;
         correction_state: string | null;
+        /** When the call centre last closed a fix on this record with "ring again". */
+        recall_closed_at: string | null;
         /** Set when another caller's rematch took this record's stove ID. */
         serial_unconfirmed_at: string | null;
+        batch_state: string;
+        completed_at: string | null;
+        /** Somebody stopped part way through this record's form. */
+        has_draft: boolean;
+        draft_saved_at: string | null;
+        draft_saved_by_name: string | null;
+        draft_is_mine: boolean | null;
       }[];
     }>("data-center-assign", "my_batches"),
 

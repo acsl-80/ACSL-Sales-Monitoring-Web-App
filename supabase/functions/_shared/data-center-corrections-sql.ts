@@ -268,12 +268,15 @@ export async function reviewCorrection(conn: PoolClient, input: {
   if (r.rowCount === 0) stale();
 
   if (input.outcome === "recall") {
-    // The number changed, so "unreachable" no longer describes anything.
+    // "Ring again" is the call centre saying its earlier conclusion no longer
+    // holds: unreachable on a number that has changed, verified on a record
+    // whose stove or buyer was wrong. Whatever it was, the record is open
+    // again, which is also what lets v_callable_records offer it.
     await conn.queryObject({
       text: `update data_center.call_records
                 set verification_outcome = 'not_verified',
                     updated_at = now(), updated_by = $2
-              where sale_id = $1 and verification_outcome = 'unreachable'`,
+              where sale_id = $1 and verification_outcome is distinct from 'not_verified'`,
       args: [input.saleId, input.actorId],
     });
   }
@@ -284,6 +287,7 @@ export async function reviewCorrection(conn: PoolClient, input: {
   }
 
   const route = await routeFor(conn, input.saleId);
+  try {
   const next = await conn.queryObject<Episode>({
     text: `insert into data_center.corrections
              (sale_id, seq, state, reason_id, disputed_fields, note, opened_at, opened_by,
@@ -306,6 +310,14 @@ export async function reviewCorrection(conn: PoolClient, input: {
     ],
   });
   return next.rows[0];
+  } catch (err) {
+    // A reopen racing an open on the same sale: the unique index refuses the
+    // loser, who is told the same thing a late reader is.
+    if ((err as { fields?: { code?: string } })?.fields?.code === "23505") {
+      throw new CorrectionError("This record is already with Sales.", 409, "already_open");
+    }
+    throw err;
+  }
 }
 
 export type PhoneChoice = "use_saved" | "keep_corrected";
@@ -313,8 +325,9 @@ export type PhoneChoice = "use_saved" | "keep_corrected";
 /**
  * After a fix, `public.sales.phone` is the truth. The call centre's
  * `corrected_phone` was a note of what the buyer said before Sales saved
- * anything; once Sales has saved the same number (same last ten digits,
- * however it was typed) the note is redundant and is cleared, so the queue
+ * anything; once Sales has saved the same number (`phone_digits_match`, the
+ * rule the review panel's check also uses) the note is redundant and is
+ * cleared, so the queue
  * and My Work dial the saved number and nobody reads two. When the two
  * differ nothing happens on its own: the reviewer chooses, and `use_saved`
  * clears the note while `keep_corrected` leaves it to be dialled.
@@ -332,9 +345,7 @@ export async function reconcilePhone(
              from public.sales s
             where s.id = $1 and cr.sale_id = s.id and cr.corrected_phone is not null
               and ($3::text = 'use_saved'
-                   or (length(regexp_replace(cr.corrected_phone, '\\D', '', 'g')) >= 7
-                       and right(regexp_replace(cr.corrected_phone, '\\D', '', 'g'), 10)
-                         = right(regexp_replace(coalesce(s.phone, ''), '\\D', '', 'g'), 10)))`,
+                   or data_center.phone_digits_match(cr.corrected_phone, s.phone))`,
     args: [saleId, actorId, choice],
   });
   return (r.rowCount ?? 0) > 0;

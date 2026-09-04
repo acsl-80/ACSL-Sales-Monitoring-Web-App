@@ -28,6 +28,8 @@ async function liveSale(): Promise<Sale | null> {
        from public.sales s
       where s.is_archived is not true
         and length(regexp_replace(coalesce(s.phone, ''), '\\D', '', 'g')) >= 10
+        -- Never a record with a real send-back: the seed deletes episodes.
+        and not exists (select 1 from data_center.corrections c where c.sale_id = s.id)
       order by s.id limit 1`,
   );
   const row = rows[0] ?? null;

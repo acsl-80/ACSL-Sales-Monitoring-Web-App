@@ -178,6 +178,7 @@ serve(async (req) => {
       fields?: unknown;
       note?: string | null;
       outcome?: string;
+      phone?: string | null;
     } = {};
     try {
       body = await req.json();
@@ -367,9 +368,9 @@ serve(async (req) => {
                                     where c.sale_id = $1
                                     order by c.seq desc limit 1) e on true
                     where h.sale_id = $1
-                      and h.performed_at >= e.opened_at
-                      and h.performed_at <= coalesce(e.reviewed_at, now())
-                    order by h.performed_at desc
+                      and coalesce(h.performed_at, h.created_at) >= e.opened_at
+                      and coalesce(h.performed_at, h.created_at) <= coalesce(e.reviewed_at, now())
+                    order by coalesce(h.performed_at, h.created_at) desc, h.id desc
                     limit 20`,
             args: [saleId],
           });
@@ -377,8 +378,7 @@ serve(async (req) => {
           const phoneCheck = await conn.queryObject({
             text: `select cr.corrected_phone as heard, s.phone as saved,
                           case when cr.corrected_phone is null then null
-                               else right(regexp_replace(cr.corrected_phone, '\\D', '', 'g'), 10)
-                                  = right(regexp_replace(coalesce(s.phone, ''), '\\D', '', 'g'), 10)
+                               else data_center.phone_digits_match(cr.corrected_phone, s.phone)
                           end as matches
                      from public.sales s
                      left join data_center.call_records cr on cr.sale_id = s.id

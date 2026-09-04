@@ -135,7 +135,7 @@ mid-run.
 | Completeness | `sales.complete`, `sales.incomplete`, `sales.app_says_completed`, `sales.status_disagreement` |
 | Verification | `verification.by_outcome` (including `never_called` as its own bucket) |
 | Call centre | `calls.records_worked`, `calls.attempts_total`, `calls.avg_attempts`, `calls.exhausted` |
-| Corrections | `corrections.open`, `corrections.resolved`, `corrections.avg_days_to_resolve` |
+| Corrections | `corrections.open`, `corrections.fixed`, `corrections.resolved` (closes with ring again or nothing to ring), `corrections.avg_days_to_resolve` |
 | Stock | `stock.by_status` |
 | Import | `import.batches_committed`, `import.rows_committed`, `import.exceptions_open` |
 | Scorecards | `scorecard.issued/received/digitalised/verified/unverified/unreachable/unresolved`, once per dimension |

@@ -28,4 +28,5 @@ lives on each PR.
 - The host form's own copy of the previous-stove list (`CreateSalesForm.jsx`): host lane.
 - A structured editor for the sheet columns config.
 - Accounts for sales reps who have none.
+- `calls.exhausted` and the queue's "Chased 3 times" preset count raw attempts, so a record recalled after a fix reads as exhausted and callable at once. Slice 5b (pool v2, `recall_due`) aligns them with the allowance `v_callable_records` already applies. Found by the slice 3 review.
 - The commit-chain rollback spec ("rollback under a live chain is refused") is timing-bound: the lease is released between slices, so a rollback that lands in the gap answers 200. Passed on its second run 2026-09-04. Pre-existing; a product fix would hold the lease for the whole chain.

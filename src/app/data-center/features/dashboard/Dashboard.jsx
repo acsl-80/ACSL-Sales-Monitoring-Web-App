@@ -650,7 +650,7 @@ export default function Dashboard({ canRun }) {
               hint="fixed by Sales, for the call centre"
               skin={value(m, "corrections.fixed") > 0 ? "warn" : "neutral"}
               to="/data-center/corrections"
-              search={{ tab: "review" }}
+              search={{ tab: "fixed" }}
             />
             <Card
               label={scopedLabel("Calls logged", "calls.attempts_total")}

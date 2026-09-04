@@ -254,9 +254,9 @@ function RowActions({ row, data, reload }) {
   return null;
 }
 
-export default function CorrectionsList({ initialTab = "open" }) {
+export default function CorrectionsList({ initialTab = "open", initialMine = false }) {
   const [tab, setTab] = useState(initialTab);
-  const [mine, setMine] = useState(false);
+  const [mine, setMine] = useState(initialMine);
   const [data, setData] = useState(null);
   const [error, setError] = useState(null);
   const [loading, setLoading] = useState(true);

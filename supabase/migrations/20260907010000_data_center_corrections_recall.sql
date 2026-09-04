@@ -9,7 +9,25 @@
 --    appended.
 -- 2. The dashboard's correction counts come from the episodes, split by state,
 --    so "Waiting on Sales" and "Awaiting review" are two numbers.
+-- 3. One rule for "the same phone number", used by the review panel's check
+--    and by the close that acts on it, so the panel cannot promise a clear
+--    the close then refuses.
 -- ===========================================================================
+
+create or replace function data_center.phone_digits_match(a text, b text)
+returns boolean
+language sql
+immutable
+as $$
+  -- Same last ten digits, and enough digits on each side to be a number at
+  -- all: 'n/a' against an empty phone is not a match.
+  select length(regexp_replace(coalesce(a, ''), '\D', '', 'g')) >= 7
+     and length(regexp_replace(coalesce(b, ''), '\D', '', 'g')) >= 7
+     and right(regexp_replace(a, '\D', '', 'g'), 10) = right(regexp_replace(b, '\D', '', 'g'), 10)
+$$;
+
+comment on function data_center.phone_digits_match(text, text) is
+  'True when two phone numbers agree on their last ten digits and each carries at least seven. The one definition of "the same number" for the correction loop.';
 
 create or replace view data_center.v_callable_records as
 select
@@ -277,13 +295,20 @@ begin
   -- ---- The correction loop ------------------------------------------------
   -- Episodes, not the mirror columns on call_records: since phase 24 `fixed`
   -- is a state of its own (Sales says it is done, the call centre has not
-  -- looked), and the mirror cannot tell it from open. One row per state.
+  -- looked), and the mirror cannot tell it from open. `resolved` counts the
+  -- closes the call centre made (ring again, nothing to ring); a withdrawal
+  -- or a send-back-again is not a resolution and is not counted as one.
   insert into data_center.metric_snapshots (run_id, metric_key, dimension, value_num)
   select p_run_id, k, jsonb_build_object('period', period), v from (
-    select p.period, 'corrections.' || cx.state as k, count(*)::numeric as v
-      from data_center.corrections cx
-      left join data_center.v_sale_period p on p.sale_id = cx.sale_id
-     where cx.state in ('open', 'fixed', 'resolved')
+    select p.period, x.k, count(*)::numeric as v
+      from (select cx.sale_id,
+                   case when cx.state in ('open', 'fixed') then 'corrections.' || cx.state
+                        when cx.state = 'resolved' and cx.review_outcome in ('recall', 'no_recall')
+                          then 'corrections.resolved'
+                   end as k
+              from data_center.corrections cx) x
+      left join data_center.v_sale_period p on p.sale_id = x.sale_id
+     where x.k is not null
      group by 1, 2
     union all
     select null::text, z.k, 0::numeric
@@ -295,7 +320,8 @@ begin
   insert into data_center.metric_snapshots (run_id, metric_key, dimension, value_num)
   select p_run_id, 'corrections.avg_days_to_resolve', '{}'::jsonb,
          round(coalesce(avg(extract(epoch from (reviewed_at - opened_at)) / 86400), 0), 2)
-    from data_center.corrections where state = 'resolved' and reviewed_at is not null;
+    from data_center.corrections
+   where state = 'resolved' and reviewed_at is not null and review_outcome in ('recall', 'no_recall');
   get diagnostics n = row_count; written := written + n;
 
   -- ---- Stock --------------------------------------------------------------

@@ -1,3 +1,4 @@
+import { useSearch } from "@tanstack/react-router";
 import DataCentreShell from "../components/DataCentreShell";
 import CorrectionsList from "../features/corrections/CorrectionsList";
 import { DATA_CENTER_FEATURES } from "../lib/features";
@@ -15,6 +16,7 @@ import { DATA_CENTER_FEATURES } from "../lib/features";
  * consignments, and finds no other door open.
  */
 export default function CorrectionsPage() {
+  const search = useSearch({ from: "/data-center/corrections" });
   return (
     <DataCentreShell
       title="Records to fix"
@@ -23,7 +25,7 @@ export default function CorrectionsPage() {
       area="call-centre"
       feature={DATA_CENTER_FEATURES.CORRECTIONS_FIX}
     >
-      <CorrectionsList />
+      <CorrectionsList key={`${search.tab ?? "open"}:${search.mine ? 1 : 0}`} initialTab={search.tab ?? "open"} initialMine={Boolean(search.mine)} />
     </DataCentreShell>
   );
 }

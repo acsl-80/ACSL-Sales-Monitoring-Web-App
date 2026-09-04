@@ -83,7 +83,7 @@ export interface RecordsFilters {
   assignedAgent?: string;
   /** Sales assigned to any agent reporting to this manager. */
   agentManager?: string;
-  /** none | open | resolved. "open" is the queue waiting on Sales. */
+  /** none | open | fixed | resolved. "open" is the queue waiting on Sales, "fixed" is awaiting review. */
   correctionState?: string;
   /** false selects sales the call centre has never touched. */
   hasCallRecord?: boolean;
@@ -594,14 +594,14 @@ export function buildRecordsQuery(
         // The mirror columns cannot tell open from fixed (both have a request
         // and no resolution), so "Waiting on Sales" asks the episodes.
         where.push(
-          "exists (select 1 from data_center.corrections cx where cx.sale_id = cr.sale_id and cx.state = 'open')",
+          "exists (select 1 from data_center.corrections cx where cx.sale_id = s.id and cx.state = 'open')",
         );
       } else if (f.correctionState === "fixed") {
         // Sales has saved and the call centre has not yet reviewed. The mirror
         // columns still read as open (they stamp resolution only at close), so
         // this one asks the episodes directly.
         where.push(
-          "exists (select 1 from data_center.corrections cx where cx.sale_id = cr.sale_id and cx.state = 'fixed')",
+          "exists (select 1 from data_center.corrections cx where cx.sale_id = s.id and cx.state = 'fixed')",
         );
       } else if (f.correctionState === "resolved") {
         where.push("cr.correction_resolved_at is not null");
