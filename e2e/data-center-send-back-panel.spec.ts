@@ -85,7 +85,7 @@ test("every active reason is a visible chip, and the reason pre-ticks its fields
     const phoneReason = reasons.find((r) => r.value === "wrong_phone");
     test.skip(!phoneReason, "wrong_phone is retired on this branch");
     await panel.getByRole("radio", { name: phoneReason!.label }).click();
-    await expect(panel.getByRole("checkbox", { name: "Phone" })).toHaveAttribute("aria-checked", "true", { timeout: 15_000 });
+    await expect(panel.getByRole("checkbox", { name: "Phone", exact: true })).toHaveAttribute("aria-checked", "true", { timeout: 15_000 });
     await expect(panel.getByRole("checkbox", { name: "Other phone" })).toHaveAttribute("aria-checked", "true");
     await expect(panel.getByRole("checkbox", { name: "End user name" })).toHaveAttribute("aria-checked", "false");
 
@@ -116,7 +116,7 @@ test("something else refuses without a note; a send-back lands with its fields a
     await expect(panel.getByRole("button", { name: "Send back to Sales" })).toBeDisabled();
 
     await panel.getByRole("radio", { name: phone!.label }).click();
-    await expect(panel.getByRole("checkbox", { name: "Phone" })).toHaveAttribute("aria-checked", "true", { timeout: 15_000 });
+    await expect(panel.getByRole("checkbox", { name: "Phone", exact: true })).toHaveAttribute("aria-checked", "true", { timeout: 15_000 });
     await panel.getByRole("checkbox", { name: "End user name" }).click();
     await panel.getByLabel("Tell Sales what you heard").fill("e2e: rings a different household, and the name on the receipt is not who answers");
     await panel.getByRole("button", { name: "Send back to Sales" }).click();
