@@ -223,6 +223,12 @@ async function signInWithForm(page: Page, email: string) {
 
   const identifier = page.locator('input[type="text"]').first();
   await identifier.waitFor({ state: "visible" });
+  // Wait for hydration before typing. The server renders the submit button
+  // as "Redirecting..." and React replaces it once it owns the form; anything
+  // typed into the inputs before that is wiped when the controlled inputs
+  // mount, and the click then submits an empty form that goes nowhere. On a
+  // cold deployment that window is long enough to lose every sign-in.
+  await expect(page.locator('button[type="submit"]').first()).not.toHaveText(/redirecting/i, { timeout: 30_000 });
   await identifier.fill(email);
   await page.locator('input[type="password"]').first().fill(PREVIEW_PASSWORD);
 
