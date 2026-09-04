@@ -66,7 +66,7 @@ function Inner() {
       ?? (preset ? PRESET_LABELS[preset] : null)
       ?? (search.verificationOutcome
         ? search.verificationOutcome.replace(/_/g, " ")
-        : "a scorecard row");
+        : "the filters set on the queue");
 
     return {
       preset,
@@ -121,7 +121,7 @@ function Inner() {
         </>
       )}
 
-      <CallQueue key={drill?.preset ?? "all"} canEdit={canEdit} drill={drill} />
+      <CallQueue key={drill?.preset ?? "all"} canEdit={canEdit} drill={drill} agents={canManage ? cc.agents?.agents ?? null : null} />
 
       {/* A supervisor gets their own queue after everybody's: they ask about
           everybody first and about themselves rarely, which is the opposite

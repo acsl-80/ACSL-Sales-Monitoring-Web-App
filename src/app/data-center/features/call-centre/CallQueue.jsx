@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import PeriodFilter from "../../components/PeriodFilter";
+import CallQueueFilters from "./queue/CallQueueFilters";
 import { usePeriod } from "../../lib/usePeriod";
 import { useRecords, PAGE_SIZE } from "../../lib/useRecords";
 import { useIsPhone } from "../../lib/useMediaQuery";
@@ -215,7 +216,7 @@ function Cell({ row, column }) {
   return <span className="truncate">{value}</span>;
 }
 
-export default function CallQueue({ canEdit, drill = null }) {
+export default function CallQueue({ canEdit, drill = null, agents = null }) {
   // The URL seeds which preset is showing; the chips are the user's after that.
   // Seeding rather than controlling, so clicking a chip is not fighting the
   // address bar on every render.
@@ -306,7 +307,7 @@ export default function CallQueue({ canEdit, drill = null }) {
         <div className="flex flex-wrap items-center gap-2 border-b border-(--dc-primary)/20 bg-(--dc-primary-soft)/50 px-4 py-2.5">
           <Filter className="h-3.5 w-3.5 shrink-0 text-(--dc-accent)" />
           <p className="text-sm text-(--dc-accent)">
-            Narrowed from the dashboard to <span className="font-medium">{drill.description}</span>
+            Narrowed to <span className="font-medium">{drill.description}</span>
           </p>
           <button
             type="button"
@@ -367,6 +368,10 @@ export default function CallQueue({ canEdit, drill = null }) {
           </button>
         )}
       </div>
+
+      {/* The facets, held in the URL: partner, rep, verification, and who
+          holds the record when the reader may see the agents. */}
+      <CallQueueFilters agents={agents} />
 
       {error && (
         <div className="flex items-start gap-2 border-b border-amber-200 bg-amber-50 px-4 py-3">
