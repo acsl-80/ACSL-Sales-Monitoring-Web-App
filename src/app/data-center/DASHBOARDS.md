@@ -59,22 +59,28 @@ live sale reads `completed`; the eight rows that do are all cancelled.
 A dashboard counting completed sales would report 1 out of 15, be technically
 correct, and be useless.
 
-So the module defines completeness for itself, from
-`workflow_config.completeness_required_fields`, which today names seven fields
-and deliberately omits the two images.
+So the module defines completeness for itself, in two configured parts:
 
-Against the 500,000-row seeded database the two rules disagree like this:
+- `completeness_required_fields`: the columns that must be present. Six today
+  (`transaction_id`, `stove_serial_no`, `end_user_name`, `phone`, `amount`,
+  `address_id`); the two images are deliberately absent.
+- `completeness_evidence_any_of`: the evidence the sale must carry, any one of
+  which will do. Today a drawn signature (`{"kind": "column", "name":
+  "signature"}`) or a receipt committed through an import that asserted the
+  paper agreement (`{"kind": "import_paper_agreement"}`). The batch remembers
+  that assertion in `import_batches.paper_agreement_asserted`, stamped when it
+  reaches committed from `import.paper_sources` and
+  `import.require_paper_agreement`. A digitised paper receipt is therefore
+  complete without a signature, which is what the import accepted it as.
 
-| | Count |
-|---|---|
-| Live sales | 480,005 |
-| Complete, by this module's rule | 480,000 |
-| Complete, by the sales app | 120,000 |
-| **Disagreement** | **360,000** |
-
-The dashboard shows that gap rather than hiding it, because it is a real defect
-in the sales app and a number is harder to forget than a note. Fixing
-`calculate_sale_status()` is the sales app's work, not this module's.
+The dashboard no longer alarms about the sales app's own status rule. The
+Complete card keeps its percentage, and a "What is missing" section names each
+part of the rule with the count of live records missing it, each a link to the
+records table narrowed by `missingField`. Those counts are undated on purpose:
+the dashboard's period is the consignment month and the table's is the sale
+date, so a dated figure could never equal the table behind it. The disagreement
+with the sales app is one sentence, and it reaches zero only when the sales
+app's rule changes (decision D1).
 
 ### Changing the rule
 
@@ -82,14 +88,19 @@ It is config, not code:
 
 ```sql
 update data_center.workflow_config
-set value = '["transaction_id","stove_serial_no","end_user_name","phone","amount","address_id"]'::jsonb
+set value = '["transaction_id","stove_serial_no","end_user_name","phone","amount"]'::jsonb
 where key = 'completeness_required_fields';
+
+update data_center.workflow_config
+set value = '[{"kind": "column", "name": "signature"}]'::jsonb
+where key = 'completeness_evidence_any_of';
 ```
 
-The next run uses it. Field names are validated against
-`information_schema.columns` before they reach a query, so a value written here
-cannot become SQL, and a name that is not a column of `public.sales` raises
-rather than silently counting nothing.
+The next run uses it, and the Missing facet offers the new parts without a
+release. Column names are validated against `information_schema.columns` before
+they reach a query, so a value written here cannot become SQL; a name that is
+not a column of `public.sales` raises rather than silently counting nothing,
+and so does an evidence kind the module does not know.
 
 ## Why the computation is SQL and not TypeScript
 

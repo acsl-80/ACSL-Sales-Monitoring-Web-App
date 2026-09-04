@@ -127,8 +127,11 @@ that asserted the paper agreement. The rule now has two configured parts:
 `completeness_required_fields` (six columns; the signature left the list only
 because the list still read as seeded) and `completeness_evidence_any_of`,
 a list of kinds any one of which satisfies it: `column` (a named column of
-`public.sales`, today `signature`) and `import_paper_agreement` (a committed
-import batch that asserted the paper agreement). Unknown kinds raise.
+`public.sales`, today `signature`) and `import_paper_agreement` (the import
+row that created the sale, from a batch that asserted the paper agreement
+and was not rolled back; not the batch's current state, because a bench
+batch reopened for one refused receipt goes back to validated). Unknown
+kinds raise.
 
 The batch remembers the assertion in `import_batches.paper_agreement_asserted`,
 stamped by a trigger when a batch reaches committed, from `import.paper_sources`
@@ -139,7 +142,8 @@ committed on three paths. Committed batches were backfilled by the same rule.
 
 The dashboard's amber notice about the sales app's status rule is gone. In its
 place the Complete card keeps its percentage and a "What is missing" strip
-names each part of the rule with the count of live sales missing it, linking
+names each part of the rule with the count of live sales missing it (undated,
+over every live sale, so the table it links to agrees by construction), linking
 to the records table narrowed by the new `missingField` filter, which the
 database validates against the rule (`data_center.missing_predicate`). The
 disagreement with the sales app is one sentence, and it reaches zero only with

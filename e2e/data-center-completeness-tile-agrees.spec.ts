@@ -158,9 +158,12 @@ test("the dashboard names what is missing instead of alarming about the sales ap
 
   const strip = page.getByRole("region", { name: "What is missing" });
   await expect(strip).toBeVisible({ timeout: 30_000 });
-  await expect(strip.getByText(/a drawn signature, or a receipt committed through an import/)).toBeVisible();
+  await expect(strip.getByText(/every required field is present/)).toBeVisible();
   const first = strip.getByRole("link").first();
   await expect(first).toHaveAttribute("href", /missingField=/);
+  // The chip's count is over every live record, so its link opens the table
+  // over every live record too: the two agree by construction.
+  await expect(first).toHaveAttribute("href", /period=all/);
 });
 
 test("the Missing filter narrows the records table to the SQL oracle, from the URL", async ({ page }) => {
@@ -172,7 +175,10 @@ test("the Missing filter narrows the records table to the SQL oracle, from the U
     const n = await missingCount(f);
     if (n > 0) { field = f; expected = n; break; }
   }
-  test.skip(!field, "every live sale on the branch is complete");
+  // The seed carries sales from the sales app with neither a signature nor an
+  // import row, so evidence is missing on every branch; a branch where it is
+  // not is a broken arrangement, not a reason to skip.
+  expect(field, "a part of the rule some live sale is missing").toBeTruthy();
 
   await signIn(page, USERS.admin);
   await page.goto(`/data-center/stove-records?missingField=${field}&period=all`);
@@ -183,7 +189,8 @@ test("the Missing filter narrows the records table to the SQL oracle, from the U
   await expect(count).toBeVisible({ timeout: 30_000 });
   const text = (await count.textContent()) ?? "";
   const shown = Number(text.match(/^([\d,]+)/)?.[1].replace(/,/g, ""));
-  expect(shown).toBe(expected);
+  if (/^[\d,]+\+/.test(text)) expect(expected).toBeGreaterThan(shown);
+  else expect(shown).toBe(expected);
 
   // The facet exists in the panel too, and reads back the URL.
   await page.getByRole("button", { name: /More filters/ }).click();

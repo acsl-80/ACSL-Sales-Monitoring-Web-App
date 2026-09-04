@@ -656,8 +656,10 @@ export default function Dashboard({ canRun }) {
               </h3>
               <p className="mt-1 text-sm text-gray-600">
                 Complete by this module&apos;s rule means every required field is present and
-                the sale carries evidence the rule accepts: a drawn signature, or a receipt
-                committed through an import that asserted the paper agreement.
+                the sale carries evidence the rule accepts. The rule is set in Settings; its
+                parts are below, each with the live records missing it, counted over every
+                live record whatever the period above. A record missing two parts is counted
+                under both.
                 {appSays !== complete && (
                   <> The sales app marks {NUMBER.format(appSays)} completed; its rule differs.</>
                 )}
@@ -670,6 +672,9 @@ export default function Dashboard({ canRun }) {
                       search={{
                         missingField: r.dimension.field,
                         label: `Missing ${fieldWords(r.dimension.field)}`,
+                        // The count is over every live record, so the table
+                        // it opens must be too, or the two disagree by design.
+                        period: "all",
                       }}
                       className="inline-flex items-center gap-1.5 rounded-full border border-(--dc-accent)/40 bg-(--dc-accent-soft)/40 px-3 py-1 text-xs font-medium text-(--dc-accent-strong) hover:bg-(--dc-accent-soft)"
                     >

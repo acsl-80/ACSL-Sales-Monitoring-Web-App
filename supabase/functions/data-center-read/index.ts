@@ -344,49 +344,55 @@ serve(async (req) => {
         /*
          * The completeness filter is resolved by the database, not by a list
          * held here: missing_predicate validates the name against the rule as
-         * configured and returns the predicate, or raises, which is a 400.
+         * configured and returns the predicate, or raises, which is a 400. It is
+         * resolved on the same connection that runs the page, because a
+         * connection costs more than a statement (see data-center-db.ts).
          */
-        let completeness: CompletenessContext | null = null;
         const missingField = (body.filters as Record<string, unknown> | undefined)?.missingField;
         if (missingField !== undefined) {
-          if (typeof missingField !== "string" || !/^[a-z_]{1,64}$/.test(missingField)) {
+          if (table !== "records") {
+            return json({ error: "The completeness filter belongs to the records table", code: "bad_request" }, 400, cors);
+          }
+          if (typeof missingField !== "string" || missingField.length === 0 || missingField.length > 64) {
             return json({ error: "Unknown completeness field", code: "bad_request" }, 400, cors);
           }
-          try {
-            const resolved = await withReadConnection((connection) =>
-              connection.queryObject<{ sql: string }>({
-                text: "select data_center.missing_predicate($1, 's') as sql",
-                args: [missingField],
-              }),
-            );
-            completeness = { missingSql: resolved.rows[0].sql };
-          } catch {
-            return json({ error: "Unknown completeness field", code: "bad_request" }, 400, cors);
-          }
-        }
-
-        let built;
-        try {
-          built = buildRecordsQuery(
-            {
-              table,
-              cursor: (body.cursor ?? null) as never,
-              limit: body.limit as number | undefined,
-              direction: body.direction as "asc" | "desc" | undefined,
-              filters: (body.filters ?? {}) as never,
-            },
-            scope,
-            undefined,
-            completeness,
-          );
-        } catch (err) {
-          if (err instanceof BadRequest) {
-            return json({ error: err.message, code: "bad_request" }, 400, cors);
-          }
-          throw err;
         }
 
         return await withReadConnection(async (connection) => {
+          let completeness: CompletenessContext | null = null;
+          if (typeof missingField === "string") {
+            try {
+              const predicate = await connection.queryObject<{ sql: string }>({
+                text: "select data_center.missing_predicate($1, 's') as sql",
+                args: [missingField],
+              });
+              completeness = { missingSql: predicate.rows[0].sql };
+            } catch {
+              return json({ error: "Unknown completeness field", code: "bad_request" }, 400, cors);
+            }
+          }
+
+          let built;
+          try {
+            built = buildRecordsQuery(
+              {
+                table,
+                cursor: (body.cursor ?? null) as never,
+                limit: body.limit as number | undefined,
+                direction: body.direction as "asc" | "desc" | undefined,
+                filters: (body.filters ?? {}) as never,
+              },
+              scope,
+              undefined,
+              completeness,
+            );
+          } catch (err) {
+            if (err instanceof BadRequest) {
+              return json({ error: err.message, code: "bad_request" }, 400, cors);
+            }
+            throw err;
+          }
+
           // Two statements, deliberately. See the note at the top of
           // records-query.ts: as one query the call queue took 25.8 seconds at
           // 500,000 rows, and split it takes about 40 milliseconds.
@@ -2331,12 +2337,16 @@ serve(async (req) => {
            * The parts of the completeness rule, for the Missing facet. Read
            * from the rule itself, so a field added in Settings is offered here
            * without a release; evidence is offered only while a rule asks for it.
+           * Read by shape rather than by building the predicate, so a bad
+           * evidence row in config costs the Missing list and not every list.
            */
           const rule = await connection.queryObject<{ fields: string[] | null; has_evidence: boolean }>({
             text: `select (select array(select jsonb_array_elements_text(value))
                              from data_center.workflow_config
                             where key = 'completeness_required_fields') as fields,
-                          data_center.completeness_evidence_predicate('s') is not null as has_evidence`,
+                          coalesce((select jsonb_typeof(value) = 'array' and jsonb_array_length(value) > 0
+                                      from data_center.workflow_config
+                                     where key = 'completeness_evidence_any_of'), false) as has_evidence`,
           });
           const missingFields = [
             ...(rule.rows[0]?.fields ?? []),

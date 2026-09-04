@@ -17,7 +17,7 @@ lives on each PR.
 - [x] 5b Pool v3 (with Sales, half-typed and just-rung records left out; digitised_at, recall_due) and pick_callable with a configured order. merged, live (PR #73, 2026-09-04): migration applied, callable 1,502 unchanged on the day, assign v5 deployed, bundle crawl confirmed
 - [x] 6a Control centre: board, agents with presence, pool by partner, lanes, polling; the log is history only. merged, live (PR #74, 2026-09-04): migration applied, three functions deployed, a pool-only run on production wrote 127 rows with the sales families' computed-at untouched, bundle crawl confirmed
 - [x] 6b Queue facets in the URL. PR #75 merged and live 2026-09-04 (main 72df1a9 to a80f2ec; client only, bundle crawl confirmed)
-- [ ] 7a Completeness evidence config and the tile's plain line. in progress
+- [ ] 7a Completeness evidence config and the tile's plain line. green on the preview, in review (PR #76)
 - [ ] 7b The sales app's status rule (D17). needs the owner's word
 - [ ] 8 Settings: used by, retire warning, previous_stove list, typed editors, gates. todo
 - [ ] 9 Order model on the transfer, preselected on the bench (D19). needs the owner's word

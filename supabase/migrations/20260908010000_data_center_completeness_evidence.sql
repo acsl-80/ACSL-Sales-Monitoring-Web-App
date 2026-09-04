@@ -142,11 +142,15 @@ begin
       when 'column' then
         parts := parts || data_center.field_present_predicate(item ->> 'name', p_alias);
       when 'import_paper_agreement' then
+        -- The row that created the sale, from a batch that asserted the
+        -- paper agreement and was not rolled back. Not the batch's current
+        -- state: a bench batch reopened for one refused receipt goes back
+        -- to validated, and the sales it already created keep their evidence.
         parts := parts || format(
           'exists (select 1 from data_center.import_rows r
                      join data_center.import_batches b on b.id = r.batch_id
-                    where r.sale_id = %I.id and b.state = %L and b.paper_agreement_asserted)',
-          p_alias, 'committed');
+                    where r.sale_id = %I.id and b.paper_agreement_asserted and b.state <> %L)',
+          p_alias, 'rolled_back');
       else
         raise exception 'completeness_evidence_any_of has kind %, which this module does not know',
           coalesce(item ->> 'kind', '(none)');
@@ -158,7 +162,7 @@ end;
 $$;
 
 comment on function data_center.completeness_evidence_predicate is
-  'The evidence half of the completeness rule as one parenthesised OR, built from completeness_evidence_any_of. Null when no evidence is configured. Unknown kinds raise rather than being skipped.';
+  'The evidence half of the completeness rule as one parenthesised OR, built from completeness_evidence_any_of. A paper agreement is carried by the committed import row that created the sale, from a batch that asserted it and was not rolled back. Null when no evidence is configured. Unknown kinds raise rather than being skipped.';
 
 create or replace function data_center.completeness_predicate(alias text default 's')
 returns text
@@ -400,8 +404,12 @@ begin
 
   -- ---- What is missing, per part of the rule ------------------------------
   -- One row per required field and one for the evidence, each the count of
-  -- live sales missing that part, per consignment month. Built from the same
-  -- configuration the predicate reads, so the parts here are the parts there.
+  -- live sales missing that part. Deliberately undated, like the import
+  -- counters: the dashboard's period is the consignment month and the
+  -- records table's is the sale date, so a dated figure here could never
+  -- equal the table it links to. Undated, both count every live sale and
+  -- agree by construction. Built from the same configuration the predicate
+  -- reads, so the parts here are the parts there.
   declare
     req text[];
     fld text;
@@ -413,27 +421,22 @@ begin
 
     foreach fld in array coalesce(req, '{}'::text[]) loop
       arms := arms || format($a$
-        select p.period, %L as field, count(*) filter (where not (%s))::numeric as v
+        select %L as field, count(*) filter (where not (%s))::numeric as v
           from public.sales s
-          left join data_center.v_sale_period p on p.sale_id = s.id
-         where s.is_archived is not true
-         group by 1$a$, fld, data_center.field_present_predicate(fld, 's'));
+         where s.is_archived is not true$a$, fld, data_center.field_present_predicate(fld, 's'));
     end loop;
 
     if evidence is not null then
       arms := arms || format($a$
-        select p.period, %L as field, count(*) filter (where not %s)::numeric as v
+        select %L as field, count(*) filter (where not %s)::numeric as v
           from public.sales s
-          left join data_center.v_sale_period p on p.sale_id = s.id
-         where s.is_archived is not true
-         group by 1$a$, 'evidence', evidence);
+         where s.is_archived is not true$a$, 'evidence', evidence);
     end if;
 
     if array_length(arms, 1) is not null then
       execute format($q$
         insert into data_center.metric_snapshots (run_id, metric_key, dimension, value_num)
-        select $1, 'sales.incomplete_by_missing',
-               jsonb_build_object('period', period, 'field', field), v
+        select $1, 'sales.incomplete_by_missing', jsonb_build_object('field', field), v
           from (%s) t
       $q$, array_to_string(arms, ' union all ')) using p_run_id;
       get diagnostics n = row_count; written := written + n;
@@ -647,7 +650,7 @@ end;
 $function$;
 
 comment on function data_center.compute_metrics(uuid, text[]) is
-  'Writes the dashboard metric families for one run. Every family belonging to a consignment carries a period at month grain, dated by when the stove was sold to the partner; the two averages, the three import counters and the pool family carry none. sales.incomplete_by_missing carries a field dimension: one row per required field and one for the evidence. With p_families = array[''pool''] only the pool family is written and the run returns; the read takes the newest row per key, so the other families keep their last full run.';
+  'Writes the dashboard metric families for one run. Every family belonging to a consignment carries a period at month grain, dated by when the stove was sold to the partner; the two averages, the three import counters and the pool family carry none. sales.incomplete_by_missing is undated and carries a field dimension: one row per required field and one for the evidence, over every live sale. With p_families = array[''pool''] only the pool family is written and the run returns; the read takes the newest row per key, so the other families keep their last full run.';
 
 
 -- ---------------------------------------------------------------------------
