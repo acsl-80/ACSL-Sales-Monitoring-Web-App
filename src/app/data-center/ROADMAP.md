@@ -1471,3 +1471,39 @@ Payment detail sits under `records.view`, the key that already exposes
 running total from the payments that make it up would put two halves of one
 fact behind two doors. A separate key is a one-line change if the proof images
 later argue for one.
+
+## Phase 24: corrections you can work, the call centre as a control centre
+
+Opened 2026-09-04 from the owner's six asks (see PLAN.md, programme section).
+One PR per slice, red-first spec on a preview branch, merge on his word,
+production confirmed. States are kept in `TASKS.md`.
+
+| Slice | What lands | Migration |
+|---|---|---|
+| 0 | This entry, `TASKS.md`, `decisions.md` | none |
+| 0.5 | The design canvas: ten surfaces in the module's theme, approved before code | none |
+| 1 | `data_center.corrections` episodes, mirror trigger, `v_corrections`, backfill of the 24, reason-to-field config, the `data-center-corrections` function, `sales_rep` access provisioned on link | `20260905010000_data_center_corrections.sql` |
+| 2 | The correction workspace route, disputed record, sale edit through `update-sale`, serial through rematch | none |
+| 3 | Review panel, close with recall or no recall, derived recall allowance in `v_callable_records`, "Awaiting review" everywhere | `20260907010000_data_center_corrections_recall.sql` |
+| 4 | `SendBackPanel` with every reason visible, `WorkWaitingBanner` with three pills | none |
+| 5a | Engine selects from `module_access`, capacity on the manual door, `agent_profile_set`, gates on `assignment.manage` | `20260905020000_data_center_assignment_picks_from_module_access.sql` |
+| 5b | `v_callable_records` v2 (exclusions, recency, recall), `pick_callable` with `assignment.priority` | `20260906000000_sales_created_at_index.sql`, `20260906010000_data_center_pool_priority.sql` |
+| 6a | Board, agents panel with presence, pool by partner, lanes, polling from config | `20260907020000_data_center_pool_metrics.sql` |
+| 6b | Queue facets held in the URL | none |
+| 7a | `completeness_evidence_any_of`, the tile's one-line rule, the Missing facet | `20260908010000_data_center_completeness_evidence.sql` |
+| 7b | The sales app's status rule (D17), host lane | its own, on the owner's word |
+| 8 | "Used by" and the retire warning, `previous_stove` list, typed editors for two config keys, gates matched to the server | seed for the list |
+| 9 | Order model on the transfer (D19), preselected on the bench, shown in the rail and the sheet | host lane, on the owner's word |
+
+### Found while planning, all real
+
+- The auto-assignment engine could never pick an agent on production:
+  `assign_batches` inner-joins `call_agent_profiles`, which has no rows.
+  Every open batch came through the manual door, which checks role only, so
+  five agents hold three batches each against a cap of one.
+- Every linked sales rep and both standing recipients lack a `module_access`
+  row, so nobody the send-back flow routes to can open the corrections page.
+- The retired dropdown option lives in two lists; the form honoured the retire
+  in the list it was retired in.
+- The ERP CSV names a sales model per transfer; the sync keeps only the
+  partner entitlement and drops it.
