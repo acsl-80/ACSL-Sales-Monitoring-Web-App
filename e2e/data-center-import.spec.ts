@@ -274,10 +274,10 @@ test.describe("import hardening, against the server", () => {
     mimeType: "text/csv",
     buffer: Buffer.from(
       [
-        "stove_serial_no,first_name,last_name,phone,sales_date,amount,state,lga,address",
+        "stove_serial_no,first_name,last_name,phone,sales_date,amount,state,lga,address,sales_model",
         ...serials.map(
           (s) =>
-            `${s},Test,Buyer,08012345678,2026-01-04,25000,Gombe,Gombe,${marker} Test Road`,
+            `${s},Test,Buyer,08012345678,2026-01-04,25000,Gombe,Gombe,${marker} Test Road,Hakimi Sales Model`,
         ),
       ].join("\n"),
     ),
@@ -629,6 +629,7 @@ test.describe("the digitalisation sheet is a workbook", () => {
       "State": "Gombe",
       "LGA": "Gombe",
       "User Residential Address": "1 Road",
+      "Sales Model": "Hakimi Sales Model",
     }));
 
     const staged = await callEdgeFunction(page, "data-center-import", {
