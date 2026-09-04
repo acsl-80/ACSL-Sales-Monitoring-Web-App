@@ -168,6 +168,14 @@ test.describe("the loop closes", () => {
       saleId: row.sale_id,
       open: false,
     });
+    // Since Phase 24 "fixed" waits for the call centre's review; close the
+    // episode so the next test starts clean.
+    await callEdgeFunction(page, "data-center-corrections", {
+      action: "review",
+      saleId: row.sale_id,
+      outcome: "no_recall",
+      note: "e2e: closed",
+    });
 
     const after = (
       (await callEdgeFunction(page, "data-center-read", { action: "send_backs" }))
@@ -210,13 +218,28 @@ test.describe("the loop closes", () => {
       new RegExp(`/data-center/stove/${row.stove_serial_no}`),
     );
 
-    // And closing it is offered right there, without opening the record.
+    // And saying it is fixed is offered right there, without opening the record.
     await expect(page.getByRole("button", { name: /Mark it fixed/ }).first()).toBeVisible();
+
+    // Phase 24: the list is told in the three states a correction moves
+    // through, and the record sits in the first of them.
+    await expect(page.getByRole("tab", { name: /Waiting on Sales/ })).toBeVisible();
+    await expect(page.getByRole("tab", { name: /Awaiting review/ })).toBeVisible();
+    await expect(page.getByRole("tab", { name: /Closed/ })).toBeVisible();
+    await expect(page.getByRole("tab", { name: /Waiting on Sales/ })).toHaveAttribute("aria-selected", "true");
 
     await callEdgeFunction(page, "data-center-write", {
       action: "correction",
       saleId: row.sale_id,
       open: false,
+    });
+    // Since Phase 24 "fixed" waits for the call centre's review; close the
+    // episode so the next test starts clean.
+    await callEdgeFunction(page, "data-center-corrections", {
+      action: "review",
+      saleId: row.sale_id,
+      outcome: "no_recall",
+      note: "e2e: closed",
     });
   });
 
@@ -255,6 +278,14 @@ test.describe("the loop closes", () => {
       action: "correction",
       saleId: row.sale_id,
       open: false,
+    });
+    // Since Phase 24 "fixed" waits for the call centre's review; close the
+    // episode so the next test starts clean.
+    await callEdgeFunction(page, "data-center-corrections", {
+      action: "review",
+      saleId: row.sale_id,
+      outcome: "no_recall",
+      note: "e2e: closed",
     });
   });
 });

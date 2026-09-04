@@ -278,23 +278,30 @@ test("a sales rep can close a send-back routed to them, note and all", async ({ 
     await expect(link, "the sent-back record should be listed for the sales rep").toBeVisible({ timeout: 20_000 });
     await page.getByRole("button", { name: /Mark it fixed/ }).first().click();
     await page.getByPlaceholder(/What did you do\?/).fill(note);
-    await page.getByRole("button", { name: "Send it back to the call centre" }).click();
+    await page.getByRole("button", { name: "Send for review" }).click();
 
+    /*
+     * Phase 24: the rep's act moves the episode to `fixed`, awaiting the call
+     * centre's review, with the note on the episode. The six mirror columns
+     * still read as open to the call centre, which is the right word for it
+     * from their side until a reviewer closes it.
+     */
     await expect
       .poll(
         async () => {
-          const [r] = await branchSql<{ resolved: boolean; other_comments: string | null }>(
-            `select correction_resolved_at is not null as resolved, other_comments
-               from data_center.call_records where sale_id = '${e.sale_id}'`,
+          const [r] = await branchSql<{ state: string; fix_note: string | null }>(
+            `select state, fix_note from data_center.corrections
+              where sale_id = '${e.sale_id}' order by seq desc limit 1`,
           );
-          return `${r.resolved}:${r.other_comments ?? ""}`;
+          return r ? `${r.state}:${r.fix_note ?? ""}` : "none";
         },
-        { timeout: 20_000, message: "the send-back should be closed by the sales rep, with the note" },
+        { timeout: 20_000, message: "the send-back should be marked fixed by the sales rep, with the note" },
       )
-      .toBe(`true:${note}`);
+      .toBe(`fixed:${note}`);
     await expect(page.getByText("That did not save.")).toHaveCount(0);
   } finally {
     if (repKey) await branchSql(`delete from data_center.sales_rep_accounts where rep_key = '${repKey}'`);
+    await branchSql(`delete from data_center.corrections where sale_id = '${e.sale_id}'`);
     if (access?.access_role) {
       await branchSql(
         `update data_center.module_access set access_role = '${access.access_role}' where user_id = '${ACSL_AGENT_ID}'`,
