@@ -8,7 +8,7 @@ lives on each PR.
 
 - [ ] 0 Docs and tracker: this file, `decisions.md`, PLAN.md and ROADMAP.md entries. in review
 - [ ] 0.5 Design canvas, ten surfaces in the module's theme, approved before code. canvas published 2026-09-04, awaiting his review
-- [ ] 1 Corrections lifecycle, function, backfill, access on link. spec red, awaiting the preview run
+- [ ] 1 Corrections lifecycle, function, backfill, access on link. green on the preview, in review (PR #67)
 - [ ] 2 Correction workspace: disputed record, edit through update-sale, serial through rematch. todo
 - [ ] 3 Review and recall: review panel, derived recall allowance, awaiting-review preset and tile. todo
 - [ ] 4 Send-back panel and work-waiting banner. todo
@@ -27,3 +27,4 @@ lives on each PR.
 - The host form's own copy of the previous-stove list (`CreateSalesForm.jsx`): host lane.
 - A structured editor for the sheet columns config.
 - Accounts for sales reps who have none.
+- The commit-chain rollback spec ("rollback under a live chain is refused") is timing-bound: the lease is released between slices, so a rollback that lands in the gap answers 200. Passed on its second run 2026-09-04. Pre-existing; a product fix would hold the lease for the whole chain.
