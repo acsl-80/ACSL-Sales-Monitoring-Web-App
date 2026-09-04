@@ -451,26 +451,6 @@ serve(async (req) => {
               );
             }
 
-            // The receiving agent must be one who may take work: an agent, not
-            // paused, within capacity unless a reason is given (D22). The same
-            // SQL rule the manual door applies, read under the same lock.
-            let overCapacity = false;
-            try {
-              const room = await conn.queryObject<{ open_now: number; cap: number }>({
-                text: `select a.open_now, a.cap from data_center.assert_agent_can_receive($1, $2) a`,
-                args: [toAgent, body.overrideReason ?? null],
-              });
-              const r0 = room.rows[0];
-              overCapacity = Number(r0?.open_now ?? 0) >= Number(r0?.cap ?? 1);
-            } catch (err) {
-              const refusal = pgRefusal(err);
-              if (refusal) {
-                await conn.queryObject("rollback");
-                return json(refusal, 409, cors);
-              }
-              throw err;
-            }
-
             // Everything being moved, with the partner it belongs to, because
             // that decides which batch it can land in.
             const moving = await conn.queryObject<
@@ -497,6 +477,26 @@ serve(async (req) => {
                 404,
                 cors,
               );
+            }
+
+            // The receiving agent must be one who may take work: an agent, not
+            // paused, within capacity unless a reason is given (D22). The same
+            // SQL rule the manual door applies, read under the same lock.
+            let overCapacity = false;
+            try {
+              const room = await conn.queryObject<{ open_now: number; cap: number }>({
+                text: `select a.open_now, a.cap from data_center.assert_agent_can_receive($1, $2) a`,
+                args: [toAgent, body.overrideReason ?? null],
+              });
+              const r0 = room.rows[0];
+              overCapacity = Number(r0?.open_now ?? 0) >= Number(r0?.cap ?? 1);
+            } catch (err) {
+              const refusal = pgRefusal(err);
+              if (refusal) {
+                await conn.queryObject("rollback");
+                return json(refusal, 409, cors);
+              }
+              throw err;
             }
 
             // One destination batch per partner, reused across the whole move

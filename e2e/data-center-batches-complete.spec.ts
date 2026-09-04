@@ -129,9 +129,11 @@ test("a batch whose records are all concluded closes itself and leaves the agent
       "every row of the finished batch should be marked completed",
     ).toBe(true);
 
-    // And capacity is free again: no open batch counts against this agent.
+    // And capacity is free again: the finished batch no longer counts as open
+    // against this agent. Other open batches are the engine's, which since
+    // phase 24 hands work to every agent, so the count is of this batch alone.
     const [open] = await branchSql<{ n: number }>(
-      `select count(*)::int n from data_center.assignment_batches where assigned_to = '${seed.agent_id}' and state = 'open'`,
+      `select count(*)::int n from data_center.assignment_batches where id = '${seed.batch_id}' and state = 'open'`,
     );
     expect(open.n, "a finished batch must not count against the agent's capacity").toBe(0);
   } finally {
