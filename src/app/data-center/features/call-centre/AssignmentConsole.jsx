@@ -108,6 +108,9 @@ function AssignDialog({ agent, pool, batchSize, onDone, onClose }) {
       } else {
         setDone((d) => [...d, { partner: partner?.partner_name, size: result.size }]);
         setOrgId("");
+        // A reason belongs to the batch it justified, not to the next one.
+        setReason("");
+        setNeedsReason(false);
       }
       await onDone();
     } catch (err) {
@@ -508,19 +511,27 @@ export default function AssignmentConsole({ canEdit }) {
 
   const togglePause = async (agent) => {
     try {
-      await dataCenterAssign.setAgentProfile(agent.agent_id, {
-        isEnabled: !agent.is_enabled,
-        note: agent.is_enabled ? "Paused from the console" : null,
-      });
+      // Only the switch. The note is the scheduler's and stays as written.
+      await dataCenterAssign.setAgentProfile(agent.agent_id, { isEnabled: !agent.is_enabled });
       await load();
     } catch (err) {
       setError(err instanceof DataCenterError ? err.message : "Could not change that.");
     }
   };
 
+  const setCapacity = async (agent, value) => {
+    try {
+      await dataCenterAssign.setAgentProfile(agent.agent_id, { maxOpenBatches: Number(value) });
+      await load();
+    } catch (err) {
+      setError(err instanceof DataCenterError ? err.message : "Could not change the capacity.");
+    }
+  };
+
   const agents = data?.agents ?? [];
   const pool = data?.pool ?? [];
   const defaultCap = data?.defaultCap ?? 1;
+  const capacityCeiling = data?.capacityCeiling ?? 10;
   const paged = usePaged(agents, 10);
   const waiting = pool.reduce((n, p) => n + p.callable, 0);
 
@@ -634,7 +645,21 @@ export default function AssignmentConsole({ canEdit }) {
                         }`}
                         title={agent.open_batches > (agent.max_open_batches ?? defaultCap) ? "Over capacity: reclaim or reassign" : undefined}
                       >
-                        {agent.open_batches} of {agent.max_open_batches ?? defaultCap}
+                        {agent.open_batches} of{" "}
+                        {canEdit ? (
+                          <select
+                            aria-label={`Capacity for ${agent.full_name || agent.email}`}
+                            value={agent.max_open_batches ?? defaultCap}
+                            onChange={(e) => setCapacity(agent, e.target.value)}
+                            className="rounded border border-gray-300 bg-white px-1 py-0.5 text-xs text-gray-800"
+                          >
+                            {Array.from({ length: capacityCeiling }, (_, i) => i + 1).map((n) => (
+                              <option key={n} value={n}>{n}</option>
+                            ))}
+                          </select>
+                        ) : (
+                          agent.max_open_batches ?? defaultCap
+                        )}
                       </td>
                       <td className="px-3 py-2 text-right tabular-nums font-medium text-gray-900">
                         {agent.records_held}

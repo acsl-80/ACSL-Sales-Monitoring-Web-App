@@ -199,6 +199,8 @@ test.describe("assigning by hand goes through the engine's own tables", () => {
       agentId: agents[0].agent_id,
       organizationId: "00000000-0000-0000-0000-000000000000",
       size: 5,
+      // The capacity rule would answer first; it is covered by its own spec.
+      overrideReason: "e2e: an empty partner, on top of the engine's batch",
     });
     expect([200, 500]).toContain(empty.status);
     if (empty.status === 200) {

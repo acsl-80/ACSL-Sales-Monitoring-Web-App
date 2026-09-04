@@ -29,4 +29,5 @@ lives on each PR.
 - A structured editor for the sheet columns config.
 - Accounts for sales reps who have none.
 - `calls.exhausted` and the queue's "Chased 3 times" preset count raw attempts, so a record recalled after a fix reads as exhausted and callable at once. Slice 5b (pool v2, `recall_due`) aligns them with the allowance `v_callable_records` already applies. Found by the slice 3 review.
+- The Assignment Log's "Move them" lever now meets the same rule as the manual door (paused, capacity) and shows the refusal, but offers no reason box yet; slice 6a moves the levers into the agents panel and gives them one.
 - The commit-chain rollback spec ("rollback under a live chain is refused") is timing-bound: the lease is released between slices, so a rollback that lands in the gap answers 200. Passed on its second run 2026-09-04. Pre-existing; a product fix would hold the lease for the whole chain.

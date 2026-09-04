@@ -30,12 +30,14 @@ async function state(page: Page) {
  * seed has during global setup, so arrange rather than skip: take one record
  * back from whoever holds one, which puts its partner back in the pool.
  */
-async function ensurePool(page: Page): Promise<Partner[]> {
+async function ensurePool(page: Page, notFrom: string): Promise<Partner[]> {
   for (let attempt = 0; attempt < 3; attempt++) {
     const s = await state(page);
     const pool = s.pool.filter((p) => p.callable > 0);
     if (pool.length > 0) return pool;
-    const holder = s.agents.find((a) => a.open_batches > 0);
+    // Never from the agent under test: taking their last record would
+    // reclaim their batch and turn the refusal into a 200.
+    const holder = s.agents.find((a) => a.open_batches > 0 && a.agent_id !== notFrom);
     expect(holder, "somebody holding a batch to take a record from").toBeTruthy();
     const held = await callEdgeFunction(page, "data-center-assign", { action: "agent_detail", agentId: holder!.agent_id });
     const items = (held.body as { data: { items: { sale_id: string }[] } }).data.items;
@@ -82,8 +84,9 @@ test("a second batch over capacity is refused, and lands with a reason", async (
     expect(set.status, JSON.stringify(set.body)).toBe(200);
 
     // The agent must hold one batch already; make one if the engine left them empty.
-    let pool = await ensurePool(page);
-    if (agent.open_batches === 0) {
+    let pool = await ensurePool(page, agent.agent_id);
+    const fresh = (await state(page)).agents.find((a) => a.agent_id === agent.agent_id);
+    if ((fresh?.open_batches ?? 0) === 0) {
       const first = await callEdgeFunction(page, "data-center-assign", {
         action: "assign_manual", agentId: agent.agent_id, organizationId: pool[0].organization_id, size: 1,
       });
@@ -92,7 +95,9 @@ test("a second batch over capacity is refused, and lands with a reason", async (
       expect(b).toBeTruthy();
       made.push(b!);
     }
-    pool = await ensurePool(page);
+    pool = await ensurePool(page, agent.agent_id);
+    const held = (await state(page)).agents.find((a) => a.agent_id === agent.agent_id);
+    expect(held?.open_batches, "the agent holds a batch before the refusal is tested").toBeGreaterThanOrEqual(1);
 
     const refused = await callEdgeFunction(page, "data-center-assign", {
       action: "assign_manual", agentId: agent.agent_id, organizationId: pool[0].organization_id, size: 1,
@@ -118,6 +123,8 @@ test("a second batch over capacity is refused, and lands with a reason", async (
       await callEdgeFunction(page, "data-center-assign", { action: "unassign_batch", batchId: b, reason: "e2e: cleanup" }).catch(() => {});
     }
     await restoreProfile(agent.agent_id, was);
+    // Records put back by ensurePool go out again, as global setup leaves them.
+    await callEdgeFunction(page, "data-center-assign", { action: "run" }).catch(() => {});
   }
 });
 
@@ -126,4 +133,10 @@ test("a data manager sees the console and the levers, a call centre editor does 
   await page.goto("/data-center/call-centre");
   await expect(page.getByRole("heading", { name: "Agents and their work" })).toBeVisible({ timeout: 30_000 });
   await expect(page.getByRole("button", { name: "Assign now" })).toBeVisible();
+
+  await signIn(page, USERS.callCentre);
+  await page.goto("/data-center/call-centre");
+  await expect(page.getByText("Assignment Log")).toBeVisible({ timeout: 30_000 });
+  await expect(page.getByRole("heading", { name: "Agents and their work" })).toHaveCount(0);
+  await expect(page.getByRole("button", { name: "Assign now" })).toHaveCount(0);
 });

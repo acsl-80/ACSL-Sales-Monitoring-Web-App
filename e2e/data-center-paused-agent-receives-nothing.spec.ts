@@ -27,10 +27,9 @@ test("paused: the engine skips them and the manual door refuses; resumed: both o
   // The emptiest agent: the one the engine would pick first if it were allowed to.
   const agent = [...list].filter((a) => a.is_enabled).sort((a, b) => a.open_batches - b.open_batches)[0];
   expect(agent, "an enabled call agent on the branch").toBeTruthy();
-  const [was] = await branchSql<{ is_enabled: boolean; max_open_batches: number | null }>(
-    `select is_enabled, max_open_batches from data_center.call_agent_profiles where user_id = '${agent.agent_id}'`,
+  const [was] = await branchSql<{ is_enabled: boolean; max_open_batches: number | null; note: string | null }>(
+    `select is_enabled, max_open_batches, note from data_center.call_agent_profiles where user_id = '${agent.agent_id}'`,
   );
-  const madeByRun: string[] = [];
   try {
     const paused = await callEdgeFunction(page, "data-center-assign", {
       action: "agent_profile_set", agentId: agent.agent_id, isEnabled: false, note: "e2e: on leave",
@@ -45,7 +44,6 @@ test("paused: the engine skips them and the manual door refuses; resumed: both o
     const run = await callEdgeFunction(page, "data-center-assign", { action: "run" });
     expect(run.status).toBe(200);
     const out = (run.body as { data: { batches: { batch_id: string; agent_id: string }[] } }).data;
-    madeByRun.push(...out.batches.map((b) => b.batch_id));
     expect(out.batches.some((b) => b.agent_id === agent.agent_id), "the engine handed the paused agent a batch").toBe(false);
     const [{ after }] = await branchSql<{ after: number }>(
       `select count(*)::int as after from data_center.assignment_batches where assigned_to = '${agent.agent_id}'`,
@@ -72,15 +70,19 @@ test("paused: the engine skips them and the manual door refuses; resumed: both o
     const listed = (await agents(page)).find((a) => a.agent_id === agent.agent_id);
     expect(listed?.is_enabled).toBe(true);
   } finally {
-    for (const b of madeByRun) {
-      await callEdgeFunction(page, "data-center-assign", { action: "unassign_batch", batchId: b, reason: "e2e: cleanup" }).catch(() => {});
-    }
     if (was) {
       await branchSql(
-        `update data_center.call_agent_profiles set is_enabled = ${was.is_enabled}, max_open_batches = ${was.max_open_batches ?? "null"}, note = null where user_id = '${agent.agent_id}'`,
+        `update data_center.call_agent_profiles
+            set is_enabled = ${was.is_enabled}, max_open_batches = ${was.max_open_batches ?? "null"},
+                note = ${was.note ? `'${was.note.replace(/'/g, "''")}'` : "null"}
+          where user_id = '${agent.agent_id}'`,
       );
     } else {
       await branchSql(`delete from data_center.call_agent_profiles where user_id = '${agent.agent_id}'`);
     }
+    // The run reclaimed the paused agent's batches and handed the rest out.
+    // With the agent resumed, one more run puts the pool back where global
+    // setup leaves it: everything assigned to somebody.
+    await callEdgeFunction(page, "data-center-assign", { action: "run" }).catch(() => {});
   }
 });

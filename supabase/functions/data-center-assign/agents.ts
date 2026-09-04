@@ -132,6 +132,10 @@ export async function handleAgents(ctx: AgentsContext): Promise<Response> {
         return json({ error: "agentId is required", code: "bad_input" }, 400, cors);
       }
       const hasEnabled = body.isEnabled !== undefined && body.isEnabled !== null;
+      if (hasEnabled && typeof body.isEnabled !== "boolean") {
+        // "false" as a string would read as true and silently resume someone.
+        return json({ error: "isEnabled must be true or false", code: "bad_input" }, 400, cors);
+      }
       const hasCap = body.maxOpenBatches !== undefined;
       const hasNote = body.note !== undefined;
       if (!hasEnabled && !hasCap && !hasNote) {

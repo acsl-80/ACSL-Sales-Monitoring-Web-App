@@ -1486,9 +1486,9 @@ production confirmed. States are kept in `TASKS.md`.
 | 2 | The correction workspace route, disputed record, sale edit through `update-sale`, serial through rematch | none |
 | 3 | Review panel, close with recall or no recall, derived recall allowance in `v_callable_records`, "Awaiting review" everywhere | `20260907010000_data_center_corrections_recall.sql` |
 | 4 | `SendBackPanel` with every reason visible, `WorkWaitingBanner` with three pills | none |
-| 5a | Engine selects from `module_access`, capacity on the manual door, `agent_profile_set`, gates on `assignment.manage` | `20260905020000_data_center_assignment_picks_from_module_access.sql` |
+| 5a | Engine selects from `module_access`, capacity on the manual door, `agent_profile_set`, gates on `assignment.manage` | `20260907020000_data_center_assignment_picks_from_module_access.sql` |
 | 5b | `v_callable_records` v2 (exclusions, recency, recall), `pick_callable` with `assignment.priority` | `20260906000000_sales_created_at_index.sql`, `20260906010000_data_center_pool_priority.sql` |
-| 6a | Board, agents panel with presence, pool by partner, lanes, polling from config | `20260907020000_data_center_pool_metrics.sql` |
+| 6a | Board, agents panel with presence, pool by partner, lanes, polling from config | `20260907040000_data_center_pool_metrics.sql` |
 | 6b | Queue facets held in the URL | none |
 | 7a | `completeness_evidence_any_of`, the tile's one-line rule, the Missing facet | `20260908010000_data_center_completeness_evidence.sql` |
 | 7b | The sales app's status rule (D17), host lane | its own, on the owner's word |

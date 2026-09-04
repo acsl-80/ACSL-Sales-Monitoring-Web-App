@@ -17,7 +17,7 @@
 -- "3 of 1" on the console for a supervisor to reclaim or reassign. The notice
 -- at the end says how many stand over.
 --
--- Rollback: the two functions are replaced whole and the previous versions
+-- Rollback: the two doors are replaced whole and the previous versions
 -- live in 20260821040000 and 20260821070000; the column and the config key are
 -- additive and may stay.
 -- ===========================================================================
@@ -168,6 +168,67 @@ end;
 $$;
 
 -- ---------------------------------------------------------------------------
+-- One rule for "may this agent receive work", for every door.
+--
+-- The manual door and the reassign path both hand work to a named agent.
+-- The rule (an agent, not paused, within capacity unless a reason is given)
+-- lives once, here, and each door calls it after taking the lock, so two
+-- hands cannot both read a capacity of one and both pass.
+-- ---------------------------------------------------------------------------
+
+create or replace function data_center.assert_agent_can_receive(
+  p_agent uuid,
+  p_override_reason text default null
+)
+returns table (open_now integer, cap integer)
+language plpgsql
+security definer
+set search_path = data_center, public, pg_temp
+as $$
+begin
+  if not exists (
+    select 1 from data_center.module_access m
+     where m.user_id = p_agent and m.access_role in ('call_agent', 'editor')
+  ) then
+    raise exception 'That person is not a call agent or an editor'
+      using errcode = 'check_violation', hint = 'not_an_agent';
+  end if;
+
+  -- Paused is paused, by hand as much as by engine. Somebody on leave who
+  -- keeps their access must not come back to forty records.
+  if exists (
+    select 1 from data_center.call_agent_profiles p
+     where p.user_id = p_agent and not p.is_enabled
+  ) then
+    raise exception 'That agent is not taking work right now. Resume them first.'
+      using errcode = 'check_violation', hint = 'paused';
+  end if;
+
+  cap := coalesce(
+    (select p.max_open_batches from data_center.call_agent_profiles p where p.user_id = p_agent),
+    (select (value #>> '{}')::int from data_center.workflow_config
+      where key = 'assignment.max_open_batches'),
+    1);
+  open_now := (select count(*) from data_center.assignment_batches b
+                where b.assigned_to = p_agent and b.state = 'open');
+
+  -- Capacity is a refusal with a door in it, not a wall. The engine never
+  -- goes over; a supervisor may, with a reason that lands on the batch so
+  -- the log says why this agent holds three against a limit of one.
+  if open_now >= cap and nullif(trim(coalesce(p_override_reason, '')), '') is null then
+    raise exception 'This agent already holds % open % against a capacity of %. Give a reason to hand out more.',
+      open_now, case when open_now = 1 then 'batch' else 'batches' end, cap
+      using errcode = 'check_violation', hint = 'over_capacity';
+  end if;
+
+  return next;
+end;
+$$;
+
+comment on function data_center.assert_agent_can_receive(uuid, text) is
+  'Raises check_violation (hint not_an_agent, paused or over_capacity) unless the agent may receive a batch now; returns their open batches and capacity. Called under the assignment lock by every door that hands work to a named agent.';
+
+-- ---------------------------------------------------------------------------
 -- The manual door. Dropped and recreated rather than overloaded: a second
 -- signature beside the old one would make every four-argument call ambiguous.
 -- ---------------------------------------------------------------------------
@@ -194,13 +255,8 @@ declare
     20);
   new_batch uuid;
   taken int;
-  cap int := coalesce(
-    (select p.max_open_batches from data_center.call_agent_profiles p where p.user_id = p_agent),
-    (select (value #>> '{}')::int from data_center.workflow_config
-      where key = 'assignment.max_open_batches'),
-    1);
-  open_now int := (select count(*) from data_center.assignment_batches b
-                    where b.assigned_to = p_agent and b.state = 'open');
+  cap int;
+  open_now int;
 begin
   if want < 1 or want > 500 then
     raise exception 'A batch is between 1 and 500 records, not %', want
@@ -218,25 +274,6 @@ begin
       using errcode = 'check_violation';
   end if;
 
-  -- Paused is paused, by hand as much as by engine. Somebody on leave who
-  -- keeps their access must not come back to forty records.
-  if exists (
-    select 1 from data_center.call_agent_profiles p
-     where p.user_id = p_agent and not p.is_enabled
-  ) then
-    raise exception 'That agent is not taking work right now. Resume them first.'
-      using errcode = 'check_violation', hint = 'paused';
-  end if;
-
-  -- Capacity is a refusal with a door in it, not a wall. The engine never
-  -- goes over; a supervisor may, with a reason that lands on the batch so
-  -- the log says why this agent holds three against a limit of one.
-  if open_now >= cap and nullif(trim(coalesce(p_override_reason, '')), '') is null then
-    raise exception 'This agent already holds % open % against a capacity of %. Give a reason to hand out more.',
-      open_now, case when open_now = 1 then 'batch' else 'batches' end, cap
-      using errcode = 'check_violation', hint = 'over_capacity';
-  end if;
-
   -- The same lock the engine takes. Without it a manual assign and a scheduled
   -- run can both read the pool, both pick the same records, and one of them
   -- loses on the unique index halfway through inserting a batch.
@@ -244,6 +281,16 @@ begin
     raise exception 'Work is being handed out right now, try again in a moment'
       using errcode = 'lock_not_available';
   end if;
+
+  -- The rules, read under the lock so two hands cannot both pass a capacity
+  -- of one. A refusal releases the lock before it is raised.
+  begin
+    select a.open_now, a.cap into open_now, cap
+      from data_center.assert_agent_can_receive(p_agent, p_override_reason) a;
+  exception when others then
+    perform pg_advisory_unlock(8150621);
+    raise;
+  end;
 
   insert into data_center.assignment_batches
     (organization_id, assigned_to, size, created_by, override_reason)
