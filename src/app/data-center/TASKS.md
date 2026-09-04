@@ -12,7 +12,7 @@ lives on each PR.
 - [x] 2 Correction workspace: disputed record, edit through update-sale, serial through rematch. merged, live (PR #68, 2026-09-04); carries the slice 1 review fixes and the update-sale scope fix
 - [x] 2h Hotfix from the slice 2 review: update-sale writes only the fields it was sent, partner agent kept to their own sales, money offered only when disputed. merged, live (PR #69, 2026-09-04; update-sale v23 since 11:09Z)
 - [x] 3 Review and recall: review panel, derived recall allowance, phone reconciliation, awaiting-review preset and tile. merged, live (PR #70, 2026-09-04): migration applied, three functions deployed, bundle crawl confirmed
-- [ ] 4 Send-back panel and work-waiting banner. in progress
+- [ ] 4 Send-back panel and work-waiting banner. green on the preview, in review (PR #71); the Claude review's findings acted on; awaiting the owner's word
 - [ ] 5a Engine picks from module_access; capacity on the manual door; agent profiles; gates. todo
 - [ ] 5b Pool v2 and pick_callable with a configured priority. todo
 - [ ] 6a Control centre: board, agents with presence, pool by partner, lanes, polling. todo
