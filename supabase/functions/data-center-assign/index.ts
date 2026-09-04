@@ -264,6 +264,14 @@ serve(async (req) => {
                           v.resolved_state as user_state,
                           v.resolved_lga as user_lga,
                           v.correction_state,
+                          /*
+                           * When the call centre last closed a fix on this
+                           * record with "ring again". Newer than the last
+                           * attempt means Sales fixed it and nobody has rung
+                           * since: the first thing on the list.
+                           */
+                          (select max(x.reviewed_at) from data_center.corrections x
+                            where x.sale_id = l.sale_id and x.review_outcome = 'recall') as recall_closed_at,
                           cr.serial_unconfirmed_at,
                           /*
                            * Whether somebody stopped part way through this one.

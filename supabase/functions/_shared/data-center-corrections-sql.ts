@@ -234,7 +234,8 @@ export async function fixCorrection(conn: PoolClient, input: {
  * The call centre's verdict on a fixed episode.
  *
  *   recall     closed; the record goes back into the pool with a fresh
- *              allowance of calls (the view change lands in slice 3).
+ *              allowance of calls (v_callable_records subtracts the
+ *              attempts made before the close).
  *   no_recall  closed; nothing to ring (a confirmed duplicate, a cancelled
  *              sale).
  *   reopen     not fixed after all: this episode closes as `reopened` and the
@@ -245,7 +246,9 @@ export async function reviewCorrection(conn: PoolClient, input: {
   actorId: string;
   outcome: "recall" | "no_recall" | "reopen";
   note: string | null;
-}): Promise<Episode> {
+  /** What stands when the call centre heard one number and Sales saved another. */
+  phone?: PhoneChoice | null;
+}): Promise<Episode & { phone_cleared?: boolean }> {
   const current = await newestEpisode(conn, input.saleId);
   if (!current || current.state !== "fixed") {
     throw new CorrectionError("This record is not waiting for review.", 409, "not_fixed");
@@ -275,7 +278,10 @@ export async function reviewCorrection(conn: PoolClient, input: {
     });
   }
 
-  if (input.outcome !== "reopen") return { ...current, state: "resolved" };
+  if (input.outcome !== "reopen") {
+    const cleared = await reconcilePhone(conn, input.saleId, input.actorId, input.phone ?? null);
+    return { ...current, state: "resolved", phone_cleared: cleared };
+  }
 
   const route = await routeFor(conn, input.saleId);
   const next = await conn.queryObject<Episode>({
@@ -300,6 +306,38 @@ export async function reviewCorrection(conn: PoolClient, input: {
     ],
   });
   return next.rows[0];
+}
+
+export type PhoneChoice = "use_saved" | "keep_corrected";
+
+/**
+ * After a fix, `public.sales.phone` is the truth. The call centre's
+ * `corrected_phone` was a note of what the buyer said before Sales saved
+ * anything; once Sales has saved the same number (same last ten digits,
+ * however it was typed) the note is redundant and is cleared, so the queue
+ * and My Work dial the saved number and nobody reads two. When the two
+ * differ nothing happens on its own: the reviewer chooses, and `use_saved`
+ * clears the note while `keep_corrected` leaves it to be dialled.
+ */
+export async function reconcilePhone(
+  conn: PoolClient,
+  saleId: string,
+  actorId: string,
+  choice: PhoneChoice | null,
+): Promise<boolean> {
+  if (choice === "keep_corrected") return false;
+  const r = await conn.queryObject({
+    text: `update data_center.call_records cr
+              set corrected_phone = null, updated_at = now(), updated_by = $2
+             from public.sales s
+            where s.id = $1 and cr.sale_id = s.id and cr.corrected_phone is not null
+              and ($3::text = 'use_saved'
+                   or (length(regexp_replace(cr.corrected_phone, '\\D', '', 'g')) >= 7
+                       and right(regexp_replace(cr.corrected_phone, '\\D', '', 'g'), 10)
+                         = right(regexp_replace(coalesce(s.phone, ''), '\\D', '', 'g'), 10)))`,
+    args: [saleId, actorId, choice],
+  });
+  return (r.rowCount ?? 0) > 0;
 }
 
 /** The call centre takes a send-back back before Sales touched it. */

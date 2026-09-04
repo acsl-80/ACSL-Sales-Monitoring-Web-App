@@ -591,7 +591,11 @@ export function buildRecordsQuery(
       // Expressed against the columns rather than the view's derived label, so
       // the partial index on open corrections is usable.
       if (f.correctionState === "open") {
-        where.push("cr.correction_requested_at is not null and cr.correction_resolved_at is null");
+        // The mirror columns cannot tell open from fixed (both have a request
+        // and no resolution), so "Waiting on Sales" asks the episodes.
+        where.push(
+          "exists (select 1 from data_center.corrections cx where cx.sale_id = cr.sale_id and cx.state = 'open')",
+        );
       } else if (f.correctionState === "fixed") {
         // Sales has saved and the call centre has not yet reviewed. The mirror
         // columns still read as open (they stamp resolution only at close), so

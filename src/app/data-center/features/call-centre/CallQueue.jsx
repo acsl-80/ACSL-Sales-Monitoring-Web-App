@@ -106,6 +106,8 @@ const PRESETS = [
     filters: { verificationOutcome: "not_verified", attemptsAtLeast: 3 },
   },
   { key: "correction", label: "Waiting on Sales", filters: { correctionState: "open" } },
+  /** Sales says it is fixed; the call centre has not yet looked. */
+  { key: "review", label: "Awaiting review", filters: { correctionState: "fixed" } },
   /**
    * Where finished work lives.
    *

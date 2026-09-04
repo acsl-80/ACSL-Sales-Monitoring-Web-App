@@ -151,7 +151,15 @@ export default function CorrectionWorkspace({ saleId }) {
             </div>
           )}
           {(data.can.review || data.can.withdraw) && (
-            <ReviewPanel saleId={saleId} episode={newest} catalogue={data.catalogue} can={data.can} onDone={load} />
+            <ReviewPanel
+              saleId={saleId}
+              episode={newest}
+              catalogue={data.catalogue}
+              can={data.can}
+              history={data.history ?? []}
+              phoneCheck={data.phoneCheck ?? null}
+              onDone={load}
+            />
           )}
           <CorrectionTimeline episodes={data.episodes} />
         </div>

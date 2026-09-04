@@ -52,6 +52,17 @@ function standing(item) {
       icon: PenLine,
     };
   }
+  /*
+   * Sales fixed what the caller found wrong and the call centre closed it
+   * with "ring again", and nobody has rung since. The buyer is waiting on a
+   * number that now works, so this comes before a stove nobody has touched.
+   */
+  if (
+    item.recall_closed_at &&
+    (!item.last_attempt_at || new Date(item.recall_closed_at) > new Date(item.last_attempt_at))
+  ) {
+    return { rank: 2, label: "Fixed by Sales, ring again", tone: "bg-emerald-100 text-emerald-800", icon: PhoneCall };
+  }
   if (!item.attempt_count) {
     return { rank: 2, label: "Not called yet", tone: "bg-blue-100 text-blue-800", icon: CircleDashed };
   }
@@ -62,6 +73,9 @@ function standing(item) {
    */
   if (item.correction_state === "open") {
     return { rank: 3, label: "Sent back to Sales", tone: "bg-red-100 text-red-700", icon: Undo2 };
+  }
+  if (item.correction_state === "fixed") {
+    return { rank: 3, label: "Fixed, awaiting review", tone: "bg-amber-100 text-amber-900", icon: Undo2 };
   }
   if (item.verification_outcome === "fully_verified") {
     return { rank: 5, label: "Verified", tone: "bg-(--dc-accent-soft) text-(--dc-accent-strong)", icon: Check };

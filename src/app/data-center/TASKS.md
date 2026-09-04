@@ -9,8 +9,9 @@ lives on each PR.
 - [x] 0 Docs and tracker: this file, `decisions.md`, PLAN.md and ROADMAP.md entries. merged, live (PR #66, 2026-09-04)
 - [ ] 0.5 Design canvas, ten surfaces in the module's theme, approved before code. published 2026-09-04, awaiting his review
 - [x] 1 Corrections lifecycle, function, backfill, access on link. merged, live (PR #67, 2026-09-04): 30 episodes backfilled, 11 reps given the door
-- [ ] 2 Correction workspace: disputed record, edit through update-sale, serial through rematch. green on the preview, in review (PR #68); carries the slice 1 review fixes and the update-sale scope fix
-- [ ] 3 Review and recall: review panel, derived recall allowance, awaiting-review preset and tile. todo
+- [x] 2 Correction workspace: disputed record, edit through update-sale, serial through rematch. merged, live (PR #68, 2026-09-04); carries the slice 1 review fixes and the update-sale scope fix
+- [ ] 2h Hotfix from the slice 2 review: update-sale writes only the fields it was sent, partner agent kept to their own sales, money offered only when disputed. deployed to production (update-sale v23), PR #69 open
+- [ ] 3 Review and recall: review panel, derived recall allowance, awaiting-review preset and tile. in progress
 - [ ] 4 Send-back panel and work-waiting banner. todo
 - [ ] 5a Engine picks from module_access; capacity on the manual door; agent profiles; gates. todo
 - [ ] 5b Pool v2 and pick_callable with a configured priority. todo

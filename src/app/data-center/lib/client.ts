@@ -1143,10 +1143,28 @@ export type CorrectionDetail = {
   transfer: Record<string, unknown> | null;
   /** The last five call attempts, newest first. */
   attempts: { attempt_no: number; attempted_at: string; note: string | null; outcome: string | null; agent: string | null }[];
+  /**
+   * What the sales app logged on the sale while the newest episode was open,
+   * newest first. Its trigger tracks a handful of columns and only under a
+   * signed-in session, so an empty list is not proof nothing changed; the
+   * episode's own before and after is.
+   */
+  history: {
+    performed_at: string;
+    action_type: string;
+    action_description: string;
+    field_changes: Record<string, { old_value?: unknown; new_value?: unknown }> | null;
+    performed_by_name: string | null;
+  }[];
+  /** The number the call centre heard against the one Sales saved; `matches` is null when nothing was heard. */
+  phoneCheck: { heard: string | null; saved: string | null; matches: boolean | null } | null;
   catalogue: SaleFieldSpec[];
   reasonFields: Record<string, string[]>;
   can: { fix: boolean; claim: boolean; review: boolean; withdraw: boolean; open: boolean; editSale: boolean };
 };
+
+/** What stands when the call centre heard one number and Sales saved another. */
+export type PhoneChoice = "use_saved" | "keep_corrected";
 
 export type WorkWaiting = {
   mineOpen: number;
@@ -1204,8 +1222,18 @@ export const dataCenterCorrections = {
   fix: (saleId: string, note?: string | null) =>
     call<{ episode: CorrectionRow }>("data-center-corrections", "fix", { saleId, note: note ?? null }),
 
-  review: (saleId: string, outcome: "recall" | "no_recall" | "reopen", note?: string | null) =>
-    call<{ episode: CorrectionRow }>("data-center-corrections", "review", { saleId, outcome, note: note ?? null }),
+  review: (
+    saleId: string,
+    outcome: "recall" | "no_recall" | "reopen",
+    note?: string | null,
+    phone?: PhoneChoice | null,
+  ) =>
+    call<{ episode: CorrectionRow & { phone_cleared?: boolean } }>("data-center-corrections", "review", {
+      saleId,
+      outcome,
+      note: note ?? null,
+      phone: phone ?? null,
+    }),
 };
 
 /**

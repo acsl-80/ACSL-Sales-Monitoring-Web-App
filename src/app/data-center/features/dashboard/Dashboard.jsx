@@ -623,7 +623,7 @@ export default function Dashboard({ canRun }) {
           {/* Support, not headline. Complete and Open corrections were on the
               top row and are not what anyone opens this page to learn: one is
               an internal completeness rule, the other a queue of six. */}
-          <div className="grid grid-cols-2 gap-3 lg:grid-cols-3 xl:grid-cols-6">
+          <div className="grid grid-cols-2 gap-3 lg:grid-cols-4 xl:grid-cols-7">
             <Card
               label={scopedLabel("Complete", "sales.complete")}
               value={complete}
@@ -637,12 +637,20 @@ export default function Dashboard({ canRun }) {
               search={{ saleStatus: "completed", label: "Complete" }}
             />
             <Card
-              label={scopedLabel("Open corrections", "corrections.open")}
+              label={scopedLabel("Waiting on Sales", "corrections.open")}
               value={value(m, "corrections.open")}
-              hint="waiting on Sales"
+              hint="sent back, not yet fixed"
               skin={value(m, "corrections.open") > 0 ? "warn" : "neutral"}
-              to="/data-center/call-centre"
-              search={{ preset: "correction" }}
+              to="/data-center/corrections"
+              search={{ tab: "open" }}
+            />
+            <Card
+              label={scopedLabel("Awaiting review", "corrections.fixed")}
+              value={value(m, "corrections.fixed")}
+              hint="fixed by Sales, for the call centre"
+              skin={value(m, "corrections.fixed") > 0 ? "warn" : "neutral"}
+              to="/data-center/corrections"
+              search={{ tab: "review" }}
             />
             <Card
               label={scopedLabel("Calls logged", "calls.attempts_total")}

@@ -350,6 +350,41 @@ serve(async (req) => {
                     limit 5`,
             args: [saleId],
           });
+          /*
+           * What the sales app logged on the sale while the newest episode was
+           * open. Its trigger tracks a handful of columns and only under a
+           * signed-in session, so an empty list is not proof that nothing
+           * changed; the episode's own before and after is the diff that
+           * counts. This is the supplement, for an edit made somewhere else.
+           */
+          const history = await conn.queryObject({
+            text: `select h.performed_at::text, h.action_type, h.action_description, h.field_changes,
+                          p.full_name as performed_by_name
+                     from public.sales_history h
+                     left join public.profiles p on p.id = h.performed_by
+                     join lateral (select c.opened_at, c.reviewed_at
+                                     from data_center.corrections c
+                                    where c.sale_id = $1
+                                    order by c.seq desc limit 1) e on true
+                    where h.sale_id = $1
+                      and h.performed_at >= e.opened_at
+                      and h.performed_at <= coalesce(e.reviewed_at, now())
+                    order by h.performed_at desc
+                    limit 20`,
+            args: [saleId],
+          });
+          // The number the call centre heard against the one Sales saved.
+          const phoneCheck = await conn.queryObject({
+            text: `select cr.corrected_phone as heard, s.phone as saved,
+                          case when cr.corrected_phone is null then null
+                               else right(regexp_replace(cr.corrected_phone, '\\D', '', 'g'), 10)
+                                  = right(regexp_replace(coalesce(s.phone, ''), '\\D', '', 'g'), 10)
+                          end as matches
+                     from public.sales s
+                     left join data_center.call_records cr on cr.sale_id = s.id
+                    where s.id = $1`,
+            args: [saleId],
+          });
           const newest = episodes.rows[0] as { state?: string; current_rep_user_id?: string | null } | undefined;
           const routedToMe = Boolean(newest && newest.current_rep_user_id === userId);
           return json({
@@ -360,6 +395,8 @@ serve(async (req) => {
               record: record.rows[0] ?? null,
               transfer: transfer.rows[0] ?? null,
               attempts: attempts.rows,
+              history: history.rows,
+              phoneCheck: phoneCheck.rows[0] ?? null,
               catalogue: SALE_FIELDS,
               reasonFields: reasonMap.rows[0]?.value ?? {},
               can: {
@@ -502,12 +539,14 @@ serve(async (req) => {
         if (!["recall", "no_recall", "reopen"].includes(outcome)) {
           return json({ error: "outcome must be recall, no_recall or reopen", code: "bad_input" }, 400, cors);
         }
+        const phone = body.phone === "use_saved" || body.phone === "keep_corrected" ? body.phone : null;
         const episode = await transact((conn) =>
           reviewCorrection(conn, {
             saleId,
             actorId: userId,
             outcome: outcome as "recall" | "no_recall" | "reopen",
             note: body.note ? String(body.note) : null,
+            phone,
           })
         );
         return json({ data: { episode } }, 200, cors);

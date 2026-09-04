@@ -37,7 +37,29 @@ who fix it on the rep's behalf; the episode records `fixed_on_behalf`. A
 `delegate_user_id` on `sales_rep_accounts` lets an administrator name a
 delegate. Creating accounts is outside the module.
 
+## D21. Recall is derived, and the saved phone is the truth after a fix (2026-09-04)
+
+A record whose fix the call centre closed with "ring again" needs calls
+again, and it had usually used up its three. No flag is set: the episode
+snapshots `attempts_at_close`, and `v_callable_records` tests
+`attempt_count - attempts_at_close` against the same `callback_limit`. The
+engine reads the view and needs no change, and a second close gives a
+second allowance without anything to reset.
+
+The call centre's `corrected_phone` was a note of what the buyer said before
+Sales saved anything. Once Sales has saved the same number (same last ten
+digits, however typed) the note is cleared on close, so the queue dials one
+number. When the two differ nothing happens on its own: the review panel
+shows both and the reviewer chooses. The record is never edited by the
+module; `public.sales.phone` stays where the sales app put it.
+
 ## Observations recorded, not acted on
 
 - 181 live sales carry a payment model outside their partner's entitlement.
 - The host form keeps its own hard-coded previous-stove list.
+- The sales app's own audit (`create_sales_history()`) tracks nine columns,
+  none of them the phone, and writes nothing when no session user is set,
+  which is the case for every edit `update-sale` makes under its service
+  client. So the host's history does not see the module's fixes. The
+  episode's `before` and `after` snapshots are the audit of a correction;
+  the review panel shows the host's rows as a supplement and says so.
