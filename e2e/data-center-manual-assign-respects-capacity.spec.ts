@@ -25,6 +25,26 @@ async function state(page: Page) {
   return (r.body as { data: { agents: Agent[]; pool: Partner[] } }).data;
 }
 
+/**
+ * A partner with something callable. The fixed engine hands out everything the
+ * seed has during global setup, so arrange rather than skip: take one record
+ * back from whoever holds one, which puts its partner back in the pool.
+ */
+async function ensurePool(page: Page): Promise<Partner[]> {
+  for (let attempt = 0; attempt < 3; attempt++) {
+    const s = await state(page);
+    const pool = s.pool.filter((p) => p.callable > 0);
+    if (pool.length > 0) return pool;
+    const holder = s.agents.find((a) => a.open_batches > 0);
+    expect(holder, "somebody holding a batch to take a record from").toBeTruthy();
+    const held = await callEdgeFunction(page, "data-center-assign", { action: "agent_detail", agentId: holder!.agent_id });
+    const items = (held.body as { data: { items: { sale_id: string }[] } }).data.items;
+    expect(items.length).toBeGreaterThan(0);
+    await callEdgeFunction(page, "data-center-assign", { action: "unassign_item", saleId: items[0].sale_id });
+  }
+  throw new Error("no partner with callable records after three attempts");
+}
+
 async function profileOf(agentId: string): Promise<Profile> {
   const [p] = await branchSql<NonNullable<Profile>>(
     `select is_enabled, max_open_batches, note from data_center.call_agent_profiles where user_id = '${agentId}'`,
@@ -62,9 +82,8 @@ test("a second batch over capacity is refused, and lands with a reason", async (
     expect(set.status, JSON.stringify(set.body)).toBe(200);
 
     // The agent must hold one batch already; make one if the engine left them empty.
-    let pool = s.pool.filter((p) => p.callable > 0);
+    let pool = await ensurePool(page);
     if (agent.open_batches === 0) {
-      expect(pool.length, "a partner with callable records").toBeGreaterThan(0);
       const first = await callEdgeFunction(page, "data-center-assign", {
         action: "assign_manual", agentId: agent.agent_id, organizationId: pool[0].organization_id, size: 1,
       });
@@ -72,9 +91,8 @@ test("a second batch over capacity is refused, and lands with a reason", async (
       const b = (first.body as { data: { batchId: string | null } }).data.batchId;
       expect(b).toBeTruthy();
       made.push(b!);
-      pool = (await state(page)).pool.filter((p) => p.callable > 0);
     }
-    expect(pool.length, "a partner with callable records for the second batch").toBeGreaterThan(0);
+    pool = await ensurePool(page);
 
     const refused = await callEdgeFunction(page, "data-center-assign", {
       action: "assign_manual", agentId: agent.agent_id, organizationId: pool[0].organization_id, size: 1,
