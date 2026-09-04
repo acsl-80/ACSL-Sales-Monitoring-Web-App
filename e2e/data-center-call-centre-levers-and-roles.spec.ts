@@ -168,7 +168,7 @@ test.describe("slice 7b: the levers ask first, and No does nothing", () => {
     await page.getByRole("button", { name: "Assign now" }).click();
     let ask = page.getByRole("alertdialog");
     await expect(ask, "Assign now should ask first").toBeVisible({ timeout: 10_000 });
-    await expect(ask).toContainText("Assign the pool now?");
+    await expect(ask).toContainText("Run the engine now?");
     await ask.getByRole("button", { name: "Not now" }).click();
     await expect(ask).toHaveCount(0);
 
