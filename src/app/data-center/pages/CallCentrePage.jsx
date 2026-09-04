@@ -12,6 +12,7 @@ import MyWork from "../features/call-centre/MyWork";
 import SharedPhones from "../features/call-centre/SharedPhones";
 import { useFeature } from "../lib/access";
 import { DATA_CENTER_FEATURES } from "../lib/features";
+import { wordsFor } from "../lib/outcome";
 import { callCentreLayout } from "../lib/callCentreLayout";
 
 /** The queue's own presets, named so a drill banner can say which one it took. */
@@ -65,7 +66,7 @@ function Inner() {
     const subject = search.label
       ?? (preset ? PRESET_LABELS[preset] : null)
       ?? (search.verificationOutcome
-        ? search.verificationOutcome.replace(/_/g, " ")
+        ? wordsFor(search.verificationOutcome)
         : "the filters set on the queue");
 
     return {
@@ -74,7 +75,16 @@ function Inner() {
       description: filters.outcomeGroup
         ? `${subject}: ${STATUS_LABELS[search.status]}`
         : subject,
-      clear: () => navigate({ to: "/data-center/call-centre", search: {} }),
+      // Everything that narrows goes; the two periods are how far back the
+      // reader is looking, not a narrowing, and stay.
+      clear: () =>
+        navigate({
+          to: "/data-center/call-centre",
+          search: (prev) => ({
+            ...(prev.period ? { period: prev.period } : {}),
+            ...(prev.logPeriod ? { logPeriod: prev.logPeriod } : {}),
+          }),
+        }),
     };
   }, [search, navigate]);
 

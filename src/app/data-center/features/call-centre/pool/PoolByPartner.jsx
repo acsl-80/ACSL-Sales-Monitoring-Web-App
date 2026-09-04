@@ -65,7 +65,7 @@ export default function PoolByPartner({ metrics, agents, canManage, reload }) {
       </header>
       {rows.length === 0 ? (
         <p className="px-4 py-6 text-sm text-gray-600">
-          Nothing is waiting to be called. Every record has either been handed out, concluded, or is with Sales.
+          Nothing is waiting to be handed out. Every callable record is with an agent, concluded, or with Sales.
         </p>
       ) : (
         <div className="overflow-x-auto">

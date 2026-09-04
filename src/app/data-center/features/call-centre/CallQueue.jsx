@@ -321,10 +321,18 @@ export default function CallQueue({ canEdit, drill = null, agents = null }) {
 
       <div className="flex flex-wrap items-center gap-2 border-b border-gray-100 bg-white px-4 py-3">
         <div className="flex flex-wrap gap-1.5">
-          {PRESETS.map((p) => (
+          {PRESETS.map((p) => {
+            // A verification facet in the URL outranks a preset on the same
+            // column; rather than a pressed chip the facet silently overrides,
+            // the preset is disabled and says why.
+            const clashes = Boolean(drill?.filters?.verificationOutcome)
+              && (p.filters.verificationOutcome !== undefined || p.filters.hasCallRecord !== undefined);
+            return (
             <button
               key={p.key}
               type="button"
+              disabled={clashes}
+              title={clashes ? "Clear the Verification filter first" : undefined}
               onClick={() => setPreset(p.key)}
               aria-pressed={preset === p.key}
               className={`rounded-full border px-3 py-1.5 text-xs font-medium transition ${
@@ -335,7 +343,8 @@ export default function CallQueue({ canEdit, drill = null, agents = null }) {
             >
               {p.label}
             </button>
-          ))}
+            );
+          })}
         </div>
 
         {!drillSetsDates && (

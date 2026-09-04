@@ -21,6 +21,8 @@ async function busiestPartner(): Promise<{ organization_id: string; partner_name
   const [row] = await branchSql<{ organization_id: string; partner_name: string }>(
     `select c.organization_id::text, c.partner_name from data_center.v_call_center c
       where c.is_archived is not true and c.organization_id is not null and c.partner_name is not null
+        -- The queue's default period is this year; pick a partner it will show.
+        and c.sales_date >= date_trunc('year', now())
       group by 1, 2 order by count(*) desc limit 1`,
   );
   return row ?? null;
