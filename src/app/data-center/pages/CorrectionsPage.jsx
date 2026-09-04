@@ -23,7 +23,7 @@ export default function CorrectionsPage() {
       description="Sent back from the call centre because something on the record did not hold up. Fix it, say what you did, and the call centre reviews it before ringing again."
       breadcrumb="Records to fix"
       area="call-centre"
-      feature={DATA_CENTER_FEATURES.CORRECTIONS_FIX}
+      feature={[DATA_CENTER_FEATURES.CORRECTIONS_FIX, DATA_CENTER_FEATURES.CALL_RECORDS_EDIT]}
     >
       <CorrectionsList key={`${search.tab ?? "open"}:${search.mine ? 1 : 0}`} initialTab={search.tab ?? "open"} initialMine={Boolean(search.mine)} />
     </DataCentreShell>

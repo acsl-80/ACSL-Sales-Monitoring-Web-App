@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import Link from "@/compat/Link";
 import { dataCenterCorrections, DataCenterError } from "../../lib/client";
-import { SALE_FIELDS, byKey } from "../corrections/lib/saleFields";
+import { EDITABLE, byKey } from "../corrections/lib/saleFields";
 import { dateOf } from "../../lib/when";
 import { Loader2, Undo2, Users, AlertTriangle, ArrowRight, ChevronDown, ChevronUp } from "lucide-react";
 
@@ -18,12 +18,16 @@ import { Loader2, Undo2, Users, AlertTriangle, ArrowRight, ChevronDown, ChevronU
  * While an episode is live the same panel shows its state, the disputed
  * fields, who has it and the fix note, and offers Withdraw; once Sales has
  * fixed it the door to the review is right here.
+ *
+ * Only fields the fix surface can act on are offered: the editable catalogue
+ * plus the stove ID, which has its own rematch. Marking a signature disputed
+ * would leave the rep a mark and no control.
  */
 
 /** The fields a receipt usually gets wrong, offered first. */
 const PRIMARY = [
   "phone", "other_phone", "end_user_name", "full_address", "state_backup", "lga_backup",
-  "amount", "total_paid", "stove_serial_no", "signature", "agreement_image_id",
+  "amount", "total_paid", "stove_serial_no",
 ];
 
 const STATE_WORD = { open: "Waiting on Sales", fixed: "Fixed, awaiting review" };
@@ -58,8 +62,22 @@ function Chip({ kind, on, disabled, children, onClick }) {
   );
 }
 
-function WhoReceives({ route }) {
-  if (!route) return null;
+function WhoReceives({ route, pending }) {
+  if (pending) {
+    return (
+      <p className="flex items-center gap-2 text-xs text-gray-500">
+        <Loader2 className="h-3.5 w-3.5 animate-spin" /> Working out who receives it
+      </p>
+    );
+  }
+  if (!route) {
+    return (
+      <p className="flex gap-2 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-900">
+        <AlertTriangle className="mt-0.5 h-3.5 w-3.5 shrink-0 text-amber-600" />
+        Could not work out who receives this. Reload the record before sending it back.
+      </p>
+    );
+  }
   const standing = route.standing ?? 0;
   const standingWords = standing > 0 ? `The ${standing} standing ${standing === 1 ? "recipient sees" : "recipients see"} it too.` : "";
   if (route.rep_user_id && route.account_name) {
@@ -94,24 +112,34 @@ function WhoReceives({ route }) {
 
 export default function SendBackPanel({ saleId, record, reasons, canEdit, onChanged }) {
   const [reasonId, setReasonId] = useState("");
-  const [fields, setFields] = useState(() => new Set());
+  // What the reason maps to, from the server; and what the agent ticked or
+  // unticked by hand, which survives a change of reason.
+  const [reasonFields, setReasonFields] = useState(() => new Set());
+  const [overrides, setOverrides] = useState(() => new Map());
   const [note, setNote] = useState("");
   const [more, setMore] = useState(false);
   const [preview, setPreview] = useState(null);
+  const [previewFor, setPreviewFor] = useState(undefined);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState(null);
 
   // The route and the reason's fields, from the server that will stamp them.
   useEffect(() => {
     let live = true;
+    setPreviewFor(undefined);
     dataCenterCorrections
       .routePreview(saleId, reasonId || null)
       .then((p) => {
         if (!live) return;
         setPreview(p);
-        if (reasonId) setFields(new Set(p.fields ?? []));
+        setReasonFields(new Set(reasonId ? p.fields ?? [] : []));
+        setPreviewFor(reasonId);
       })
-      .catch(() => live && setPreview(null));
+      .catch(() => {
+        if (!live) return;
+        setPreview(null);
+        setPreviewFor(reasonId);
+      });
     return () => {
       live = false;
     };
@@ -126,16 +154,26 @@ export default function SendBackPanel({ saleId, record, reasons, canEdit, onChan
 
   const reason = reasons.find((r) => r.id === reasonId);
   const needsNote = reason?.value === "other";
-  const canSend = canEdit && Boolean(reasonId) && (!needsNote || note.trim().length > 0) && !busy;
+  const previewReady = previewFor === reasonId && preview !== null;
+  const canSend = canEdit && Boolean(reasonId) && previewReady && (!needsNote || note.trim().length > 0) && !busy;
 
-  const primary = useMemo(() => PRIMARY.map((k) => byKey[k]).filter(Boolean), []);
-  const rest = useMemo(() => SALE_FIELDS.filter((f) => !PRIMARY.includes(f.key) && f.key !== "stove_image_id"), []);
+  const offered = useMemo(() => {
+    const keys = new Set(EDITABLE.map((f) => f.key));
+    keys.add("stove_serial_no");
+    return keys;
+  }, []);
+  const primary = useMemo(() => PRIMARY.map((k) => byKey[k]).filter((f) => f && offered.has(f.key)), [offered]);
+  const rest = useMemo(
+    () => [...offered].filter((k) => !PRIMARY.includes(k)).map((k) => byKey[k]).filter(Boolean),
+    [offered],
+  );
 
+  const isOn = (key) => (overrides.has(key) ? overrides.get(key) : reasonFields.has(key));
+  const selected = () => [...offered].filter(isOn);
   const toggleField = (key) =>
-    setFields((prev) => {
-      const next = new Set(prev);
-      if (next.has(key)) next.delete(key);
-      else next.add(key);
+    setOverrides((prev) => {
+      const next = new Map(prev);
+      next.set(key, !isOn(key));
       return next;
     });
 
@@ -147,9 +185,16 @@ export default function SendBackPanel({ saleId, record, reasons, canEdit, onChan
     }
     setBusy(true);
     try {
-      await dataCenterCorrections.open(saleId, { reasonId, fields: [...fields], note: note.trim() || null });
+      const fields = selected();
+      await dataCenterCorrections.open(saleId, {
+        reasonId,
+        // An empty list would be stored as "nothing named"; null lets the
+        // server fill in from the reason.
+        fields: fields.length > 0 ? fields : null,
+        note: note.trim() || null,
+      });
       setReasonId("");
-      setFields(new Set());
+      setOverrides(new Map());
       setNote("");
       await onChanged?.("Sent back to Sales.");
     } catch (err) {
@@ -250,36 +295,41 @@ export default function SendBackPanel({ saleId, record, reasons, canEdit, onChan
       <div className="space-y-4 px-4 py-4">
         <div>
           <p id="send-back-reason" className="text-xs font-medium uppercase tracking-wide text-gray-600">What is wrong</p>
-          <div role="radiogroup" aria-labelledby="send-back-reason" className="mt-2 flex flex-wrap gap-2">
-            {reasons.map((r) => (
-              <Chip key={r.id} kind="radio" on={reasonId === r.id} disabled={!canEdit || busy} onClick={() => setReasonId(reasonId === r.id ? "" : r.id)}>
-                {r.label}
-              </Chip>
-            ))}
-            {reasons.length === 0 && <span className="text-sm text-gray-500">No reasons are configured. Settings sets them.</span>}
-          </div>
+          {reasons.length === 0 ? (
+            <p className="mt-2 text-sm text-gray-500">No reasons are configured. Settings sets them.</p>
+          ) : (
+            <div role="radiogroup" aria-labelledby="send-back-reason" className="mt-2 flex flex-wrap gap-2">
+              {reasons.map((r) => (
+                <Chip key={r.id} kind="radio" on={reasonId === r.id} disabled={!canEdit || busy} onClick={() => setReasonId(r.id)}>
+                  {r.label}
+                </Chip>
+              ))}
+            </div>
+          )}
         </div>
 
         <div>
           <p id="send-back-fields" className="text-xs font-medium uppercase tracking-wide text-gray-600">Which fields</p>
           <div role="group" aria-labelledby="send-back-fields" className="mt-2 flex flex-wrap gap-2">
             {primary.map((f) => (
-              <Chip key={f.key} kind="checkbox" on={fields.has(f.key)} disabled={!canEdit || busy} onClick={() => toggleField(f.key)}>
+              <Chip key={f.key} kind="checkbox" on={isOn(f.key)} disabled={!canEdit || busy} onClick={() => toggleField(f.key)}>
                 {f.label}
               </Chip>
             ))}
             {more && rest.map((f) => (
-              <Chip key={f.key} kind="checkbox" on={fields.has(f.key)} disabled={!canEdit || busy} onClick={() => toggleField(f.key)}>
+              <Chip key={f.key} kind="checkbox" on={isOn(f.key)} disabled={!canEdit || busy} onClick={() => toggleField(f.key)}>
                 {f.label}
               </Chip>
             ))}
           </div>
           <div className="mt-1.5 flex flex-wrap items-center gap-3">
             <p className="text-xs text-gray-500">Prefilled from the reason. Tick anything else the receipt got wrong; Sales sees these marked on the record.</p>
-            <button type="button" onClick={() => setMore((m) => !m)} className="inline-flex items-center gap-1 text-xs font-medium text-(--dc-accent)">
-              {more ? <ChevronUp className="h-3.5 w-3.5" /> : <ChevronDown className="h-3.5 w-3.5" />}
-              {more ? "Fewer fields" : `${rest.length} more fields`}
-            </button>
+            {rest.length > 0 && (
+              <button type="button" onClick={() => setMore((m) => !m)} className="inline-flex items-center gap-1 text-xs font-medium text-(--dc-accent)">
+                {more ? <ChevronUp className="h-3.5 w-3.5" /> : <ChevronDown className="h-3.5 w-3.5" />}
+                {more ? "Fewer fields" : `${rest.length} more fields`}
+              </button>
+            )}
           </div>
         </div>
 
@@ -299,7 +349,7 @@ export default function SendBackPanel({ saleId, record, reasons, canEdit, onChan
           <p className="mt-1 text-xs text-gray-500">{needsNote ? "Required for this reason." : "Optional, but the rep who fixes it will thank you."}</p>
         </div>
 
-        <WhoReceives route={preview?.route ?? null} />
+        <WhoReceives route={preview?.route ?? null} pending={previewFor !== reasonId} />
 
         {error && <p className="rounded-md bg-red-50 px-3 py-2 text-xs text-red-700">{error}</p>}
 

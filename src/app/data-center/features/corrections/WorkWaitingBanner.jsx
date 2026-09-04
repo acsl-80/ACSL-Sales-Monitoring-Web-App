@@ -96,13 +96,8 @@ export default function WorkWaitingBanner() {
           </div>
         )}
         {w.seesEverything && (w.unroutedReps ?? 0) > 0 && (
-          <p className="mt-2.5 flex flex-wrap items-center gap-2 border-t border-amber-200 pt-2.5 text-xs text-amber-900">
-            <span>
-              <strong>{plural(w.unroutedReps, "sales rep")}</strong> with work waiting {w.unroutedReps === 1 ? "has" : "have"} no account linked, so the standing recipients carry it.
-            </span>
-            <Link href="/data-center/settings" className="ml-auto inline-flex items-center gap-1 font-medium text-amber-900 underline-offset-2 hover:underline">
-              Link a rep in Settings <ArrowRight className="h-3 w-3" />
-            </Link>
+          <p className="mt-2.5 border-t border-amber-200 pt-2.5 text-xs text-amber-900">
+            <strong>{plural(w.unroutedReps, "sales rep")}</strong> with work waiting {w.unroutedReps === 1 ? "has" : "have"} no account linked, so the standing recipients carry it. An administrator links reps under Settings.
           </p>
         )}
       </div>

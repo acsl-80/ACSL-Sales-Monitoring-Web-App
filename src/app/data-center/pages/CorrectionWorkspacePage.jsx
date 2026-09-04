@@ -23,7 +23,7 @@ export default function CorrectionWorkspacePage() {
       description="What the call centre questioned is marked. Change it, say what you did, and it goes to the call centre for review."
       breadcrumb="Fix this record"
       area="call-centre"
-      feature={DATA_CENTER_FEATURES.CORRECTIONS_FIX}
+      feature={[DATA_CENTER_FEATURES.CORRECTIONS_FIX, DATA_CENTER_FEATURES.CALL_RECORDS_EDIT]}
     >
       <Inner />
     </DataCentreShell>

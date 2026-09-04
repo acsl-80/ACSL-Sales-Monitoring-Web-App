@@ -436,7 +436,8 @@ serve(async (req) => {
                        join public.sales s on s.id = cr.sale_id
                        where cr.serial_unconfirmed_at is not null and s.is_archived is not true) as unconfirmed,
                      (select count(distinct coalesce(c.sales_rep, ''))::int from data_center.v_corrections c
-                       where c.state = 'open' and c.current_rep_user_id is null) as unrouted`,
+                       where c.state = 'open' and c.current_rep_user_id is null
+                         and c.is_archived is not true and c.sales_rep is not null) as unrouted`,
             args: [userId],
           });
           const row = r.rows[0];
@@ -470,7 +471,7 @@ serve(async (req) => {
           const current = await conn.queryObject({
             text: `select ${ROW_COLUMNS}
                      from data_center.v_corrections c
-                    where c.sale_id = $1
+                    where c.sale_id = $1 and c.is_archived is not true
                     order by c.seq desc
                     limit 1`,
             args: [saleId],
