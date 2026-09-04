@@ -164,6 +164,8 @@ serve(async (req) => {
       isEnabled?: boolean | null;
       maxOpenBatches?: number | null;
       note?: string | null;
+      /** Hand-out order tokens for a manual batch; the picker refuses any it does not know. */
+      order?: unknown;
     } = {};
     try {
       body = await req.json();
@@ -371,8 +373,15 @@ serve(async (req) => {
           return await withConnection(async (conn) => {
             const r = await conn.queryObject<{ batch_id: string | null; size: number }>({
               text: `select batch_id::text, size
-                       from data_center.assign_batch_manual($1, $2, $3, $4, $5)`,
-              args: [body.agentId, body.organizationId, body.size ?? null, userId, body.overrideReason ?? null],
+                       from data_center.assign_batch_manual($1, $2, $3, $4, $5, $6)`,
+              args: [
+                body.agentId,
+                body.organizationId,
+                body.size ?? null,
+                userId,
+                body.overrideReason ?? null,
+                Array.isArray(body.order) && body.order.length > 0 ? body.order.map(String) : null,
+              ],
             });
             const row = r.rows[0];
             return json(

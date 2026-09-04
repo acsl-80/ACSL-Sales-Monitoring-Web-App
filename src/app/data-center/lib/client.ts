@@ -1999,6 +1999,8 @@ export const dataCenterAssign = {
       defaultCap: number;
       /** `assignment.capacity_ceiling`, the most a per-agent capacity may be set to. */
       capacityCeiling: number;
+      /** The configured hand-out order and the labels of every order the picker knows. */
+      priority: { order: string[]; options: { value: string; label: string }[] };
     }>("data-center-assign", "agents"),
 
   /** One agent opened up: every batch they hold and every record in it. */
@@ -2006,12 +2008,19 @@ export const dataCenterAssign = {
     call<{ items: AssignmentDetailItem[] }>("data-center-assign", "agent_detail", { agentId }),
 
   /** Hand one partner's records to one agent. `size` defaults to the configured batch. */
-  assignManual: (agentId: string, organizationId: string, size?: number, overrideReason?: string | null) =>
+  assignManual: (
+    agentId: string,
+    organizationId: string,
+    size?: number,
+    overrideReason?: string | null,
+    order?: string[] | null,
+  ) =>
     call<{ batchId: string | null; size: number }>("data-center-assign", "assign_manual", {
       agentId,
       organizationId,
       size,
       overrideReason: overrideReason ?? null,
+      order: order ?? null,
     }),
 
   /**

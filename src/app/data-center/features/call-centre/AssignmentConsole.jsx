@@ -79,9 +79,16 @@ const ITEM_COLUMNS = [
  * call, largest backlog first. Offering a partner with nothing left would be
  * offering a button that does nothing.
  */
-function AssignDialog({ agent, pool, batchSize, onDone, onClose }) {
+function AssignDialog({ agent, pool, batchSize, priority, onDone, onClose }) {
   const [orgId, setOrgId] = useState("");
   const [size, setSize] = useState(String(batchSize));
+  // The order the picker hands records out in. The configured default
+  // leads; a supervisor may put another first ("newest first" for a
+  // partner whose records just landed) and the rest of the default follows
+  // as the tie-break.
+  const orderOptions = priority?.options ?? [];
+  const defaultOrder = priority?.order ?? [];
+  const [orderFirst, setOrderFirst] = useState(defaultOrder[0] ?? orderOptions[0]?.value ?? "");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState(null);
   const [done, setDone] = useState([]);
@@ -97,11 +104,15 @@ function AssignDialog({ agent, pool, batchSize, onDone, onClose }) {
     setBusy(true);
     setError(null);
     try {
+      const order = orderFirst
+        ? [orderFirst, ...defaultOrder.filter((t) => t !== orderFirst)]
+        : null;
       const result = await dataCenterAssign.assignManual(
         agent.agent_id,
         orgId,
         cap,
         needsReason && reason.trim() ? reason.trim() : null,
+        order,
       );
       if (result.size === 0) {
         setError("That partner had nothing left by the time the batch was made.");
@@ -221,6 +232,23 @@ function AssignDialog({ agent, pool, batchSize, onDone, onClose }) {
                     className="w-28 rounded-md border border-gray-300 px-2.5 py-1.5 text-sm tabular-nums focus:border-(--dc-accent) focus:outline-none"
                   />
                 </label>
+                {orderOptions.length > 0 && (
+                  <div>
+                    <label htmlFor="assign-order" className="mb-1 block text-xs font-medium uppercase tracking-wide text-gray-600">
+                      Hand-out order
+                    </label>
+                    <select
+                      id="assign-order"
+                      value={orderFirst}
+                      onChange={(e) => setOrderFirst(e.target.value)}
+                      className="rounded-md border border-gray-300 bg-white px-2.5 py-1.5 text-sm focus:border-(--dc-accent) focus:outline-none"
+                    >
+                      {orderOptions.map((o) => (
+                        <option key={o.value} value={o.value}>{o.label}</option>
+                      ))}
+                    </select>
+                  </div>
+                )}
                 <p className="pb-2 text-sm text-gray-600">
                   {partner
                     ? `${plural(cap, "record")} from ${partner.partner_name}`
@@ -719,7 +747,7 @@ export default function AssignmentConsole({ canEdit }) {
         <AssignDialog
           agent={assigning}
           pool={pool}
-          batchSize={data?.batchSize ?? 20}
+          batchSize={data?.batchSize ?? 20} priority={data?.priority}
           onDone={load}
           onClose={() => setAssigning(null)}
         />

@@ -13,8 +13,8 @@ lives on each PR.
 - [x] 2h Hotfix from the slice 2 review: update-sale writes only the fields it was sent, partner agent kept to their own sales, money offered only when disputed. merged, live (PR #69, 2026-09-04; update-sale v23 since 11:09Z)
 - [x] 3 Review and recall: review panel, derived recall allowance, phone reconciliation, awaiting-review preset and tile. merged, live (PR #70, 2026-09-04): migration applied, three functions deployed, bundle crawl confirmed
 - [x] 4 Send-back panel and work-waiting banner. merged, live (PR #71, 2026-09-04): corrections v4 deployed, bundle crawl confirmed
-- [ ] 5a Engine picks from module_access; capacity on the manual door; agent profiles; gates. green on the preview, in review (PR #72); the Claude review's findings acted on; awaiting the owner's word
-- [ ] 5b Pool v2 and pick_callable with a configured priority. todo
+- [x] 5a Engine picks from module_access; capacity on the manual door; agent profiles; gates. merged, live (PR #72, 2026-09-04): migration applied (5 agents over capacity left as they are, 7 candidates for the engine), assign v4 deployed, bundle crawl confirmed
+- [ ] 5b Pool v2 and pick_callable with a configured priority. in progress
 - [ ] 6a Control centre: board, agents with presence, pool by partner, lanes, polling. todo
 - [ ] 6b Queue facets in the URL. todo
 - [ ] 7a Completeness evidence config and the tile's plain line. todo

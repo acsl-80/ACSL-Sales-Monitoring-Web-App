@@ -69,6 +69,25 @@ that would be worked around by pausing the rule. Nothing is backfilled: the
 five agents over capacity show as "3 of 1" on the console until somebody
 reclaims or reassigns.
 
+## D23. What the pool leaves out, and no index on public.sales for the picker (2026-09-04)
+
+`v_callable_records` now leaves out a record with Sales (an open or fixed
+episode), a record with a call draft saved within `assignment.draft_holds_hours`,
+and a record rung within `callback.recall_after_days` unless a ring-again close
+is newer than the attempt. Each is configuration. An unconfirmed shared phone
+stays in: the call is how a suspicion becomes a fact. On production the day it
+shipped these three exclusions removed nothing (0 with an open episode in the
+pool, 0 recent drafts, 0 rung in the last two days), so the callable count
+stays 1,475 until the call centre's own activity starts holding records back.
+
+The plan reserved an index on `public.sales (created_at)` for the picker's
+"newest digitised" order. Not added: the picker sorts one partner's callable
+set, hundreds of rows now and a few thousand at the 500,000 target, after the
+partner filter that `idx_sales_org_date_id` already serves. The module's one
+index on `public` stays the one. If a plan ever shows the sort as the cost, the
+earlier index migration's pattern applies: a plain index in the migration for
+fresh databases, a CONCURRENTLY script run by hand on production.
+
 ## Observations recorded, not acted on
 
 - 181 live sales carry a payment model outside their partner's entitlement.

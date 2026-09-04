@@ -73,6 +73,16 @@ export async function handleAgents(ctx: AgentsContext): Promise<Response> {
                                    where key = 'assignment.capacity_ceiling'), 10) as ceiling`,
         });
         const d = defaults.rows[0];
+        // The hand-out order: the configured default and the labels for every
+        // order the picker knows, so the dialog can offer them as words.
+        const priority = await conn.queryObject<{ order: string[] | null; options: { value: string; label: string }[] | null }>({
+          text: `select (select array(select jsonb_array_elements_text(value -> 'order'))
+                           from data_center.workflow_config where key = 'assignment.priority') as "order",
+                        (select jsonb_agg(jsonb_build_object('value', v.value, 'label', v.label) order by v.sort_order)
+                           from data_center.option_values v
+                          where v.list_key = 'assignment_priority' and v.is_active) as options`,
+        });
+        const pr = priority.rows[0];
         return json(
           {
             data: {
@@ -81,6 +91,7 @@ export async function handleAgents(ctx: AgentsContext): Promise<Response> {
               batchSize: Number(d?.batch_size ?? 20),
               defaultCap: Number(d?.default_cap ?? 1),
               capacityCeiling: Number(d?.ceiling ?? 10),
+              priority: { order: pr?.order ?? [], options: pr?.options ?? [] },
             },
           },
           200,
