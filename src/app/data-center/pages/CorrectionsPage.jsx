@@ -1,5 +1,5 @@
 import DataCentreShell from "../components/DataCentreShell";
-import SendBackList from "../features/corrections/SendBackList";
+import CorrectionsList from "../features/corrections/CorrectionsList";
 import { DATA_CENTER_FEATURES } from "../lib/features";
 
 /**
@@ -18,12 +18,12 @@ export default function CorrectionsPage() {
   return (
     <DataCentreShell
       title="Records to fix"
-      description="Sent back from the call centre because something on the record did not hold up. Fix it, say what you did, and it goes back to be called again."
+      description="Sent back from the call centre because something on the record did not hold up. Fix it, say what you did, and the call centre reviews it before ringing again."
       breadcrumb="Records to fix"
       area="call-centre"
       feature={DATA_CENTER_FEATURES.CORRECTIONS_FIX}
     >
-      <SendBackList />
+      <CorrectionsList />
     </DataCentreShell>
   );
 }

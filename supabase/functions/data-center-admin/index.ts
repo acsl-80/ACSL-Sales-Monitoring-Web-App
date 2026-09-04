@@ -768,15 +768,31 @@ serve(async (req) => {
             return json({ error: "Which user?", code: "bad_input" }, 400, cors);
           }
 
+          // A standing recipient needs a way in as much as a rep does. The
+          // sales_rep level is provisioned when they hold none, and taken back
+          // when they stop receiving and nothing else justifies it.
+          const revokeIfIdle = async () => {
+            await conn.queryObject({
+              text: `delete from data_center.module_access m
+                      where m.user_id = $1 and m.access_role = 'sales_rep'
+                        and not exists (select 1 from data_center.sales_rep_accounts a
+                                         where a.user_id = $1 or a.delegate_user_id = $1)
+                        and not exists (select 1 from data_center.send_back_recipients r
+                                         where r.user_id = $1 and r.is_enabled)`,
+              args: [target],
+            });
+          };
+
           if (body.enabled === null) {
             await conn.queryObject({
               text: `delete from data_center.send_back_recipients where user_id = $1`,
               args: [target],
             });
+            await revokeIfIdle();
             return json({ data: { userId: target, removed: true } }, 200, cors);
           }
 
-          const saved = await conn.queryObject({
+          const saved = await conn.queryObject<{ user_id: string; is_enabled: boolean }>({
             text: `insert into data_center.send_back_recipients
                           (user_id, is_enabled, note, added_by)
                    values ($1, coalesce($2, true), $3, $4)
@@ -786,6 +802,16 @@ serve(async (req) => {
                    returning user_id::text, is_enabled`,
             args: [target, body.enabled ?? null, body.note ?? null, callerId],
           });
+          if (saved.rows[0]?.is_enabled) {
+            await conn.queryObject({
+              text: `insert into data_center.module_access (user_id, access_role, granted_by)
+                     values ($1, 'sales_rep', $2)
+                     on conflict (user_id) do nothing`,
+              args: [target, callerId],
+            });
+          } else {
+            await revokeIfIdle();
+          }
           return json({ data: saved.rows[0] }, 200, cors);
         }
 
@@ -821,25 +847,64 @@ serve(async (req) => {
             );
           }
 
-          const saved = await conn.queryObject({
-            // The display name comes from the transfers rather than the
-            // caller, so it stays whatever the ERP most recently wrote.
-            text: `insert into data_center.sales_rep_accounts
-                          (rep_key, rep_name, user_id, no_account, linked_at, linked_by)
-                   values ($1,
-                           coalesce((select min(trim(h.sales_rep))
-                                       from public.stove_transfer_history h
-                                      where lower(trim(h.sales_rep)) = $1), $1),
-                           $2, $3, now(), $4)
-                   on conflict (rep_key) do update
-                      set user_id = excluded.user_id,
-                          no_account = excluded.no_account,
-                          linked_at = now(),
-                          linked_by = excluded.linked_by
-                   returning rep_key, rep_name, user_id::text, no_account`,
-            args: [repKey, target, noAccount, callerId],
-          });
-          return json({ data: saved.rows[0] }, 200, cors);
+          /*
+           * Linking is also the door. Every linked rep on production held no
+           * module_access row, so the corrections page refused the very
+           * people the flow routed to. A link now provisions the sales_rep
+           * level when the account has none (a level it already holds is
+           * never lowered), and an unlink takes that level back only when no
+           * other link or recipient flag still justifies it.
+           */
+          await conn.queryObject("begin");
+          try {
+            const previous = await conn.queryObject<{ user_id: string | null }>({
+              text: `select user_id::text from data_center.sales_rep_accounts where rep_key = $1`,
+              args: [repKey],
+            });
+            const saved = await conn.queryObject({
+              // The display name comes from the transfers rather than the
+              // caller, so it stays whatever the ERP most recently wrote.
+              text: `insert into data_center.sales_rep_accounts
+                            (rep_key, rep_name, user_id, no_account, linked_at, linked_by)
+                     values ($1,
+                             coalesce((select min(trim(h.sales_rep))
+                                         from public.stove_transfer_history h
+                                        where lower(trim(h.sales_rep)) = $1), $1),
+                             $2, $3, now(), $4)
+                     on conflict (rep_key) do update
+                        set user_id = excluded.user_id,
+                            no_account = excluded.no_account,
+                            linked_at = now(),
+                            linked_by = excluded.linked_by
+                     returning rep_key, rep_name, user_id::text, no_account`,
+              args: [repKey, target, noAccount, callerId],
+            });
+            if (target) {
+              await conn.queryObject({
+                text: `insert into data_center.module_access (user_id, access_role, granted_by)
+                       values ($1, 'sales_rep', $2)
+                       on conflict (user_id) do nothing`,
+                args: [target, callerId],
+              });
+            }
+            const wasLinked = previous.rows[0]?.user_id ?? null;
+            if (wasLinked && wasLinked !== target) {
+              await conn.queryObject({
+                text: `delete from data_center.module_access m
+                        where m.user_id = $1 and m.access_role = 'sales_rep'
+                          and not exists (select 1 from data_center.sales_rep_accounts a
+                                           where a.user_id = $1 or a.delegate_user_id = $1)
+                          and not exists (select 1 from data_center.send_back_recipients r
+                                           where r.user_id = $1 and r.is_enabled)`,
+                args: [wasLinked],
+              });
+            }
+            await conn.queryObject("commit");
+            return json({ data: { ...(saved.rows[0] as object), provisioned: Boolean(target) } }, 200, cors);
+          } catch (err) {
+            await conn.queryObject("rollback");
+            throw err;
+          }
         }
 
         case "config_read": {

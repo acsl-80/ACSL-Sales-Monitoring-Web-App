@@ -233,7 +233,7 @@ const VERIFICATION_OUTCOMES = new Set([
  * scorecard's remainder does.
  */
 const OUTCOME_GROUPS = new Set(["verified", "unverified", "unreachable", "unresolved"]);
-const CORRECTION_STATES = new Set(["none", "open", "resolved"]);
+const CORRECTION_STATES = new Set(["none", "open", "fixed", "resolved"]);
 const ISO_DATE = /^\d{4}-\d{2}-\d{2}$/;
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
@@ -592,6 +592,13 @@ export function buildRecordsQuery(
       // the partial index on open corrections is usable.
       if (f.correctionState === "open") {
         where.push("cr.correction_requested_at is not null and cr.correction_resolved_at is null");
+      } else if (f.correctionState === "fixed") {
+        // Sales has saved and the call centre has not yet reviewed. The mirror
+        // columns still read as open (they stamp resolution only at close), so
+        // this one asks the episodes directly.
+        where.push(
+          "exists (select 1 from data_center.corrections cx where cx.sale_id = cr.sale_id and cx.state = 'fixed')",
+        );
       } else if (f.correctionState === "resolved") {
         where.push("cr.correction_resolved_at is not null");
       } else {

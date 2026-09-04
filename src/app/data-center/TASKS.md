@@ -8,7 +8,7 @@ lives on each PR.
 
 - [ ] 0 Docs and tracker: this file, `decisions.md`, PLAN.md and ROADMAP.md entries. in review
 - [ ] 0.5 Design canvas, ten surfaces in the module's theme, approved before code. canvas published 2026-09-04, awaiting his review
-- [ ] 1 Corrections lifecycle, function, backfill, access on link. todo
+- [ ] 1 Corrections lifecycle, function, backfill, access on link. spec red, awaiting the preview run
 - [ ] 2 Correction workspace: disputed record, edit through update-sale, serial through rematch. todo
 - [ ] 3 Review and recall: review panel, derived recall allowance, awaiting-review preset and tile. todo
 - [ ] 4 Send-back panel and work-waiting banner. todo

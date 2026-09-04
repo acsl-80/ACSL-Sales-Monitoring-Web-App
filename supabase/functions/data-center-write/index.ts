@@ -25,6 +25,11 @@ import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.39.3";
 import { openConnection, closeConnection, type PoolClient } from "../_shared/data-center-db.ts";
 import { featuresFor } from "../_shared/data-center-roles.ts";
+import {
+  CorrectionError,
+  fixCorrection,
+  openCorrection,
+} from "../_shared/data-center-corrections-sql.ts";
 
 const DEFAULT_ORIGINS = [
   "https://sales.atmosfair.com.ng",
@@ -855,7 +860,15 @@ serve(async (req) => {
         }
       }
 
-      /** Send a record back to Sales, or mark it fixed. */
+      /**
+       * Send a record back to Sales, or say it is fixed.
+       *
+       * A shim over the shared lifecycle since Phase 24: `open: true` opens
+       * an episode; `open: false` moves it to `fixed`, awaiting the call
+       * centre's review, rather than closing it outright. Closing is the
+       * reviewer's act, through data-center-corrections. Kept here so the call
+       * editor and the older specs keep working while the panel moves across.
+       */
       case "correction": {
         const saleId = String(body.saleId ?? "");
         const open = body.open !== false;
@@ -863,32 +876,31 @@ serve(async (req) => {
 
         await begin();
         try {
-          await conn.queryObject({
-            text: `insert into data_center.call_records (sale_id, created_by)
-                   values ($1, $2) on conflict (sale_id) do nothing`,
-            args: [saleId, userId],
-          });
-          await conn.queryObject({
-            text: open
-              ? `update data_center.call_records
-                   set correction_requested_at = now(), correction_requested_by = $2,
-                       correction_reason_id = $3, correction_note = $4,
-                       correction_resolved_at = null, correction_resolved_by = null,
-                       updated_by = $2, updated_at = now(), version = version + 1
-                 where sale_id = $1`
-              : `update data_center.call_records
-                   set correction_resolved_at = now(), correction_resolved_by = $2,
-                       other_comments = coalesce($3, other_comments),
-                       updated_by = $2, updated_at = now(), version = version + 1
-                 where sale_id = $1`,
-            args: open
-              ? [saleId, userId, body.reasonId ?? null, body.note ?? null]
-              : [saleId, userId, body.note ? String(body.note) : null],
-          });
+          const episode = open
+            ? await openCorrection(conn, {
+              saleId,
+              actorId: userId,
+              reasonId: body.reasonId ? String(body.reasonId) : null,
+              fields: (body as { fields?: unknown }).fields,
+              note: body.note ? String(body.note) : null,
+            })
+            : await fixCorrection(conn, {
+              saleId,
+              actorId: userId,
+              note: body.note ? String(body.note) : null,
+              onBehalf: null,
+            });
           await conn.queryObject("commit");
-          return json({ data: { saleId, correctionOpen: open } }, 200, cors);
+          return json(
+            { data: { saleId, correctionOpen: open, state: episode.state, episodeId: episode.id } },
+            200,
+            cors,
+          );
         } catch (err) {
           await conn.queryObject("rollback");
+          if (err instanceof CorrectionError) {
+            throw err.status === 409 ? new Conflict(err.message) : new BadRequest(err.message);
+          }
           throw err;
         }
       }

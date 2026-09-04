@@ -1058,6 +1058,149 @@ export type BatchStove = {
  * things a person does while holding a phone: the buyer reads a stove number
  * that does not match, or gives a number somebody else is already on.
  */
+/** One correction episode as `v_corrections` tells it. */
+export type CorrectionRow = {
+  id: string;
+  sale_id: string;
+  seq: number;
+  state: "open" | "fixed" | "resolved";
+  reason_id: string | null;
+  reason_value: string | null;
+  reason_label: string | null;
+  disputed_fields: string[];
+  note: string | null;
+  opened_at: string;
+  opened_by: string | null;
+  opened_by_name: string | null;
+  routed_rep_key: string | null;
+  routed_rep_user_id: string | null;
+  sales_rep: string | null;
+  current_rep_user_id: string | null;
+  rep_account_name: string | null;
+  rep_marked_no_account: boolean | null;
+  via_delegate: boolean | null;
+  assigned_to: string | null;
+  assigned_to_name: string | null;
+  claimed_at: string | null;
+  fixed_at: string | null;
+  fixed_by: string | null;
+  fixed_by_name: string | null;
+  fix_note: string | null;
+  fixed_on_behalf: string | null;
+  reviewed_at: string | null;
+  reviewed_by: string | null;
+  reviewed_by_name: string | null;
+  review_note: string | null;
+  review_outcome: "recall" | "no_recall" | "withdrawn" | "reopened" | null;
+  attempts_at_close: number | null;
+  reopened_from: string | null;
+  stove_serial_no: string | null;
+  transaction_id: string | null;
+  organization_id: string | null;
+  partner_name: string | null;
+  transfer_reference: string | null;
+  end_user_name: string | null;
+  phone: string | null;
+  sales_date: string | null;
+  verification_outcome: string | null;
+  attempt_count: number;
+  serial_unconfirmed_at: string | null;
+  is_mine?: boolean;
+  before?: Record<string, unknown> | null;
+  after?: Record<string, unknown> | null;
+};
+
+export type CorrectionTab = "open" | "fixed" | "resolved" | "all";
+
+export type CorrectionsList = {
+  rows: CorrectionRow[];
+  counts: { open: number; fixed: number; resolved: number };
+  tab: CorrectionTab;
+  mine: boolean;
+  seesEverything: boolean;
+  canReview: boolean;
+  canFix: boolean;
+  canEditSale: boolean;
+  unrouted: { sales_rep: string; waiting: number }[];
+};
+
+export type SaleFieldSpec = {
+  key: string;
+  label: string;
+  group: "buyer" | "where" | "stove" | "money" | "sale" | "evidence";
+  payload: string | null;
+  required: boolean;
+};
+
+export type CorrectionDetail = {
+  saleId: string;
+  episodes: CorrectionRow[];
+  sale: Record<string, unknown> | null;
+  catalogue: SaleFieldSpec[];
+  reasonFields: Record<string, string[]>;
+  can: { fix: boolean; claim: boolean; review: boolean; withdraw: boolean; open: boolean; editSale: boolean };
+};
+
+export type WorkWaiting = {
+  mineOpen: number;
+  mineFixed: number;
+  review: number | null;
+  openAll: number | null;
+  fixedAll: number | null;
+  unconfirmed: number | null;
+  unroutedReps: number | null;
+  canFix: boolean;
+  canReview: boolean;
+  seesEverything: boolean;
+};
+
+/**
+ * Corrections: a send-back as an episode, from open to closed.
+ *
+ * Everything here goes through `data-center-corrections`, which decides who
+ * may do what from the token: a rep may fix what is routed to them, the call
+ * centre opens, withdraws and reviews, and anyone who sees everything (a
+ * router, a standing recipient, a super admin) may do a rep's part for them.
+ */
+export const dataCenterCorrections = {
+  list: (opts: { tab?: CorrectionTab; mine?: boolean; limit?: number } = {}) =>
+    call<CorrectionsList>("data-center-corrections", "list", opts),
+
+  detail: (saleId: string) =>
+    call<CorrectionDetail>("data-center-corrections", "detail", { saleId }),
+
+  workWaiting: () => call<WorkWaiting>("data-center-corrections", "work_waiting"),
+
+  /** Who a send-back for this sale reaches, and which fields a reason points at. */
+  routePreview: (saleId: string, reasonId?: string | null) =>
+    call<{
+      route: {
+        sales_rep: string | null;
+        rep_user_id: string | null;
+        via_delegate: boolean;
+        account_name: string | null;
+        standing: number;
+      };
+      fields: string[];
+      current: { state: string } | null;
+    }>("data-center-corrections", "route_preview", { saleId, reasonId: reasonId ?? null }),
+
+  open: (saleId: string, input: { reasonId?: string | null; fields?: string[]; note?: string | null }) =>
+    call<{ episode: CorrectionRow }>("data-center-corrections", "open", { saleId, ...input }),
+
+  withdraw: (saleId: string, note?: string | null) =>
+    call<{ episode: CorrectionRow }>("data-center-corrections", "withdraw", { saleId, note: note ?? null }),
+
+  claim: (saleId: string) =>
+    call<{ episode: CorrectionRow }>("data-center-corrections", "claim", { saleId }),
+
+  fix: (saleId: string, note?: string | null) =>
+    call<{ episode: CorrectionRow }>("data-center-corrections", "fix", { saleId, note: note ?? null }),
+
+  review: (saleId: string, outcome: "recall" | "no_recall" | "reopen", note?: string | null) =>
+    call<{ episode: CorrectionRow }>("data-center-corrections", "review", { saleId, outcome, note: note ?? null }),
+};
+
 export const dataCenterCall = {
   /**
    * Move this sale onto the stove ID the buyer read out.
