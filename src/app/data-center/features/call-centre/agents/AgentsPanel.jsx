@@ -216,7 +216,11 @@ export default function AgentsPanel({ data, canManage, reload }) {
                     </td>
                     <td className="px-3 py-2">
                       <span className="block font-medium text-gray-900">{agent.full_name || agent.email}</span>
-                      <span className="block text-xs text-gray-500">{agent.access_role === "call_agent" ? "call agent" : "editor"}</span>
+                      <span className="block text-xs text-gray-500">
+                        {agent.email}
+                        {agent.email ? " · " : ""}
+                        {agent.access_role === "call_agent" ? "call agent" : "editor"}
+                      </span>
                     </td>
                     <td className="px-3 py-2"><Presence state={agent.presence} /></td>
                     <td className={`px-3 py-2 text-right tabular-nums ${over ? "font-semibold text-red-700" : "text-gray-700"}`} title={over ? "Over capacity: reclaim or reassign" : undefined}>
