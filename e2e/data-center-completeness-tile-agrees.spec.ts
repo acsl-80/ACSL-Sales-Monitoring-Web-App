@@ -1,5 +1,5 @@
-import { test, expect } from "@playwright/test";
-import { signIn, USERS, branchSql, callEdgeFunction } from "./helpers";
+import { test, expect, type Page } from "@playwright/test";
+import { signIn, USERS, branchSql, callEdgeFunction, commitAndDrain } from "./helpers";
 
 /**
  * Completeness said plainly.
@@ -57,9 +57,64 @@ async function missingCount(field: string): Promise<number> {
   return Number(n.n);
 }
 
-test("a sale committed through a paper batch is complete without a drawn signature", async () => {
-  const id = await paperSale();
-  test.skip(!id, "no paper-committed sale with the six fields on the branch");
+/** A partner seeded with free stoves on every preview branch. */
+const TWIN_A = "a0000000-0000-4000-8000-00000000000a";
+
+/**
+ * A paper-committed sale, arranged through the import function when the
+ * branch has none: a fresh branch carries seeded sales and no receipt batch,
+ * and a test that skips there proves nothing about the rule.
+ */
+async function arrangePaperSale(page: Page, marker: string): Promise<string> {
+  const stoves = await callEdgeFunction(page, "data-center-read", {
+    action: "partner_stoves", organizationId: TWIN_A, limit: 100,
+  });
+  const free = ((stoves.body as { data?: { stoves?: { stove_id: string; sale_id: string | null }[] } })
+    .data?.stoves ?? []).find((s) => !s.sale_id)?.stove_id;
+  expect(free, "a free stove to digitise a receipt for").toBeTruthy();
+
+  const staged = await callEdgeFunction(page, "data-center-import", {
+    action: "stage",
+    filename: `${marker}.csv`,
+    rows: [{
+      sales_model: "Amina Model",
+      stove_serial_no: free,
+      first_name: "Paper",
+      last_name: "Receipt",
+      phone: "08012345699",
+      sales_date: "2026-01-04",
+      amount: "25000",
+      state: "Kogi",
+      lga: "Isanlu",
+      address: `${marker} Paper Road`,
+    }],
+    confirmDuplicate: true,
+  });
+  expect(staged.status, JSON.stringify(staged.body)).toBe(200);
+  const batchId = (staged.body as { data: { batchId: string } }).data.batchId;
+  const validated = await callEdgeFunction(page, "data-center-import", { action: "validate", batchId });
+  expect(validated.status, JSON.stringify(validated.body)).toBe(200);
+  const drained = await commitAndDrain(page, batchId);
+  expect(drained.state, JSON.stringify(drained)).toBe("committed");
+
+  const [row] = await branchSql<{ id: string }>(
+    `select r.sale_id::text as id from data_center.import_rows r
+      where r.batch_id = '${batchId}' and r.sale_id is not null limit 1`,
+  );
+  expect(row?.id, "the receipt became a sale").toBeTruthy();
+  return row.id;
+}
+
+test("a sale committed through a paper batch is complete without a drawn signature", async ({ page }, testInfo) => {
+  await signIn(page, USERS.admin);
+  const id = (await paperSale()) ?? (await arrangePaperSale(page, `paper${testInfo.workerIndex}-${Date.now()}`));
+
+  const [six] = await branchSql<{ n: number }>(
+    `select count(*)::int as n from public.sales s where s.id = '${id}' and ${SIX_PRESENT}
+        and (s.signature is null or s.signature = '')`,
+  );
+  expect(Number(six.n), "the arranged sale carries the six fields and no signature").toBe(1);
+
   const [pred] = await branchSql<{ sql: string }>(`select data_center.completeness_predicate('s') as sql`);
   const [hit] = await branchSql<{ n: number }>(
     `select count(*)::int as n from public.sales s where s.id = '${id}' and (${pred.sql})`,
