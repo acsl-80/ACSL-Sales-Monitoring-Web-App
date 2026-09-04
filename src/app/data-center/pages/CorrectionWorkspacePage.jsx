@@ -12,7 +12,7 @@ import { DATA_CENTER_FEATURES } from "../lib/features";
  * came back to them, with the disputed items marked and the way to fix them.
  */
 function Inner() {
-  const { saleId } = useParams({ from: "/data-center/corrections/$saleId" });
+  const { saleId } = useParams({ from: "/data-center/corrections_/$saleId" });
   return <CorrectionWorkspace key={saleId} saleId={saleId} />;
 }
 

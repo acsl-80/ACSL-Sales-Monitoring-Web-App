@@ -77,7 +77,7 @@ import { Route as AdminAppConfigIndexRouteImport } from './routes/admin/app-conf
 import { Route as AdminAgreementImagesIndexRouteImport } from './routes/admin/agreement-images/index'
 import { Route as AdminAgentsIndexRouteImport } from './routes/admin/agents/index'
 import { Route as DataCenterStoveStoveIdRouteImport } from './routes/data-center/stove.$stoveId'
-import { Route as DataCenterCorrectionsSaleIdRouteImport } from './routes/data-center/corrections.$saleId'
+import { Route as DataCenterCorrectionsSaleIdRouteImport } from './routes/data-center/corrections_.$saleId'
 import { Route as SuperAdminAgentSalesCreateIndexRouteImport } from './routes/super-admin-agent/sales/create/index'
 import { Route as DocsSuperadminSalesIndexRouteImport } from './routes/docs/superadmin/sales/index'
 import { Route as DocsAdminSalesIndexRouteImport } from './routes/docs/admin/sales/index'
@@ -442,9 +442,9 @@ const DataCenterStoveStoveIdRoute = DataCenterStoveStoveIdRouteImport.update({
 } as any)
 const DataCenterCorrectionsSaleIdRoute =
   DataCenterCorrectionsSaleIdRouteImport.update({
-    id: '/$saleId',
-    path: '/$saleId',
-    getParentRoute: () => DataCenterCorrectionsRoute,
+    id: '/data-center/corrections_/$saleId',
+    path: '/data-center/corrections/$saleId',
+    getParentRoute: () => rootRouteImport,
   } as any)
 const SuperAdminAgentSalesCreateIndexRoute =
   SuperAdminAgentSalesCreateIndexRouteImport.update({
@@ -481,7 +481,7 @@ export interface FileRoutesByFullPath {
   '/agents/profiles': typeof AgentsProfilesRoute
   '/data-center/analysis': typeof DataCenterAnalysisRoute
   '/data-center/call-centre': typeof DataCenterCallCentreRoute
-  '/data-center/corrections': typeof DataCenterCorrectionsRouteWithChildren
+  '/data-center/corrections': typeof DataCenterCorrectionsRoute
   '/data-center/dashboard': typeof DataCenterDashboardRoute
   '/data-center/import': typeof DataCenterImportRoute
   '/data-center/partner-records': typeof DataCenterPartnerRecordsRoute
@@ -557,7 +557,7 @@ export interface FileRoutesByTo {
   '/agents/profiles': typeof AgentsProfilesRoute
   '/data-center/analysis': typeof DataCenterAnalysisRoute
   '/data-center/call-centre': typeof DataCenterCallCentreRoute
-  '/data-center/corrections': typeof DataCenterCorrectionsRouteWithChildren
+  '/data-center/corrections': typeof DataCenterCorrectionsRoute
   '/data-center/dashboard': typeof DataCenterDashboardRoute
   '/data-center/import': typeof DataCenterImportRoute
   '/data-center/partner-records': typeof DataCenterPartnerRecordsRoute
@@ -634,7 +634,7 @@ export interface FileRoutesById {
   '/agents/profiles': typeof AgentsProfilesRoute
   '/data-center/analysis': typeof DataCenterAnalysisRoute
   '/data-center/call-centre': typeof DataCenterCallCentreRoute
-  '/data-center/corrections': typeof DataCenterCorrectionsRouteWithChildren
+  '/data-center/corrections': typeof DataCenterCorrectionsRoute
   '/data-center/dashboard': typeof DataCenterDashboardRoute
   '/data-center/import': typeof DataCenterImportRoute
   '/data-center/partner-records': typeof DataCenterPartnerRecordsRoute
@@ -669,7 +669,7 @@ export interface FileRoutesById {
   '/unauthorized/': typeof UnauthorizedIndexRoute
   '/user-guide/': typeof UserGuideIndexRoute
   '/user-management/': typeof UserManagementIndexRoute
-  '/data-center/corrections/$saleId': typeof DataCenterCorrectionsSaleIdRoute
+  '/data-center/corrections_/$saleId': typeof DataCenterCorrectionsSaleIdRoute
   '/data-center/stove/$stoveId': typeof DataCenterStoveStoveIdRoute
   '/admin/agents/': typeof AdminAgentsIndexRoute
   '/admin/agreement-images/': typeof AdminAgreementImagesIndexRoute
@@ -899,7 +899,7 @@ export interface FileRouteTypes {
     | '/unauthorized/'
     | '/user-guide/'
     | '/user-management/'
-    | '/data-center/corrections/$saleId'
+    | '/data-center/corrections_/$saleId'
     | '/data-center/stove/$stoveId'
     | '/admin/agents/'
     | '/admin/agreement-images/'
@@ -941,7 +941,7 @@ export interface RootRouteChildren {
   AgentsProfilesRoute: typeof AgentsProfilesRoute
   DataCenterAnalysisRoute: typeof DataCenterAnalysisRoute
   DataCenterCallCentreRoute: typeof DataCenterCallCentreRoute
-  DataCenterCorrectionsRoute: typeof DataCenterCorrectionsRouteWithChildren
+  DataCenterCorrectionsRoute: typeof DataCenterCorrectionsRoute
   DataCenterDashboardRoute: typeof DataCenterDashboardRoute
   DataCenterImportRoute: typeof DataCenterImportRoute
   DataCenterPartnerRecordsRoute: typeof DataCenterPartnerRecordsRoute
@@ -976,6 +976,7 @@ export interface RootRouteChildren {
   UnauthorizedIndexRoute: typeof UnauthorizedIndexRoute
   UserGuideIndexRoute: typeof UserGuideIndexRoute
   UserManagementIndexRoute: typeof UserManagementIndexRoute
+  DataCenterCorrectionsSaleIdRoute: typeof DataCenterCorrectionsSaleIdRoute
   DataCenterStoveStoveIdRoute: typeof DataCenterStoveStoveIdRoute
   AdminAgentsIndexRoute: typeof AdminAgentsIndexRoute
   AdminAgreementImagesIndexRoute: typeof AdminAgreementImagesIndexRoute
@@ -1489,12 +1490,12 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof DataCenterStoveStoveIdRouteImport
       parentRoute: typeof rootRouteImport
     }
-    '/data-center/corrections/$saleId': {
-      id: '/data-center/corrections/$saleId'
-      path: '/$saleId'
+    '/data-center/corrections_/$saleId': {
+      id: '/data-center/corrections_/$saleId'
+      path: '/data-center/corrections/$saleId'
       fullPath: '/data-center/corrections/$saleId'
       preLoaderRoute: typeof DataCenterCorrectionsSaleIdRouteImport
-      parentRoute: typeof DataCenterCorrectionsRoute
+      parentRoute: typeof rootRouteImport
     }
     '/super-admin-agent/sales/create/': {
       id: '/super-admin-agent/sales/create/'
@@ -1534,26 +1535,13 @@ declare module '@tanstack/react-router' {
   }
 }
 
-interface DataCenterCorrectionsRouteChildren {
-  DataCenterCorrectionsSaleIdRoute: typeof DataCenterCorrectionsSaleIdRoute
-}
-
-const DataCenterCorrectionsRouteChildren: DataCenterCorrectionsRouteChildren = {
-  DataCenterCorrectionsSaleIdRoute: DataCenterCorrectionsSaleIdRoute,
-}
-
-const DataCenterCorrectionsRouteWithChildren =
-  DataCenterCorrectionsRoute._addFileChildren(
-    DataCenterCorrectionsRouteChildren,
-  )
-
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
   AgentsPartnerAgentsProfilesRoute: AgentsPartnerAgentsProfilesRoute,
   AgentsProfilesRoute: AgentsProfilesRoute,
   DataCenterAnalysisRoute: DataCenterAnalysisRoute,
   DataCenterCallCentreRoute: DataCenterCallCentreRoute,
-  DataCenterCorrectionsRoute: DataCenterCorrectionsRouteWithChildren,
+  DataCenterCorrectionsRoute: DataCenterCorrectionsRoute,
   DataCenterDashboardRoute: DataCenterDashboardRoute,
   DataCenterImportRoute: DataCenterImportRoute,
   DataCenterPartnerRecordsRoute: DataCenterPartnerRecordsRoute,
@@ -1588,6 +1576,7 @@ const rootRouteChildren: RootRouteChildren = {
   UnauthorizedIndexRoute: UnauthorizedIndexRoute,
   UserGuideIndexRoute: UserGuideIndexRoute,
   UserManagementIndexRoute: UserManagementIndexRoute,
+  DataCenterCorrectionsSaleIdRoute: DataCenterCorrectionsSaleIdRoute,
   DataCenterStoveStoveIdRoute: DataCenterStoveStoveIdRoute,
   AdminAgentsIndexRoute: AdminAgentsIndexRoute,
   AdminAgreementImagesIndexRoute: AdminAgreementImagesIndexRoute,
