@@ -5,6 +5,7 @@
 
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { resolveSaleStatus } from "../_shared/saleStatus.ts";
+import { resolveAssignedOrgIds } from "../_shared/resolveAssignedOrgIds.ts";
 
 function withCors(res: Response): Response {
   res.headers.set("Access-Control-Allow-Origin", "*");
@@ -35,12 +36,19 @@ Deno.serve(async (req) => {
   console.log("➡️ update-sale:", req.method, req.url);
   if (req.method === "OPTIONS") return withCors(new Response("ok", { status: 200 }));
 
+  /*
+   * The service client, with no user header. Authorization is decided below in
+   * code: the role list, the partner's own organisation, an ACSL agent's
+   * assigned organisations. It used to carry the caller's Authorization header,
+   * so every read and write ran under the caller's row policies, and those
+   * policies grant an ACSL agent or agent manager nothing by assignment. The
+   * sale then came back "not found" for the very people the role list admits,
+   * which is how eight of the eleven linked sales reps could not fix a record
+   * the call centre sent back (Data Center phase 24, slice 2).
+   */
   const supabase = createClient(
     Deno.env.get("SUPABASE_URL")!,
     Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!,
-    {
-      global: { headers: { Authorization: req.headers.get("Authorization")! } },
-    }
   );
 
   try {
@@ -90,7 +98,7 @@ Deno.serve(async (req) => {
         `id, organization_id, address_id, phone,
          transaction_id, stove_serial_no, partner_name, sales_date, amount,
          contact_person, contact_phone, end_user_name, state_backup, lga_backup,
-         signature,
+         signature, is_installment, total_paid,
          address:addresses!left(full_address)`
       )
       .eq("id", saleId)
@@ -106,6 +114,18 @@ Deno.serve(async (req) => {
       sale.organization_id !== profile.organization_id
     ) {
       return jsonError("You can only edit sales for your own organization", 403);
+    }
+    // ACSL agents and managers edit the partners assigned to them (directly,
+    // by state, or through their team), the same rule the read paths apply.
+    if (
+      profile.role === "acsl_agent" ||
+      profile.role === "acsl_agent_manager" ||
+      profile.role === "super_admin_agent"
+    ) {
+      const assigned = await resolveAssignedOrgIds(supabase, userId);
+      if (!assigned.assignedOrgIds.includes(String(sale.organization_id))) {
+        return jsonError("You can only edit sales for the partners assigned to you", 403);
+      }
     }
 
     const {
@@ -228,10 +248,50 @@ Deno.serve(async (req) => {
     // Mirrors create-sale: what the customer actually paid is stored as
     // `total_paid`, not `amount_received` (no such column on `sales`).
     if (amountReceived !== undefined) {
-      saleUpdate.total_paid =
-        amountReceived === null || amountReceived === ""
-          ? null
-          : Number(amountReceived);
+      if (amountReceived === null || amountReceived === "") {
+        saleUpdate.total_paid = null;
+      } else {
+        const parsedReceived = Number(amountReceived);
+        if (!Number.isFinite(parsedReceived) || parsedReceived < 0) {
+          return jsonError("Amount received must be a positive number", 400);
+        }
+        saleUpdate.total_paid = parsedReceived;
+      }
+    }
+    // Keep the payment columns coherent with the amount. A non-installment sale
+    // is a full payment by definition, so its `total_paid` tracks the sale
+    // amount; an installment may sit part paid. Without this an edit to the
+    // amount would leave `total_paid`/`payment_status` describing the old
+    // figure; see the matching rule in create-sale.
+    // This only runs when the edit ACTUALLY moves one of the figures. The edit
+    // forms resend the whole sale on every save, so applying it unconditionally
+    // would rewrite `total_paid` on legacy part-paid outright sales during an
+    // unrelated edit (a phone-number fix, say). Historical rows are left exactly
+    // as they are unless someone deliberately touches the money.
+    // (Reconciled from the deployed v20 on 2026-09-04; see DRIFT.md.)
+    const amountsChanged =
+      (Object.prototype.hasOwnProperty.call(saleUpdate, "amount") &&
+        Number(saleUpdate.amount) !== Number(sale.amount)) ||
+      (Object.prototype.hasOwnProperty.call(saleUpdate, "total_paid") &&
+        Number(saleUpdate.total_paid ?? 0) !== Number((sale as { total_paid?: unknown }).total_paid ?? 0));
+    if (amountsChanged) {
+      const effectiveAmount = Number(
+        Object.prototype.hasOwnProperty.call(saleUpdate, "amount") ? saleUpdate.amount : sale.amount,
+      );
+      if ((sale as { is_installment?: boolean }).is_installment) {
+        const effectivePaid = Number(
+          Object.prototype.hasOwnProperty.call(saleUpdate, "total_paid")
+            ? saleUpdate.total_paid ?? 0
+            : (sale as { total_paid?: unknown }).total_paid ?? 0,
+        );
+        if (effectivePaid > effectiveAmount) {
+          return jsonError("Amount received cannot be greater than the sales amount", 400);
+        }
+        saleUpdate.payment_status = effectivePaid >= effectiveAmount ? "fully_paid" : "partially_paid";
+      } else {
+        saleUpdate.total_paid = effectiveAmount;
+        saleUpdate.payment_status = "fully_paid";
+      }
     }
     if (potQuantity !== undefined) {
       saleUpdate.pot_quantity =

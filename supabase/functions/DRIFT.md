@@ -42,12 +42,18 @@ Check the version before assuming:
 supabase functions download create-sale --project-ref oeiwnpngbnkhcismhpgs
 ```
 
-### `update-sale` (production v20, deployed 2026-08-15)
+### `update-sale`: RESOLVED 2026-09-04
 
-306 lines here, 351 in production. Production validates `amountReceived`, and
-keeps `total_paid` and `payment_status` coherent when an edit moves the money,
-while deliberately leaving historical rows alone when the edit touches
-something else. None of that exists here.
+Production ran v20 (2026-08-15) with the `amountReceived` validation and the
+money-coherence block this file lacked. Both were read back out of the
+deployed bundle and folded in on 2026-09-04 (Data Center phase 24, slice 2),
+and one defect was fixed at the same time: the service client carried the
+caller's Authorization header, so every read ran under the caller's row
+policies, which grant an ACSL agent or agent manager nothing by assignment.
+The sale came back "not found" for the very roles the function admits. The
+client is now the plain service client and the function decides scope itself:
+partner roles their own organisation, ACSL roles their assigned organisations
+through `resolveAssignedOrgIds`. Deployed with slice 2.
 
 ---
 
