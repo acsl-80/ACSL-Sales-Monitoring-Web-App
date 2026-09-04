@@ -4,6 +4,9 @@ import { plural } from "../../../lib/plural";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Loader2, UserPlus } from "lucide-react";
 
+const dateOf = (iso) => (iso ? new Date(iso).toLocaleDateString() : "-");
+
+
 /**
  * Pick a partner, pick how many, assign.
  *
