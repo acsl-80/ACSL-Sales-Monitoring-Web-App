@@ -77,6 +77,8 @@ async function fillReceipt(page: Page, marker: string) {
   await page.locator("#wb-phone").fill("08015550111");
   await page.locator("#wb-address").fill(`${marker} Street`);
   await page.locator("#wb-amount").fill("1000");
+  // The door has asked for the model since 2 September; a receipt without one does not finish.
+  await page.locator("#wb-salesModel").selectOption("Hakimi Sales Model");
 
   const state = page.getByRole("combobox", { name: "State" });
   await state.click();
