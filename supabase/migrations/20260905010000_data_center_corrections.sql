@@ -503,7 +503,7 @@ comment on view data_center.v_corrections is
 -- to the ones already linked. Nobody who already holds a level is touched.
 
 insert into data_center.module_access (user_id, access_role)
-select distinct x.user_id
+select distinct x.user_id, 'sales_rep'
   from (
     select user_id from data_center.sales_rep_accounts where user_id is not null
     union

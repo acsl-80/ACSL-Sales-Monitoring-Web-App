@@ -301,7 +301,7 @@ test("a sales rep can close a send-back routed to them, note and all", async ({ 
     await expect(page.getByText("That did not save.")).toHaveCount(0);
   } finally {
     if (repKey) await branchSql(`delete from data_center.sales_rep_accounts where rep_key = '${repKey}'`);
-    await branchSql(`delete from data_center.corrections where sale_id = '${e.sale_id}'`);
+    await branchSql(`delete from data_center.corrections where sale_id = '${e.sale_id}'`).catch(() => {});
     if (access?.access_role) {
       await branchSql(
         `update data_center.module_access set access_role = '${access.access_role}' where user_id = '${ACSL_AGENT_ID}'`,
