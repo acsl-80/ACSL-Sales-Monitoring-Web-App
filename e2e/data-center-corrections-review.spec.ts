@@ -184,7 +184,7 @@ test("two different numbers are put to the reviewer, and using what Sales saved 
   try {
     await signIn(page, USERS.admin);
     await openReview(page, sale!.sale_id);
-    await expect(page.getByText(/Call centre heard/)).toBeVisible({ timeout: 20_000 });
+    await expect(page.getByRole("group", { name: "Two numbers" })).toBeVisible({ timeout: 20_000 });
 
     // No choice, no close.
     await page.getByRole("button", { name: "Close and ring again" }).click();

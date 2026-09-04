@@ -15,6 +15,7 @@ const PRESET_LABELS = {
   unresolved: "yet to be resolved",
   exhausted: "chased three times and still not verified",
   correction: "waiting on Sales",
+  review: "fixed by Sales, awaiting review",
   completed: "finished by the call centre",
   unconfirmed: "a stove ID another caller took",
 };
