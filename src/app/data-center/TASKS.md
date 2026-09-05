@@ -37,6 +37,8 @@ decisions D27 to D29.
 
 ## Deferred
 
+- Host, seen while fixing the render loop (PR #79): the sidebar declares two entries with the same `route` key ("agents"), which React warns about on every render; and a username-based login falls through to the direct email path on any non-ok answer from `login-with-credentials`, reporting a transient server fault as wrong credentials. Two small host fixes.
+- Host, seen in the F1 review: the Sell Stove form's previous-stove value rendering ("Charcoal Stove", "Wood Stove (3 stone)") on the detail views differs from the form's option labels; F3's option pass should carry it.
 - The 181 live sales whose payment model is outside their partner's entitlement: an observation for the sales team, not a module change.
 - The host form's own copy of the previous-stove list (`CreateSalesForm.jsx`): host lane.
 - A structured editor for the sheet columns config.
