@@ -33,6 +33,8 @@ const FIELD_LABELS = {
   salesDate: fieldLabel("sales_date"),
   amount: fieldLabel("amount"),
   amountReceived: fieldLabel("first_payment"),
+  city: fieldLabel("city"),
+  salesAgentName: fieldLabel("sales_agent_name"),
   state: fieldLabel("state_backup"),
   lga: fieldLabel("lga_backup"),
   fullAddress: fieldLabel("full_address"),

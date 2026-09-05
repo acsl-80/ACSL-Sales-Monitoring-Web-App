@@ -807,7 +807,8 @@ const CreateSalesForm = ({
       addressData: {
         fullAddress: addressData.fullAddress || "",
         street: addressData.street || "",
-        city: addressData.city || "",
+        // A place that names no town keeps the one the agent typed.
+        city: addressData.city || prev.addressData?.city || "",
         state: addressData.state || "",
         country: addressData.country || "Nigeria",
         latitude: addressData.latitude || null,

@@ -39,6 +39,8 @@ const FIELDS = [
   { key: "state", label: fieldLabel("state_backup"), required: true, type: "geo" },
   { key: "lga", label: fieldLabel("lga_backup"), required: true, type: "geo-skip" },
   { key: "address", label: fieldLabel("full_address"), required: true, width: "sm:col-span-2" },
+  { key: "city", label: fieldLabel("city") },
+  { key: "sales_agent_name", label: fieldLabel("sales_agent_name"), placeholder: "As written on the agreement" },
 ];
 
 export default function ManualEntry({ onSubmit, onCancel, busy, partnerName }) {

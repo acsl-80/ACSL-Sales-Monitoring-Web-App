@@ -231,3 +231,15 @@ wherever a record is read back. And the two CSV exports keep two conventions on
 purpose: the Stove DB export uses the Stove DB names, the end-user records
 export mirrors its own table's headings.
 
+## D30. The bench prefills the sales agent from the transfer's rep, as a suggestion (2026-09-05, slice F2)
+
+The sheet migration says the transfer's rep is not the agent, and the F2
+backfill left imported sales' agent empty for that reason. The bench still
+prefills the agent's name from the rep, because on most receipts they are the
+same person and an empty field that a typist never fills is worth less than a
+suggestion they can change; the help text says where the name came from. The
+typed-record form makes no such guess, since it has no transfer in view. The
+sheet column asks for the name as written, and the call centre confirms it.
+A name entered over the default drops the account id, so a name and an id
+never point at two different people.
+

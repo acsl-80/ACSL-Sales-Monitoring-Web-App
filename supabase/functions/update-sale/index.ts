@@ -287,6 +287,9 @@ Deno.serve(async (req) => {
     }
     if (salesAgentName !== undefined) {
       saleUpdate.selling_agent_name = String(salesAgentName ?? "").trim() || null;
+      // A name given without an account is a different person until an
+      // account is named too; the old id must not point at the new name.
+      if (salesAgentUserId === undefined) saleUpdate.selling_agent_user_id = null;
     }
     if (salesAgentUserId !== undefined) {
       const candidate = String(salesAgentUserId ?? "").trim();

@@ -119,10 +119,12 @@ const formatSaleToCSVRow = (sale) => {
     return fallback;
   };
 
-  // Extract user name parts
-  const { firstName, lastName } = extractUserName(
-    safeExtract(sale.end_user_name) || safeExtract(sale.contact_person)
-  );
+  // The stored parts when the record has them; the old guess only for a row
+  // written before the parts existed.
+  const split = extractUserName(safeExtract(sale.end_user_name) || safeExtract(sale.contact_person));
+  const hasParts = Boolean(sale.end_user_first_name || sale.end_user_surname);
+  const firstName = hasParts ? safeExtract(sale.end_user_first_name) : split.firstName;
+  const lastName = hasParts ? safeExtract(sale.end_user_surname) : split.lastName;
 
   // Handle potential object values in addresses
   const addresses = sale.addresses || sale.address || {};
@@ -145,7 +147,7 @@ const formatSaleToCSVRow = (sale) => {
     formatDateForCSV(sale.sales_date),
     formatDateTimeForCSV(sale.created_at ? new Date(sale.created_at) : new Date()),
     cleanCSVValue(safeExtract(sale.state_backup) || addressState),
-    cleanCSVValue(safeExtract(sale.lga_backup) || addressCity),
+    cleanCSVValue(safeExtract(sale.lga_backup)),
     cleanCSVValue(getFullAddress(addresses)),
     cleanCSVValue(addressLatitude),
     cleanCSVValue(addressLongitude),

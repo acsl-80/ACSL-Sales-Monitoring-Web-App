@@ -72,9 +72,12 @@ create or replace function public.sales_name_parts()
 returns trigger
 language plpgsql as $$
 declare
-  joined text := nullif(trim(coalesce(new.end_user_name, '')), '');
-  first_part text := nullif(trim(coalesce(new.end_user_first_name, '')), '');
-  sur_part text := nullif(trim(coalesce(new.end_user_surname, '')), '');
+  -- Whitespace of any kind collapses to one space, as the forms do on the
+  -- client, so a tab or a doubled space never becomes a one-word name.
+  joined text := nullif(trim(regexp_replace(coalesce(new.end_user_name, ''), '\s+', ' ', 'g')), '');
+  first_part text := nullif(trim(regexp_replace(coalesce(new.end_user_first_name, ''), '\s+', ' ', 'g')), '');
+  sur_part text := nullif(trim(regexp_replace(coalesce(new.end_user_surname, ''), '\s+', ' ', 'g')), '');
+  old_joined text;
   parts_changed boolean;
   joined_changed boolean;
 begin
@@ -82,12 +85,19 @@ begin
     parts_changed := first_part is not null or sur_part is not null;
     joined_changed := joined is not null;
   else
-    parts_changed := new.end_user_first_name is distinct from old.end_user_first_name
-                  or new.end_user_surname is distinct from old.end_user_surname;
-    joined_changed := new.end_user_name is distinct from old.end_user_name;
+    old_joined := nullif(trim(regexp_replace(coalesce(old.end_user_name, ''), '\s+', ' ', 'g')), '');
+    parts_changed := (first_part is distinct from nullif(trim(coalesce(old.end_user_first_name, '')), '')
+                   or sur_part is distinct from nullif(trim(coalesce(old.end_user_surname, '')), ''))
+                  and (first_part is not null or sur_part is not null);
+    joined_changed := joined is distinct from old_joined;
   end if;
 
-  if parts_changed then
+  if tg_op = 'UPDATE' and joined_changed and joined is null and not parts_changed then
+    -- The joined name was cleared: the parts go with it.
+    new.end_user_first_name := null;
+    new.end_user_surname := null;
+    new.name_split_source := null;
+  elsif parts_changed then
     -- The parts are the truth; compose the joined name from them.
     new.end_user_first_name := first_part;
     new.end_user_surname := sur_part;

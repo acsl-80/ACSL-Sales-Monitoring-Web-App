@@ -115,6 +115,9 @@ export default function ReviewPanel({ saleId, episode, can, history = [], phoneC
     const after = episode.after ?? {};
     const keys = new Set([...Object.keys(before), ...Object.keys(after)]);
     return [...keys]
+      // A key the older snapshot never carried is the snapshot growing, not a
+      // change somebody made; it is compared only once both sides have it.
+      .filter((k) => k in before)
       .filter((k) => show(before[k]) !== show(after[k]))
       .map((k) => ({ key: k, label: byKey[k]?.label ?? k, before: show(before[k]), after: show(after[k]) }));
   }, [episode]);

@@ -14,7 +14,7 @@ as $$
     'end_user_name',         s.end_user_name,
     'end_user_first_name',   s.end_user_first_name,
     'end_user_surname',      s.end_user_surname,
-    'selling_agent_name',    s.selling_agent_name,
+    'sales_agent_name',      s.selling_agent_name,
     'aka',                   s.aka,
     'phone',                 s.phone,
     'other_phone',           s.other_phone,

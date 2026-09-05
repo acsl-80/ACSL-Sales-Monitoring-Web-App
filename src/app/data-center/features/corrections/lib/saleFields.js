@@ -63,7 +63,7 @@ export const MONEY_GROUP = "payment";
  * is the one kind of failure an operator cannot see. It comes off the panel
  * until the function reads it.
  */
-const NOT_READ_BY_UPDATE_SALE = new Set(["signature", "retailer_branch"]);
+const NOT_READ_BY_UPDATE_SALE = new Set(["signature"]);
 
 export const EDITABLE = SALE_FIELDS.filter(
   (f) => f.payload && !NOT_READ_BY_UPDATE_SALE.has(f.key),

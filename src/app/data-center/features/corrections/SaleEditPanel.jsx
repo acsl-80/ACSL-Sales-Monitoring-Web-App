@@ -103,9 +103,16 @@ export default function SaleEditPanel({ saleId, sale, disputed, canEditSale, onl
           payload[byKey[key].payload] = form[key] === "" ? null : form[key];
         }
         for (const f of changed) {
-          if (f.key === "full_address") payload.addressData = { fullAddress: form.full_address };
-          if (f.key === "city") payload.addressData = { ...(payload.addressData ?? {}), city: form.city };
-          else if (f.payload) payload[f.payload] = form[f.key] === "" ? null : form[f.key];
+          // The address line and the city both travel inside addressData, so
+          // they merge into one object rather than one replacing the other.
+          if (f.key === "full_address" || f.key === "city") {
+            payload.addressData = {
+              ...(payload.addressData ?? {}),
+              ...(f.key === "full_address" ? { fullAddress: form.full_address } : { city: form.city }),
+            };
+          } else if (f.payload) {
+            payload[f.payload] = form[f.key] === "" ? null : form[f.key];
+          }
         }
         await dataCenterSales.updateSale(saleId, payload);
       }
