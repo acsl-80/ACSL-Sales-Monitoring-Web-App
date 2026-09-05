@@ -575,6 +575,12 @@ function Bench({ stoveId, onSaved, onBack, onNext, nextLabel, api = null }) {
           partnerName: d.work?.draft_values?.partnerName ?? d.stove.partnerName ?? "",
           // The transfer names the rep who sold it; the agreement may say otherwise.
           salesAgentName: d.work?.draft_values?.salesAgentName ?? d.stove?.salesRep ?? "",
+          // The model the ERP named for the consignment, when this partner is
+          // offered it; the receipt can still say otherwise.
+          salesModel:
+            d.work?.draft_values?.salesModel
+            ?? (d.stove?.models ?? []).find((m) => (d.stove?.orderModel?.id && m.id === d.stove.orderModel.id) || (d.stove?.orderModel?.name && m.name === d.stove.orderModel.name))?.name
+            ?? "",
         };
         /*
          * One assigned model is not a choice, so it is filled in, and its
@@ -1080,6 +1086,8 @@ function Bench({ stoveId, onSaved, onBack, onNext, nextLabel, api = null }) {
         values={values}
         onChange={setField}
         models={stove.models ?? []}
+        orderModel={stove.orderModel ?? null}
+        transactionId={stove.transactionId ?? null}
         modelsRestricted={Boolean(stove.modelsRestricted)}
         disabled={locked || finishing}
         errors={showMissing ? { ...problems, ...(serverProblem ?? {}) } : {}}

@@ -251,6 +251,8 @@ export default function SaleForm({
   errors = {},
   models = [],
   modelsRestricted = false,
+  orderModel = null,
+  transactionId = null,
 }) {
   const [uploading, setUploading] = useState({ stove: false, agreement: false });
   const [previews, setPreviews] = useState({ stove: null, agreement: null });
@@ -504,6 +506,15 @@ export default function SaleForm({
               </option>
             ))}
           </select>
+          {orderModel?.name ? (
+            <p className="mt-1 text-xs text-gray-600">
+              Sent with transfer {transactionId ?? "this consignment"} as <span className="font-medium">{orderModel.name}</span>
+              {orderModel.durationMonths ? ` (${orderModel.durationMonths} months)` : ""}.
+              {models.some((m) => m.name === orderModel.name) ? "" : " This partner is not offered that model, so pick the one on the receipt."}
+            </p>
+          ) : (
+            <p className="mt-1 text-xs text-gray-500">No sales model was sent with this transfer.</p>
+          )}
         </Field>
         <Field
           label={fieldLabel("amount")}

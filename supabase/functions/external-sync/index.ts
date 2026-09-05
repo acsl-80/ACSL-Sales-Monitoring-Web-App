@@ -251,6 +251,36 @@ async function saveCredentials(
 
 // ─── Transfer history ─────────────────────────────────────────────────────────
 
+/**
+ * The payment model the ERP's Order Sales Model names, if any.
+ *
+ * Matched the way the entitlement sync matches: the name with its whitespace
+ * collapsed and lower-cased, plus the duration when the ERP sent one. The
+ * table is small, so it is read whole and matched here rather than asking
+ * PostgREST for a normalised comparison it cannot express.
+ */
+async function resolveOrderModelId(
+  supabase: any,
+  name: string | null | undefined,
+  duration: number | null | undefined,
+): Promise<string | null> {
+  const wanted = String(name ?? "").trim().toLowerCase().replace(/\s+/g, " ");
+  if (!wanted) return null;
+  const { data, error } = await supabase
+    .from("payment_models")
+    .select("id, name, duration_months, is_active")
+    .eq("is_active", true);
+  if (error || !data) return null;
+  const rows = data as Array<{ id: string; name: string; duration_months: number | null }>;
+  const same = rows.filter((m) => String(m.name ?? "").trim().toLowerCase().replace(/\s+/g, " ") === wanted);
+  if (same.length === 0) return null;
+  if (duration !== null && duration !== undefined && !Number.isNaN(duration)) {
+    const exact = same.find((m) => Number(m.duration_months) === Number(duration));
+    if (exact) return exact.id;
+  }
+  return same.length === 1 ? same[0].id : null;
+}
+
 async function writeTransferHistory(
   supabase: any,
   data: {
@@ -264,6 +294,8 @@ async function writeTransferHistory(
     customer?: string | null;
     downloaded_by?: string | null;
     sales_rep?: string | null;
+    order_sales_model_name?: string | null;
+    order_sales_model_duration?: number | null;
     stove_ids: Array<{ stove_id: string; factory?: string; sales_reference?: string }>;
     source: "external-sync" | "external-csv-sync";
     application_name?: string;
@@ -285,6 +317,11 @@ async function writeTransferHistory(
       customer: data.customer || null,
       downloaded_by: data.downloaded_by || null,
       sales_rep: data.sales_rep || null,
+      // The Order Sales Model, as sent and as resolved (D19). Kept per
+      // transfer so the workbench can say which model a stove went out under.
+      order_sales_model_name: data.order_sales_model_name || null,
+      order_sales_model_duration: data.order_sales_model_duration ?? null,
+      order_payment_model_id: await resolveOrderModelId(supabase, data.order_sales_model_name, data.order_sales_model_duration),
       stove_count: data.stove_ids.length,
       stove_ids: data.stove_ids,
       source: data.source,
@@ -468,6 +505,8 @@ serve(async (req) => {
         branch: body.organization_data.branch,
         sales_factory: newStoves[0]?.factory || undefined,
         sales_date: body.sales_date || null,
+        order_sales_model_name: typeof body.organization_data?.order_sales_model === "string" ? body.organization_data.order_sales_model.trim() || null : null,
+        order_sales_model_duration: Number.isFinite(Number.parseInt(body.organization_data?.order_sales_model_duration, 10)) ? Number.parseInt(body.organization_data.order_sales_model_duration, 10) : null,
         stove_ids: newStoves.map((s: any) => ({ stove_id: s.stove_id, factory: s.factory, sales_reference: s.sales_reference })),
         source: "external-sync",
         application_name: body.application_name,

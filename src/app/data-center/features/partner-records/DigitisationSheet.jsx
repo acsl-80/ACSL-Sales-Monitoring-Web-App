@@ -46,6 +46,8 @@ const CARRIED = {
   transactionId: (r) => r.transaction_id,
   partnerName: (r) => r.partner_name,
   salesRep: (r) => r.sales_rep ?? "",
+  // The model the ERP named for the consignment; the typist may change it.
+  salesModel: (r) => r.order_sales_model_name ?? "",
   transferDate: (r) => r.sales_date ?? "",
 };
 
