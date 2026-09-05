@@ -40,6 +40,9 @@ interface ExternalSyncRequest {
     /// string form ("Hakimi Sales Model (6m); Amina Sales Model (12m)") or an
     /// explicit list. Authoritative — omit it to leave assignments untouched.
     partner_sales_models?: string | Array<{ name: string; duration_months?: number | null }>;
+    /// The Order Sales Model named for this consignment (D19), as the ERP sends it.
+    order_sales_model?: string | null;
+    order_sales_model_duration?: number | string | null;
   };
   stove_ids?: Array<{ stove_id: string; factory: string; sales_reference?: string }> | string[];
   sales_date?: string;

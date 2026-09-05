@@ -36,9 +36,10 @@ export async function resolveOrderModelId(
   if (!wanted) return null;
   cache.rows ??= Promise.resolve(
     supabase.from("payment_models").select("id, name, duration_months"),
-  ).then(({ data, error }: { data: PaymentModelRow[] | null; error: unknown }) =>
-    error || !data ? [] : data,
-  );
+  ).then(({ data, error }: { data: PaymentModelRow[] | null; error: unknown }) => {
+    if (error) console.error("payment_models read failed; transfers keep the model as sent only", error);
+    return error || !data ? [] : data;
+  });
   const rows = await cache.rows;
   const same = rows.filter((m) => normalizeModelName(String(m.name ?? "")) === wanted);
   if (same.length === 0) return null;

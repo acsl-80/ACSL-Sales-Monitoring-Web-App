@@ -1590,6 +1590,10 @@ export const dataCenterImport = {
         models: { id: string; name: string; price: string | null }[];
         /** True when the partner has an explicit list, which is what restricts. */
         modelsRestricted: boolean;
+        /** The transfer's sales rep, as the ERP named them. */
+        salesRep: string | null;
+        /** The model the ERP named for the consignment; null for transfers synced before F2b. */
+        orderModel: { id: string | null; name: string | null; sentAs: string | null; durationMonths: number | null } | null;
       };
       work: {
         id: string;
