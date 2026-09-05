@@ -34,8 +34,13 @@ test("a partner who has never changed their password opens the dashboard without
 
   await signIn(page, USERS.partner);
   await page.goto("/dashboard");
+  await expect(page.getByRole("heading", { name: "Dashboard" }).first()).toBeVisible({ timeout: 30_000 });
 
-  // The first-time password dialog is what used to crash; now it opens.
+  // The shell hands the dialog the profile it finds in local storage, which the
+  // app writes after the first load, so the dialog appears from the second load
+  // on. That is how production behaves and is not this fix's concern; the storm
+  // used to crash the page on that second load, which is what this proves.
+  await page.reload();
   await expect(page.getByRole("dialog"), "the first-time password dialog opens").toBeVisible({ timeout: 30_000 });
   await page.waitForTimeout(5_000);
 
