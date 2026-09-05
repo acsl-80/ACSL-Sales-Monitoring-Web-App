@@ -1,5 +1,7 @@
 // Read operations for super-admin-agents (ACSL Agent management)
 
+import { chunkArray } from "../_shared/chunkedQuery.ts";
+
 export async function listAgents(supabase: any, searchParams: URLSearchParams, managerFilter: string | null = null) {
   console.log("📋 Fetching ACSL agents list...");
 
@@ -421,14 +423,22 @@ export async function getAgentOrganizations(supabase: any, agentId: string, sear
   const directMetaByOrgId = new Map<string, any>(directOrgs.map((o: any) => [o.id, o]));
   const coveredOrgIds = [...sourceByOrgId.keys()];
 
+  /*
+   * In chunks, never one list. A manager whose coverage resolves to every
+   * partner (448 today) put 448 UUIDs in one PostgREST URL, which the hop from
+   * this runtime to PostgREST refuses, and the page read "Internal server
+   * error" for every such account. chunkedQuery.ts exists for exactly this.
+   */
   let coveredOrgRows: any[] = [];
   if (coveredOrgIds.length > 0) {
-    const { data, error: orgErr } = await supabase
-      .from("organizations")
-      .select("id, partner_name, branch, state, contact_person, contact_phone, email")
-      .in("id", coveredOrgIds);
+    const results = await Promise.all(chunkArray(coveredOrgIds).map((chunk) =>
+      supabase
+        .from("organizations")
+        .select("id, partner_name, branch, state, contact_person, contact_phone, email")
+        .in("id", chunk)));
+    const orgErr = results.find((r: any) => r.error)?.error;
     if (orgErr) throw new Error(`Database error: ${orgErr.message}`);
-    coveredOrgRows = data || [];
+    coveredOrgRows = results.flatMap((r: any) => r.data || []);
   }
 
   const allOrganizations = coveredOrgRows.map((o: any) => {
@@ -506,10 +516,13 @@ export async function getAgentOrganizations(supabase: any, agentId: string, sear
   const modelIdsByOrg: Record<string, string[]> = {};
   let modelLookupOk = true;
   if (allOrgIds.length > 0) {
-    const { data: modelLinks, error: modelLinksErr } = await supabase
-      .from("organization_payment_models")
-      .select("organization_id, payment_model_id")
-      .in("organization_id", allOrgIds);
+    const linkResults = await Promise.all(chunkArray(allOrgIds).map((chunk) =>
+      supabase
+        .from("organization_payment_models")
+        .select("organization_id, payment_model_id")
+        .in("organization_id", chunk)));
+    const modelLinksErr = linkResults.find((r: any) => r.error)?.error ?? null;
+    const modelLinks = linkResults.flatMap((r: any) => r.data || []);
 
     if (modelLinksErr) {
       console.warn("⚠️ Could not fetch payment model assignments:", modelLinksErr.message);
