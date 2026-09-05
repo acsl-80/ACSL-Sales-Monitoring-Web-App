@@ -223,3 +223,11 @@ forward is corrected first; history is managed, not rewritten, beyond the
 mapping of 51 free-text cooking answers and the rule-based name split, both
 marked as such.
 
+Two rulings from the F1 review. The amount a form takes at creation is the
+first installment, so every entry surface (the Sell Stove form, the bench, the
+typed entry, the column mapper, the sheet header) calls it "Amount paid (first
+installment)"; the stored running total `total_paid` is "Total paid to date"
+wherever a record is read back. And the two CSV exports keep two conventions on
+purpose: the Stove DB export uses the Stove DB names, the end-user records
+export mirrors its own table's headings.
+

@@ -94,7 +94,9 @@ export function optionLabel(key: string, value: string | null | undefined): stri
  */
 export function isMandatory(field: DictionaryField, on: Date = new Date()): boolean {
   if (!field.mandatoryFrom) return false;
-  return on.toISOString().slice(0, 10) >= field.mandatoryFrom;
+  // The local calendar day, not UTC: a Lagos evening is not yet tomorrow.
+  const day = `${on.getFullYear()}-${String(on.getMonth() + 1).padStart(2, "0")}-${String(on.getDate()).padStart(2, "0")}`;
+  return day >= field.mandatoryFrom;
 }
 
 /** The label of a group of fields, for section headings. */

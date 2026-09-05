@@ -1513,7 +1513,7 @@ const CreateSalesForm = ({
                 onCheckedChange={(checked) => setSameAsEndUser(Boolean(checked))}
               />
               <Label htmlFor="sameAsEndUser" className="text-sm font-medium text-gray-700 cursor-pointer">
-                Select if End User is same as Contact Person
+                Tick if the customer is also the contact (Buyer Name)
               </Label>
             </div>
             <FormField label={`${payloadLabel("contactPerson")} *`} error={errors.contactPerson} htmlFor="contactPerson">
@@ -1676,7 +1676,7 @@ const CreateSalesForm = ({
             <FormField
               label={
                 isSingleAmountField
-                  ? `${payloadLabel("amount")} / ${payloadLabel("amountReceived")} (₦) *`
+                  ? `${payloadLabel("amount")} / ${fieldLabel("first_payment")} (₦) *`
                   : `${payloadLabel("amount")} (₦) *`
               }
               error={errors.amount}
@@ -1701,7 +1701,7 @@ const CreateSalesForm = ({
             {/* Amount received — installments only; full payment mirrors the
                 sale amount above. */}
             {!isSingleAmountField && (
-              <FormField label={`${payloadLabel("amountReceived")} (₦)`} error={errors.amountReceived} htmlFor="amountReceived">
+              <FormField label={`${fieldLabel("first_payment")} (₦)`} error={errors.amountReceived} htmlFor="amountReceived">
                 <Input
                   id="amountReceived"
                   type="text"

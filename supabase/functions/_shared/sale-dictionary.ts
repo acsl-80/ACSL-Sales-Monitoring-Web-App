@@ -58,7 +58,9 @@ export type SaleDictionary = {
 export const SALE_DICTIONARY = dictionary as SaleDictionary;
 
 /** Fields whose column exists today. */
-export const LIVE_FIELDS: readonly DictionaryField[] = SALE_DICTIONARY.fields.filter((f) => f.status !== "planned");
+export const LIVE_FIELDS: readonly DictionaryField[] = SALE_DICTIONARY.fields
+  .filter((f) => f.status !== "planned")
+  .sort((a, b) => a.order - b.order);
 
 const BY_KEY = new Map(SALE_DICTIONARY.fields.map((f) => [f.key, f]));
 

@@ -27,13 +27,13 @@
 
 update data_center.workflow_config w
    set value = (
-         select jsonb_agg(
+         select coalesce(jsonb_agg(
                   case
                     when m.header is null then col
                     else col || jsonb_build_object('header', m.header)
                   end
                   order by ord
-                )
+                ), '[]'::jsonb)
            from jsonb_array_elements(w.value) with ordinality as t(col, ord)
            left join (values
              ('stoveSerialNo',       'Serial number'),
@@ -70,3 +70,17 @@ update data_center.workflow_config w
 --          lateral jsonb_array_elements(value) with ordinality as c(col, ord)
 --    where key = 'digitisation.sheet_columns'
 --    order by c.ord;
+
+-- The column now headed "Buyer Name" keeps its meaning: the person to contact
+-- when that is not the customer. Its help said "leave empty if the buyer is
+-- the contact" in the old vocabulary; it says it in the new one, or a
+-- digitiser will copy the customer's name into it on every row.
+update data_center.workflow_config w
+   set value = (
+         select coalesce(jsonb_agg(
+                  case when col ->> 'field' = 'contactPerson'
+                       then col || jsonb_build_object('help', 'The person to contact when that is not the customer. Leave empty when the customer is the contact.')
+                       else col end
+                  order by ord), '[]'::jsonb)
+           from jsonb_array_elements(w.value) with ordinality as t(col, ord))
+ where w.key = 'digitisation.sheet_columns';

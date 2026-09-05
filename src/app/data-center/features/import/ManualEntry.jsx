@@ -27,7 +27,7 @@ const FIELDS = [
   { key: "other_phone", label: fieldLabel("other_phone") },
   { key: "sales_date", label: fieldLabel("sales_date"), required: true, type: "date" },
   { key: "amount", label: fieldLabel("amount"), required: true, type: "number", placeholder: "25000" },
-  { key: "amount_received", label: fieldLabel("total_paid"), type: "number" },
+  { key: "amount_received", label: fieldLabel("first_payment"), type: "number" },
   /*
    * The one pair that is picked rather than typed.
    *

@@ -1,7 +1,7 @@
 import { useMemo, useState } from "react";
 import { SearchableSelect } from "@/components/ui/searchable-select";
 import { plural } from "../../lib/plural";
-import { fieldLabel } from "@/lib/saleDictionary";
+import { fieldLabel, payloadLabel } from "@/lib/saleDictionary";
 import { AlertTriangle, ArrowRight, CheckCircle2, X } from "lucide-react";
 
 /**
@@ -32,7 +32,7 @@ const FIELD_LABELS = {
   otherPhone: fieldLabel("other_phone"),
   salesDate: fieldLabel("sales_date"),
   amount: fieldLabel("amount"),
-  amountReceived: fieldLabel("total_paid"),
+  amountReceived: fieldLabel("first_payment"),
   state: fieldLabel("state_backup"),
   lga: fieldLabel("lga_backup"),
   fullAddress: fieldLabel("full_address"),
@@ -41,7 +41,9 @@ const FIELD_LABELS = {
   aka: fieldLabel("aka"),
 };
 
-const label = (field) => FIELD_LABELS[field] ?? field;
+// Every mappable field has a word: the table above for the sheet's own
+// names, the dictionary for the rest, so no key reaches the reader raw.
+const label = (field) => FIELD_LABELS[field] ?? payloadLabel(field);
 
 export default function ColumnMapping({ file, inspection, onCancel, onConfirm, busy }) {
   const [mapping, setMapping] = useState({});

@@ -619,8 +619,8 @@ function Bench({ stoveId, onSaved, onBack, onNext, nextLabel, api = null }) {
     if (/sales model/i.test(r)) return "salesModel";
     if (/no state/i.test(r)) return "stateBackup";
     if (/\bLGA\b|local government/i.test(r)) return "lgaBackup";
-    if (/no sale amount|sale amount/i.test(r)) return "amount";
-    if (/amount received/i.test(r)) return "amountReceived";
+    if (/no sale amount|sale amount|total amount/i.test(r)) return "amount";
+    if (/amount received|amount paid/i.test(r)) return "amountReceived";
     if (/no end user name|end user name/i.test(r)) return "endUserName";
     if (/no sale date|sale date/i.test(r)) return "salesDate";
     if (/contact phone/i.test(r)) return "contactPhone";

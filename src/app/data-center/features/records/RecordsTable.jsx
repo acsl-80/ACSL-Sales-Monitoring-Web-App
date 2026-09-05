@@ -52,7 +52,7 @@ const COLUMNS = [
   { key: "sales_rep", label: "Sales rep", width: "148px" },
   { key: "user_state", label: fieldLabel("state_backup"), width: "104px" },
   { key: "user_lga", label: fieldLabel("lga_backup"), width: "128px" },
-  { key: "sales_model", label: "Model", width: "128px" },
+  { key: "sales_model", label: fieldLabel("payment_model_id"), width: "128px" },
   { key: "amount", label: fieldLabel("amount"), width: "232px", align: "right" },
   { key: "payment_status", label: "Payment", width: "116px" },
   { key: "sale_status", label: "Status", width: "104px" },
