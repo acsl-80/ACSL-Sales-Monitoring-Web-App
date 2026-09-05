@@ -47,7 +47,10 @@ Deno.serve(async (req) => {
 
   const etag = `"${SALE_DICTIONARY.version}"`;
   if (req.headers.get("if-none-match") === etag) {
-    return new Response(null, { status: 304, headers: { ...corsHeaders, ETag: etag } });
+    return new Response(null, { status: 304, headers: { ...corsHeaders, ETag: etag, Vary: "Authorization" } });
   }
-  return json(200, SALE_DICTIONARY, { ETag: etag, "Cache-Control": "private, max-age=300" });
+  // Revalidate every time, never serve from a cache: a browser that cached an
+  // authenticated answer would otherwise hand it to a request with no token.
+  // The ETag keeps a revalidation cheap (304).
+  return json(200, SALE_DICTIONARY, { ETag: etag, "Cache-Control": "private, no-cache", Vary: "Authorization" });
 });
