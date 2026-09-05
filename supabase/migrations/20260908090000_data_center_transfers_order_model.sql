@@ -40,7 +40,7 @@ comment on view data_center.v_transfers is
 -- transfer. Idempotent: only when the anchor exists and the column does not.
 update data_center.workflow_config w
    set value = (
-     select coalesce(jsonb_agg(e.col order by e.ord, e.sub), '[]'::jsonb)
+     select coalesce(jsonb_agg(e.col order by t.ord, e.sub), '[]'::jsonb)
        from jsonb_array_elements(w.value) with ordinality as t(col, ord)
        cross join lateral (
          values (t.col, 0),
