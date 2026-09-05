@@ -64,6 +64,9 @@ export const createInitialFormData = () => ({
   contactPhone: "",
   endUserName: "",
   endUserSurname: "",
+  // The agent as written or chosen; defaults to the signed-in user on a new sale.
+  salesAgentName: "",
+  salesAgentUserId: null,
   aka: "",
   stateBackup: "",
   lgaBackup: "",
@@ -124,8 +127,11 @@ export const populateFormDataForEdit = (saleData, lgaCatalogue = {}) => {
       new Date().toISOString().split("T")[0],
     contactPerson: saleData.contactPerson || saleData.contact_person || "",
     contactPhone: saleData.contactPhone || saleData.contact_phone || "",
+    // The stored parts when the row has them; the old split of the joined name
+    // only for a row written before the parts existed.
     endUserName: (() => {
       if (saleData.endUserName) return saleData.endUserName;
+      if (saleData.end_user_first_name || saleData.end_user_surname) return saleData.end_user_first_name || "";
       const full = (saleData.end_user_name || "").trim();
       if (!full) return "";
       const parts = full.split(/\s+/);
@@ -133,11 +139,14 @@ export const populateFormDataForEdit = (saleData, lgaCatalogue = {}) => {
     })(),
     endUserSurname: (() => {
       if (saleData.endUserSurname) return saleData.endUserSurname;
+      if (saleData.end_user_first_name || saleData.end_user_surname) return saleData.end_user_surname || "";
       const full = (saleData.end_user_name || "").trim();
       if (!full) return "";
       const parts = full.split(/\s+/);
       return parts.slice(1).join(" ");
     })(),
+    salesAgentName: saleData.salesAgentName || saleData.selling_agent_name || "",
+    salesAgentUserId: saleData.salesAgentUserId || saleData.selling_agent_user_id || null,
     aka: saleData.aka || "",
     stateBackup: normalizedLocation.stateBackup,
     lgaBackup: normalizedLocation.lgaBackup,
@@ -252,6 +261,12 @@ export const transformFormDataForAPI = (formData, isEdit = false) => {
       .map((s) => (s || "").trim())
       .filter(Boolean)
       .join(" "),
+    // The two parts travel as themselves as well; the row composes the joined
+    // name from them and marks the split as entered rather than guessed.
+    endUserFirstName: (formData.endUserName || "").trim() || null,
+    endUserSurname: (formData.endUserSurname || "").trim() || null,
+    salesAgentName: (formData.salesAgentName || "").trim() || null,
+    salesAgentUserId: formData.salesAgentUserId || null,
     aka: formData.aka,
     phone: formData.phone,
     otherPhone: formData.otherPhone,

@@ -573,6 +573,8 @@ function Bench({ stoveId, onSaved, onBack, onNext, nextLabel, api = null }) {
           ...(d.work?.draft_values ?? d.work?.normalized ?? {}),
           stoveSerialNo: d.stove.stoveId,
           partnerName: d.work?.draft_values?.partnerName ?? d.stove.partnerName ?? "",
+          // The transfer names the rep who sold it; the agreement may say otherwise.
+          salesAgentName: d.work?.draft_values?.salesAgentName ?? d.stove?.salesRep ?? "",
         };
         /*
          * One assigned model is not a choice, so it is filled in, and its

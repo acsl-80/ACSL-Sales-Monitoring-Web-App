@@ -511,6 +511,13 @@ const CreateSalesForm = ({
           if (!profileService.getStoredProfileData()) {
             await profileService.fetchAndStoreProfile();
           }
+          // A new sale's agent is the signed-in person until somebody says otherwise.
+          const me = profileService.getStoredProfileData();
+          if (me?.full_name) {
+            setFormData((prev) =>
+              prev.salesAgentName ? prev : { ...prev, salesAgentName: me.full_name, salesAgentUserId: me.id ?? null },
+            );
+          }
 
           // Generate transaction ID
           const generateTransactionId = () => {
@@ -1465,7 +1472,19 @@ const CreateSalesForm = ({
         <div className="bg-[#fafafa] rounded-xl border border-gray-100 p-5">
           <h3 className="text-base font-semibold text-gray-900 mb-4">Buyer &amp; End User</h3>
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 md:gap-4">
-            {/* The payload stays the joined endUserName; only the wording is the dictionary's. */}
+            <FormField label={fieldLabel("sales_agent_name")} htmlFor="salesAgentName">
+              <Input
+                id="salesAgentName"
+                value={formData.salesAgentName ?? ""}
+                onChange={(e) => {
+                  // A name typed over the default is no longer the signed-in user.
+                  handleInputChange("salesAgentName", e.target.value);
+                  handleInputChange("salesAgentUserId", null);
+                }}
+                placeholder="As written on the agreement"
+              />
+            </FormField>
+            {/* The joined endUserName still travels; the two parts travel beside it. */}
             <FormField label={`${fieldLabel("end_user_first_name")} *`} error={errors.endUserName} htmlFor="endUserName">
               <Input
                 id="endUserName"
@@ -1754,6 +1773,16 @@ const CreateSalesForm = ({
                   ))}
                 </SelectContent>
               </Select>
+            </FormField>
+            <FormField label={fieldLabel("city")} htmlFor="city">
+              <Input
+                id="city"
+                value={formData.addressData?.city ?? ""}
+                onChange={(e) =>
+                  setFormData((prev) => ({ ...prev, addressData: { ...(prev.addressData ?? {}), city: e.target.value } }))
+                }
+                placeholder="Town or village on the agreement"
+              />
             </FormField>
             <div className="md:col-span-2 lg:col-span-3">
               <FormField label={`${fieldLabel("full_address")} *`} error={errors.address || errors.location} htmlFor="address">

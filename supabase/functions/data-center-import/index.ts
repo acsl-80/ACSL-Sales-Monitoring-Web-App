@@ -192,6 +192,14 @@ export interface NormalizedRow {
   stoveSerialNo: string;
   salesDate: string;
   endUserName: string;
+  /**
+   * The agreement's two name fields, kept as the sheet gave them rather than
+   * re-derived from the joined name. `endUserName` is still composed from them
+   * exactly as before, so every existing reader is unaffected; these travel
+   * beside it so create-sale can write the parts the writer actually had.
+   */
+  firstName: string | null;
+  lastName: string | null;
   phone: string;
   contactPerson: string;
   contactPhone: string;
@@ -199,7 +207,11 @@ export interface NormalizedRow {
   amountReceived: number | null;
   state: string;
   lga: string;
+  /** City, town or village. The address's own field, never the LGA. */
+  city: string | null;
   fullAddress: string;
+  /** The agent who sold the stove, as written on the agreement. */
+  salesAgentName: string | null;
   aka: string | null;
   otherPhone: string | null;
 }
@@ -235,6 +247,11 @@ export const HEADER_ALIASES: Record<string, string[]> = {
   state:         ["state", "State", "user_state", "state_backup", "stateBackup"],
   lga:           ["lga", "LGA", "Local Govt Area", "lga_backup", "lgaBackup"],
   fullAddress:   ["address", "User Residential Address", "full_address", "fullAddress", "Address"],
+  // The address's own city, which is NOT the LGA. The two were conflated while
+  // the sheet had no city column: the bench filled `city` from the LGA and the
+  // commit wrote the LGA into `addresses.city`, so every imported address named
+  // a local government area where it should have named a town.
+  city:          ["city", "town", "village", "City/town/village", "city_town_village", "City"],
   contactPerson: ["contact_person", "Contact Person", "buyer", "contactPerson", "Buyer Name"],
   contactPhone:  ["contact_phone", "Contact Phone", "buyer_phone", "contactPhone", "Contact phone"],
   aka:           ["aka", "AKA", "nickname", "Also known as"],
@@ -253,6 +270,10 @@ export const HEADER_ALIASES: Record<string, string[]> = {
   // amount column, from the table in workflow_config.
   salesModel:         ["sales_model", "Sales Model", "salesModel"],
   salesRep:           ["sales_rep", "Sales Rep", "Sales Representative", "salesRep"],
+  // The agent named on the agreement. Distinct from salesRep, which is the
+  // consignment's rep from the transfer and is filled in for the typist.
+  salesAgentName:     ["sales_agent_name", "Sales agent's name", "Sales agent",
+                       "sales_agent", "salesAgentName", "Agent name"],
   transferDate:       ["transfer_date", "Transfer Date", "transferDate"],
   potQuantity:        ["pot_quantity", "Pots Quantity", "Pot Quantity", "potQuantity",
                        "Pots quantity"],
@@ -507,6 +528,8 @@ const PASSTHROUGH_FIELDS = [
   "stoveImageId",
   "agreementImageId",
   "retailerBranch",
+  "salesAgentName",
+  "salesAgentUserId",
   "potQuantity",
   "heatRetentionDevice",
   "previousStoveType",
@@ -576,9 +599,21 @@ function fromSaleForm(values: Record<string, unknown>): Record<string, unknown> 
   return {
     ...values,
     endUserName: name || values.endUserName,
+    // The parts travel beside the join. The form's own `endUserName` field
+    // holds the FIRST name and `endUserSurname` the surname; the join above is
+    // what every existing reader sees, and these are what create-sale writes
+    // into the two columns.
+    firstName: values.firstName ?? values.endUserName,
+    lastName: values.lastName ?? values.endUserSurname,
     state: values.state ?? values.stateBackup ?? address.state,
-    lga: values.lga ?? values.lgaBackup ?? address.city,
+    // The LGA no longer borrows the address's city. They are different
+    // questions, the form asks both, and answering one with the other put a
+    // local government area in `addresses.city` on every imported sale.
+    lga: values.lga ?? values.lgaBackup,
+    city: values.city ?? address.city,
     fullAddress: values.fullAddress ?? address.fullAddress,
+    // `salesAgentName` needs no translation: the form and the import call it
+    // the same thing, so the spread above already carries it.
   };
 }
 
@@ -880,6 +915,19 @@ export function normalizeRow(
    */
   const fullAddress = field(raw, "fullAddress");
 
+  /*
+   * City, town or village, recorded when the file has it and never demanded.
+   *
+   * It is the address's own field. Until the sheet carried a column for it the
+   * LGA stood in, which meant `addresses.city` on an imported sale named a
+   * local government area rather than a town.
+   */
+  const city = field(raw, "city");
+
+  // The agent named on the agreement. Not required: the column is new and the
+  // older sheets have no such heading, so a row without one is ordinary.
+  const salesAgentName = field(raw, "salesAgentName");
+
   // The buyer defaults to the end user, which is what a receipt with one name
   // on it means.
   const contactPerson = field(raw, "contactPerson") || endUserName;
@@ -911,6 +959,8 @@ export function normalizeRow(
       stoveSerialNo: serial.toUpperCase(),
       salesDate,
       endUserName,
+      firstName: firstName || null,
+      lastName: lastName || null,
       phone: cleanedPhone,
       contactPerson,
       contactPhone,
@@ -918,7 +968,9 @@ export function normalizeRow(
       amountReceived,
       state,
       lga,
+      city: city || null,
       fullAddress,
+      salesAgentName: salesAgentName || null,
       aka: field(raw, "aka") || null,
       otherPhone,
     },
@@ -2613,6 +2665,14 @@ serve(async (req) => {
               stoveSerialNo: n.stoveSerialNo,
               salesDate: n.salesDate,
               endUserName: n.endUserName,
+              // The two parts beside the join. create-sale writes them when
+              // they arrived and leaves them to the trigger when they did not,
+              // so a row from an older sheet behaves exactly as it did.
+              endUserFirstName: n.firstName,
+              endUserSurname: n.lastName,
+              // Always sent, null when the sheet left it blank: an absent key would
+              // make create-sale name the typist as the agent.
+              salesAgentName: n.salesAgentName ?? null,
               aka: n.aka,
               phone: n.phone,
               otherPhone: n.otherPhone,
@@ -2640,7 +2700,11 @@ serve(async (req) => {
                   typeof extras.addressData === "object" &&
                   (extras.addressData as Record<string, unknown>).fullAddress)
                 ? extras.addressData
-                : { fullAddress: n.fullAddress, state: n.state, city: n.lga },
+                // `city` is the city, not the LGA. It stood in for one while
+                // the sheet had no city column, which put a local government
+                // area in `addresses.city` on every imported sale. The LGA
+                // still travels, as `lgaBackup` above.
+                : { fullAddress: n.fullAddress, state: n.state, city: n.city },
               organizationId: rowOrgId,
               partnerName: rowPartnerName,
               ...passthroughFrom(extras),
@@ -4139,9 +4203,25 @@ serve(async (req) => {
           const stock = await conn.queryObject<{
             stove_id: string; organization_id: string | null; sales_reference: string | null;
             status: string | null; sale_id: string | null; partner_name: string | null;
+            sales_rep: string | null;
           }>({
+            /*
+             * The consignment's sales rep travels with the stove, so the bench
+             * can offer it as the sales agent rather than asking a typist to
+             * copy it off the transfer sheet.
+             *
+             * Down the chain this function already uses for the transaction
+             * ID: `stove_ids_base.sales_reference` names the transfer, which
+             * `v_transfers` reads from `public.stove_transfer_history`. Null
+             * when the serial matches no transfer, which is the ordinary case
+             * for roughly one serial in twelve.
+             */
             text: `select sb.stove_id, sb.organization_id::text, sb.sales_reference,
-                          sb.status, sb.sale_id::text, o.partner_name
+                          sb.status, sb.sale_id::text, o.partner_name,
+                          (select t.sales_rep
+                             from data_center.v_transfers t
+                            where t.transaction_id = sb.sales_reference
+                            limit 1) as sales_rep
                      from public.stove_ids_base sb
                      left join public.organizations o on o.id = sb.organization_id
                     where sb.stove_id = $1`,
@@ -4203,6 +4283,7 @@ serve(async (req) => {
                   organizationId: stove.organization_id,
                   partnerName: stove.partner_name,
                   transactionId: stove.sales_reference,
+                  salesRep: stove.sales_rep ?? null,
                   stockStatus: stove.status,
                   alreadySold: Boolean(stove.sale_id),
                   models,

@@ -979,6 +979,7 @@ export default function StoveRecord({ stoveId }) {
                 no such argument, so nothing has ever written it.
               */}
               <Detail label="Sold by" value={sale?.sold_on_behalf_of_name ?? s.sales_rep} />
+              {sale?.selling_agent_name && <Detail label={fieldLabel("sales_agent_name")} value={sale.selling_agent_name} />}
               <Detail label="Recorded by" value={sale?.created_by_name ?? s.sale_agent_name} />
               <Detail label={fieldLabel("retailer_branch")} value={sale?.retailer_branch} />
               <Detail label="Channel" value={sale?.platform ?? s.platform} />

@@ -18,6 +18,10 @@ function jsonError(message: string, status = 400): Response {
   );
 }
 
+/** An account id is a uuid or it is not an account id. */
+const UUID_RE =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
 Deno.serve(async (req) => {
   console.log("➡️ Incoming request:", req.method, req.url);
 
@@ -47,6 +51,13 @@ Deno.serve(async (req) => {
       contactPerson,
       contactPhone,
       endUserName,
+      // The agreement's two name fields, and the agent who sold the stove.
+      // A writer may send either name form; the database keeps the two in
+      // step. See 20260908050000_sale_record_fields_from_agreement.sql.
+      endUserFirstName,
+      endUserSurname,
+      salesAgentName,
+      salesAgentUserId,
       aka,
       stateBackup,
       lgaBackup,
@@ -122,7 +133,7 @@ Deno.serve(async (req) => {
     // ── Resolve organization_id ───────────────────────────────────────────────
     const { data: profile, error: profileError } = await supabase
       .from("profiles")
-      .select("organization_id, role")
+      .select("organization_id, role, full_name")
       .eq("id", userId)
       .maybeSingle();
 
@@ -165,6 +176,47 @@ Deno.serve(async (req) => {
 
     console.log("🏢 Resolved organization ID:", organizationId);
 
+    // ── The buyer's name, in whichever form arrived ───────────────────────────
+    //
+    // The paper agreement carries First name and Surname; older callers (the
+    // phone app, anything written before this) carry only the joined name. The
+    // BEFORE trigger on `sales` reconciles the two whichever way round they
+    // come, so both forms are accepted here.
+    //
+    // The join is composed BEFORE the required-field check and the status rule
+    // below, so a caller that sent only the parts satisfies both exactly as a
+    // caller that sent the joined name does. Nothing downstream sees a
+    // difference.
+    const endUserFirstNameClean = String(endUserFirstName ?? "").trim() || null;
+    const endUserSurnameClean = String(endUserSurname ?? "").trim() || null;
+    const endUserNameJoined =
+      String(endUserName ?? "").trim() ||
+      [endUserFirstNameClean, endUserSurnameClean].filter(Boolean).join(" ");
+
+    // The agent who sold the stove, as written on the agreement, and their
+    // account when they have one. Not the typist: `created_by` keeps naming
+    // whoever made the record.
+    // A caller that says nothing about the agent (the phone app until it is
+    // updated) made the sale itself, so the creator is the agent, as the
+    // backfill read history. A caller that sends the key, even as null (the
+    // import, whose sheet may leave it blank), is believed.
+    const creatorName = String((profile as { full_name?: string | null } | null)?.full_name ?? "").trim() || null;
+    const sellingAgentName = salesAgentName === undefined
+      ? creatorName
+      : String(salesAgentName ?? "").trim() || null;
+    let sellingAgentUserId: string | null = null;
+    if (
+      salesAgentUserId !== undefined &&
+      salesAgentUserId !== null &&
+      String(salesAgentUserId).trim() !== ""
+    ) {
+      const candidate = String(salesAgentUserId).trim();
+      if (!UUID_RE.test(candidate)) {
+        return jsonError("Sales agent user ID must be a user id", 400);
+      }
+      sellingAgentUserId = candidate;
+    }
+
     // ── Required-field validation ─────────────────────────────────────────────
     // Reject with a field-specific message rather than silently writing a row.
     const isBlank = (v: unknown) =>
@@ -175,7 +227,7 @@ Deno.serve(async (req) => {
       [salesDate, "Sales date is required"],
       [contactPerson, "Contact person is required"],
       [contactPhone, "Contact phone is required"],
-      [endUserName, "End user name is required"],
+      [endUserNameJoined, "End user name is required"],
       [phone, "Phone number is required"],
       [partnerName, "Partner name is required"],
       [stoveSerialNo, "Stove serial number is required"],
@@ -530,7 +582,7 @@ Deno.serve(async (req) => {
       salesDate,
       contactPerson,
       contactPhone,
-      endUserName,
+      endUserName: endUserNameJoined,
       phone,
       partnerName,
       amount: saleAmount, // the final amount being saved
@@ -553,7 +605,18 @@ Deno.serve(async (req) => {
           sales_date: salesDate,
           contact_person: contactPerson,
           contact_phone: contactPhone,
-          end_user_name: endUserName,
+          end_user_name: endUserNameJoined,
+          // Written only when a part actually arrived. A caller sending the
+          // joined name alone leaves these to the trigger, which splits it by
+          // rule and says so in name_split_source.
+          ...(endUserFirstNameClean || endUserSurnameClean
+            ? {
+              end_user_first_name: endUserFirstNameClean,
+              end_user_surname: endUserSurnameClean,
+            }
+            : {}),
+          selling_agent_name: sellingAgentName,
+          selling_agent_user_id: sellingAgentUserId,
           aka,
           state_backup: stateBackup,
           lga_backup: lgaBackup,

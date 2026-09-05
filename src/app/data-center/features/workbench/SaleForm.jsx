@@ -407,10 +407,7 @@ export default function SaleForm({
                 set("stateBackup", v);
                 setAddress("state", v);
               }}
-              onLga={(v) => {
-                set("lgaBackup", v);
-                setAddress("city", v);
-              }}
+              onLga={(v) => set("lgaBackup", v)}
             />
           </div>
         </div>
@@ -435,9 +432,31 @@ export default function SaleForm({
             onChange={(e) => setAddress("fullAddress", e.target.value)}
           />
         </Field>
+        <Field label={fieldLabel("city")} htmlFor="wb-city" help="The town or village on the agreement. The LGA is its own field above.">
+          <input
+            id="wb-city"
+            className={INPUT}
+            value={values.addressData?.city ?? ""}
+            disabled={disabled}
+            onChange={(e) => setAddress("city", e.target.value)}
+          />
+        </Field>
       </Section>
 
       <Section title="The purchase">
+        <Field
+          label={fieldLabel("sales_agent_name")}
+          htmlFor="wb-salesAgentName"
+          help="Prefilled from the transfer's sales rep; change it if the agreement says otherwise."
+        >
+          <input
+            id="wb-salesAgentName"
+            className={INPUT}
+            value={values.salesAgentName ?? ""}
+            disabled={disabled}
+            onChange={(e) => set("salesAgentName", e.target.value)}
+          />
+        </Field>
         <Field label={fieldLabel("sales_date")} htmlFor="wb-salesDate" required error={errors.salesDate}>
           <input
             id="wb-salesDate"

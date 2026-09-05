@@ -1857,7 +1857,8 @@ serve(async (req) => {
               saleId
                 ? connection.queryObject({
                   text: `select s.transaction_id, s.sales_date, s.contact_person,
-                                s.contact_phone, s.end_user_name, s.aka, s.phone,
+                                s.contact_phone, s.end_user_name, s.end_user_first_name,
+                                s.end_user_surname, s.selling_agent_name, s.aka, s.phone,
                                 s.other_phone, s.state_backup, s.lga_backup,
                                 s.partner_name, s.amount, s.total_paid,
                                 s.payment_status, s.is_installment, s.retailer_branch,

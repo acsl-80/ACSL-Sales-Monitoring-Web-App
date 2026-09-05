@@ -39,6 +39,14 @@ interface AdminSalesDetailModalProps {
   onSaleUpdated?: () => void;
 }
 
+/** The old split of a joined name, for a row written before the parts existed. */
+function splitName(full?: string | null): { first: string; surname: string } {
+  const parts = (full ?? "").trim().split(/\s+/).filter(Boolean);
+  if (parts.length === 0) return { first: "", surname: "" };
+  if (parts.length === 1) return { first: "", surname: parts[0] };
+  return { first: parts[0], surname: parts.slice(1).join(" ") };
+}
+
 const DetailItem = ({
   label,
   value,
@@ -272,7 +280,8 @@ const AdminSalesDetailModal: React.FC<AdminSalesDetailModalProps> = ({
                   <DetailItem label="Created" value={formatDate(activeSale?.created_at)} />
                   <DetailItem label={fieldLabel("stove_serial_no")} value={activeSale?.stove_serial_no} />
                   <DetailItem label={fieldLabel("partner_name")} value={activeSale?.partner_name} />
-                  {/* Recorded by is the record's creator, not the dictionary's sales agent field, which arrives in a later slice. */}
+                  <DetailItem label={fieldLabel("sales_agent_name")} value={activeSale?.selling_agent_name} />
+                  {/* Recorded by is the record's creator; the sales agent above is the field the agreement carries. */}
                   <DetailItem label="Recorded by" value={creatorName} />
                   <DetailItem
                     label={fieldLabel("is_installment")}
@@ -293,6 +302,8 @@ const AdminSalesDetailModal: React.FC<AdminSalesDetailModalProps> = ({
 
               <SectionCard title="Customer Details">
                 <div className="grid grid-cols-2 gap-2">
+                  <DetailItem label={fieldLabel("end_user_first_name")} value={activeSale?.end_user_first_name ?? splitName(activeSale?.end_user_name).first} />
+                  <DetailItem label={fieldLabel("end_user_surname")} value={activeSale?.end_user_surname ?? splitName(activeSale?.end_user_name).surname} />
                   <DetailItem label={fieldLabel("end_user_name")} value={activeSale?.end_user_name} />
                   <DetailItem label={fieldLabel("aka")} value={activeSale?.aka} />
                   <DetailItem label={fieldLabel("phone")} value={activeSale?.phone} />

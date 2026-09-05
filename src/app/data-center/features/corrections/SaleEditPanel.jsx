@@ -104,6 +104,7 @@ export default function SaleEditPanel({ saleId, sale, disputed, canEditSale, onl
         }
         for (const f of changed) {
           if (f.key === "full_address") payload.addressData = { fullAddress: form.full_address };
+          if (f.key === "city") payload.addressData = { ...(payload.addressData ?? {}), city: form.city };
           else if (f.payload) payload[f.payload] = form[f.key] === "" ? null : form[f.key];
         }
         await dataCenterSales.updateSale(saleId, payload);

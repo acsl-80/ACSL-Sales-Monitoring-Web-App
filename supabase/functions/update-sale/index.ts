@@ -23,6 +23,10 @@ function jsonError(message: string, status = 400): Response {
   );
 }
 
+/** An account id is a uuid or it is not an account id. */
+const UUID_RE =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
 function isValidNgPhone(raw: unknown): boolean {
   if (!raw) return false;
   const cleaned = String(raw).replace(/[\s\-()]/g, "");
@@ -138,6 +142,14 @@ Deno.serve(async (req) => {
 
     const {
       endUserName,
+      // The agreement's two name fields, and the agent who sold the stove.
+      // Sparse like every other optional key here: a body that does not
+      // mention one leaves the column alone.
+      endUserFirstName,
+      endUserSurname,
+      salesAgentName,
+      salesAgentUserId,
+      retailerBranch,
       aka,
       phone,
       otherPhone,
@@ -162,8 +174,21 @@ Deno.serve(async (req) => {
       agreementImageId,
     } = body ?? {};
 
+    // The buyer's name, in whichever form arrived. A caller that sends the two
+    // parts and no joined name satisfies the requirement with their join, the
+    // same value the database trigger would compose. `undefined` is kept
+    // distinct from an emptied field so an absent key writes nothing.
+    const endUserFirstNameClean = endUserFirstName === undefined
+      ? undefined
+      : String(endUserFirstName ?? "").trim() || null;
+    const endUserSurnameClean = endUserSurname === undefined
+      ? undefined
+      : String(endUserSurname ?? "").trim() || null;
+    const endUserNameJoined = String(endUserName ?? "").trim() ||
+      [endUserFirstNameClean, endUserSurnameClean].filter(Boolean).join(" ");
+
     // Required + format checks
-    if (!endUserName || !String(endUserName).trim()) {
+    if (!endUserNameJoined) {
       return jsonError("End user name is required", 400);
     }
     if (!contactPerson || !String(contactPerson).trim()) {
@@ -244,7 +269,7 @@ Deno.serve(async (req) => {
     // Build sale update object — only include fields that were provided so
     // we never accidentally null out untouched columns.
     const saleUpdate: Record<string, unknown> = {
-      end_user_name: endUserName,
+      end_user_name: endUserNameJoined,
       phone,
       contact_person: contactPerson,
       contact_phone: contactPhone,
@@ -254,6 +279,26 @@ Deno.serve(async (req) => {
     // Written only when sent. The host's edit form sends all four every time;
     // a partial body (the Data Center's correction workspace sends the fields
     // it changed) must not null what it did not mention.
+    if (endUserFirstNameClean !== undefined) {
+      saleUpdate.end_user_first_name = endUserFirstNameClean;
+    }
+    if (endUserSurnameClean !== undefined) {
+      saleUpdate.end_user_surname = endUserSurnameClean;
+    }
+    if (salesAgentName !== undefined) {
+      saleUpdate.selling_agent_name = String(salesAgentName ?? "").trim() || null;
+    }
+    if (salesAgentUserId !== undefined) {
+      const candidate = String(salesAgentUserId ?? "").trim();
+      if (candidate === "") {
+        saleUpdate.selling_agent_user_id = null;
+      } else if (!UUID_RE.test(candidate)) {
+        return jsonError("Sales agent user ID must be a user id", 400);
+      } else {
+        saleUpdate.selling_agent_user_id = candidate;
+      }
+    }
+    if (retailerBranch !== undefined) saleUpdate.retailer_branch = retailerBranch || null;
     if (aka !== undefined) saleUpdate.aka = aka ?? null;
     if (otherPhone !== undefined) saleUpdate.other_phone = otherPhone ?? null;
     if (stateBackup !== undefined) saleUpdate.state_backup = stateBackup ?? null;
