@@ -64,9 +64,14 @@ test("the bench is told the transfer's model and preselects it", async ({ page }
 
     // On the bench the select starts on that model and says where it came from.
     await page.goto("/data-center/import");
+    await expect(page.getByRole("heading", { name: "Bulk Import" })).toBeVisible({ timeout: 30_000 });
     await page.getByRole("button", { name: /One receipt at a time/ }).click();
-    await page.getByRole("button", { name: /Twin Name Partner/ }).first().click();
-    await page.getByRole("button", { name: new RegExp(stoveId) }).first().click();
+    await expect(page.locator("tbody tr").first()).toBeVisible({ timeout: 30_000 });
+    await page.getByPlaceholder("Search by name").fill("Twin Name Partner");
+    await page.locator("tbody tr", { hasText: "Twin Name Partner" }).filter({ hasText: "Kogi" }).first().click();
+    await expect(page.getByText(/all consignments/).first()).toBeVisible({ timeout: 30_000 });
+    await page.locator("tbody tr", { hasText: stoveId }).first().click();
+    await expect(page.locator("#wb-endUserName")).toBeVisible({ timeout: 30_000 });
     const select = page.getByLabel("Sales model", { exact: true });
     await expect(select).toBeVisible({ timeout: 30_000 });
     await expect(select).toHaveValue(amina.name);
