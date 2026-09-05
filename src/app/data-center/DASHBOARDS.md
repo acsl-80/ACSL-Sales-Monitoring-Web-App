@@ -79,8 +79,11 @@ part of the rule with the count of live records missing it, each a link to the
 records table narrowed by `missingField`. Those counts are undated on purpose:
 the dashboard's period is the consignment month and the table's is the sale
 date, so a dated figure could never equal the table behind it. The disagreement
-with the sales app is one sentence, and it reaches zero only when the sales
-app's rule changes (decision D1).
+with the sales app is one sentence. `sales.status_disagreement` counts sales
+the sales app calls incomplete that this module calls complete: since slice
+7b the app's rule is its form's rule (state, LGA and an address line are
+required there and not here), so the number is the records where the two
+rules disagree about a field, and a pending sale is not one of them.
 
 ### Changing the rule
 

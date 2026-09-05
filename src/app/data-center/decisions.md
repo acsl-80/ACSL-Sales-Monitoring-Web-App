@@ -149,3 +149,30 @@ database validates against the rule (`data_center.missing_predicate`). The
 disagreement with the sales app is one sentence, and it reaches zero only with
 D1 (slice 7b).
 
+## D26. The sales app's status rule is its form's rule, and the module's disagreement metric compares like with like (2026-09-05, slice 7b)
+
+Three implementations of the sales app's status rule disagreed, and the one
+that ran last still required two images the Sell Stove form had made optional,
+so every one of 2,340 live sales read incomplete. `calculate_sale_status(sales)`
+now mirrors `_shared/saleStatus.ts` line for line (twelve required fields and a
+valid signature; completed, pending, incomplete), the two triggers on the
+zero-argument function and that function are dropped, and the status column is
+recomputed once. `update-sale` and `create-sale` keep computing the same word
+in TypeScript; the trigger applies the same rule last, so the two can no longer
+differ. Host lane, its own migration, applied on his word.
+
+What it does to production, measured read-only before the change: 54 sales
+read completed, 333 pending and 1,953 incomplete. The 1,953 are receipt-sheet
+imports that carry no LGA, which the form requires; 63 of them also lack an
+address line. The plan's estimate of 2,151 pending was made against a shorter
+field list and was wrong. Whether the form's rule should require an LGA a
+paper receipt never carried is a sales-team question, not this module's; the
+mobile app prints the word as stored.
+
+The module's `sales.status_disagreement` counted every module-complete sale
+the app did not call completed. With the module accepting a paper agreement
+as evidence and the app wanting a drawn signature, that count would read
+2,286 for ever and mean nothing. It now counts sales the app calls incomplete
+that the module calls complete: two rules disagreeing about whether a field is
+missing, which is the only disagreement worth a number.
+
