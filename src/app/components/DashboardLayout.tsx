@@ -1,5 +1,5 @@
 
-import React, { useState, useEffect, createContext, useContext } from "react";
+import React, { useState, useEffect, useMemo, useCallback, createContext, useContext } from "react";
 import { useAuth } from "../contexts/useAuth";
 import { useRouter } from "@/compat/navigation";
 import { useRouterState } from "@tanstack/react-router";
@@ -82,6 +82,24 @@ const DashboardLayout = ({
   const shell = useContext(LayoutContext);
   const [meta, setMeta] = useState<PageMeta>({});
 
+  /*
+   * The shell's context value is one object for the life of the shell.
+   *
+   * It used to be rebuilt on every render, and the nested layout's publish
+   * effect depends on it, so every publish re-rendered the shell, which made
+   * a new object, which re-ran the effect, which published again: about a
+   * thousand renders a second on every authenticated page, and a hard
+   * "Maximum update depth exceeded" for any account whose first-time
+   * password dialog mounted during the storm. The publisher is also
+   * idempotent, so an unrelated re-render can never restart it.
+   */
+  const publish = useCallback((next: PageMeta) => {
+    setMeta((prev) =>
+      prev.title === next.title && prev.description === next.description ? prev : next,
+    );
+  }, []);
+  const shellValue = useMemo<LayoutContextValue>(() => ({ mounted: true, setMeta: publish }), [publish]);
+
   // Nested inside the shell: hand it the page's words, and take them back when
   // this page goes, so the next page without a title shows none rather than
   // the last one's.
@@ -96,7 +114,7 @@ const DashboardLayout = ({
   }
 
   return (
-    <LayoutContext.Provider value={{ mounted: true, setMeta }}>
+    <LayoutContext.Provider value={shellValue}>
       <DashboardLayoutInner
         currentRoute={currentRoute}
         title={meta.title ?? title}
