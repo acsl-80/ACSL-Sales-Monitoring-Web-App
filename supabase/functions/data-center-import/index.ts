@@ -4221,6 +4221,7 @@ serve(async (req) => {
                           (select t.sales_rep
                              from data_center.v_transfers t
                             where t.transaction_id = sb.sales_reference
+                            order by t.transfer_date desc nulls last, t.transfer_id
                             limit 1) as sales_rep,
                           (select jsonb_build_object('id', t.order_payment_model_id,
                                                      'name', coalesce(t.order_payment_model_label, t.order_sales_model_name),
@@ -4229,6 +4230,7 @@ serve(async (req) => {
                              from data_center.v_transfers t
                             where t.transaction_id = sb.sales_reference
                               and (t.order_payment_model_id is not null or t.order_sales_model_name is not null)
+                            order by t.transfer_date desc nulls last, t.transfer_id
                             limit 1) as order_model
                      from public.stove_ids_base sb
                      left join public.organizations o on o.id = sb.organization_id

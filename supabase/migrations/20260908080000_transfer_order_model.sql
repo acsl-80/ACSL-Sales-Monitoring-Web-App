@@ -19,6 +19,5 @@ comment on column public.stove_transfer_history.order_payment_model_id is 'The p
 comment on column public.stove_transfer_history.order_sales_model_name is 'The Order Sales Model exactly as the ERP sent it.';
 comment on column public.stove_transfer_history.order_sales_model_duration is 'The Order Sales Model duration in months as the ERP sent it.';
 
-create index if not exists stove_transfer_history_order_model_idx
-  on public.stove_transfer_history (order_payment_model_id)
-  where order_payment_model_id is not null;
+-- No index: nothing reads the table by this column, and an index on public
+-- would need CONCURRENTLY, which the migration runner's transaction forbids.

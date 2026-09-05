@@ -1328,15 +1328,14 @@ serve(async (req) => {
             text: `select ts.stove_id, f.transaction_id, f.partner_name,
                           o.partner_id,
                           f.sales_rep, f.sales_date, f.transfer_state, f.transfer_branch,
-                          coalesce(pm.name, th.order_sales_model_name) as order_sales_model_name,
+                          coalesce(vt.order_payment_model_label, vt.order_sales_model_name) as order_sales_model_name,
                           sb.status as stock_status,
                           (sb.sale_id is not null) as already_recorded
                      from data_center.transfer_funnel f
                      join data_center.v_transfer_stoves ts on ts.transfer_id = f.transfer_id
                      left join public.stove_ids_base sb on sb.stove_id = ts.stove_id
                      left join public.organizations o on o.id = f.organization_id
-                     left join public.stove_transfer_history th on th.id = f.transfer_id
-                     left join public.payment_models pm on pm.id = th.order_payment_model_id
+                     left join data_center.v_transfers vt on vt.transfer_id = f.transfer_id
                     where ${where.join(" and ")}
                     order by f.sales_date desc nulls last, f.transaction_id, ts.stove_id
                     limit 20000`,

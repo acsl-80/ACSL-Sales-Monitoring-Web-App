@@ -579,7 +579,7 @@ function Bench({ stoveId, onSaved, onBack, onNext, nextLabel, api = null }) {
           // offered it; the receipt can still say otherwise.
           salesModel:
             d.work?.draft_values?.salesModel
-            ?? (d.stove?.models ?? []).find((m) => (d.stove?.orderModel?.id && m.id === d.stove.orderModel.id) || (d.stove?.orderModel?.name && m.name === d.stove.orderModel.name))?.name
+            ?? offeredOrderModel(d.stove)
             ?? "",
         };
         /*
@@ -1349,6 +1349,22 @@ function PartnerSweep({
       />
     </div>
   );
+}
+
+/**
+ * The name of the offered model the transfer was sent under, or undefined.
+ *
+ * By id when the ERP's name resolved; by name only when exactly one offered
+ * model carries it, because two models can share a name and differ in
+ * duration, and the wrong duration is a wrong contract.
+ */
+function offeredOrderModel(stove) {
+  const om = stove?.orderModel;
+  if (!om) return undefined;
+  const offered = stove?.models ?? [];
+  if (om.id) return offered.find((m) => m.id === om.id)?.name;
+  const sameName = offered.filter((m) => m.name === om.name);
+  return sameName.length === 1 ? sameName[0].name : undefined;
 }
 
 export default function Workbench() {

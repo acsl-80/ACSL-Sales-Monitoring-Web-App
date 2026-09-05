@@ -510,7 +510,7 @@ export default function SaleForm({
             <p className="mt-1 text-xs text-gray-600">
               Sent with transfer {transactionId ?? "this consignment"} as <span className="font-medium">{orderModel.name}</span>
               {orderModel.durationMonths ? ` (${orderModel.durationMonths} months)` : ""}.
-              {models.some((m) => m.name === orderModel.name) ? "" : " This partner is not offered that model, so pick the one on the receipt."}
+              {models.some((m) => (orderModel.id ? m.id === orderModel.id : m.name === orderModel.name)) ? "" : " This partner is not offered that model, so pick the one on the receipt."}
             </p>
           ) : (
             <p className="mt-1 text-xs text-gray-500">No sales model was sent with this transfer.</p>
