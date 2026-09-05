@@ -360,6 +360,8 @@ test("create-sale takes the name in parts, and the agent's name", async ({ page 
     contactPerson: "Direct Caller",
     contactPhone: "08012345677",
     salesAgentName: "Bala Sani",
+      // create-sale refuses a sale without the six consents; the agreement carries them.
+      termsAccepted: { poaGoverned: true, monitoring: true, noResell: true, emissionReductions: true, noExport: true, demonstration: true },
     addressData: {
       fullAddress: `${DIRECT_MARKER} Direct Road`,
       state: "Kogi",
