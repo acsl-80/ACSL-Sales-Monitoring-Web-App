@@ -13,6 +13,7 @@ import { AdminSales } from "@/types/adminSales";
 import FinancialReportRowActions from "./FinancialReportRowActions";
 import { formatDate as formatDateShared } from "@/app/utils/formatDate";
 import { formatCurrency as formatCurrencyShared } from "@/app/utils/formatCurrency";
+import { fieldLabel } from "@/lib/saleDictionary";
 
 interface FinancialReportsTableProps {
   data: AdminSales[];
@@ -93,14 +94,14 @@ const FinancialReportsTable: React.FC<FinancialReportsTableProps> = ({
                 onClick={onToggleSort}
               >
                 <div className="flex items-center gap-1">
-                  Date <ArrowUpDown className="h-3 w-3" />
+                  {fieldLabel("sales_date")} <ArrowUpDown className="h-3 w-3" />
                 </div>
               </TableHead>
-               <TableHead className="text-white font-semibold py-2 px-2 w-[11%]">End User</TableHead>
-               <TableHead className="text-white font-semibold py-2 px-2 w-[7%]">State</TableHead>
-               <TableHead className="text-white font-semibold py-2 px-2 w-[11%]">Partner</TableHead>
-               <TableHead className="text-white font-semibold py-2 px-2 w-[8%]">Stove ID</TableHead>
-               <TableHead className="text-white font-semibold py-2 px-2 w-[11%] bg-indigo-500">Model</TableHead>
+               <TableHead className="text-white font-semibold py-2 px-2 w-[11%]">{fieldLabel("end_user_name")}</TableHead>
+               <TableHead className="text-white font-semibold py-2 px-2 w-[7%]">{fieldLabel("state_backup")}</TableHead>
+               <TableHead className="text-white font-semibold py-2 px-2 w-[11%]">{fieldLabel("partner_name")}</TableHead>
+               <TableHead className="text-white font-semibold py-2 px-2 w-[8%]">{fieldLabel("stove_serial_no")}</TableHead>
+               <TableHead className="text-white font-semibold py-2 px-2 w-[11%] bg-indigo-500">{fieldLabel("payment_model_id")}</TableHead>
                  <TableHead className="text-white font-semibold py-2 px-2 text-left w-[7%] bg-slate-500">Expected</TableHead>
                 <TableHead className="text-white font-semibold py-2 px-2 text-left w-[7%] bg-green-600">Paid</TableHead>
                 <TableHead className="text-white font-semibold py-2 px-2 text-left w-[7%] bg-red-500">Balance</TableHead>

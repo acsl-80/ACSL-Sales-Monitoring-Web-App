@@ -4,6 +4,19 @@ Flat, one line per slice, newest programme first. States: todo, spec red,
 green, in review, merged, live. The why lives in `decisions.md`; the evidence
 lives on each PR.
 
+## Phase 25, field alignment (opened 2026-09-05)
+
+The paper User Agreement's wording is the name of every sale field on every
+surface; one dictionary is read by all of them; mandatory carries a date so
+history is never made incomplete after the fact. Proposal accepted 2026-09-05;
+decisions D27 to D29.
+
+- [ ] F1 The dictionary: one JSON source read by the web form, the workbench, the corrections catalogue, the records table, the exports and the API docs; a `sale-dictionary` endpoint for the phone app; a parity spec. No schema change. in review
+- [ ] F2 Schema additions, host lane on his word: surname and first name (history split by rule, marked), sales agent's name, note columns for the original fuel and location text, the transfer's order model (D19); create-sale and update-sale accept the new keys; backfills. todo
+- [ ] F3 Options and rules: one baseline stove list, fuel source and cooking location dropdowns, payment type split from sales model, mandatory-from dates in a public rules table read by the status rule and the module's completeness rule; CPA labelled as the terms block; slice 8's settings work folded in. todo
+- [ ] F4 The external API's second shape with the Stove DB names, docs and CSV headers from the dictionary; the old shape kept until the analysts move. todo
+- [ ] F5 The phone app guide handed to brain-codes, and a payload contract spec that fails when either app drifts from the dictionary. guide drafted 2026-09-05 (sales-mobile-field-alignment-guide.md beside the repos)
+
 ## Phase 24 (opened 2026-09-04)
 
 - [x] 0 Docs and tracker: this file, `decisions.md`, PLAN.md and ROADMAP.md entries. merged, live (PR #66, 2026-09-04)
@@ -18,9 +31,9 @@ lives on each PR.
 - [x] 6a Control centre: board, agents with presence, pool by partner, lanes, polling; the log is history only. merged, live (PR #74, 2026-09-04): migration applied, three functions deployed, a pool-only run on production wrote 127 rows with the sales families' computed-at untouched, bundle crawl confirmed
 - [x] 6b Queue facets in the URL. PR #75 merged and live 2026-09-04 (main 72df1a9 to a80f2ec; client only, bundle crawl confirmed)
 - [x] 7a Completeness evidence config and the tile's plain line. PR #76 merged and live 2026-09-05 (main a80f2ec to 6ae5db7; migration applied with ledger row, read v18, full run 2,340 of 2,340 complete)
-- [ ] 7b The sales app's status rule (D17). green on the preview, review folded in, PR #77 awaiting his word; effect on production restated there
-- [ ] 8 Settings: used by, retire warning, previous_stove list, typed editors, gates. todo
-- [ ] 9 Order model on the transfer, preselected on the bench (D19). needs the owner's word
+- [x] 7b The sales app's status rule (D17). PR #77 merged and live 2026-09-05 (main 6ae5db7 to 855e860; both migrations applied with ledger rows; production reads 54 completed, 333 pending, 1,953 incomplete; 406 rows recomputed)
+- [ ] 8 Settings: used by, retire warning, previous_stove list, typed editors, gates. folded into F3
+- [ ] 9 Order model on the transfer, preselected on the bench (D19). folded into F2 and F3
 
 ## Deferred
 

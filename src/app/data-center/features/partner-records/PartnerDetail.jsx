@@ -8,6 +8,7 @@ import { plural } from "../../lib/plural";
 import { outcomeLabel, outcomeText } from "../../lib/outcome";
 import { dateOf as formatDate } from "../../lib/when";
 import { DigitisationSheetButton } from "./DigitisationSheet";
+import { fieldLabel } from "@/lib/saleDictionary";
 import {
   Dialog,
   DialogContent,
@@ -60,12 +61,12 @@ const BATCH_COLUMNS = [
 ];
 
 const STOVE_COLUMNS = [
-  { key: "stove_id", label: "Stove ID" },
+  { key: "stove_id", label: fieldLabel("stove_serial_no") },
   { key: "stock_status", label: "Stock status" },
-  { key: "end_user_name", label: "Buyer" },
-  { key: "phone", label: "Phone" },
-  { key: "user_state", label: "State" },
-  { key: "sales_date", label: "Sold on" },
+  { key: "end_user_name", label: fieldLabel("end_user_name") },
+  { key: "phone", label: fieldLabel("phone") },
+  { key: "user_state", label: fieldLabel("state_backup") },
+  { key: "sales_date", label: fieldLabel("sales_date") },
   { key: "verification_outcome", label: "Verification" },
   { key: "attempt_count", label: "Calls made" },
   { key: "agent_name", label: "Assigned to", get: (r) => r.agent_name ?? "unassigned" },
@@ -365,9 +366,9 @@ function BatchLevel({ batch, onStove }) {
           <table className="w-full min-w-[46rem] text-sm">
             <thead>
               <tr className="bg-(--dc-accent-soft) text-left text-xs uppercase tracking-wide text-(--dc-accent-strong)">
-                <th className="px-3 py-2 font-semibold">Stove ID</th>
+                <th className="px-3 py-2 font-semibold">Serial number</th>
                 <th className="px-3 py-2 font-semibold">Stock</th>
-                <th className="px-3 py-2 font-semibold">Buyer</th>
+                <th className="px-3 py-2 font-semibold">Customer name</th>
                 <th className="px-3 py-2 font-semibold">Assigned to</th>
                 <th className="px-3 py-2 font-semibold">Verification</th>
                 <th className="w-8 px-3 py-2" />
@@ -471,7 +472,7 @@ function StoveLevel({ stoveId }) {
           <Package className="h-3.5 w-3.5" /> Where it came from
         </h4>
         <div className="grid grid-cols-2 gap-3 rounded-lg border border-gray-200 p-3 sm:grid-cols-3 lg:grid-cols-4">
-          <Detail label="Stove ID" value={s.stove_id} />
+          <Detail label={fieldLabel("stove_serial_no")} value={s.stove_id} />
           <Detail label="Stock status" value={s.stock_status} />
           <Detail label="Partner" value={s.partner_name} />
           <Detail label="Partner ID" value={s.partner_id} />
@@ -493,20 +494,20 @@ function StoveLevel({ stoveId }) {
           </p>
         ) : (
           <div className="grid grid-cols-2 gap-3 rounded-lg border border-gray-200 p-3 sm:grid-cols-3 lg:grid-cols-4">
-            <Detail label="Buyer" value={s.end_user_name} />
-            <Detail label="Also known as" value={s.aka} />
-            <Detail label="Phone" value={s.phone} />
-            <Detail label="Alternative phone" value={s.alternative_phone} />
-            <Detail label="Sold on" value={dateOf(s.sales_date)} />
-            <Detail label="State" value={s.user_state} />
-            <Detail label="LGA" value={s.user_lga} />
-            <Detail label="Address" value={s.user_residential_address} />
-            <Detail label="Amount" value={s.amount != null ? n(s.amount) : null} />
-            <Detail label="Paid" value={s.total_paid != null ? n(s.total_paid) : null} />
+            <Detail label={fieldLabel("end_user_name")} value={s.end_user_name} />
+            <Detail label={fieldLabel("aka")} value={s.aka} />
+            <Detail label={fieldLabel("phone")} value={s.phone} />
+            <Detail label={fieldLabel("other_phone")} value={s.alternative_phone} />
+            <Detail label={fieldLabel("sales_date")} value={dateOf(s.sales_date)} />
+            <Detail label={fieldLabel("state_backup")} value={s.user_state} />
+            <Detail label={fieldLabel("lga_backup")} value={s.user_lga} />
+            <Detail label={fieldLabel("full_address")} value={s.user_residential_address} />
+            <Detail label={fieldLabel("amount")} value={s.amount != null ? n(s.amount) : null} />
+            <Detail label={fieldLabel("total_paid")} value={s.total_paid != null ? n(s.total_paid) : null} />
             <Detail label="Payment status" value={s.payment_status} />
             <Detail label="Sold by" value={s.sales_rep} />
             <Detail label="Recorded by" value={s.sale_agent_name} />
-            <Detail label="Sales model" value={s.sales_model} />
+            <Detail label={fieldLabel("payment_model_id")} value={s.sales_model} />
             <Detail label="Channel" value={s.platform} />
             <Detail label="Sales app status" value={s.sale_status} />
           </div>

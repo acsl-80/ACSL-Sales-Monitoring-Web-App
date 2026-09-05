@@ -46,7 +46,7 @@ export const CALL_EXCEPTION_KINDS = [
     what:
       "Usually not a mistake in the sheet at all: a call cannot attach to a sale that " +
       "does not exist yet. Digitalise the receipt through Bulk Import, then press Check " +
-      "the rows again and these clear themselves. If instead the stove ID was mistyped, " +
+      "the rows again and these clear themselves. If instead the serial number was mistyped, " +
       "correct it here and the row is re-checked on the spot.",
   },
   {
@@ -92,7 +92,7 @@ export const CALL_EXCEPTION_KINDS = [
   {
     key: "ambiguous",
     test: (why) => /matches \d+ live sales/i.test(why),
-    title: "The stove ID matches more than one sale",
+    title: "The serial number matches more than one sale",
     selfHealing: false,
     what:
       "There is no way to tell which sale this call belongs to, so nothing is written. " +

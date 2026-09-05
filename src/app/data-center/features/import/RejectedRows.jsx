@@ -148,7 +148,7 @@ export default function RejectedRows({ batchId, count }) {
                       <thead>
                         <tr className="border-b border-gray-100 text-left text-xs uppercase tracking-wide text-gray-600">
                           <th className="w-20 px-3 py-1.5 font-semibold">Row</th>
-                          <th className="px-3 py-1.5 font-semibold">Stove ID</th>
+                          <th className="px-3 py-1.5 font-semibold">Serial number</th>
                           <th className="px-3 py-1.5 font-semibold">As it was typed</th>
                         </tr>
                       </thead>
@@ -159,7 +159,7 @@ export default function RejectedRows({ batchId, count }) {
                               {r.row_number}
                             </td>
                             <td className="px-3 py-1.5 font-mono text-xs text-gray-700">
-                              {r.stove_serial_no ?? r.raw?.["Stove ID"] ?? "-"}
+                              {r.stove_serial_no ?? r.raw?.["Serial number"] ?? r.raw?.["Stove ID"] ?? "-"}
                             </td>
                             {/* Shown as it was typed, which is the only version
                                 the person fixing it will recognise. */}

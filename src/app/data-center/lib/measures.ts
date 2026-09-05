@@ -59,7 +59,7 @@ export const MEASURES = {
   verified: {
     label: "Verified",
     definition:
-      "Records the call centre confirmed with the end user. Was called 'Fully verified' on the dashboard.",
+      "Records the call centre confirmed with the customer. Was called 'Fully verified' on the dashboard.",
   },
   unverified: {
     label: "Partly verified",
@@ -89,7 +89,7 @@ export const MEASURES = {
   creditable: {
     label: "Creditable",
     definition:
-      "Verified, complete, stove ID confirmed, no double count, no unconfirmed shared phone. The only records worth anything to a carbon buyer.",
+      "Verified, complete, serial number confirmed, no double count, no unconfirmed shared telephone number. The only records worth anything to a carbon buyer.",
   },
 } as const satisfies Record<string, Measure>;
 

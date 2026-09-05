@@ -174,7 +174,7 @@ test.describe("an exception says what would change it", () => {
 
     // Open the batch's own row, then its exceptions.
     await page.getByText(`${marker}.csv`).click();
-    const notInStock = page.getByText("The stove ID matches nothing in stock");
+    const notInStock = page.getByText("The serial number matches nothing in stock");
     await expect(notInStock).toBeVisible({ timeout: 30_000 });
     // The count travels with the group - the whole point of grouping.
     await expect(page.getByText(/\d+ rows?/).first()).toBeVisible();
@@ -222,7 +222,7 @@ test.describe("an exception says what would change it", () => {
     await page.reload();
 
     await page.getByText(`${marker}.csv`).click();
-    await page.getByText("The stove ID matches nothing in stock").click();
+    await page.getByText("The serial number matches nothing in stock").click();
 
     // Press Fix with the field exactly as it came - the case that did nothing.
     const fix = page.getByRole("button", { name: "Fix" }).first();
@@ -237,7 +237,7 @@ test.describe("an exception says what would change it", () => {
     ).toBeVisible({ timeout: 20_000 });
 
     // And a real correction resolves it.
-    const box = page.getByRole("textbox", { name: /Corrected stove ID/ }).first();
+    const box = page.getByRole("textbox", { name: /Corrected serial number/ }).first();
     await box.fill(real[1]);
     await page.getByRole("button", { name: "Fix" }).first().click();
     await expect

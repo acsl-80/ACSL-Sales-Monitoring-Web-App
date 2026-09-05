@@ -6,6 +6,7 @@ import SignatureCanvas from "@/app/components/ui/SignatureCanvas";
 import adminSalesService from "@/app/services/adminSalesService";
 import { validateSalesForm } from "@/app/utils/salesFormValidation";
 import { generateTransactionId } from "@/app/utils/salesFormUtils";
+import { fieldLabel, fieldOptions } from "@/lib/saleDictionary";
 import { Camera, FileText, Loader2, TriangleAlert } from "lucide-react";
 
 /**
@@ -42,11 +43,8 @@ export const TERMS = [
   { key: "demonstration", label: "Received demonstration for efficient firewood usage" },
 ];
 
-const PREVIOUS_STOVES = [
-  { value: "charcoal", label: "Charcoal" },
-  { value: "wood_stove", label: "Wood (3 stone)" },
-  { value: "other", label: "Other" },
-];
+/** The baseline stove choices, worded and valued by the dictionary. */
+const PREVIOUS_STOVES = fieldOptions("previous_stove_type");
 
 /** The shape Sell Stove starts from, so the two forms hold the same record. */
 export function blankSale() {
@@ -125,24 +123,26 @@ const BENCH_OPTIONAL = ["signature"];
  */
 export const FIELD_META = {
   // In the order the form reads, top to bottom, so the FIRST problem named
-  // is the first one a typist reaches.
-  stoveSerialNo: { id: "wb-endUserName", label: "Stove ID" },
-  endUserName: { id: "wb-endUserName", label: "First name" },
-  endUserSurname: { id: "wb-endUserSurname", label: "Surname" },
-  phone: { id: "wb-phone", label: "Telephone number" },
-  otherPhone: { id: "wb-otherPhone", label: "Other telephone number" },
-  contactPerson: { id: "wb-contactPerson", label: "Contact person" },
-  contactPhone: { id: "wb-contactPhone", label: "Contact phone" },
-  stateBackup: { id: "wb-stateBackup", label: "State" },
-  lgaBackup: { id: "wb-stateBackup", label: "Local government area" },
-  address: { id: "wb-address", label: "Residential address" },
-  salesDate: { id: "wb-salesDate", label: "Sales date" },
+  // is the first one a typist reaches. Every label a sale field has comes from
+  // the dictionary, so the error box names it as the paper agreement does.
+  stoveSerialNo: { id: "wb-endUserName", label: fieldLabel("stove_serial_no") },
+  endUserName: { id: "wb-endUserName", label: fieldLabel("end_user_first_name") },
+  endUserSurname: { id: "wb-endUserSurname", label: fieldLabel("end_user_surname") },
+  phone: { id: "wb-phone", label: fieldLabel("phone") },
+  otherPhone: { id: "wb-otherPhone", label: fieldLabel("other_phone") },
+  contactPerson: { id: "wb-contactPerson", label: fieldLabel("contact_person") },
+  contactPhone: { id: "wb-contactPhone", label: fieldLabel("contact_phone") },
+  stateBackup: { id: "wb-stateBackup", label: fieldLabel("state_backup") },
+  lgaBackup: { id: "wb-stateBackup", label: fieldLabel("lga_backup") },
+  address: { id: "wb-address", label: fieldLabel("full_address") },
+  salesDate: { id: "wb-salesDate", label: fieldLabel("sales_date") },
+  // The sales app's own reference, not a field on the agreement.
   transactionId: { id: "wb-salesDate", label: "Transaction ID" },
-  salesModel: { id: "wb-salesModel", label: "Sales model" },
-  amount: { id: "wb-amount", label: "Sale amount" },
-  amountReceived: { id: "wb-amountReceived", label: "Amount received" },
-  termsAccepted: { id: "wb-termsAccepted", label: "The six consents" },
-  signature: { id: "wb-signature", label: "Customer signature" },
+  salesModel: { id: "wb-salesModel", label: fieldLabel("payment_model_id") },
+  amount: { id: "wb-amount", label: fieldLabel("amount") },
+  amountReceived: { id: "wb-amountReceived", label: fieldLabel("first_payment") },
+  termsAccepted: { id: "wb-termsAccepted", label: fieldLabel("terms_accepted") },
+  signature: { id: "wb-signature", label: fieldLabel("signature") },
 };
 
 /** The problems, in form order, as [key, message] pairs. */
@@ -291,13 +291,13 @@ export default function SaleForm({
     }
   };
 
-  const potOptions = useMemo(() => ["0", "1", "2"], []);
+  const potOptions = useMemo(() => fieldOptions("pot_quantity"), []);
 
   return (
     <div className="space-y-5">
       <Section title="Who bought it">
         <Field
-          label="First name"
+          label={fieldLabel("end_user_first_name")}
           htmlFor="wb-endUserName"
           required
           error={errors.endUserName}
@@ -310,7 +310,7 @@ export default function SaleForm({
             onChange={(e) => set("endUserName", e.target.value)}
           />
         </Field>
-        <Field label="Surname" htmlFor="wb-endUserSurname" error={errors.endUserSurname}>
+        <Field label={fieldLabel("end_user_surname")} htmlFor="wb-endUserSurname" error={errors.endUserSurname}>
           <input
             id="wb-endUserSurname"
             className={INPUT}
@@ -319,7 +319,7 @@ export default function SaleForm({
             onChange={(e) => set("endUserSurname", e.target.value)}
           />
         </Field>
-        <Field label="Also known as" htmlFor="wb-aka" help="A nickname the caller might be given.">
+        <Field label={fieldLabel("aka")} htmlFor="wb-aka" help="A nickname the caller might be given.">
           <input
             id="wb-aka"
             className={INPUT}
@@ -329,7 +329,7 @@ export default function SaleForm({
           />
         </Field>
         <Field
-          label="Telephone number"
+          label={fieldLabel("phone")}
           htmlFor="wb-phone"
           required
           error={errors.phone}
@@ -344,7 +344,7 @@ export default function SaleForm({
             onChange={(e) => set("phone", e.target.value)}
           />
         </Field>
-        <Field label="Other telephone number" htmlFor="wb-otherPhone" error={errors.otherPhone}>
+        <Field label={fieldLabel("other_phone")} htmlFor="wb-otherPhone" error={errors.otherPhone}>
           <input
             id="wb-otherPhone"
             type="tel"
@@ -355,7 +355,7 @@ export default function SaleForm({
           />
         </Field>
         <Field
-          label="Contact person"
+          label={fieldLabel("contact_person")}
           htmlFor="wb-contactPerson"
           help="Only if somebody else is the point of contact."
         >
@@ -367,7 +367,7 @@ export default function SaleForm({
             onChange={(e) => set("contactPerson", e.target.value)}
           />
         </Field>
-        <Field label="Contact phone" htmlFor="wb-contactPhone" error={errors.contactPhone}>
+        <Field label={fieldLabel("contact_phone")} htmlFor="wb-contactPhone" error={errors.contactPhone}>
           <input
             id="wb-contactPhone"
             type="tel"
@@ -420,7 +420,7 @@ export default function SaleForm({
           </p>
         )}
         <Field
-          label="Residential address"
+          label={fieldLabel("full_address")}
           htmlFor="wb-address"
           required
           wide
@@ -438,7 +438,7 @@ export default function SaleForm({
       </Section>
 
       <Section title="The purchase">
-        <Field label="Sales date" htmlFor="wb-salesDate" required error={errors.salesDate}>
+        <Field label={fieldLabel("sales_date")} htmlFor="wb-salesDate" required error={errors.salesDate}>
           <input
             id="wb-salesDate"
             type="date"
@@ -449,7 +449,7 @@ export default function SaleForm({
           />
         </Field>
         <Field
-          label="Sales model"
+          label={fieldLabel("payment_model_id")}
           htmlFor="wb-salesModel"
           error={errors.salesModel}
           help={
@@ -487,7 +487,7 @@ export default function SaleForm({
           </select>
         </Field>
         <Field
-          label="Sale amount"
+          label={fieldLabel("amount")}
           htmlFor="wb-amount"
           required
           error={errors.amount}
@@ -503,7 +503,7 @@ export default function SaleForm({
           />
         </Field>
         <Field
-          label="Amount paid"
+          label={fieldLabel("first_payment")}
           htmlFor="wb-amountReceived"
           error={errors.amountReceived}
           help="Leave empty if nothing has been paid, rather than typing 0."
@@ -518,7 +518,7 @@ export default function SaleForm({
           />
         </Field>
         <Field
-          label="Retailer / sales branch"
+          label={fieldLabel("retailer_branch")}
           htmlFor="wb-retailerBranch"
           help="Filled in from the partner. Change it only if the receipt says otherwise."
         >
@@ -533,21 +533,18 @@ export default function SaleForm({
       </Section>
 
       <Section title="Stove set">
-        <Field label="Pots quantity" htmlFor="wb-potQuantity">
+        <Field label={fieldLabel("pot_quantity")} htmlFor="wb-potQuantity">
           <SearchableSelect
             id="wb-potQuantity"
-            ariaLabel="Pots"
+            ariaLabel={fieldLabel("pot_quantity")}
             value={String(values.potQuantity ?? "")}
             disabled={disabled}
             onChange={(next) => set("potQuantity", next)}
             placeholder="Select"
-            options={potOptions.map((n) => ({
-              value: n,
-              label: `${n} ${n === "1" ? "pot" : "pots"}`,
-            }))}
+            options={potOptions}
           />
         </Field>
-        <Field label="Wonderbox (heat retention)" htmlFor="wb-heatRetentionDevice">
+        <Field label={fieldLabel("heat_retention_device")} htmlFor="wb-heatRetentionDevice">
           <label className="flex items-center gap-2 py-1.5 text-sm text-gray-700">
             <input
               id="wb-heatRetentionDevice"
@@ -564,7 +561,7 @@ export default function SaleForm({
 
       <Section title="Cooking habits">
         <div className="sm:col-span-2 lg:col-span-3">
-          <p className="mb-1 text-xs font-medium text-gray-700">Previous stove type</p>
+          <p className="mb-1 text-xs font-medium text-gray-700">{fieldLabel("previous_stove_type")}</p>
           <div className="flex flex-wrap gap-4">
             {PREVIOUS_STOVES.map((o) => (
               <label key={o.value} className="flex items-center gap-2 text-sm text-gray-700">
@@ -591,7 +588,7 @@ export default function SaleForm({
             />
           )}
         </div>
-        <Field label="Meals per day" htmlFor="wb-mealsPerDay">
+        <Field label={fieldLabel("meals_per_day")} htmlFor="wb-mealsPerDay">
           <input
             id="wb-mealsPerDay"
             className={INPUT}
@@ -601,7 +598,7 @@ export default function SaleForm({
             onChange={(e) => set("mealsPerDay", e.target.value)}
           />
         </Field>
-        <Field label="Fuel source" htmlFor="wb-cookingFuelSource">
+        <Field label={fieldLabel("cooking_fuel_source")} htmlFor="wb-cookingFuelSource">
           <input
             id="wb-cookingFuelSource"
             className={INPUT}
@@ -611,7 +608,7 @@ export default function SaleForm({
             onChange={(e) => set("cookingFuelSource", e.target.value)}
           />
         </Field>
-        <Field label="Cooking location" htmlFor="wb-cookingLocation">
+        <Field label={fieldLabel("cooking_location")} htmlFor="wb-cookingLocation">
           <input
             id="wb-cookingLocation"
             className={INPUT}
@@ -629,7 +626,7 @@ export default function SaleForm({
         className={`scroll-mt-24 rounded-md ${errors.termsAccepted ? "ring-2 ring-red-300 ring-offset-1 p-2" : ""}`}
       >
         <h4 className="mb-1 text-xs font-semibold uppercase tracking-wide text-(--dc-accent-strong)">
-          Terms and conditions
+          {fieldLabel("terms_accepted")}
         </h4>
         <p className="mb-2 text-xs text-gray-600">
           All six are on the paper agreement and all six are required. Tick what
@@ -703,7 +700,7 @@ export default function SaleForm({
           signature={values.signature ?? ""}
           onSignatureChange={(sig) => set("signature", sig)}
           error={errors.signature}
-          label="Customer signature (optional)"
+          label={`${fieldLabel("signature")} (optional)`}
         />
       </section>
 
@@ -723,17 +720,17 @@ export default function SaleForm({
         )}
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
           <ImageUploadSection
-            label="Stove photograph"
+            label={fieldLabel("stove_image_id")}
             preview={previews.stove}
             uploading={uploading.stove}
             onUpload={(file) => upload(file, "stove")}
-            placeholder="A photograph of the stove with its serial visible"
+            placeholder="A photograph of the stove with its serial number visible"
             uploadIcon={Camera}
             buttonText="Upload stove photo"
             enableCamera
           />
           <ImageUploadSection
-            label="Signed agreement"
+            label={fieldLabel("agreement_image_id")}
             preview={previews.agreement}
             uploading={uploading.agreement}
             onUpload={(file) => upload(file, "agreement")}

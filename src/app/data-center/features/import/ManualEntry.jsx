@@ -1,5 +1,6 @@
 import { useState } from "react";
 import StateLgaSelect from "../../components/StateLgaSelect";
+import { fieldLabel } from "@/lib/saleDictionary";
 import { Loader2, PenLine, X } from "lucide-react";
 
 /**
@@ -17,16 +18,16 @@ import { Loader2, PenLine, X } from "lucide-react";
  */
 
 const FIELDS = [
-  { key: "stove_serial_no", label: "Stove serial number", required: true, width: "sm:col-span-2" },
+  { key: "stove_serial_no", label: fieldLabel("stove_serial_no"), required: true, width: "sm:col-span-2" },
   // A row with no name at all is refused. First or last will do, so the
   // required mark sits on the first of them.
-  { key: "first_name", label: "First name", required: true },
-  { key: "last_name", label: "Last name" },
-  { key: "phone", label: "Phone number", required: true, placeholder: "08012345678" },
-  { key: "other_phone", label: "Other phone" },
-  { key: "sales_date", label: "Sale date", required: true, type: "date" },
-  { key: "amount", label: "Amount", required: true, type: "number", placeholder: "25000" },
-  { key: "amount_received", label: "Amount received", type: "number" },
+  { key: "first_name", label: fieldLabel("end_user_first_name"), required: true },
+  { key: "last_name", label: fieldLabel("end_user_surname") },
+  { key: "phone", label: fieldLabel("phone"), required: true, placeholder: "08012345678" },
+  { key: "other_phone", label: fieldLabel("other_phone") },
+  { key: "sales_date", label: fieldLabel("sales_date"), required: true, type: "date" },
+  { key: "amount", label: fieldLabel("amount"), required: true, type: "number", placeholder: "25000" },
+  { key: "amount_received", label: fieldLabel("total_paid"), type: "number" },
   /*
    * The one pair that is picked rather than typed.
    *
@@ -35,9 +36,9 @@ const FIELDS = [
    * where `state` sits and skipped where `lga` does, so the field order on
    * screen is the field order in this list.
    */
-  { key: "state", label: "State", required: true, type: "geo" },
-  { key: "lga", label: "LGA", required: true, type: "geo-skip" },
-  { key: "address", label: "Address", required: true, width: "sm:col-span-2" },
+  { key: "state", label: fieldLabel("state_backup"), required: true, type: "geo" },
+  { key: "lga", label: fieldLabel("lga_backup"), required: true, type: "geo-skip" },
+  { key: "address", label: fieldLabel("full_address"), required: true, width: "sm:col-span-2" },
 ];
 
 export default function ManualEntry({ onSubmit, onCancel, busy, partnerName }) {

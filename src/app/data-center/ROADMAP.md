@@ -1494,6 +1494,11 @@ production confirmed. States are kept in `TASKS.md`.
 | 7b | The sales app's status rule (D17), host lane | its own, on the owner's word |
 | 8 | "Used by" and the retire warning, `previous_stove` list, typed editors for two config keys, gates matched to the server | seed for the list |
 | 9 | Order model on the transfer (D19), preselected on the bench, shown in the rail and the sheet | host lane, on the owner's word |
+| F1 | The sale field dictionary, one JSON read by every surface, the `sale-dictionary` endpoint, a parity spec | none |
+| F2 | Surname, first name, sales agent's name, note columns, the transfer's order model (D19); backfills; the two functions learn the keys | host lane, on the owner's word |
+| F3 | One baseline stove list, fuel and location dropdowns, payment type, mandatory-from dates in a public rules table read by the status and completeness rules; slice 8 folded in | host lane rules table plus module config |
+| F4 | The external API's Stove DB shape, docs and CSV headers from the dictionary | none |
+| F5 | The phone app guide and the payload contract spec | none |
 
 ### Found while planning, all real
 

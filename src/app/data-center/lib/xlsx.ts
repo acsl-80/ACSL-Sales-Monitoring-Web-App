@@ -393,7 +393,7 @@ export async function parseWorkbook(
   return { headers: headers.filter(Boolean), rows, warnings };
 }
 
-/** Row two of a sheet this module wrote: prose, and never a stove ID. */
+/** Row two of a sheet this module wrote: prose, and never a serial number. */
 /**
  * The first worksheet, found the way the format says to find it.
  *

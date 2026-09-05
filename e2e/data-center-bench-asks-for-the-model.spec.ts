@@ -60,7 +60,7 @@ async function fillPartPaidReceipt(page: Page, marker: string) {
   await state.click();
   await page.getByPlaceholder("Type part of the state").fill("Kogi");
   await page.getByRole("listbox").getByRole("option", { name: "Kogi", exact: true }).click();
-  const lga = page.getByRole("combobox", { name: "Local government area" });
+  const lga = page.getByRole("combobox", { name: "LGA" });
   await expect(lga).toBeEnabled();
   /*
    * Centre the trigger before opening it. Playwright scrolls a target just

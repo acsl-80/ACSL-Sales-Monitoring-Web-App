@@ -18,6 +18,7 @@ import { useToastNotification } from "@/app/contexts/useToastNotification";
 import { formatPaymentMethod } from "@/app/utils/formatPaymentMethod";
 import { formatDate as formatDateShared } from "@/app/utils/formatDate";
 import { formatCurrency as formatCurrencyShared } from "@/app/utils/formatCurrency";
+import { fieldLabel } from "@/lib/saleDictionary";
 
 interface InstallmentPayment {
   id: string;
@@ -267,13 +268,14 @@ const AdminSalesDetailModal: React.FC<AdminSalesDetailModalProps> = ({
             <div className="grid grid-cols-2 gap-3">
               <SectionCard title="Sale Information">
                 <div className="grid grid-cols-2 gap-2">
-                  <DetailItem label="Sales Date" value={formatDate(activeSale?.sales_date)} />
+                  <DetailItem label={fieldLabel("sales_date")} value={formatDate(activeSale?.sales_date)} />
                   <DetailItem label="Created" value={formatDate(activeSale?.created_at)} />
-                  <DetailItem label="Stove Serial No" value={activeSale?.stove_serial_no} />
-                  <DetailItem label="Partner Name" value={activeSale?.partner_name} />
-                  <DetailItem label="Agent" value={creatorName} />
+                  <DetailItem label={fieldLabel("stove_serial_no")} value={activeSale?.stove_serial_no} />
+                  <DetailItem label={fieldLabel("partner_name")} value={activeSale?.partner_name} />
+                  {/* Recorded by is the record's creator, not the dictionary's sales agent field, which arrives in a later slice. */}
+                  <DetailItem label="Recorded by" value={creatorName} />
                   <DetailItem
-                    label="Payment Type"
+                    label={fieldLabel("is_installment")}
                     value={
                       isInstallment ? (
                         <Badge className="bg-blue-100 text-blue-800 border-blue-200 text-[10px] px-1.5 py-0">
@@ -291,15 +293,15 @@ const AdminSalesDetailModal: React.FC<AdminSalesDetailModalProps> = ({
 
               <SectionCard title="Customer Details">
                 <div className="grid grid-cols-2 gap-2">
-                  <DetailItem label="Customer Name" value={activeSale?.end_user_name} />
-                  <DetailItem label="AKA" value={activeSale?.aka} />
-                  <DetailItem label="Phone" value={activeSale?.phone} />
-                  <DetailItem label="Other Phone" value={activeSale?.other_phone} />
-                  <DetailItem label="Contact Person" value={activeSale?.contact_person} />
-                  <DetailItem label="Contact Phone" value={activeSale?.contact_phone} />
+                  <DetailItem label={fieldLabel("end_user_name")} value={activeSale?.end_user_name} />
+                  <DetailItem label={fieldLabel("aka")} value={activeSale?.aka} />
+                  <DetailItem label={fieldLabel("phone")} value={activeSale?.phone} />
+                  <DetailItem label={fieldLabel("other_phone")} value={activeSale?.other_phone} />
+                  <DetailItem label={fieldLabel("contact_person")} value={activeSale?.contact_person} />
+                  <DetailItem label={fieldLabel("contact_phone")} value={activeSale?.contact_phone} />
                   {activeSale?.retailer_branch && (
                     <div className="col-span-2">
-                      <DetailItem label="Retailer / Branch / Agency / CSO" value={activeSale.retailer_branch} />
+                      <DetailItem label={fieldLabel("retailer_branch")} value={activeSale.retailer_branch} />
                     </div>
                   )}
                 </div>
@@ -310,13 +312,13 @@ const AdminSalesDetailModal: React.FC<AdminSalesDetailModalProps> = ({
             <div className="grid grid-cols-2 gap-3">
               <SectionCard title="Location">
                 <div className="grid grid-cols-2 gap-2">
-                  <DetailItem label="State" value={sale.state_backup} />
-                  <DetailItem label="LGA" value={sale.lga_backup} />
-                  <DetailItem label="City" value={address?.city} />
+                  <DetailItem label={fieldLabel("state_backup")} value={sale.state_backup} />
+                  <DetailItem label={fieldLabel("lga_backup")} value={sale.lga_backup} />
+                  <DetailItem label={fieldLabel("city")} value={address?.city} />
                   <DetailItem label="Country" value={address?.country} />
                   <div className="col-span-2">
                     <DetailItem
-                      label="Address"
+                      label={fieldLabel("full_address")}
                       value={address?.full_address || address?.street}
                     />
                   </div>
@@ -346,7 +348,7 @@ const AdminSalesDetailModal: React.FC<AdminSalesDetailModalProps> = ({
               <SectionCard title="Images & Documents">
                 <div className="grid grid-cols-1 gap-2">
                   <DetailItem
-                    label="Stove Image"
+                    label={fieldLabel("stove_image_id")}
                     value={
                       stoveImageUrl ? (
                         <Button
@@ -360,7 +362,7 @@ const AdminSalesDetailModal: React.FC<AdminSalesDetailModalProps> = ({
                     }
                   />
                   <DetailItem
-                    label="Agreement"
+                    label={fieldLabel("agreement_image_id")}
                     value={
                       <div className="flex flex-wrap items-center gap-1.5">
                         <Button
@@ -390,7 +392,7 @@ const AdminSalesDetailModal: React.FC<AdminSalesDetailModalProps> = ({
                     }
                   />
                   <DetailItem
-                    label="Signature"
+                    label={fieldLabel("signature")}
                     value={
                       activeSale?.signature ? (
                         <img
@@ -412,9 +414,9 @@ const AdminSalesDetailModal: React.FC<AdminSalesDetailModalProps> = ({
                 Financial Details
               </h3>
               <div className="grid grid-cols-4 gap-3">
-                <DetailItem label="Total Amount" value={formatCurrency(saleAmount)} highlight />
+                <DetailItem label={fieldLabel("amount")} value={formatCurrency(saleAmount)} highlight />
                 <DetailItem
-                  label="Amount Paid"
+                  label={fieldLabel("total_paid")}
                   value={
                     <span className="text-green-600 font-semibold">
                       {formatCurrency(isInstallment ? totalPaid : saleAmount)}
@@ -435,8 +437,8 @@ const AdminSalesDetailModal: React.FC<AdminSalesDetailModalProps> = ({
                 />
                 {isInstallment && activeSale?.payment_model && (
                   <>
-                    <DetailItem label="Payment Model" value={activeSale.payment_model.name} />
-                    <DetailItem label="Duration" value={`${activeSale.payment_model.duration_months} months`} />
+                    <DetailItem label={fieldLabel("payment_model_id")} value={activeSale.payment_model.name} />
+                    <DetailItem label={fieldLabel("installment_term")} value={`${activeSale.payment_model.duration_months} months`} />
                     <DetailItem label="Installment Price" value={formatCurrency(activeSale.payment_model.fixed_price)} />
                     <DetailItem label="Progress" value={`${progressPercent.toFixed(0)}% complete`} />
                   </>
@@ -466,11 +468,11 @@ const AdminSalesDetailModal: React.FC<AdminSalesDetailModalProps> = ({
                 <SectionCard title="Stove Set">
                   <div className="grid grid-cols-2 gap-2">
                     <DetailItem
-                      label="Pots Quantity"
+                      label={fieldLabel("pot_quantity")}
                       value={activeSale.pot_quantity != null ? `${activeSale.pot_quantity} pot${activeSale.pot_quantity !== 1 ? "s" : ""}` : undefined}
                     />
                     <DetailItem
-                      label="Wonderbox (Heat Retention)"
+                      label={fieldLabel("heat_retention_device")}
                       value={activeSale.heat_retention_device != null ? (activeSale.heat_retention_device ? "Yes" : "No") : undefined}
                     />
                   </div>
@@ -479,7 +481,7 @@ const AdminSalesDetailModal: React.FC<AdminSalesDetailModalProps> = ({
                 <SectionCard title="Cooking Habits">
                   <div className="grid grid-cols-1 gap-2">
                     <DetailItem
-                      label="Previous Stove"
+                      label={fieldLabel("previous_stove_type")}
                       value={
                         activeSale.previous_stove_type === "wood_stove"
                           ? "Wood Stove (3 stone)"
@@ -490,9 +492,9 @@ const AdminSalesDetailModal: React.FC<AdminSalesDetailModalProps> = ({
                           : activeSale.previous_stove_type
                       }
                     />
-                    <DetailItem label="Meals Per Day" value={activeSale.meals_per_day} />
-                    <DetailItem label="Fuel Source" value={activeSale.cooking_fuel_source} />
-                    <DetailItem label="Cooking Location" value={activeSale.cooking_location} />
+                    <DetailItem label={fieldLabel("meals_per_day")} value={activeSale.meals_per_day} />
+                    <DetailItem label={fieldLabel("cooking_fuel_source")} value={activeSale.cooking_fuel_source} />
+                    <DetailItem label={fieldLabel("cooking_location")} value={activeSale.cooking_location} />
                   </div>
                 </SectionCard>
               </div>

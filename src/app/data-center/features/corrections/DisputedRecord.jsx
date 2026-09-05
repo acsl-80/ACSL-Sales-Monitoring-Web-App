@@ -1,6 +1,7 @@
 import { Section, Detail, Grid } from "../stove-record/parts";
 import { dateOf, whenOf } from "../../lib/when";
 import { formatCurrency } from "@/app/utils/formatCurrency";
+import { fieldLabel } from "@/lib/saleDictionary";
 import { UserRound, MapPin, Flame, Banknote, PhoneCall, Route, MessageSquareWarning } from "lucide-react";
 
 /**
@@ -54,53 +55,53 @@ export default function DisputedRecord({ data, episode, disputed }) {
 
       <Section icon={UserRound} title="Buyer">
         <Grid>
-          <Detail label="End user" value={s.end_user_name ?? r.end_user_name} disputed={is("end_user_name")} />
-          <Detail label="Also known as" value={s.aka ?? r.aka} disputed={is("aka")} />
-          <Detail label="Phone" value={s.phone ?? r.primary_phone} disputed={is("phone")} hint={r.corrected_phone ? `Call centre heard ${r.corrected_phone}` : undefined} />
-          <Detail label="Other phone" value={s.other_phone ?? r.alternative_phone} disputed={is("other_phone")} />
-          <Detail label="Contact person" value={s.contact_person ?? r.buyer_name} disputed={is("contact_person")} />
-          <Detail label="Contact phone" value={s.contact_phone ?? r.buyer_phone} disputed={is("contact_phone")} />
+          <Detail label={fieldLabel("end_user_name")} value={s.end_user_name ?? r.end_user_name} disputed={is("end_user_name")} />
+          <Detail label={fieldLabel("aka")} value={s.aka ?? r.aka} disputed={is("aka")} />
+          <Detail label={fieldLabel("phone")} value={s.phone ?? r.primary_phone} disputed={is("phone")} hint={r.corrected_phone ? `Call centre heard ${r.corrected_phone}` : undefined} />
+          <Detail label={fieldLabel("other_phone")} value={s.other_phone ?? r.alternative_phone} disputed={is("other_phone")} />
+          <Detail label={fieldLabel("contact_person")} value={s.contact_person ?? r.buyer_name} disputed={is("contact_person")} />
+          <Detail label={fieldLabel("contact_phone")} value={s.contact_phone ?? r.buyer_phone} disputed={is("contact_phone")} />
         </Grid>
       </Section>
 
       <Section icon={MapPin} title="Where">
         <Grid>
           <div className="col-span-2">
-            <Detail label="Address" value={s.full_address ?? r.user_residential_address} disputed={is("full_address")} hint={r.corrected_address ? `Call centre heard ${r.corrected_address}` : undefined} />
+            <Detail label={fieldLabel("full_address")} value={s.full_address ?? r.user_residential_address} disputed={is("full_address")} hint={r.corrected_address ? `Call centre heard ${r.corrected_address}` : undefined} />
           </div>
-          <Detail label="State" value={s.state_backup ?? r.user_state} disputed={is("state_backup")} />
-          <Detail label="LGA" value={s.lga_backup ?? r.user_lga} disputed={is("lga_backup")} />
+          <Detail label={fieldLabel("state_backup")} value={s.state_backup ?? r.user_state} disputed={is("state_backup")} />
+          <Detail label={fieldLabel("lga_backup")} value={s.lga_backup ?? r.user_lga} disputed={is("lga_backup")} />
         </Grid>
       </Section>
 
       <Section icon={Flame} title="Stove and sale">
         <Grid>
           <Detail
-            label="Stove ID"
+            label={fieldLabel("stove_serial_no")}
             value={r.stove_serial_no ?? s.stove_serial_no}
             disputed={is("stove_serial_no")}
             hint={r.stated_serial ? `Buyer read ${r.stated_serial} off the plate` : undefined}
           />
           <Detail label="Transaction" value={r.transaction_id} />
-          <Detail label="Sale date" value={dateOf(s.sales_date ?? r.sales_date, null)} disputed={is("sales_date")} />
+          <Detail label={fieldLabel("sales_date")} value={dateOf(s.sales_date ?? r.sales_date, null)} disputed={is("sales_date")} />
           <Detail label="Transfer" value={t?.transaction_id} hint={t?.sales_rep ? `sales rep ${t.sales_rep}` : undefined} />
-          <Detail label="Partner" value={r.partner_name} />
-          <Detail label="Branch" value={r.retailer_branch} />
-          <Detail label="Pots" value={s.pot_quantity ?? r.pot_quantity} disputed={is("pot_quantity")} />
-          <Detail label="Heat retention device" value={yesNo(s.heat_retention_device ?? r.heat_retention_device)} disputed={is("heat_retention_device")} />
-          <Detail label="Previous stove" value={s.previous_stove_type ?? r.previous_stove_type} disputed={is("previous_stove_type")} />
+          <Detail label={fieldLabel("partner_name")} value={r.partner_name} />
+          <Detail label={fieldLabel("retailer_branch")} value={r.retailer_branch} />
+          <Detail label={fieldLabel("pot_quantity")} value={s.pot_quantity ?? r.pot_quantity} disputed={is("pot_quantity")} />
+          <Detail label={fieldLabel("heat_retention_device")} value={yesNo(s.heat_retention_device ?? r.heat_retention_device)} disputed={is("heat_retention_device")} />
+          <Detail label={fieldLabel("previous_stove_type")} value={s.previous_stove_type ?? r.previous_stove_type} disputed={is("previous_stove_type")} />
           <Detail label="Recorded through" value={r.platform} />
         </Grid>
       </Section>
 
       <Section icon={Banknote} title="Money">
         <Grid>
-          <Detail label="Sales model" value={r.sales_model} />
-          <Detail label="Amount" value={money(s.amount ?? r.amount)} disputed={is("amount")} />
-          <Detail label="Received" value={money(s.total_paid ?? r.total_paid)} disputed={is("total_paid")} />
+          <Detail label={fieldLabel("payment_model_id")} value={r.sales_model} />
+          <Detail label={fieldLabel("amount")} value={money(s.amount ?? r.amount)} disputed={is("amount")} />
+          <Detail label={fieldLabel("total_paid")} value={money(s.total_paid ?? r.total_paid)} disputed={is("total_paid")} />
           <Detail label="Payment status" value={r.payment_status} />
-          <Detail label="Signature" value={s.signature === true ? "Drawn" : s.signature === false ? "None" : null} disputed={is("signature")} />
-          <Detail label="Agreement image" value={yesNo(s.agreement_image_id)} disputed={is("agreement_image_id")} />
+          <Detail label={fieldLabel("signature")} value={s.signature === true ? "Drawn" : s.signature === false ? "None" : null} disputed={is("signature")} />
+          <Detail label={fieldLabel("agreement_image_id")} value={yesNo(s.agreement_image_id)} disputed={is("agreement_image_id")} />
         </Grid>
       </Section>
 

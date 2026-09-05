@@ -1,6 +1,7 @@
 import { useMemo, useState } from "react";
 import { dataCenterCorrections, dataCenterSales, DataCenterError } from "../../lib/client";
-import { EDITABLE, byKey } from "./lib/saleFields";
+import { EDITABLE, MONEY_GROUP, byKey } from "./lib/saleFields";
+import { fieldOptions } from "@/lib/saleDictionary";
 import { Loader2, Check, ChevronDown, ChevronUp } from "lucide-react";
 
 /**
@@ -13,11 +14,7 @@ import { Loader2, Check, ChevronDown, ChevronUp } from "lucide-react";
  * so a refused edit never leaves an episode claiming to be fixed.
  */
 
-const PREVIOUS_STOVES = [
-  { value: "charcoal", label: "Charcoal" },
-  { value: "wood_stove", label: "Wood (3 stone)" },
-  { value: "other", label: "Other" },
-];
+const PREVIOUS_STOVES = fieldOptions("previous_stove_type");
 
 const REQUIRED = ["end_user_name", "contact_person", "phone", "contact_phone"];
 
@@ -84,7 +81,7 @@ export default function SaleEditPanel({ saleId, sale, disputed, canEditSale, onl
   // Money is offered only when the send-back disputes it: update-sale keeps
   // total_paid and payment_status coherent with the amount, so a stray edit
   // to the amount rewrites what was paid.
-  const otherFields = EDITABLE.filter((f) => !disputed.has(f.key) && f.group !== "money");
+  const otherFields = EDITABLE.filter((f) => !disputed.has(f.key) && f.group !== MONEY_GROUP);
   const changed = EDITABLE.filter((f) => String(form[f.key] ?? "") !== String(initial[f.key] ?? ""));
 
   const set = (key, value) => setForm((prev) => ({ ...prev, [key]: value }));

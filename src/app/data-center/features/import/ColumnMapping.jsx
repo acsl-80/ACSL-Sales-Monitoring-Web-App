@@ -1,6 +1,7 @@
 import { useMemo, useState } from "react";
 import { SearchableSelect } from "@/components/ui/searchable-select";
 import { plural } from "../../lib/plural";
+import { fieldLabel } from "@/lib/saleDictionary";
 import { AlertTriangle, ArrowRight, CheckCircle2, X } from "lucide-react";
 
 /**
@@ -16,23 +17,28 @@ import { AlertTriangle, ArrowRight, CheckCircle2, X } from "lucide-react";
  * a click that trains people to click.
  */
 
-/** Field keys read as English. The wording the receipt uses, not the column name. */
+/**
+ * Field keys read as English, from the sale dictionary.
+ *
+ * The importer's own key on the left, the paper User Agreement's wording on
+ * the right, so this step names a field the way every other screen does.
+ */
 const FIELD_LABELS = {
-  stoveSerialNo: "Stove serial number",
-  firstName: "First name",
-  lastName: "Last name",
-  endUserName: "End user name",
-  phone: "Phone number",
-  otherPhone: "Other phone number",
-  salesDate: "Sale date",
-  amount: "Amount",
-  amountReceived: "Amount received",
-  state: "State",
-  lga: "LGA",
-  fullAddress: "Address",
-  contactPerson: "Contact person",
-  contactPhone: "Contact phone",
-  aka: "Also known as",
+  stoveSerialNo: fieldLabel("stove_serial_no"),
+  firstName: fieldLabel("end_user_first_name"),
+  lastName: fieldLabel("end_user_surname"),
+  endUserName: fieldLabel("end_user_name"),
+  phone: fieldLabel("phone"),
+  otherPhone: fieldLabel("other_phone"),
+  salesDate: fieldLabel("sales_date"),
+  amount: fieldLabel("amount"),
+  amountReceived: fieldLabel("total_paid"),
+  state: fieldLabel("state_backup"),
+  lga: fieldLabel("lga_backup"),
+  fullAddress: fieldLabel("full_address"),
+  contactPerson: fieldLabel("contact_person"),
+  contactPhone: fieldLabel("contact_phone"),
+  aka: fieldLabel("aka"),
 };
 
 const label = (field) => FIELD_LABELS[field] ?? field;

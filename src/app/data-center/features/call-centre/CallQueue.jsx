@@ -7,6 +7,7 @@ import { useIsPhone } from "../../lib/useMediaQuery";
 import { plural } from "../../lib/plural";
 import { outcomeLabel, outcomePill, CORRECTION_WORDS } from "../../lib/outcome";
 import { dateOf } from "../../lib/when";
+import { fieldLabel } from "@/lib/saleDictionary";
 import { useVirtualRows } from "../../lib/useVirtualRows";
 import CallRecordEditor from "./CallRecordEditor";
 import { Loader2, AlertTriangle, Search, X, PhoneCall, Filter } from "lucide-react";
@@ -32,11 +33,11 @@ const ROW_HEIGHT = 44;
 const ROW_HEIGHT_PHONE = 104;
 
 const COLUMNS = [
-  { key: "sales_date", label: "Sale Date", width: "100px" },
-  { key: "end_user_name", label: "End User", width: "168px" },
-  { key: "primary_phone", label: "Phone", width: "120px" },
-  { key: "stove_serial_no", label: "Serial", width: "120px" },
-  { key: "partner_name", label: "Partner", width: "148px" },
+  { key: "sales_date", label: fieldLabel("sales_date"), width: "104px" },
+  { key: "end_user_name", label: fieldLabel("end_user_name"), width: "168px" },
+  { key: "primary_phone", label: fieldLabel("phone"), width: "150px" },
+  { key: "stove_serial_no", label: fieldLabel("stove_serial_no"), width: "136px" },
+  { key: "partner_name", label: fieldLabel("partner_name"), width: "148px" },
   { key: "verification_outcome", label: "Verification", width: "140px" },
   { key: "attempt_count", label: "Calls", width: "64px", align: "right" },
   { key: "call_outcome", label: "Last Outcome", width: "148px" },
@@ -125,12 +126,12 @@ const PRESETS = [
    */
   { key: "completed", label: "Completed", filters: { completed: true } },
   /**
-   * Records whose stove ID was taken by another caller's rematch. Nobody has
+   * Records whose serial number was taken by another caller's rematch. Nobody has
    * confirmed anything with these buyers and their record now names a stove
    * they have never read out, so they are the most urgent thing in the queue
    * and would otherwise sit invisibly inside "still to verify".
    */
-  { key: "unconfirmed", label: "Stove ID unconfirmed", filters: { serialUnconfirmed: true } },
+  { key: "unconfirmed", label: "Serial number unconfirmed", filters: { serialUnconfirmed: true } },
 ];
 
 /*
@@ -161,11 +162,11 @@ function CorrectedMark({ receipt }) {
   );
 }
 
-/** Another caller's rematch took this stove ID; the buyer has not confirmed it. */
+/** Another caller's rematch took this serial number; the buyer has not confirmed it. */
 function UnconfirmedMark() {
   return (
     <span
-      title="This stove ID was taken by another caller's record; confirm it with the buyer"
+      title="This serial number was taken by another caller's record; confirm it with the buyer"
       className="shrink-0 rounded-full bg-red-100 px-1.5 text-[10px] font-medium text-red-800"
     >
       unconfirmed
@@ -363,7 +364,7 @@ export default function CallQueue({ canEdit, drill = null, agents = null }) {
             type="text"
             value={search}
             onChange={(e) => setSearch(e.target.value)}
-            placeholder="Name, phone or serial"
+            placeholder="Name, telephone number or serial number"
             className="w-full rounded-md border border-gray-300 py-1.5 pl-8 pr-3 text-sm focus:border-(--dc-accent) focus:outline-none"
           />
         </div>

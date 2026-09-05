@@ -8,6 +8,15 @@
  * @param {Array} salesData - Array of SuperAdminSale objects
  * @returns {string} CSV formatted string
  */import { debug } from "@/app/utils/log";
+import { fieldByKey, fieldLabel } from "@/lib/saleDictionary";
+
+/**
+ * The sheet header for a sale field: the Stove DB name when the field has
+ * one, otherwise the agreement wording. Column order and values are unchanged.
+ * @param {string} key - Dictionary field key
+ * @returns {string} Header text for the column
+ */
+const csvHeader = (key) => fieldByKey(key)?.stoveDbName || fieldLabel(key);
 
 export const formatSalesDataToCSV = (salesData) => {
   if (!salesData || !Array.isArray(salesData) || salesData.length === 0) {
@@ -50,33 +59,34 @@ export const formatSalesDataToCSV = (salesData) => {
  */
 const getCSVHeaders = () => {
   return [
-    "Serial Number",
-    "Sales Date",
+    csvHeader("stove_serial_no"),
+    csvHeader("sales_date"),
     "Created",
-    "State",
-    "District/LGA",
-    "Address",
+    csvHeader("state_backup"),
+    csvHeader("lga_backup"),
+    csvHeader("full_address"),
     "Latitude",
     "Longitude",
-    "Phone",
-    "Contact Person",
-    "Other Contact Phone",
-    "Sales Partner/Field Assistant",
-    "User Name",
-    "User Surname",
-    "CPA",
+    csvHeader("phone"),
+    csvHeader("contact_person"),
+    csvHeader("other_phone"),
+    csvHeader("partner_name"),
+    csvHeader("end_user_first_name"),
+    csvHeader("end_user_surname"),
+    // The CPA column is the terms block; its value is unchanged for now.
+    csvHeader("terms_accepted"),
     // Additional details
     "Transaction ID",
-    "AKA",
-    "Retailer/Branch",
-    "Pot Quantity",
-    "Heat Retention Device (Wonderbox)",
-    "Previous Stove Type",
-    "Previous Stove Other",
-    "Meals Per Day",
-    "Cooking Fuel Source",
-    "Cooking Location",
-    "Payment Type",
+    csvHeader("aka"),
+    csvHeader("retailer_branch"),
+    csvHeader("pot_quantity"),
+    csvHeader("heat_retention_device"),
+    csvHeader("previous_stove_type"),
+    csvHeader("previous_stove_other"),
+    csvHeader("meals_per_day"),
+    csvHeader("cooking_fuel_source"),
+    csvHeader("cooking_location"),
+    csvHeader("is_installment"),
     "Payment Status",
   ];
 };

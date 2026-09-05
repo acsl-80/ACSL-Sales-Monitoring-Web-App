@@ -55,7 +55,7 @@ export default function SerialRematch({ saleId, currentSerial, canEdit, onDone }
       setError(
         err instanceof DataCenterError
           ? err.message
-          : "That stove ID could not be changed. Try again.",
+          : "That serial number could not be changed. Try again.",
       );
     } finally {
       setBusy(false);
@@ -109,7 +109,7 @@ export default function SerialRematch({ saleId, currentSerial, canEdit, onDone }
         onClick={() => setOpen(true)}
         className="inline-flex items-center gap-1.5 rounded-md border border-(--dc-accent)/30 px-2.5 py-1.5 text-sm font-medium text-(--dc-accent) transition hover:bg-(--dc-accent-soft)/60"
       >
-        <Package className="h-4 w-4" /> Fix the stove ID
+        <Package className="h-4 w-4" /> Fix the serial number
       </button>
     );
   }
@@ -128,12 +128,12 @@ export default function SerialRematch({ saleId, currentSerial, canEdit, onDone }
 
       <div className="mt-2.5 flex flex-wrap items-end gap-2">
         <label className="min-w-0 flex-1">
-          <span className="mb-1 block text-xs font-medium text-gray-700">Confirmed stove ID</span>
+          <span className="mb-1 block text-xs font-medium text-gray-700">Confirmed serial number</span>
           <input
             type="text"
             value={serial}
             onChange={(e) => setSerial(e.target.value.toUpperCase())}
-            aria-label="Confirmed stove ID"
+            aria-label="Confirmed serial number"
             placeholder={currentSerial ?? "PRV000000"}
             className="w-full rounded-md border border-gray-300 px-2.5 py-1.5 font-mono text-sm focus:border-(--dc-accent) focus:outline-none"
           />
@@ -170,7 +170,7 @@ export default function SerialRematch({ saleId, currentSerial, canEdit, onDone }
         <ConfirmDialog
           open={confirming}
           title={`Move this record onto ${serial.trim() || "that stove"}?`}
-          description="The record's stove ID changes to the one the buyer read out. If another buyer's record already holds that stove, theirs is marked unconfirmed until a caller confirms it with them, and somebody will have to ring them."
+          description="The record's serial number changes to the one the buyer read out. If another buyer's record already holds that stove, theirs is marked unconfirmed until a caller confirms it with them, and somebody will have to ring them."
           cancelLabel="Leave it"
           actionLabel="Move it"
           busy={busy}

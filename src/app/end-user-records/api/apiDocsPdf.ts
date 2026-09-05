@@ -18,6 +18,10 @@ export interface ParamDef {
 export interface FieldDef {
   name: string;
   description: string;
+  /** The agreement's wording for the sale field this key answers to. */
+  label?: string;
+  /** The Stove DB name for that field, when it has one. */
+  stoveDbName?: string;
 }
 
 interface BuildArgs {
@@ -190,13 +194,15 @@ export async function downloadApiDocsPdf({
   autoTable(doc, {
     startY: y,
     margin: { left: MARGIN, right: MARGIN },
-    head: [["Field", "Description"]],
-    body: fields.map((f) => [f.name, f.description]),
+    head: [["Field", "Label", "Stove DB name", "Description"]],
+    body: fields.map((f) => [f.name, f.label || "-", f.stoveDbName || "-", f.description]),
     styles: { fontSize: 7.5, cellPadding: 1.8, overflow: "linebreak", valign: "top" },
     headStyles: { fillColor: BRAND, textColor: 255, fontStyle: "bold" },
     columnStyles: {
-      0: { cellWidth: 52, font: "courier" },
-      1: { cellWidth: "auto" },
+      0: { cellWidth: 40, font: "courier" },
+      1: { cellWidth: 32 },
+      2: { cellWidth: 28 },
+      3: { cellWidth: "auto" },
     },
   });
   y = currentY(doc) + 8;

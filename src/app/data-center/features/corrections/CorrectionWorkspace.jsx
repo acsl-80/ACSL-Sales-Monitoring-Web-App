@@ -16,7 +16,7 @@ import CorrectionTimeline from "./CorrectionTimeline";
  * moves the episode: Sales edits the sale and sends it for review; the call
  * centre reviews and closes. Everything here is read through one `detail`
  * call and written through the sales app's own `update-sale` (the sale) or
- * the module's own actions (the episode, the stove ID), so nothing is edited
+ * the module's own actions (the episode, the serial number), so nothing is edited
  * in two places.
  */
 
@@ -104,7 +104,7 @@ export default function CorrectionWorkspace({ saleId }) {
         </Link>
         <div className="min-w-0 flex-1">
           <h2 className="truncate text-lg font-semibold text-gray-900">
-            <span className="font-mono">{record.stove_serial_no ?? newest.stove_serial_no ?? "no stove ID"}</span>
+            <span className="font-mono">{record.stove_serial_no ?? newest.stove_serial_no ?? "no serial number"}</span>
             <span className="font-normal text-gray-500"> at </span>
             {record.partner_name ?? newest.partner_name ?? "unknown partner"}
           </h2>

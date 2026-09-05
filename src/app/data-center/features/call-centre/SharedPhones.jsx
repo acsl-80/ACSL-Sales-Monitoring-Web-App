@@ -30,13 +30,13 @@ const SOURCE_LABEL = {
 };
 
 const EXPORT_COLUMNS = [
-  { key: "phone_tail", label: "Phone (last 10)" },
-  { key: "stove_id", label: "Stove ID" },
-  { key: "buyer", label: "Buyer" },
-  { key: "partner", label: "Partner" },
+  { key: "phone_tail", label: "Telephone number (last 10)" },
+  { key: "stove_id", label: "Serial number" },
+  { key: "buyer", label: "Customer name" },
+  { key: "partner", label: "Sales partner" },
   { key: "address", label: "State" },
   { key: "lga", label: "LGA" },
-  { key: "sales_date", label: "Sold" },
+  { key: "sales_date", label: "Sales date" },
   { key: "phone_as_written", label: "Number as written" },
   { key: "source", label: "How it was found" },
   { key: "confirmed", label: "Confirmed" },
@@ -101,7 +101,7 @@ function Group({ group }) {
           <table className="w-full min-w-[52rem] text-sm">
             <thead>
               <tr className="text-left text-xs font-semibold uppercase tracking-wide text-gray-600">
-                {["Stove ID", "Buyer", "Partner", "State", "LGA", "Sold", "How it was found", "By"].map((h) => (
+                {["Serial number", "Customer name", "Sales partner", "State", "LGA", "Sales date", "How it was found", "By"].map((h) => (
                   <th key={h} scope="col" className="pb-1.5 pr-3">
                     {h}
                   </th>
@@ -188,7 +188,7 @@ export default function SharedPhones() {
               type="text"
               value={search}
               onChange={(e) => setSearch(e.target.value)}
-              placeholder="Number, buyer or stove ID"
+              placeholder="Number, buyer or serial number"
               aria-label="Search the shared number register"
               className="w-full rounded-md border border-gray-300 py-1.5 pl-8 pr-3 text-sm focus:border-(--dc-accent) focus:outline-none"
             />

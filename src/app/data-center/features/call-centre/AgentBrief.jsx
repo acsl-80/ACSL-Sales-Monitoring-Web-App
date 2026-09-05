@@ -2,6 +2,7 @@ import { outcomeLabel } from "../../lib/outcome";
 import { dateOf } from "../../lib/when";
 import { useMemo } from "react";
 import Link from "@/compat/Link";
+import { fieldLabel } from "@/lib/saleDictionary";
 import {
   Phone, MapPin, Package, Wallet, TriangleAlert, PhoneCall, ShieldAlert,
   Users, Flame, CalendarDays,
@@ -19,7 +20,7 @@ import {
  * So: everything the record knows, arranged the way a call goes. Who you are
  * ringing and on what number, then what they bought, then what it cost, then
  * where they are. The things that change what you should DO come first and
- * loud - a stove ID somebody else took, a number carrying other stoves, a
+ * loud - a serial number somebody else took, a number carrying other stoves, a
  * record already sent back to Sales - because those are not detail, they are
  * the reason this call is different from the last one.
  *
@@ -171,14 +172,14 @@ export default function AgentBrief({ record }) {
     <div className="space-y-3">
       {/* ------------------------------------------------ what changes the call */}
       {r.serial_unconfirmed_at && (
-        <Band tone="stop" icon={ShieldAlert} title="This stove ID is not confirmed">
+        <Band tone="stop" icon={ShieldAlert} title="This serial number is not confirmed">
           <p>
             {r.serial_unconfirmed_reason ??
-              "Another caller confirmed this record's stove ID, so it now carries a different one."}
+              "Another caller confirmed this record's serial number, so it now carries a different one."}
           </p>
           <p className="font-medium">
             Ask which number is on their stove before anything else, and use Fix the
-            stove ID below.
+            serial number below.
           </p>
         </Band>
       )}
@@ -216,7 +217,7 @@ export default function AgentBrief({ record }) {
       )}
 
       {r.serial_matches === false && !r.serial_unconfirmed_at && (
-        <Band tone="warn" icon={Package} title="The buyer read out a different stove ID">
+        <Band tone="warn" icon={Package} title="The buyer read out a different serial number">
           <p>
             They said <span className="font-mono font-semibold">{r.stated_serial}</span>;
             the record says <span className="font-mono font-semibold">{r.stove_serial_no}</span>.
@@ -227,7 +228,7 @@ export default function AgentBrief({ record }) {
       {/* --------------------------------------------------------- who to ring */}
       <Group icon={Phone} title="Who you are ringing" tone="who">
         <Fact
-          label="Buyer"
+          label={fieldLabel("end_user_name")}
           value={r.resolved_end_user_name ?? r.end_user_name}
           loud
           tone={TONES.who.loud}
@@ -236,41 +237,41 @@ export default function AgentBrief({ record }) {
             : null}
         />
         <Fact
-          label="Phone"
+          label={fieldLabel("phone")}
           value={r.resolved_phone ?? r.primary_phone}
           loud
           tone={TONES.who.loud}
           hint={r.corrected_phone ? `receipt said ${r.primary_phone}` : null}
         />
-        <Fact label="Other phone" value={r.resolved_alt_phone ?? r.alternative_phone} />
-        <Fact label="Also known as" value={r.aka} />
-        <Fact label="Contact person" value={r.buyer_name} />
-        <Fact label="Contact phone" value={r.buyer_phone} />
+        <Fact label={fieldLabel("other_phone")} value={r.resolved_alt_phone ?? r.alternative_phone} />
+        <Fact label={fieldLabel("aka")} value={r.aka} />
+        <Fact label={fieldLabel("contact_person")} value={r.buyer_name} />
+        <Fact label={fieldLabel("contact_phone")} value={r.buyer_phone} />
       </Group>
 
       {/* ------------------------------------------------------ what they have */}
       <Group icon={Package} title="The stove they have" tone="stove">
         <Fact
-          label="Stove ID"
+          label={fieldLabel("stove_serial_no")}
           value={<span className="font-mono">{r.stove_serial_no}</span>}
           loud
           tone={TONES.stove.loud}
         />
         <Fact label="Stock status" value={words(r.stove_stock_status)} />
         <Fact label="Factory" value={r.factory} />
-        <Fact label="Pots" value={r.pot_quantity} />
+        <Fact label={fieldLabel("pot_quantity")} value={r.pot_quantity} />
         <Fact
-          label="Wonderbox"
+          label={fieldLabel("heat_retention_device")}
           value={r.heat_retention_device == null ? null : r.heat_retention_device ? "Yes" : "No"}
         />
-        <Fact label="Cooked on before" value={previousStove} />
+        <Fact label={fieldLabel("previous_stove_type")} value={previousStove} />
       </Group>
 
       {/* ------------------------------------------------------ the purchase */}
       <Group icon={Wallet} title="What they paid, and to whom" tone="money">
-        <Fact label="Sold on" value={date(r.sales_date)} />
-        <Fact label="Amount" value={money(r.amount)} />
-        <Fact label="Paid" value={money(r.total_paid)} />
+        <Fact label={fieldLabel("sales_date")} value={date(r.sales_date)} />
+        <Fact label={fieldLabel("amount")} value={money(r.amount)} />
+        <Fact label={fieldLabel("total_paid")} value={money(r.total_paid)} />
         <Fact
           label="Payment"
           value={
@@ -279,22 +280,22 @@ export default function AgentBrief({ record }) {
               : words(r.payment_status)
           }
         />
-        <Fact label="Partner" value={r.partner_name} />
+        <Fact label={fieldLabel("partner_name")} value={r.partner_name} />
         <Fact label="Sold by" value={r.sales_rep} />
         <Fact label="Recorded by" value={r.sale_agent_name} />
-        <Fact label="Sales model" value={words(r.sales_model)} />
-        <Fact label="Branch" value={r.retailer_branch ?? r.partner_branch} />
+        <Fact label={fieldLabel("payment_model_id")} value={words(r.sales_model)} />
+        <Fact label={fieldLabel("retailer_branch")} value={r.retailer_branch ?? r.partner_branch} />
       </Group>
 
       {/* ------------------------------------------------------- where they are */}
       <Group icon={MapPin} title="Where they live" tone="place">
         <Fact
-          label="Address"
+          label={fieldLabel("full_address")}
           value={r.resolved_address ?? r.user_residential_address}
           hint={r.corrected_address ? "corrected on a call" : null}
         />
-        <Fact label="State" value={r.resolved_state ?? r.user_state} />
-        <Fact label="LGA" value={r.resolved_lga ?? r.user_lga} />
+        <Fact label={fieldLabel("state_backup")} value={r.resolved_state ?? r.user_state} />
+        <Fact label={fieldLabel("lga_backup")} value={r.resolved_lga ?? r.user_lga} />
         <Fact label="Ward" value={r.ward} />
         <Fact label="Landmark" value={r.landmark} />
         <Fact

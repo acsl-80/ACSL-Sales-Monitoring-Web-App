@@ -44,7 +44,7 @@ test("the Partner facet narrows every Partner cell, the URL carries it, and back
   await page.goto("/data-center/call-centre");
   await expect(page.getByRole("heading", { name: "Call Centre" })).toBeVisible({ timeout: 30_000 });
 
-  await pick(page, "Partner", partner!.partner_name);
+  await pick(page, "Sales partner", partner!.partner_name);
   await expect(page).toHaveURL(new RegExp(`organizationId=${partner!.organization_id}`), { timeout: 15_000 });
   await expect(page.getByText(/Narrowed to/)).toBeVisible({ timeout: 15_000 });
 
@@ -65,13 +65,13 @@ test("the Partner facet narrows every Partner cell, the URL carries it, and back
 test("Held by is offered to whoever may see the agents", async ({ page }) => {
   await signIn(page, USERS.admin);
   await page.goto("/data-center/call-centre");
-  await expect(page.getByRole("combobox", { name: "Partner" })).toBeVisible({ timeout: 30_000 });
+  await expect(page.getByRole("combobox", { name: "Sales partner" })).toBeVisible({ timeout: 30_000 });
   await expect(page.getByRole("combobox", { name: "Held by" })).toBeVisible({ timeout: 30_000 });
 });
 
 test("Held by is not offered to an editor who cannot see the agents", async ({ page }) => {
   await signIn(page, USERS.callCentre);
   await page.goto("/data-center/call-centre");
-  await expect(page.getByRole("combobox", { name: "Partner" })).toBeVisible({ timeout: 30_000 });
+  await expect(page.getByRole("combobox", { name: "Sales partner" })).toBeVisible({ timeout: 30_000 });
   await expect(page.getByRole("combobox", { name: "Held by" })).toHaveCount(0);
 });

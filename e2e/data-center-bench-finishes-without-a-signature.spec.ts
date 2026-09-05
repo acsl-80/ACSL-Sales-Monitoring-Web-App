@@ -78,7 +78,7 @@ async function fillReceiptWithoutSigning(page: Page, marker: string) {
   await state.click();
   await page.getByPlaceholder("Type part of the state").fill("Kogi");
   await page.getByRole("listbox").getByRole("option", { name: "Kogi", exact: true }).click();
-  const lga = page.getByRole("combobox", { name: "Local government area" });
+  const lga = page.getByRole("combobox", { name: "LGA" });
   await expect(lga).toBeEnabled();
   // Centred before opening: on a 720px viewport this control lands on the
   // last visible row and its list opens below the fold. Same workaround as

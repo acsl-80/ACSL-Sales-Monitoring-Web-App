@@ -63,7 +63,7 @@ test.describe("the partner drill goes partner to stove", () => {
 
     // Consignment.
     await page.getByRole("row").filter({ hasText: /TR-/ }).first().click();
-    await expect(page.getByRole("columnheader", { name: "Stove ID" })).toBeVisible({
+    await expect(page.getByRole("columnheader", { name: "Serial number" })).toBeVisible({
       timeout: 20_000,
     });
     // Unassigned is a state worth seeing, so it is one of the filters.
@@ -78,7 +78,7 @@ test.describe("the partner drill goes partner to stove", () => {
     // The trail goes back, rather than three overlays stacked on each other.
     await expect(page.getByRole("dialog").getByRole("navigation")).toBeVisible();
     await page.getByRole("button", { name: "Back", exact: true }).click();
-    await expect(page.getByRole("columnheader", { name: "Stove ID" })).toBeVisible();
+    await expect(page.getByRole("columnheader", { name: "Serial number" })).toBeVisible();
   });
 
   test("an unsold stove says so rather than showing an empty sale", async ({ page }) => {

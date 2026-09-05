@@ -8,12 +8,15 @@
  */
 const WORDS = {
   transaction_id: "transfer reference",
-  stove_serial_no: "stove ID",
-  end_user_name: "buyer's name",
-  phone: "phone",
-  contact_person: "contact person",
+  // The agreement's wording, in the lower case a sentence needs: these read
+  // as "missing serial number" on a chip and "Missing telephone number" on
+  // the dashboard, so they are the dictionary's words rather than its casing.
+  stove_serial_no: "serial number",
+  end_user_name: "customer name",
+  phone: "telephone number",
+  contact_person: "buyer name",
   contact_phone: "contact phone",
-  amount: "amount",
+  amount: "total amount",
   address_id: "address",
   signature: "signature",
   stove_image_id: "stove photo",

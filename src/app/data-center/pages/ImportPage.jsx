@@ -34,7 +34,7 @@ const TABS = [
     // the half that happens here and leaves the half that produces the
     // spreadsheet to be guessed at.
     blurb:
-      "Many receipts at once: download a sheet the system has already filled with stove IDs, type the buyers into it, upload it back.",
+      "Many receipts at once: download a sheet the system has already filled with serial numbers, type the buyers into it, upload it back.",
     needs: DATA_CENTER_FEATURES.IMPORT_UPLOAD,
   },
   {

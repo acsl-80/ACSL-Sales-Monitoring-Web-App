@@ -96,8 +96,8 @@ function SharedPhoneRows({ batchId }) {
       <p className="flex items-center gap-1.5 text-sm font-semibold text-amber-900">
         <AlertTriangle className="h-4 w-4" />
         {rows.length === 1
-          ? "One stove here shares a phone number with another"
-          : `${rows.length} stoves here share a phone number with another`}
+          ? "One stove here shares a telephone number with another"
+          : `${rows.length} stoves here share a telephone number with another`}
       </p>
       <p className="mt-0.5 text-xs text-amber-800">
         Allowed: a household can buy more than one. Check these are a family and
@@ -145,11 +145,11 @@ const EXCEPTION_KINDS = [
   {
     key: "not_in_stock",
     test: (why) => /is not in stock records/i.test(why),
-    title: "The stove ID matches nothing in stock",
+    title: "The serial number matches nothing in stock",
     fixable: true,
     what:
-      "Either the serial was mistyped on the receipt or when it was digitised, or the " +
-      "stove was never transferred to a partner. Correct the serial here and the row is " +
+      "Either the serial number was mistyped on the receipt or when it was digitised, or " +
+      "the stove was never transferred to a partner. Correct it here and the row is " +
       "re-checked on the spot.",
   },
   {
@@ -172,16 +172,16 @@ const EXCEPTION_KINDS = [
       "The sales app tracks an unpaid balance against a sales model, so a part payment " +
       "with no model cannot be written without recording it as paid in full. For a typed " +
       "receipt, open it at the bench, pick the model and save it as finished again. For a " +
-      "file, add a sales_model column, or fill in Amount received where the buyer paid in " +
+      "file, add a sales_model column, or fill in Total paid to date where the buyer paid in " +
       "full, and re-import. Then press Check the rows again.",
   },
   {
     key: "duplicate",
     test: (why) => /already appears on row/i.test(why),
-    title: "The same stove ID appears twice in this file",
+    title: "The same serial number appears twice in this file",
     fixable: true,
     what:
-      "One of the two rows has the wrong serial. Correct it here, or leave the row - " +
+      "One of the two rows has the wrong serial number. Correct it here, or leave the row - " +
       "the first occurrence still imports.",
   },
   {
@@ -195,8 +195,8 @@ const EXCEPTION_KINDS = [
     fixable: true,
     what:
       "A sale already exists for this stove, so the row was not written over it. If the " +
-      "serial on this row is mistyped, correct it here and the row is re-checked on the " +
-      "spot. If the receipt really is a duplicate of a sale already in the app, leave it. " +
+      "serial number on this row is mistyped, correct it here and the row is re-checked on " +
+      "the spot. If the receipt really is a duplicate of a sale already in the app, leave it. " +
       "If it replaces that sale, cancel the existing one in the sales app first.",
   },
   {
@@ -208,7 +208,7 @@ const EXCEPTION_KINDS = [
       "The stove is flagged sold in stock while nothing in the sales app claims it, so a " +
       "sale was removed without the stove being released. Nothing here can fix that. " +
       "Have the stove looked at in the sales app, then press Check the rows again. If " +
-      "instead the serial is mistyped, correct it here.",
+      "instead the serial number is mistyped, correct it here.",
   },
   {
     key: "moved_partner",
@@ -216,8 +216,8 @@ const EXCEPTION_KINDS = [
     title: "The stove belongs to a different partner",
     fixable: true,
     what:
-      "The stove ID resolves to a partner other than the one this row claims. Correct the " +
-      "serial if it was mistyped; otherwise the consignment records need looking at.",
+      "The serial number resolves to a partner other than the one this row claims. Correct the " +
+      "serial number if it was mistyped; otherwise the consignment records need looking at.",
   },
   {
     key: "other",
@@ -284,7 +284,7 @@ function ExceptionsQueue({ batchId, canResolve, onChanged }) {
      */
     const serial = (drafts[row.id] ?? row.stove_serial_no ?? "").trim();
     if (!serial) {
-      setNote({ id: row.id, text: "Type the correct stove ID first." });
+      setNote({ id: row.id, text: "Type the correct serial number first." });
       return;
     }
     setBusy(row.id);
@@ -295,7 +295,7 @@ function ExceptionsQueue({ batchId, canResolve, onChanged }) {
         // The correction did not fix it. Say so here rather than letting the
         // row look resolved and fail later at commit.
         setRows((rs) => rs.map((r) => (r.id === row.id ? { ...r, exception_reason: out.reason } : r)));
-        setNote({ id: row.id, text: out.reason ?? "That serial did not resolve it." });
+        setNote({ id: row.id, text: out.reason ?? "That serial number did not resolve it." });
       } else {
         await load();
         onChanged?.();
@@ -394,7 +394,7 @@ function ExceptionsQueue({ batchId, canResolve, onChanged }) {
                       )}
                     </span>
                     <span className="shrink-0 text-xs text-gray-500">
-                      {r.raw?.["User First Name"] ?? r.raw?.end_user_name ?? r.raw?.name ?? ""}
+                      {r.raw?.["First name"] ?? r.raw?.["User First Name"] ?? r.raw?.end_user_name ?? r.raw?.name ?? ""}
                     </span>
                     {canResolve && g.fixable && (
                       <>
@@ -402,8 +402,8 @@ function ExceptionsQueue({ batchId, canResolve, onChanged }) {
                           type="text"
                           value={drafts[r.id] ?? r.stove_serial_no ?? ""}
                           onChange={(e) => setDrafts((d) => ({ ...d, [r.id]: e.target.value }))}
-                          placeholder="Correct serial"
-                          aria-label={`Corrected stove ID for row ${r.row_number}`}
+                          placeholder="Correct serial number"
+                          aria-label={`Corrected serial number for row ${r.row_number}`}
                           className="w-full min-w-0 rounded-md border sm:w-36 border-gray-300 px-2 py-1 text-sm focus:border-(--dc-accent) focus:outline-none"
                         />
                         <button
@@ -699,7 +699,7 @@ export default function ImportPanel({ canUpload, canCommit, canResolve }) {
        * Named in the words of the job, not of the code.
        *
        * "Validate" means nothing to somebody holding a stack of receipts. What
-       * they want to know is whether the stove IDs were recognised and whether
+       * they want to know is whether the serial numbers were recognised and whether
        * anything is wrong before it is written, so that is what the steps say.
        */
       setSteps([
@@ -714,7 +714,7 @@ export default function ImportPanel({ canUpload, canCommit, canResolve }) {
       try {
         stepTo("read", "done", `${plural(file.rows.length, "row")} read`);
         stepTo("partner", "running");
-        // No partner is sent. The stove IDs in the file name it, and the
+        // No partner is sent. The serial numbers in the file name it, and the
         // server says which one it worked out.
         const staged = await dataCenterImport.stage(null, file.name, file.rows, options);
         const { batchId, resolvedPartner } = staged;

@@ -222,7 +222,7 @@ test.describe("a partner's stoves are one list, narrowed on the server", () => {
 
     // No chooser in between: the search over everything is simply there, and
     // the scope is spelled out rather than implied by a default.
-    await expect(page.getByLabel("Find a stove ID")).toBeVisible({ timeout: 20_000 });
+    await expect(page.getByLabel("Find a serial number")).toBeVisible({ timeout: 20_000 });
     await expect(page.getByRole("button", { name: /By consignment/ })).toHaveCount(0);
     await expect(page.getByText(/all consignments/).first()).toBeVisible({ timeout: 20_000 });
 
@@ -258,14 +258,14 @@ test.describe("where the buyer lives is chosen, not typed", () => {
     // The partner lands straight in the sweep; waiting on its search box is
     // what proves the partner table underneath has been replaced, so the
     // `tbody tr` below is a stove row and not a partner row re-clicked.
-    await expect(page.getByLabel("Find a stove ID")).toBeVisible({ timeout: 20_000 });
+    await expect(page.getByLabel("Find a serial number")).toBeVisible({ timeout: 20_000 });
     const stove = page.locator("tbody tr").first();
     await expect(stove).toBeVisible({ timeout: 30_000 });
     await stove.click();
 
     // The LGA cannot be answered before the state, because an LGA belongs to
     // one state and offering all 774 is not a choice anybody can make.
-    const lga = page.getByRole("combobox", { name: "Local government area" });
+    const lga = page.getByRole("combobox", { name: "LGA" });
     await expect(lga).toBeVisible({ timeout: 30_000 });
     await expect(lga).toBeDisabled();
 

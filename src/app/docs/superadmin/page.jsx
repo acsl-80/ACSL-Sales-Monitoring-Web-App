@@ -611,6 +611,9 @@ const SuperAdminDocumentation = () => {
                               Format 2 (Database)
                             </th>
                             <th className="border border-gray-200 px-4 py-2 text-left">
+                              Stove DB name
+                            </th>
+                            <th className="border border-gray-200 px-4 py-2 text-left">
                               Description
                             </th>
                           </tr>
@@ -623,6 +626,9 @@ const SuperAdminDocumentation = () => {
                               </td>
                               <td className="border border-gray-200 px-4 py-2 font-mono text-sm text-blue-700">
                                 {mapping.format2}
+                              </td>
+                              <td className="border border-gray-200 px-4 py-2 text-sm">
+                                {mapping.stoveDbName || "-"}
                               </td>
                               <td className="border border-gray-200 px-4 py-2">
                                 {mapping.description}

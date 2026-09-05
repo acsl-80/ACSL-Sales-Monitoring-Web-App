@@ -24,7 +24,7 @@ const PRESET_LABELS = {
   review: "fixed by Sales, awaiting review",
   recall_due: "due a call again after a fix",
   completed: "finished by the call centre",
-  unconfirmed: "a stove ID another caller took",
+  unconfirmed: "a serial number another caller took",
 };
 
 /** The scorecard columns, said the way the dashboard says them. */

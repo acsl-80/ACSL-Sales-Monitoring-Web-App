@@ -213,24 +213,31 @@ export interface NormalizedRow {
  * the call centre rang someone whose phone number had never arrived.
  */
 export const HEADER_ALIASES: Record<string, string[]> = {
-  stoveSerialNo: ["stove_serial_no", "Stove Serial Number", "serial", "stoveSerialNo", "Stove ID", "stove_id"],
+  // "Serial number" is the sheet's heading from 20260908040000; "Stove ID" is
+  // what every sheet before it carried, and both still map.
+  stoveSerialNo: ["stove_serial_no", "Stove Serial Number", "serial", "stoveSerialNo", "Stove ID", "stove_id",
+                  "Serial number"],
   // Not a field on the sale: it is the transfer this stove went out on, and it
   // is carried so the import can check the row landed in the right sheet.
   transactionId: ["transaction_id", "Transaction ID", "sales_reference", "Sales Reference"],
-  firstName:     ["first_name", "User First Name", "firstName"],
-  lastName:      ["last_name", "User Last Name", "surname", "lastName", "endUserSurname"],
+  firstName:     ["first_name", "User First Name", "firstName", "First name"],
+  lastName:      ["last_name", "User Last Name", "surname", "lastName", "endUserSurname", "Surname"],
   endUserName:   ["end_user_name", "endUserName", "name"],
-  phone:         ["phone", "Primary Phone Number", "primary_phone", "primaryPhone"],
-  otherPhone:    ["other_phone", "Alternative Phone Number", "alt_phone", "otherPhone"],
-  salesDate:     ["sales_date", "Sales Date", "date", "salesDate"],
-  amount:        ["amount", "Sale Amount", "price", "saleAmount"],
-  amountReceived:["amount_received", "Amount Received", "amountReceived"],
+  phone:         ["phone", "Primary Phone Number", "primary_phone", "primaryPhone",
+                  "Telephone number"],
+  otherPhone:    ["other_phone", "Alternative Phone Number", "alt_phone", "otherPhone",
+                  "Other telephone number"],
+  salesDate:     ["sales_date", "Sales Date", "date", "salesDate", "Sales date"],
+  amount:        ["amount", "Sale Amount", "price", "saleAmount",
+                  "Total Amount (full stove price)"],
+  amountReceived:["amount_received", "Amount Received", "amountReceived",
+                  "Amount paid (first installment)"],
   state:         ["state", "State", "user_state", "state_backup", "stateBackup"],
   lga:           ["lga", "LGA", "Local Govt Area", "lga_backup", "lgaBackup"],
-  fullAddress:   ["address", "User Residential Address", "full_address", "fullAddress"],
-  contactPerson: ["contact_person", "Contact Person", "buyer", "contactPerson"],
-  contactPhone:  ["contact_phone", "Contact Phone", "buyer_phone", "contactPhone"],
-  aka:           ["aka", "AKA", "nickname"],
+  fullAddress:   ["address", "User Residential Address", "full_address", "fullAddress", "Address"],
+  contactPerson: ["contact_person", "Contact Person", "buyer", "contactPerson", "Buyer Name"],
+  contactPhone:  ["contact_phone", "Contact Phone", "buyer_phone", "contactPhone", "Contact phone"],
+  aka:           ["aka", "AKA", "nickname", "Also known as"],
 
   // ---------------------------------------------------------------------
   // The rest of the sale, as the digitalisation sheet asks for it.
@@ -241,22 +248,27 @@ export const HEADER_ALIASES: Record<string, string[]> = {
   // for a file this module had just written. A sheet whose own headings
   // need mapping is not a template.
   // ---------------------------------------------------------------------
-  partnerName:        ["partner_name", "Partner", "Partner Name", "partnerName"],
+  partnerName:        ["partner_name", "Partner", "Partner Name", "partnerName", "Sales partner"],
   // Not a field on the sale. It is read to price a row whose sheet has no
   // amount column, from the table in workflow_config.
   salesModel:         ["sales_model", "Sales Model", "salesModel"],
   salesRep:           ["sales_rep", "Sales Rep", "Sales Representative", "salesRep"],
   transferDate:       ["transfer_date", "Transfer Date", "transferDate"],
-  potQuantity:        ["pot_quantity", "Pots Quantity", "Pot Quantity", "potQuantity"],
+  potQuantity:        ["pot_quantity", "Pots Quantity", "Pot Quantity", "potQuantity",
+                       "Pots quantity"],
   heatRetentionDevice:["heat_retention_device", "Wonderbox", "Heat Retention Device",
                        "heatRetentionDevice"],
-  previousStoveType:  ["previous_stove_type", "Previous Stove Type", "previousStoveType"],
+  previousStoveType:  ["previous_stove_type", "Previous Stove Type", "previousStoveType",
+                       "Baseline stove"],
   previousStoveOther: ["previous_stove_other", "Previous Stove (other)",
-                       "Previous Stove Other", "previousStoveOther"],
-  mealsPerDay:        ["meals_per_day", "Meals Per Day", "mealsPerDay"],
-  cookingFuelSource:  ["cooking_fuel_source", "Fuel Source", "cookingFuelSource"],
-  cookingLocation:    ["cooking_location", "Cooking Location", "cookingLocation"],
-  termsAccepted:      ["terms_accepted", "All Terms Agreed", "Terms Agreed", "termsAccepted"],
+                       "Previous Stove Other", "previousStoveOther",
+                       "Baseline stove, other"],
+  mealsPerDay:        ["meals_per_day", "Meals Per Day", "mealsPerDay", "Meals per day"],
+  cookingFuelSource:  ["cooking_fuel_source", "Fuel Source", "cookingFuelSource", "Fuel source"],
+  cookingLocation:    ["cooking_location", "Cooking Location", "cookingLocation",
+                       "Cooking location"],
+  termsAccepted:      ["terms_accepted", "All Terms Agreed", "Terms Agreed", "termsAccepted",
+                       "CPA (Terms and Conditions)"],
 };
 
 /**
@@ -799,10 +811,10 @@ export function normalizeRow(
     return {
       ok: false,
       reason: amountRaw.trim() === ""
-        ? "No sale amount, and this row's sales model has no price set"
-        : `Sale amount "${amountRaw}" is not a number above zero`,
+        ? "No total amount, and this row's sales model has no price set"
+        : `Total amount "${amountRaw}" is not a number above zero`,
       hint: amountRaw.trim() === ""
-        ? "Either add a Sale Amount column to the sheet, or set a price for this " +
+        ? "Either add a Total Amount (full stove price) column to the sheet, or set a price for this " +
           "sales model in Settings so every row on that model is priced the same."
         : "Enter digits only, like 47500. Leave out the naira sign and any commas, and do not write 'cash' or 'paid'.",
     };
@@ -813,7 +825,7 @@ export function normalizeRow(
   if (amountReceived !== null && (!Number.isFinite(amountReceived) || amountReceived < 0)) {
     return {
       ok: false,
-      reason: `Amount received "${receivedRaw}" is not a number`,
+      reason: `Amount paid (first installment) "${receivedRaw}" is not a number`,
       hint:
         "Enter digits only, like 20000. If nothing has been paid yet, leave the cell empty rather than writing 0.00 or 'nil'.",
     };

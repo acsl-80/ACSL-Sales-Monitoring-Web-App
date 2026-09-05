@@ -55,7 +55,7 @@ test.describe("the brief an agent reads while the phone rings", () => {
     }
 
     // And the fix that only works while the buyer is on the line.
-    await expect(page.getByRole("button", { name: "Fix the stove ID" })).toBeVisible();
+    await expect(page.getByRole("button", { name: "Fix the serial number" })).toBeVisible();
   });
 
   test("a stove ID that is not ours is refused with what to try", async ({ page }) => {
@@ -91,7 +91,7 @@ test.describe("the brief an agent reads while the phone rings", () => {
 });
 
 test.describe("finished work has somewhere to live", () => {
-  test("Completed and Stove ID unconfirmed are presets on the queue", async ({ page }) => {
+  test("Completed and Serial number unconfirmed are presets on the queue", async ({ page }) => {
     await signIn(page, USERS.admin);
     await page.goto("/data-center/call-centre");
     await expect(page.getByRole("heading", { name: "Call Centre" })).toBeVisible({
@@ -100,7 +100,7 @@ test.describe("finished work has somewhere to live", () => {
 
     await expect(page.getByRole("button", { name: "Completed", exact: true })).toBeVisible();
     await expect(
-      page.getByRole("button", { name: "Stove ID unconfirmed", exact: true }),
+      page.getByRole("button", { name: "Serial number unconfirmed", exact: true }),
     ).toBeVisible();
   });
 

@@ -107,10 +107,10 @@ test("the rep sees the disputed phone marked, saves a new one, and the episode a
     await expect(page.getByText("disputed", { exact: true }).first()).toBeVisible({ timeout: 20_000 });
     const marked = page.locator("[data-disputed]");
     await expect(marked).toHaveCount(1);
-    await expect(marked.first()).toContainText("Phone");
+    await expect(marked.first()).toContainText("Telephone number");
 
     // The panel puts the disputed field first, prefilled.
-    const phone = page.getByLabel(/^Phone/);
+    const phone = page.getByLabel(/^Telephone number/);
     await expect(phone).toBeVisible();
     await phone.fill(newPhone);
     await page.getByLabel(/What did you change/).fill("e2e: the receipt carried one wrong digit");
@@ -143,10 +143,10 @@ test("a disputed stove ID offers the rematch, not a text box", async ({ page }) 
   try {
     await signIn(page, USERS.acslAgent);
     await openWorkspace(page, sale!.sale_id);
-    await expect(page.getByRole("heading", { name: "Fix the stove ID" })).toBeVisible({ timeout: 20_000 });
-    await expect(page.getByRole("button", { name: "Fix the stove ID" })).toBeVisible();
+    await expect(page.getByRole("heading", { name: "Fix the serial number" })).toBeVisible({ timeout: 20_000 });
+    await expect(page.getByRole("button", { name: "Fix the serial number" })).toBeVisible();
     // No free-text control offers the serial for typing.
-    await expect(page.getByLabel(/^Stove ID/)).toHaveCount(0);
+    await expect(page.getByLabel(/^Serial number/)).toHaveCount(0);
   } finally {
     await restore();
   }

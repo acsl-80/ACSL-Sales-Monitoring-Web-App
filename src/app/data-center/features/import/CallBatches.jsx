@@ -134,7 +134,7 @@ function CallExceptions({ batchId, canResolve = false, onResolved }) {
   const resolve = async (row) => {
     const serial = (drafts[row.id] ?? row.stove_serial_no ?? "").trim();
     if (!serial) {
-      setRowNote({ id: row.id, text: "Type the correct stove ID first." });
+      setRowNote({ id: row.id, text: "Type the correct serial number first." });
       return;
     }
     setFixing(row.id);
@@ -147,7 +147,7 @@ function CallExceptions({ batchId, canResolve = false, onResolved }) {
         setRows((rs) =>
           rs.map((r) => (r.id === row.id ? { ...r, exception_reason: out.reason } : r)),
         );
-        setRowNote({ id: row.id, text: out.reason ?? "That stove ID did not resolve it." });
+        setRowNote({ id: row.id, text: out.reason ?? "That serial number did not resolve it." });
       } else {
         await load();
         onResolved?.();
@@ -249,7 +249,7 @@ function CallExceptions({ batchId, canResolve = false, onResolved }) {
                     <li key={r.id} className="py-1">
                       <span className="flex flex-wrap gap-x-2">
                         <span className="font-medium tabular-nums">Row {r.row_number}</span>
-                        <span className="font-mono">{r.stove_serial_no ?? "(no stove ID)"}</span>
+                        <span className="font-mono">{r.stove_serial_no ?? "(no serial number)"}</span>
                         <span className="text-gray-600">
                           {r.exception_reason ?? r.rejection_reason}
                         </span>
@@ -258,7 +258,7 @@ function CallExceptions({ batchId, canResolve = false, onResolved }) {
                         <span className="mt-1 flex flex-wrap items-center gap-1.5">
                           <input
                             type="text"
-                            aria-label={`Corrected stove ID for row ${r.row_number}`}
+                            aria-label={`Corrected serial number for row ${r.row_number}`}
                             value={drafts[r.id] ?? r.stove_serial_no ?? ""}
                             onChange={(ev) => setDrafts((d) => ({ ...d, [r.id]: ev.target.value }))}
                             className="w-40 rounded border border-gray-300 px-2 py-1 font-mono text-xs"

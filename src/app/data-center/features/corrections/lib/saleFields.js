@@ -1,49 +1,72 @@
 /**
- * The client mirror of `supabase/functions/_shared/sale-fields.ts`.
+ * The fields a correction may dispute, read from the sale dictionary.
  *
- * Kept in step by hand, the way roles and features are. `payload` is the key
- * `update-sale` reads; null means the field is not edited through it (the
- * stove ID goes through the module's own rematch, the two images through the
- * sales app's uploads). `required` names what `update-sale` refuses a body
- * without, so the panel always sends those, prefilled from the sale.
+ * This was a hand copy of `supabase/functions/_shared/sale-fields.ts` kept in
+ * step by eye. Both now read the same JSON, so the words on the panel are the
+ * words the edge function validates against and the words the paper User
+ * Agreement uses.
+ *
+ * `payload` is the key `update-sale` reads; null means the field is not edited
+ * through it (the serial number goes through the module's own rematch, the two
+ * images through the sales app's uploads). `required` names what `update-sale`
+ * refuses a body without, so the panel always sends those, prefilled from the
+ * sale.
  */
 
-export const SALE_FIELDS = [
-  { key: "end_user_name", label: "End user name", group: "buyer", payload: "endUserName", required: true },
-  { key: "aka", label: "Also known as", group: "buyer", payload: "aka", required: false },
-  { key: "phone", label: "Phone", group: "buyer", payload: "phone", required: true },
-  { key: "other_phone", label: "Other phone", group: "buyer", payload: "otherPhone", required: false },
-  { key: "contact_person", label: "Contact person", group: "buyer", payload: "contactPerson", required: true },
-  { key: "contact_phone", label: "Contact phone", group: "buyer", payload: "contactPhone", required: true },
-  { key: "full_address", label: "Address", group: "where", payload: "addressData", required: false },
-  { key: "state_backup", label: "State", group: "where", payload: "stateBackup", required: false },
-  { key: "lga_backup", label: "LGA", group: "where", payload: "lgaBackup", required: false },
-  { key: "stove_serial_no", label: "Stove ID", group: "stove", payload: null, required: false },
-  { key: "sales_date", label: "Sale date", group: "sale", payload: "salesDate", required: false },
-  { key: "pot_quantity", label: "Pots", group: "sale", payload: "potQuantity", required: false },
-  { key: "heat_retention_device", label: "Heat retention device", group: "sale", payload: "heatRetentionDevice", required: false },
-  { key: "previous_stove_type", label: "Previous stove", group: "sale", payload: "previousStoveType", required: false },
-  { key: "previous_stove_other", label: "Previous stove, other", group: "sale", payload: "previousStoveOther", required: false },
-  { key: "meals_per_day", label: "Meals per day", group: "sale", payload: "mealsPerDay", required: false },
-  { key: "cooking_fuel_source", label: "Cooking fuel", group: "sale", payload: "cookingFuelSource", required: false },
-  { key: "cooking_location", label: "Cooking location", group: "sale", payload: "cookingLocation", required: false },
-  { key: "amount", label: "Amount", group: "money", payload: "amount", required: false },
-  { key: "total_paid", label: "Amount received", group: "money", payload: "amountReceived", required: false },
-  { key: "signature", label: "Signature", group: "evidence", payload: "signature", required: false },
-  { key: "agreement_image_id", label: "Agreement image", group: "evidence", payload: null, required: false },
-  { key: "stove_image_id", label: "Stove image", group: "evidence", payload: null, required: false },
-];
+import { LIVE_FIELDS, SALE_DICTIONARY } from "@/lib/saleDictionary";
 
+/** What `update-sale` refuses a body without. Unchanged by the dictionary. */
+const UPDATE_SALE_REQUIRES = new Set([
+  "end_user_name",
+  "phone",
+  "contact_person",
+  "contact_phone",
+]);
+
+/**
+ * The correctable fields, plus the serial number and the two images.
+ *
+ * The same rule the Deno side applies, so the catalogue the corrections
+ * function hands back and the catalogue this panel draws from are one list.
+ */
+export const SALE_FIELDS = LIVE_FIELDS.filter(
+  (f) => f.correctable || f.key === "stove_serial_no" || f.type === "image",
+).map((f) => ({
+  key: f.key,
+  label: f.label,
+  group: f.group,
+  payload: f.payload,
+  required: UPDATE_SALE_REQUIRES.has(f.key),
+}));
+
+/**
+ * The section headings, from the dictionary's own groups.
+ *
+ * "money" is kept because episodes recorded before the dictionary named that
+ * group, and a heading the map does not know would render as a bare key.
+ */
 export const GROUP_LABELS = {
-  buyer: "Buyer",
-  where: "Where",
-  stove: "Stove",
-  sale: "The sale",
+  ...Object.fromEntries(SALE_DICTIONARY.groups.map((g) => [g.key, g.label])),
   money: "Money",
-  evidence: "Evidence",
 };
 
-/** Fields the edit panel can put a control on: everything with an update-sale key except the signature. */
-export const EDITABLE = SALE_FIELDS.filter((f) => f.payload && f.key !== "signature");
+/** The group the money fields sit in, so a consumer never spells it twice. */
+export const MONEY_GROUP = "payment";
+
+/**
+ * Fields the edit panel can put a control on: everything `update-sale`
+ * actually reads, except the signature.
+ *
+ * The signature is drawn, not typed. `retailer_branch` carries a payload key
+ * in the dictionary but `update-sale` does not destructure `retailerBranch`,
+ * so a control for it would accept a correction and drop it in silence, which
+ * is the one kind of failure an operator cannot see. It comes off the panel
+ * until the function reads it.
+ */
+const NOT_READ_BY_UPDATE_SALE = new Set(["signature", "retailer_branch"]);
+
+export const EDITABLE = SALE_FIELDS.filter(
+  (f) => f.payload && !NOT_READ_BY_UPDATE_SALE.has(f.key),
+);
 
 export const byKey = Object.fromEntries(SALE_FIELDS.map((f) => [f.key, f]));

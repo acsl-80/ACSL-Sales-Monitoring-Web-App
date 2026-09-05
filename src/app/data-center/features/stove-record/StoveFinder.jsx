@@ -8,7 +8,7 @@ import { Search, Loader2, ArrowRight, Truck } from "lucide-react";
 /**
  * One box, and the two things that are written on paper.
  *
- * A stove ID is on the label; a transfer reference is on the consignment note.
+ * A serial number is on the label; a transfer reference is on the consignment note.
  * People arrive holding one or the other, and until now neither of them opened
  * anything - the module's tables filter by partner and by date, which is no use
  * to somebody holding a single serial.
@@ -37,7 +37,7 @@ export default function StoveFinder({ autoFocus = false }) {
       e?.preventDefault();
       const q = query.trim();
       if (q.length < 3) {
-        setError("Type at least three characters of a stove ID or a transfer reference.");
+        setError("Type at least three characters of a serial number or a transfer reference.");
         setResult(null);
         return;
       }
@@ -82,8 +82,8 @@ export default function StoveFinder({ autoFocus = false }) {
               value={query}
               autoFocus={autoFocus}
               onChange={(ev) => setQuery(ev.target.value)}
-              placeholder="Stove ID, or a transfer reference"
-              aria-label="Stove ID or transfer reference"
+              placeholder="Serial number, or a transfer reference"
+              aria-label="Serial number or transfer reference"
               className="w-full rounded-md border border-gray-300 py-2 pl-8 pr-3 text-sm focus:border-(--dc-accent) focus:outline-none focus:ring-1 focus:ring-(--dc-accent)"
             />
           </div>

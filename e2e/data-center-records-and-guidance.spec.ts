@@ -217,7 +217,7 @@ test.describe("the register can be narrowed rather than scrolled", () => {
     await openStoveRecords(page);
 
     await page.getByRole("button", { name: /More filters/ }).click();
-    const partner = page.getByLabel("Partner", { exact: true });
+    const partner = page.getByLabel("Sales partner", { exact: true });
     await expect(partner).toBeVisible();
 
     // The LGA cannot be chosen before its state, and says so rather than being

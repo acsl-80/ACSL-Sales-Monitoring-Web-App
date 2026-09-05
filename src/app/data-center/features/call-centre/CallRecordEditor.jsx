@@ -45,15 +45,15 @@ const OUTCOMES = ["not_verified", "partially_verified", "fully_verified", "unrea
 // The record's own fields, as opposed to registry questions. Grouped so the
 // editor reads like the call rather than like the table.
 const CORRECTION_FIELDS = [
-  { key: "corrected_phone", label: "Corrected phone", type: "tel" },
-  { key: "corrected_alt_phone", label: "Corrected alternative phone", type: "tel" },
-  { key: "corrected_end_user_name", label: "Corrected name", type: "text" },
+  { key: "corrected_phone", label: "Corrected telephone number", type: "tel" },
+  { key: "corrected_alt_phone", label: "Corrected other telephone number", type: "tel" },
+  { key: "corrected_end_user_name", label: "Corrected customer name", type: "text" },
   { key: "corrected_address", label: "Corrected address", type: "text" },
   { key: "corrected_state", label: "Corrected state", type: "text" },
   { key: "corrected_lga", label: "Corrected LGA", type: "text" },
   { key: "ward", label: "Ward", type: "text" },
   { key: "landmark", label: "Landmark", type: "text" },
-  { key: "stated_serial", label: "Serial as stated by the user", type: "text" },
+  { key: "stated_serial", label: "Serial number as stated by the user", type: "text" },
 ];
 
 const SECTION_LABELS = {

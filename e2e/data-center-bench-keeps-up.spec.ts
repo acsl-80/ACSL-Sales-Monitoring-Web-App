@@ -84,7 +84,7 @@ async function fillReceipt(page: Page, marker: string) {
   await state.click();
   await page.getByPlaceholder("Type part of the state").fill("Kogi");
   await page.getByRole("listbox").getByRole("option", { name: "Kogi", exact: true }).click();
-  const lga = page.getByRole("combobox", { name: "Local government area" });
+  const lga = page.getByRole("combobox", { name: "LGA" });
   await expect(lga).toBeEnabled();
   await lga.click();
   await page
@@ -327,7 +327,7 @@ test.describe("the bench holds its place, and the queue stays fresh", () => {
     test.skip(!opened, "the twin partner is not in the funnel on this database");
 
     // Leave marks on all three pieces of state a tab switch used to destroy.
-    await page.getByLabel("Find a stove ID").fill("TWN");
+    await page.getByLabel("Find a serial number").fill("TWN");
     await expect(page.getByText(/matching "TWN"/)).toBeVisible({ timeout: 20_000 });
 
     await page.getByRole("button", { name: /Waiting to confirm/ }).click();
@@ -337,7 +337,7 @@ test.describe("the bench holds its place, and the queue stays fresh", () => {
     // Not the partner table: the same partner, the same search, the same
     // list. The bench stayed mounted behind the queue rather than being
     // torn down and rebuilt from the top.
-    await expect(page.getByLabel("Find a stove ID")).toHaveValue("TWN");
+    await expect(page.getByLabel("Find a serial number")).toHaveValue("TWN");
     await expect(page.getByText(/matching "TWN"/)).toBeVisible({ timeout: 20_000 });
     await expect(page.getByPlaceholder("Search by name")).toHaveCount(0);
   });

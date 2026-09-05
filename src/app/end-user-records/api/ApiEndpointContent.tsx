@@ -44,6 +44,8 @@ import {
 import { createClientComponentClient } from "@/lib/supabaseClient";
 import { getGeoData, getGeoDataSync } from "@/lib/geoDataService";
 import { downloadApiDocsPdf } from "./apiDocsPdf";
+import type { FieldDef } from "./apiDocsPdf";
+import { fieldByKey, fieldLabel } from "@/lib/saleDictionary";
 
 const ENDPOINT_URL = `${supabaseUrl}/functions/v1/end-user-records-api`;
 const KEY_FN_URL = `${supabaseUrl}/functions/v1/get-end-user-api-key`;
@@ -71,34 +73,50 @@ const PARAMS: ParamDef[] = [
   { name: "include_cancelled", type: "boolean", required: false, default: "false", description: "Set true to include archived / cancelled records. When false, both archived sales and sales with a cancellation record are excluded." },
 ];
 
-const FIELDS: { name: string; description: string }[] = [
+/**
+ * The documented response keys, each carrying the agreement's wording for the
+ * sale field it answers to and that field's Stove DB name where it has one.
+ * `keys` names the dictionary entries; the API itself is unchanged.
+ */
+const FIELD_ROWS: { name: string; description: string; keys?: string[] }[] = [
   { name: "id", description: "Sale UUID." },
   { name: "transaction_id", description: "Human-readable transaction reference (e.g. ASY1O4)." },
   { name: "is_ready_to_sync", description: "True when the record is complete and not cancelled — equivalent to status = completed and is_cancelled = false. Use this as the synchronisation gate." },
   { name: "status", description: "Completeness of the record. completed = every field the sales form requires is present, including a customer signature. pending = all required fields present but no valid signature. incomplete = at least one required field missing. Recalculated on every create and edit." },
   { name: "sales_reference", description: "The ERP batch reference for this stove, resolved from the stove serial. Join key back to the ERP sales order. Null when the serial has no ERP reference." },
   { name: "factory", description: "Factory the stove was produced at, resolved from the stove serial." },
-  { name: "sales_date", description: "Date of the sale." },
+  { name: "sales_date", description: "Date of the sale.", keys: ["sales_date"] },
   { name: "created_at / updated_at", description: "Record timestamps." },
-  { name: "end_user_name", description: "End user's full name." },
-  { name: "contact_person", description: "Contact person's name at the point of sale." },
-  { name: "phone / contact_phone / other_phone", description: "End user and contact phone numbers." },
-  { name: "state_backup / lga_backup", description: "State and LGA at time of sale." },
-  { name: "address", description: "Full address record: street, city, state, country, latitude, longitude, full_address." },
-  { name: "stove_serial_no", description: "Serial number of the stove sold." },
-  { name: "stove_image / agreement_image", description: "Uploaded stove and agreement images (id, url, public_id, type)." },
+  { name: "end_user_name", description: "End user's full name.", keys: ["end_user_name"] },
+  { name: "contact_person", description: "Contact person's name at the point of sale.", keys: ["contact_person"] },
+  { name: "phone / contact_phone / other_phone", description: "End user and contact phone numbers.", keys: ["phone", "contact_phone", "other_phone"] },
+  { name: "state_backup / lga_backup", description: "State and LGA at time of sale.", keys: ["state_backup", "lga_backup"] },
+  { name: "address", description: "Full address record: street, city, state, country, latitude, longitude, full_address.", keys: ["full_address", "city"] },
+  { name: "stove_serial_no", description: "Serial number of the stove sold.", keys: ["stove_serial_no"] },
+  { name: "stove_image / agreement_image", description: "Uploaded stove and agreement images (id, url, public_id, type).", keys: ["stove_image_id", "agreement_image_id"] },
   { name: "organization", description: "Partner organization: id, partner_name, branch, state, email." },
-  { name: "partner_name", description: "Denormalized partner name at time of sale." },
+  { name: "partner_name", description: "Denormalized partner name at time of sale.", keys: ["partner_name"] },
   { name: "sales_agent / created_by_profile / updated_by_profile", description: "Profile of the agent/creator/last modifier (id, full_name, email, phone, role)." },
-  { name: "payment_model", description: "Payment model: id, name, duration_months, fixed_price." },
-  { name: "amount / total_paid / deposit / balance", description: "Sale amount, running total paid, initial deposit, and outstanding balance." },
+  { name: "payment_model", description: "Payment model: id, name, duration_months, fixed_price.", keys: ["payment_model_id", "installment_term"] },
+  { name: "amount / total_paid / deposit / balance", description: "Sale amount, running total paid, initial deposit, and outstanding balance.", keys: ["amount", "total_paid"] },
   { name: "payment_records", description: "All installment payment rows: id, amount, payment_date, payment_method, notes, recorded_by, created_at." },
-  { name: "payment_status / is_installment", description: "Payment status and whether the sale is on installments." },
+  { name: "payment_status / is_installment", description: "Payment status and whether the sale is on installments.", keys: ["is_installment"] },
   { name: "is_archived", description: "Archive flag." },
   { name: "is_cancelled / cancellation_reason / cancelled_by / cancelled_at", description: "Cancellation metadata (present for cancelled sales)." },
-  { name: "retailer_branch / pot_quantity / heat_retention_device", description: "Additional sale attributes captured on the form." },
-  { name: "previous_stove_type / previous_stove_other / meals_per_day / cooking_fuel_source / cooking_location", description: "End-user cooking profile captured on the sales form." },
+  { name: "retailer_branch / pot_quantity / heat_retention_device", description: "Additional sale attributes captured on the form.", keys: ["retailer_branch", "pot_quantity", "heat_retention_device"] },
+  { name: "previous_stove_type / previous_stove_other / meals_per_day / cooking_fuel_source / cooking_location", description: "End-user cooking profile captured on the sales form.", keys: ["previous_stove_type", "previous_stove_other", "meals_per_day", "cooking_fuel_source", "cooking_location"] },
 ];
+
+const FIELDS: FieldDef[] = FIELD_ROWS.map((row) => ({
+  name: row.name,
+  description: row.description,
+  label: row.keys?.map((key) => fieldLabel(key)).join(" / ") || undefined,
+  stoveDbName:
+    row.keys
+      ?.map((key) => fieldByKey(key)?.stoveDbName)
+      .filter(Boolean)
+      .join(" / ") || undefined,
+}));
 
 function maskKey(k: string): string {
   if (!k) return "";
@@ -778,6 +796,8 @@ const { data, pagination } = await res.json();`;
                   <thead>
                     <tr className="bg-[#4a5d0f] text-white">
                       <th className="text-left font-semibold py-2 px-2">Field</th>
+                      <th className="text-left font-semibold py-2 px-2">Label</th>
+                      <th className="text-left font-semibold py-2 px-2">Stove DB name</th>
                       <th className="text-left font-semibold py-2 px-2">Description</th>
                     </tr>
                   </thead>
@@ -785,6 +805,8 @@ const { data, pagination } = await res.json();`;
                     {FIELDS.map((f) => (
                       <tr key={f.name} className="border-b border-gray-100 align-top">
                         <td className="py-2 px-2 font-mono text-xs whitespace-nowrap">{f.name}</td>
+                        <td className="py-2 px-2 text-gray-700">{f.label || "-"}</td>
+                        <td className="py-2 px-2 text-gray-700">{f.stoveDbName || "-"}</td>
                         <td className="py-2 px-2 text-gray-600">{f.description}</td>
                       </tr>
                     ))}

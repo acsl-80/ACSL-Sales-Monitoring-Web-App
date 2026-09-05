@@ -9,12 +9,12 @@ import { plural } from "../../lib/plural";
  *
  * Opening a stove replaced the whole navigator with the form. Finishing one
  * receipt and starting the next meant: back to the consignment, find where you
- * were in a paginated table of forty stove IDs, click the next one, wait for it
+ * were in a paginated table of forty serial numbers, click the next one, wait for it
  * to load. Three actions and a page change between every two records, for a job
  * that is the same eleven fields over and over.
  *
  * A typist working from a stack of paper does not navigate. They pick up the
- * next sheet. So the whole consignment sits beside the form: every stove ID at
+ * next sheet. So the whole consignment sits beside the form: every serial number at
  * a glance, what has been done to each, and one click to switch. Nothing is
  * refetched when they switch, because the list was loaded once when the
  * consignment was opened and is handed down rather than asked for again.
@@ -22,7 +22,7 @@ import { plural } from "../../lib/plural";
  * WHY A SEARCH BOX ON A LIST OF FORTY
  *
  * Because the stack of paper is not in the system's order. The receipt in your
- * hand names a stove ID, and finding that row by eye in forty is slower than
+ * hand names a serial number, and finding that row by eye in forty is slower than
  * typing the last three digits of it. The filter matches anywhere in the ID for
  * exactly that reason - nobody reads out a serial from the front.
  *
@@ -250,11 +250,11 @@ export default function BenchRail({
           // First load only. After that the previous page stays on screen,
           // dimmed, so the input above never loses its mount or its focus.
           <li className="flex items-center justify-center gap-2 px-3 py-6 text-xs text-gray-500">
-            <Loader2 className="h-3.5 w-3.5 animate-spin" /> Loading stove IDs...
+            <Loader2 className="h-3.5 w-3.5 animate-spin" /> Loading serial numbers...
           </li>
         ) : shown.length === 0 ? (
           <li className="px-3 py-6 text-center text-xs text-gray-500">
-            {term ? `No stove ID here contains "${term}".` : "Nothing under that filter."}
+            {term ? `No serial number here contains "${term}".` : "Nothing under that filter."}
           </li>
         ) : (
           shown.map((s) => {

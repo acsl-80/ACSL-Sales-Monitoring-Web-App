@@ -29,7 +29,7 @@ export default function StoveRecordPage() {
   return (
     <DataCentreShell
       title="Stove Record"
-      description="Everything one stove ID anchors: the transfer, the sale, the calls and every edit."
+      description="Everything one serial number anchors: the transfer, the sale, the calls and every edit."
       breadcrumb="Stove Record"
       area="stove-records"
       feature={DATA_CENTER_FEATURES.RECORDS_VIEW}

@@ -180,7 +180,7 @@ test("the queue says it in one word, shows the corrected buyer, and marks a stov
   await expect.soft(rowB.getByText("not verified", { exact: true })).toHaveCount(0);
 
   // The stove ID another caller took, marked on the row and not only findable.
-  await page.getByRole("button", { name: "Stove ID unconfirmed", exact: true }).click();
+  await page.getByRole("button", { name: "Serial number unconfirmed", exact: true }).click();
   const rowC = page
     .getByRole("button", { name: /^Open call record for/ })
     .filter({ hasText: c.stove_serial_no })

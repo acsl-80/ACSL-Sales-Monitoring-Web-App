@@ -112,7 +112,7 @@ export default function StockList({ organizationId, ageBucket, state, label }) {
         </p>
         <ExportButton
           columns={[
-            { key: "stove_id", label: "Stove ID" },
+            { key: "stove_id", label: "Serial number" },
             { key: "partner_name", label: "Partner" },
             { key: "transaction_id", label: "Transfer reference" },
             { key: "state", label: "State" },
@@ -138,7 +138,7 @@ export default function StockList({ organizationId, ageBucket, state, label }) {
           <thead className="bg-(--dc-accent-soft)">
             <tr>
               <th scope="col" className="px-3 py-2 text-left text-xs font-semibold text-gray-700">
-                Stove ID
+                Serial number
               </th>
               <th scope="col" className="px-3 py-2 text-left text-xs font-semibold text-gray-700">
                 Partner

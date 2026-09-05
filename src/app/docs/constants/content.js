@@ -1,3 +1,8 @@
+import { fieldByKey } from "@/lib/saleDictionary";
+
+/** The Stove DB name for a sale field, or null when the field has none. */
+const stoveDbName = (key) => fieldByKey(key)?.stoveDbName ?? null;
+
 // Documentation Content Constants
 // This file contains reusable content blocks for the API documentation
 
@@ -250,11 +255,13 @@ export const RESPONSE_FORMATS = {
   mapping: [
     {
       format1: "serialNumber",
+      stoveDbName: stoveDbName("stove_serial_no"),
       format2: "stove_serial_no",
       description: "Stove serial number",
     },
     {
       format1: "salesDate",
+      stoveDbName: stoveDbName("sales_date"),
       format2: "sales_date",
       description: "Date of sale",
     },
@@ -265,16 +272,19 @@ export const RESPONSE_FORMATS = {
     },
     {
       format1: "state",
+      stoveDbName: stoveDbName("state_backup"),
       format2: "state_backup / addresses.state",
       description: "State information",
     },
     {
       format1: "district",
+      stoveDbName: stoveDbName("lga_backup"),
       format2: "lga_backup",
       description: "Local Government Area",
     },
     {
       format1: "address",
+      stoveDbName: stoveDbName("full_address"),
       format2: "addresses.full_address",
       description: "Complete address",
     },
@@ -290,36 +300,43 @@ export const RESPONSE_FORMATS = {
     },
     {
       format1: "phone",
+      stoveDbName: stoveDbName("phone"),
       format2: "phone / contact_phone",
       description: "Primary phone number",
     },
     {
       format1: "contactPerson",
+      stoveDbName: stoveDbName("contact_person"),
       format2: "contact_person",
       description: "Contact person name",
     },
     {
       format1: "otherContactPhone",
+      stoveDbName: stoveDbName("other_phone"),
       format2: "other_phone",
       description: "Alternative phone",
     },
     {
       format1: "salesPartner",
+      stoveDbName: stoveDbName("partner_name"),
       format2: "partner_name",
       description: "Partner/Field assistant",
     },
     {
       format1: "userName",
+      stoveDbName: stoveDbName("end_user_first_name"),
       format2: "end_user_name (first part)",
       description: "User first name",
     },
     {
       format1: "userSurname",
+      stoveDbName: stoveDbName("end_user_surname"),
       format2: "end_user_name (remaining)",
       description: "User surname",
     },
     {
       format1: "cpa",
+      stoveDbName: stoveDbName("terms_accepted"),
       format2: "null (to be defined)",
       description: "CPA field",
     },

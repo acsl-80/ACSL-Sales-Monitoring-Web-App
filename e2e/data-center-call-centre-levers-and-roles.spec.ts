@@ -119,8 +119,8 @@ test.describe("slice 7b: the levers ask first, and No does nothing", () => {
       await signIn(page, USERS.admin);
       await openQueue(page);
       const dialog = await openRecord(page, b.stove_serial_no);
-      await dialog.getByRole("button", { name: "Fix the stove ID" }).click();
-      await dialog.getByLabel("Confirmed stove ID").fill("PRV999999");
+      await dialog.getByRole("button", { name: "Fix the serial number" }).click();
+      await dialog.getByLabel("Confirmed serial number").fill("PRV999999");
       await dialog.getByRole("button", { name: "Move this record onto it" }).click();
 
       const ask = page.getByRole("alertdialog");

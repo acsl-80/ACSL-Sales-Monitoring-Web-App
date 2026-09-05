@@ -322,3 +322,13 @@ are below and explained in `decisions.md`.
 | D18 | Complete for a digitised paper receipt | The seven fields, with evidence satisfied by a drawn signature OR a commit through an import batch that asserted the paper agreement (`completeness_evidence_any_of`) | 2,151 receipts were imported with the paper agreement asserted and no drawn signature; the rule must count the work done |
 | D19 | Where the transfer's sales model lives | Additive nullable columns on `public.stove_transfer_history`, written by the sync that already receives the CSV's Order Sales Model. Host lane, on the owner's word | One fact, one home; a `data_center` side table would copy a fact the host receives |
 | D20 | Reps with no account | Routed to standing recipients and data managers, who fix on the rep's behalf; the record says so. Accounts are the owner's call | 17 of the 24 open send-backs belong to a rep with no profile row |
+
+## Programme, 2026-09-05: field alignment with the User Agreement
+
+The ask: the paper User Agreement is the naming standard; every field on it
+is captured on every surface; the Stove DB API speaks the same names; nothing
+already captured is dropped; history is managed while what comes next is
+structured properly; the phone app follows. The proposal of 2026-09-05 was
+accepted with three answers recorded as D27 to D29. Slices F1 to F5 in
+`TASKS.md` and `ROADMAP.md`; the phone app guide is handed to brain-codes.
+

@@ -4,6 +4,7 @@
     "target": "ES2022",
     "jsx": "react-jsx",
     "allowJs": true,
+    "resolveJsonModule": true,
     "checkJs": false,
     "module": "ESNext",
     "lib": ["ES2022", "DOM", "DOM.Iterable"],

@@ -96,7 +96,7 @@ test.describe("moving between receipts costs nothing", () => {
     await find.fill("ZZZZZZ");
     // The term goes to the server now, so the empty answer takes a round
     // trip - but the rail must stay mounted the whole way through it.
-    await expect(rail.getByText(/No stove ID here contains/)).toBeVisible({ timeout: 20_000 });
+    await expect(rail.getByText(/No serial number here contains/)).toBeVisible({ timeout: 20_000 });
 
     /*
      * The three things the old rail lost on every search, asserted in one
@@ -108,7 +108,7 @@ test.describe("moving between receipts costs nothing", () => {
     await expect(page.getByRole("button", { name: /Save draft/ })).toBeVisible();
 
     await find.fill("");
-    await expect(rail.getByText(/No stove ID here contains/)).toHaveCount(0, {
+    await expect(rail.getByText(/No serial number here contains/)).toHaveCount(0, {
       timeout: 20_000,
     });
   });

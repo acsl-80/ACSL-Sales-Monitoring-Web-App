@@ -17,6 +17,7 @@ import {
 import { useAuth } from "../../contexts/useAuth";
 import { formatDate as formatDateShared } from "@/app/utils/formatDate";
 import { formatCurrency as formatCurrencyShared } from "@/app/utils/formatCurrency";
+import { fieldLabel } from "@/lib/saleDictionary";
 
 // ── Primitives ────────────────────────────────────────────────────────────────
 const DetailItem = ({ label, value, highlight }) => (
@@ -680,17 +681,17 @@ function StoveDetail({ stove, sale, isSuperAdmin, isAcslAgent }) {
             <SectionCard title="Customer Details">
               <div className="grid grid-cols-2 gap-2">
                 <div className="col-span-2">
-                  <DetailItem label="Customer Name" value={sale?.end_user_name || stove.sold_to} />
+                  <DetailItem label={fieldLabel("end_user_name")} value={sale?.end_user_name || stove.sold_to} />
                 </div>
-                <DetailItem label="AKA" value={sale?.aka} />
-                <DetailItem label="Phone" value={sale?.phone} />
-                <DetailItem label="Other Phone" value={sale?.other_phone} />
-                <DetailItem label="Contact Person" value={sale?.contact_person} />
-                <DetailItem label="Contact Phone" value={sale?.contact_phone} />
+                <DetailItem label={fieldLabel("aka")} value={sale?.aka} />
+                <DetailItem label={fieldLabel("phone")} value={sale?.phone} />
+                <DetailItem label={fieldLabel("other_phone")} value={sale?.other_phone} />
+                <DetailItem label={fieldLabel("contact_person")} value={sale?.contact_person} />
+                <DetailItem label={fieldLabel("contact_phone")} value={sale?.contact_phone} />
                 {sale?.retailer_branch && (
                   <div className="col-span-2">
                     <DetailItem
-                      label="Retailer / Branch / Agency / CSO"
+                      label={fieldLabel("retailer_branch")}
                       value={sale.retailer_branch}
                     />
                   </div>
@@ -786,7 +787,7 @@ function StoveDetail({ stove, sale, isSuperAdmin, isAcslAgent }) {
             <SectionCard title="Stove Set">
               <div className="grid grid-cols-2 gap-2">
                 <DetailItem
-                  label="Pots Quantity"
+                  label={fieldLabel("pot_quantity")}
                   value={
                     sale.pot_quantity != null
                       ? `${sale.pot_quantity} pot${sale.pot_quantity !== 1 ? "s" : ""}`
@@ -794,7 +795,7 @@ function StoveDetail({ stove, sale, isSuperAdmin, isAcslAgent }) {
                   }
                 />
                 <DetailItem
-                  label="Wonderbox (Heat Retention)"
+                  label={fieldLabel("heat_retention_device")}
                   value={
                     sale.heat_retention_device != null
                       ? sale.heat_retention_device
@@ -807,10 +808,10 @@ function StoveDetail({ stove, sale, isSuperAdmin, isAcslAgent }) {
             </SectionCard>
             <SectionCard title="Cooking Habits">
               <div className="grid grid-cols-1 gap-2">
-                <DetailItem label="Previous Stove" value={previousStoveLabel} />
-                <DetailItem label="Meals Per Day" value={sale?.meals_per_day} />
-                <DetailItem label="Fuel Source" value={sale?.cooking_fuel_source} />
-                <DetailItem label="Cooking Location" value={sale?.cooking_location} />
+                <DetailItem label={fieldLabel("previous_stove_type")} value={previousStoveLabel} />
+                <DetailItem label={fieldLabel("meals_per_day")} value={sale?.meals_per_day} />
+                <DetailItem label={fieldLabel("cooking_fuel_source")} value={sale?.cooking_fuel_source} />
+                <DetailItem label={fieldLabel("cooking_location")} value={sale?.cooking_location} />
               </div>
             </SectionCard>
           </div>

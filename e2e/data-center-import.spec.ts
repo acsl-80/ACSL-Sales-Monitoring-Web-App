@@ -186,7 +186,7 @@ test.describe("import hardening", () => {
       ),
     );
 
-    await expect(page.getByText(/Nothing feeds .*Phone number/)).toBeVisible({
+    await expect(page.getByText(/Nothing feeds .*Telephone number/)).toBeVisible({
       timeout: 20_000,
     });
   });
@@ -201,11 +201,11 @@ test.describe("import hardening", () => {
     // span is aria-hidden, so an exact match on it never hits. The role is
     // spinbutton for the numeric fields and textbox for the rest.
     for (const [field, role] of [
-      ["Stove serial number", "textbox"],
+      ["Serial number", "textbox"],
       ["First name", "textbox"],
-      ["Phone number", "textbox"],
-      ["Sale date", "textbox"],
-      ["Amount", "spinbutton"],
+      ["Telephone number", "textbox"],
+      ["Sales date", "textbox"],
+      ["Total Amount (full stove price)", "spinbutton"],
       /*
        * State and LGA are comboboxes now, not free text.
        *

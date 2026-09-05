@@ -48,13 +48,13 @@ const PAGE_SIZES = [25, 50, 100];
 
 const EXPORT_COLUMNS = [
   { key: "batch_state", label: "Batch state" },
-  { key: "partner_name", label: "Partner" },
+  { key: "partner_name", label: "Sales partner" },
   { key: "agent_name", label: "Agent" },
   { key: "assigned_at", label: "Assigned" },
   { key: "position", label: "Position" },
-  { key: "stove_serial_no", label: "Stove serial" },
-  { key: "sales_date", label: "Sold" },
-  { key: "number_on_record", label: "Phone" },
+  { key: "stove_serial_no", label: "Serial number" },
+  { key: "sales_date", label: "Sales date" },
+  { key: "number_on_record", label: "Telephone number" },
   { key: "verification_outcome", label: "Verification" },
   { key: "call_outcome", label: "Call outcome" },
   { key: "attempt_count", label: "Calls made" },
@@ -406,7 +406,7 @@ export default function AssignmentLog({ canEdit = false }) {
           <table className="w-full min-w-[64rem] text-sm">
             <thead>
               <tr className="border-b-2 border-(--dc-accent)/20 bg-(--dc-accent-soft) text-xs font-semibold uppercase tracking-wide text-(--dc-accent-strong)">
-                {["Batch", "Agent", "Partner", "Assigned", "#", "Serial", "Outcome", "Attempts", "Last call", "By"].map(
+                {["Batch", "Agent", "Sales partner", "Assigned", "#", "Serial number", "Outcome", "Attempts", "Last call", "By"].map(
                   (h, i) => (
                     <th
                       key={h}

@@ -9,10 +9,10 @@ import { Loader2, ChevronDown, ChevronRight, Undo2, PhoneOff, ExternalLink } fro
 const dateOf = (iso) => (iso ? new Date(iso).toLocaleDateString() : "-");
 
 const ITEM_COLUMNS = [
-  { key: "partner_name", label: "Partner" },
-  { key: "stove_serial_no", label: "Stove serial" },
-  { key: "number_on_record", label: "Phone" },
-  { key: "sales_date", label: "Sold" },
+  { key: "partner_name", label: "Sales partner" },
+  { key: "stove_serial_no", label: "Serial number" },
+  { key: "number_on_record", label: "Telephone number" },
+  { key: "sales_date", label: "Sales date" },
   { key: "position", label: "Position in batch" },
   { key: "attempt_count", label: "Calls made" },
   { key: "call_outcome", label: "Last outcome" },
@@ -156,9 +156,9 @@ export default function AgentDetail({ agent, onChanged, onOpenRecord }) {
                   <thead>
                     <tr className="border-b-2 border-(--dc-accent)/25 text-left text-xs uppercase tracking-wide text-gray-600">
                       <th className="w-10 px-3 py-1.5 text-right font-semibold">#</th>
-                      <th className="px-3 py-1.5 font-semibold">Stove serial</th>
-                      <th className="px-3 py-1.5 font-semibold">Phone</th>
-                      <th className="px-3 py-1.5 font-semibold">Sold</th>
+                      <th className="px-3 py-1.5 font-semibold">Serial number</th>
+                      <th className="px-3 py-1.5 font-semibold">Telephone number</th>
+                      <th className="px-3 py-1.5 font-semibold">Sales date</th>
                       <th className="px-3 py-1.5 text-right font-semibold">Calls</th>
                       <th className="w-24 px-3 py-1.5" />
                     </tr>

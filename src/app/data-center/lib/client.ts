@@ -1129,7 +1129,12 @@ export type CorrectionsList = {
 export type SaleFieldSpec = {
   key: string;
   label: string;
-  group: "buyer" | "where" | "stove" | "money" | "sale" | "evidence";
+  /**
+   * A group key from the sale dictionary. Left open rather than spelled as a
+   * union: the dictionary is the list, and a group added there would otherwise
+   * make a truthful response fail to typecheck.
+   */
+  group: string;
   payload: string | null;
   required: boolean;
 };

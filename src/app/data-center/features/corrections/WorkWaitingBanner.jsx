@@ -45,7 +45,7 @@ function headline(w) {
   if (w.mineOpen > 0) return { title: `${plural(w.mineOpen, "record")} ${w.mineOpen === 1 ? "is" : "are"} waiting for you`, body: "Sent back by the call centre. Each opens straight on the record with the wrong item marked." };
   if ((w.review ?? 0) > 0) return { title: `${plural(w.review, "correction")} ${w.review === 1 ? "is" : "are"} waiting for your review`, body: "Sales fixed them; nothing rings again until you close each one." };
   if ((w.openAll ?? 0) > 0) return { title: `${plural(w.openAll, "record")} ${w.openAll === 1 ? "is" : "are"} with Sales`, body: "Sent back by the call centre and not yet fixed." };
-  if ((w.unconfirmed ?? 0) > 0) return { title: `${plural(w.unconfirmed, "stove ID")} ${w.unconfirmed === 1 ? "needs" : "need"} confirming`, body: "Another caller's rematch took the stove these records named; ring the buyer and confirm." };
+  if ((w.unconfirmed ?? 0) > 0) return { title: `${plural(w.unconfirmed, "serial number")} ${w.unconfirmed === 1 ? "needs" : "need"} confirming`, body: "Another caller's rematch took the stove these records named; ring the buyer and confirm." };
   if (w.mineFixed > 0) return { title: `${plural(w.mineFixed, "fix")} of yours ${w.mineFixed === 1 ? "awaits" : "await"} review`, body: "The call centre closes each one before ringing again." };
   return null;
 }
@@ -75,7 +75,7 @@ export default function WorkWaitingBanner() {
   const everyone = [];
   if (w.canReview && (w.review ?? 0) > 0) everyone.push({ href: "/data-center/corrections?tab=fixed", tone: personal.length === 0 ? "hot" : "cool", label: "Review now", count: w.review });
   if (w.seesEverything && (w.openAll ?? 0) > 0) everyone.push({ href: "/data-center/corrections?tab=open", tone: "cool", label: "Waiting on Sales, everyone", count: w.openAll });
-  if (w.canReview && (w.unconfirmed ?? 0) > 0) everyone.push({ href: "/data-center/call-centre?preset=unconfirmed", tone: "cool", label: "Stove IDs unconfirmed", count: w.unconfirmed });
+  if (w.canReview && (w.unconfirmed ?? 0) > 0) everyone.push({ href: "/data-center/call-centre?preset=unconfirmed", tone: "cool", label: "Serial numbers unconfirmed", count: w.unconfirmed });
 
   if (personal.length === 0 && everyone.length === 0) return null;
 

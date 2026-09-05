@@ -145,7 +145,7 @@ test.describe("the finder takes either of the two things written on paper", () =
       timeout: 20_000,
     });
 
-    await page.getByLabel("Stove ID or transfer reference").fill(serial);
+    await page.getByLabel("Serial number or transfer reference").fill(serial);
     await page.getByRole("button", { name: "Find it" }).click();
 
     await expect(page).toHaveURL(new RegExp(`/data-center/stove/${serial}`), {
@@ -158,11 +158,11 @@ test.describe("the finder takes either of the two things written on paper", () =
     const serial = await aSoldSerial(page);
 
     await page.goto("/data-center/stove-records");
-    await expect(page.getByLabel("Stove ID or transfer reference")).toBeVisible({
+    await expect(page.getByLabel("Serial number or transfer reference")).toBeVisible({
       timeout: 20_000,
     });
 
-    await page.getByLabel("Stove ID or transfer reference").fill(serial.slice(0, 5));
+    await page.getByLabel("Serial number or transfer reference").fill(serial.slice(0, 5));
     await page.getByRole("button", { name: "Find it" }).click();
 
     await expect(page.getByText(/\d+ stoves/)).toBeVisible({ timeout: 20_000 });
@@ -178,10 +178,10 @@ test.describe("the finder takes either of the two things written on paper", () =
       .transaction_id;
 
     await page.goto("/data-center");
-    await expect(page.getByLabel("Stove ID or transfer reference")).toBeVisible({
+    await expect(page.getByLabel("Serial number or transfer reference")).toBeVisible({
       timeout: 20_000,
     });
-    await page.getByLabel("Stove ID or transfer reference").fill(txn);
+    await page.getByLabel("Serial number or transfer reference").fill(txn);
     await page.getByRole("button", { name: "Find it" }).click();
 
     await expect(page.getByText(/\d+ consignments?/)).toBeVisible({ timeout: 20_000 });
@@ -193,11 +193,11 @@ test.describe("the finder takes either of the two things written on paper", () =
   }) => {
     await signIn(page, USERS.admin);
     await page.goto("/data-center");
-    await expect(page.getByLabel("Stove ID or transfer reference")).toBeVisible({
+    await expect(page.getByLabel("Serial number or transfer reference")).toBeVisible({
       timeout: 20_000,
     });
 
-    await page.getByLabel("Stove ID or transfer reference").fill("ZZZNOTHING");
+    await page.getByLabel("Serial number or transfer reference").fill("ZZZNOTHING");
     await page.getByRole("button", { name: "Find it" }).click();
 
     await expect(page.getByText(/Nothing matches/)).toBeVisible({ timeout: 20_000 });

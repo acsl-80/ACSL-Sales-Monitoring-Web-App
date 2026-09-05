@@ -417,3 +417,10 @@ verify_jwt = false
 
 [functions.get-end-user-api-key]
 verify_jwt = true
+
+# Reads the Authorization header itself and refuses anybody the token does not
+# resolve to a user, the same way get-end-user-api-key does. Declared for the
+# same reason: the platform check stays on, and the function is redeployed with
+# the rest of config.toml.
+[functions.sale-dictionary]
+verify_jwt = true

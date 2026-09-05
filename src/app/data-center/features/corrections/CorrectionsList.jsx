@@ -16,7 +16,7 @@ import {
  * which fields are disputed, who has it and how long it has waited, and the
  * action on the row is the one that moves the episode: Sales marks it fixed
  * and says what they did; the call centre closes it (ring again, or nothing
- * to ring) or sends it back again. The record itself opens from the stove ID,
+ * to ring) or sends it back again. The record itself opens from the serial number,
  * and from slice 2 from the workspace, where the sale is edited through the
  * sales app's own path.
  */
@@ -44,13 +44,13 @@ const OUTCOME_WORD = {
 
 const EXPORT_COLUMNS = [
   { key: "state", label: "State" },
-  { key: "partner_name", label: "Partner" },
+  { key: "partner_name", label: "Sales partner" },
   { key: "sales_rep", label: "Sales rep" },
   { key: "rep_account_name", label: "Rep account" },
-  { key: "stove_serial_no", label: "Stove ID" },
+  { key: "stove_serial_no", label: "Serial number" },
   { key: "transfer_reference", label: "Consignment" },
-  { key: "end_user_name", label: "Buyer" },
-  { key: "phone", label: "Phone" },
+  { key: "end_user_name", label: "Customer name" },
+  { key: "phone", label: "Telephone number" },
   { key: "reason_label", label: "Why it came back" },
   { key: "disputed_fields", label: "Disputed fields" },
   { key: "note", label: "Note" },
@@ -64,30 +64,38 @@ const EXPORT_COLUMNS = [
   { key: "review_outcome", label: "Outcome" },
 ];
 
+/*
+ * The disputed fields, named in the middle of a sentence.
+ *
+ * These are the sale dictionary's words in the lower case a run-on list
+ * needs, rather than `fieldLabel` calls: "phone, LGA and total paid to date"
+ * reads as a sentence, and a lower-casing helper would turn LGA into a typo.
+ * Any wording change here follows the dictionary.
+ */
 const FIELD_LABELS = {
-  end_user_name: "name",
-  aka: "aka",
-  phone: "phone",
-  other_phone: "other phone",
-  contact_person: "contact person",
+  end_user_name: "customer name",
+  aka: "also known as",
+  phone: "telephone number",
+  other_phone: "other telephone number",
+  contact_person: "buyer name",
   contact_phone: "contact phone",
   full_address: "address",
   state_backup: "state",
   lga_backup: "LGA",
-  stove_serial_no: "stove ID",
-  sales_date: "sale date",
-  amount: "amount",
-  total_paid: "amount received",
-  pot_quantity: "pots",
-  heat_retention_device: "heat retention device",
-  previous_stove_type: "previous stove",
-  previous_stove_other: "previous stove, other",
+  stove_serial_no: "serial number",
+  sales_date: "sales date",
+  amount: "total amount (full stove price)",
+  total_paid: "total paid to date",
+  pot_quantity: "pots quantity",
+  heat_retention_device: "wonderbox",
+  previous_stove_type: "baseline stove",
+  previous_stove_other: "baseline stove, other",
   meals_per_day: "meals per day",
-  cooking_fuel_source: "cooking fuel",
+  cooking_fuel_source: "fuel source",
   cooking_location: "cooking location",
   signature: "signature",
-  agreement_image_id: "agreement image",
-  stove_image_id: "stove image",
+  agreement_image_id: "agreement photo",
+  stove_image_id: "stove photo",
 };
 
 function ageOf(iso) {
@@ -397,9 +405,9 @@ export default function CorrectionsList({ initialTab = "open", initialMine = fal
             <table className="w-full text-sm">
               <thead>
                 <tr className="bg-(--dc-accent-soft) text-left text-xs uppercase tracking-wide text-(--dc-accent-strong)">
-                  <th className="px-3 py-2 font-semibold">Partner</th>
+                  <th className="px-3 py-2 font-semibold">Sales partner</th>
                   <th className="px-3 py-2 font-semibold">Sales rep</th>
-                  <th className="px-3 py-2 font-semibold">Stove ID</th>
+                  <th className="px-3 py-2 font-semibold">Serial number</th>
                   <th className="px-3 py-2 font-semibold">What is wrong</th>
                   <th className="px-3 py-2 font-semibold">Disputed</th>
                   <th className="px-3 py-2 font-semibold">Age</th>
@@ -434,7 +442,7 @@ export default function CorrectionsList({ initialTab = "open", initialMine = fal
                           href={`/data-center/stove/${encodeURIComponent(row.stove_serial_no ?? "")}`}
                           className="font-mono text-sm font-semibold text-(--dc-accent) underline decoration-(--dc-accent)/30 underline-offset-2 hover:decoration-(--dc-accent)"
                         >
-                          {row.stove_serial_no ?? "no stove ID"}
+                          {row.stove_serial_no ?? "no serial number"}
                         </Link>
                         <div className="text-xs text-gray-500">{row.end_user_name ?? "no name on the record"}</div>
                       </td>

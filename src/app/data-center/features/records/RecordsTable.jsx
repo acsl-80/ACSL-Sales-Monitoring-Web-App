@@ -7,6 +7,7 @@ import PeriodFilter from "../../components/PeriodFilter";
 import { usePeriod } from "../../lib/usePeriod";
 import { useVirtualRows } from "../../lib/useVirtualRows";
 import { useIsPhone } from "../../lib/useMediaQuery";
+import { fieldLabel } from "@/lib/saleDictionary";
 import { Loader2, AlertTriangle, X, Database, Filter } from "lucide-react";
 
 /**
@@ -27,20 +28,32 @@ const ROW_HEIGHT = 44;
 /** A phone renders one record as a stack. See PhoneRow below. */
 const ROW_HEIGHT_PHONE = 104;
 
+/*
+ * The headings, worded by the sale dictionary.
+ *
+ * Every column that names a field on the paper User Agreement takes its
+ * heading from `fieldLabel`, so this table calls a thing what the receipt in
+ * the reader's hand calls it. Four do not: the rep comes from the transfer,
+ * the model and the two statuses are the sales app's own, and none of them is
+ * on the agreement, so they keep the words they had.
+ *
+ * Two widths grew with their headings. A fixed-width heading that no longer
+ * fits does not wrap here, it runs under the column beside it.
+ */
 const COLUMNS = [
-  { key: "sales_date", label: "Sale Date", width: "104px" },
-  { key: "stove_serial_no", label: "Stove ID", width: "128px" },
-  { key: "end_user_name", label: "End User", width: "180px" },
-  { key: "primary_phone", label: "Phone", width: "124px" },
-  { key: "partner_name", label: "Partner", width: "160px" },
+  { key: "sales_date", label: fieldLabel("sales_date"), width: "104px" },
+  { key: "stove_serial_no", label: fieldLabel("stove_serial_no"), width: "136px" },
+  { key: "end_user_name", label: fieldLabel("end_user_name"), width: "180px" },
+  { key: "primary_phone", label: fieldLabel("phone"), width: "150px" },
+  { key: "partner_name", label: fieldLabel("partner_name"), width: "160px" },
   // Who sold it, from the parent transfer. NOT sale_agent_name, which is
   // created_by and therefore names whoever ran the import on every
   // digitised row. See records-query.ts REP_LATERAL.
   { key: "sales_rep", label: "Sales rep", width: "148px" },
-  { key: "user_state", label: "State", width: "104px" },
-  { key: "user_lga", label: "LGA", width: "128px" },
+  { key: "user_state", label: fieldLabel("state_backup"), width: "104px" },
+  { key: "user_lga", label: fieldLabel("lga_backup"), width: "128px" },
   { key: "sales_model", label: "Model", width: "128px" },
-  { key: "amount", label: "Amount", width: "104px", align: "right" },
+  { key: "amount", label: fieldLabel("amount"), width: "232px", align: "right" },
   { key: "payment_status", label: "Payment", width: "116px" },
   { key: "sale_status", label: "Status", width: "104px" },
 ];

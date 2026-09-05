@@ -3,6 +3,7 @@ import { SearchableSelect } from "@/components/ui/searchable-select";
 import { useRecordFacets } from "../../../lib/useRecordFacets";
 import { OUTCOME_WORDS } from "../../../lib/outcome";
 import Field from "../../../components/Field";
+import { fieldLabel } from "@/lib/saleDictionary";
 import { X } from "lucide-react";
 
 /**
@@ -58,7 +59,7 @@ export default function CallQueueFilters({ agents = null }) {
   return (
     <div className="border-b border-gray-100 bg-(--dc-accent-soft)/25 px-4 py-3">
       <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4">
-        <Field label="Partner">
+        <Field label={fieldLabel("partner_name")}>
           <SearchableSelect
             value={search.organizationId ?? ""}
             onChange={(next) => set("organizationId", next)}

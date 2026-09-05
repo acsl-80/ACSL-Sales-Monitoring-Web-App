@@ -13,6 +13,7 @@ import SaleForm, {
   problemsInFormOrder,
 } from "./SaleForm";
 import BenchRail from "./BenchRail";
+import { fieldLabel } from "@/lib/saleDictionary";
 import { plural } from "../../lib/plural";
 import {
   Loader2, ChevronRight, ArrowLeft, Search, Save, CheckCircle2,
@@ -229,10 +230,10 @@ function PartnerList({ onPick }) {
 }
 
 const STOVE_COLUMNS = [
-  { key: "stove_id", label: "Stove ID" },
+  { key: "stove_id", label: fieldLabel("stove_serial_no") },
   { key: "stock_status", label: "Stock status" },
-  { key: "end_user_name", label: "Buyer" },
-  { key: "phone", label: "Phone" },
+  { key: "end_user_name", label: fieldLabel("end_user_name") },
+  { key: "phone", label: fieldLabel("phone") },
   { key: "verification_outcome", label: "Verification" },
   { key: "agent_name", label: "Assigned to", get: (r) => r.agent_name ?? "unassigned" },
 ];
@@ -290,7 +291,7 @@ function StoveList({ stoves, error, onPick, label = "stoves", server = null }) {
   if (stoves === null) {
     return (
       <p className="flex items-center gap-2 text-sm text-gray-500">
-        <Loader2 className="h-4 w-4 animate-spin" /> Loading stove IDs...
+        <Loader2 className="h-4 w-4 animate-spin" /> Loading serial numbers...
       </p>
     );
   }
@@ -356,7 +357,7 @@ function StoveList({ stoves, error, onPick, label = "stoves", server = null }) {
             <table className="w-full min-w-[34rem] text-sm">
               <thead>
                 <tr className="bg-(--dc-accent-soft) text-left text-xs uppercase tracking-wide text-(--dc-accent-strong)">
-                  <th className="px-3 py-2 font-semibold">Stove ID</th>
+                  <th className="px-3 py-2 font-semibold">{fieldLabel("stove_serial_no")}</th>
                   {/*
                     Which consignment it came on, and when.
 
@@ -998,7 +999,7 @@ function Bench({ stoveId, onSaved, onBack, onNext, nextLabel, api = null }) {
       <div className="sticky top-0 z-10 rounded-lg border border-(--dc-accent)/20 bg-(--dc-accent-soft) p-3 shadow-sm">
         <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
           <div>
-            <p className="text-xs font-medium uppercase tracking-wide text-gray-600">Stove ID</p>
+            <p className="text-xs font-medium uppercase tracking-wide text-gray-600">{fieldLabel("stove_serial_no")}</p>
             <p className="mt-0.5 font-mono text-sm font-semibold text-gray-900">{stove.stoveId}</p>
           </div>
           <div>
@@ -1110,7 +1111,7 @@ function Bench({ stoveId, onSaved, onBack, onNext, nextLabel, api = null }) {
                 window.open(url, "_blank", "noopener");
               } catch {
                 setError("The agreement preview could not be built from this record yet.");
-                setHint("It needs at least a name, a date and the stove ID.");
+                setHint("It needs at least a name, a date and the serial number.");
               }
             }}
             className="inline-flex items-center gap-1.5 rounded-md border border-gray-300 px-3 py-1.5 text-sm font-medium text-gray-700 transition hover:bg-gray-50 disabled:opacity-40"
@@ -1247,8 +1248,8 @@ function PartnerSweep({
               type="search"
               value={term}
               onChange={(e) => onTerm(e.target.value)}
-              placeholder="Any part of the stove ID"
-              aria-label="Find a stove ID"
+              placeholder="Any part of the serial number"
+              aria-label="Find a serial number"
               className="w-full rounded-md border border-gray-300 py-1.5 pl-8 pr-2 text-sm focus:border-(--dc-accent) focus:outline-none"
             />
           </span>
@@ -1382,7 +1383,7 @@ export default function Workbench() {
   const [stoves, setStoves] = useState(null);
   const [stovesError, setStovesError] = useState(null);
   /**
-   * Stove IDs finished in this sitting.
+   * Serial numbers finished in this sitting.
    *
    * A bench finish does not create a sale - confirmation does - so the server
    * keeps counting a finished receipt as "still to type" until somebody
@@ -1634,7 +1635,7 @@ export default function Workbench() {
   ].filter(Boolean);
   const scopeShort = narrowedParts.length ? narrowedParts.join(" · ") : "all consignments";
 
-  /** Which stove IDs somebody has part-typed, for the rail's amber marks. */
+  /** Which serial numbers somebody has part-typed, for the rail's amber marks. */
   const draftSerials = useMemo(
     () =>
       [...(queue?.mine ?? []), ...(queue?.abandoned ?? [])]

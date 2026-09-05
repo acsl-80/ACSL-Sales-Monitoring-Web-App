@@ -12,6 +12,7 @@ import {
   ChevronUp, Wallet,
 } from "lucide-react";
 import { Section, Detail, Grid, Empty } from "./parts";
+import { fieldLabel } from "@/lib/saleDictionary";
 
 /**
  * One stove, everything that ever happened to it.
@@ -587,7 +588,7 @@ export default function StoveRecord({ stoveId }) {
         setError(
           err instanceof DataCenterError
             ? err.code === "not_found"
-              ? `There is no stove with the ID ${stoveId}. Check the serial against the label, or search for the part you are sure of.`
+              ? `There is no stove with the serial number ${stoveId}. Check the serial number against the label, or search for the part you are sure of.`
               : err.message
             : "Could not load that stove.",
         ),
@@ -726,7 +727,7 @@ export default function StoveRecord({ stoveId }) {
         <div className="flex flex-wrap items-start justify-between gap-3 p-4">
           <div className="min-w-0">
             <p className="text-xs font-medium uppercase tracking-wide text-gray-500">
-              Stove ID
+              {fieldLabel("stove_serial_no")}
             </p>
             <h1 className="font-mono text-2xl font-semibold tracking-tight text-gray-900">
               {s.stove_id}
@@ -791,7 +792,7 @@ export default function StoveRecord({ stoveId }) {
         note="The stove register, before anybody sold anything."
       >
         <Grid>
-          <Detail label="Stove ID" value={s.stove_id} />
+          <Detail label={fieldLabel("stove_serial_no")} value={s.stove_id} />
           <Detail label="Stock status" value={words(s.stock_status)} />
           <Detail label="Factory" value={s.factory} />
           <Detail label="Sales reference" value={s.sales_reference} />
@@ -925,17 +926,17 @@ export default function StoveRecord({ stoveId }) {
         ) : (
           <>
             <Grid>
-              <Detail label="Buyer" value={sale?.end_user_name ?? s.end_user_name} />
-              <Detail label="Also known as" value={sale?.aka ?? s.aka} />
+              <Detail label={fieldLabel("end_user_name")} value={sale?.end_user_name ?? s.end_user_name} />
+              <Detail label={fieldLabel("aka")} value={sale?.aka ?? s.aka} />
               <Detail
-                label="Phone"
+                label={fieldLabel("phone")}
                 value={sale?.phone ?? s.phone}
-                title="One stove to one phone number: this is the buyer's only link to this stove"
+                title="One stove to one telephone number: this is the buyer's only link to this stove"
               />
-              <Detail label="Other phone" value={sale?.other_phone ?? s.alternative_phone} />
-              <Detail label="Contact person" value={sale?.contact_person} />
-              <Detail label="Contact phone" value={sale?.contact_phone} />
-              <Detail label="Sold on" value={dateOf(sale?.sales_date ?? s.sales_date)} />
+              <Detail label={fieldLabel("other_phone")} value={sale?.other_phone ?? s.alternative_phone} />
+              <Detail label={fieldLabel("contact_person")} value={sale?.contact_person} />
+              <Detail label={fieldLabel("contact_phone")} value={sale?.contact_phone} />
+              <Detail label={fieldLabel("sales_date")} value={dateOf(sale?.sales_date ?? s.sales_date)} />
               {/*
                 Named for the system it belongs to. "Transfer reference" sits a
                 few rows above and this one is a different thing entirely - one
@@ -944,18 +945,18 @@ export default function StoveRecord({ stoveId }) {
                 quotes the wrong one down a phone.
               */}
               <Detail label="Sales app reference" value={sale?.transaction_id} />
-              <Detail label="State" value={sale?.state_backup ?? s.user_state} />
-              <Detail label="LGA" value={sale?.lga_backup ?? s.user_lga} />
+              <Detail label={fieldLabel("state_backup")} value={sale?.state_backup ?? s.user_state} />
+              <Detail label={fieldLabel("lga_backup")} value={sale?.lga_backup ?? s.user_lga} />
               <Detail
-                label="Address"
+                label={fieldLabel("full_address")}
                 value={sale?.full_address ?? s.user_residential_address}
               />
-              <Detail label="City" value={sale?.city} />
-              <Detail label="Amount" value={money(sale?.amount ?? s.amount)} />
-              <Detail label="Paid" value={money(sale?.total_paid ?? s.total_paid)} />
+              <Detail label={fieldLabel("city")} value={sale?.city} />
+              <Detail label={fieldLabel("amount")} value={money(sale?.amount ?? s.amount)} />
+              <Detail label={fieldLabel("total_paid")} value={money(sale?.total_paid ?? s.total_paid)} />
               <Detail label="Payment status" value={words(sale?.payment_status ?? s.payment_status)} />
               <Detail
-                label="Payment model"
+                label={fieldLabel("payment_model_id")}
                 value={
                   sale?.payment_model
                     ? sale.duration_months
@@ -979,7 +980,7 @@ export default function StoveRecord({ stoveId }) {
               */}
               <Detail label="Sold by" value={sale?.sold_on_behalf_of_name ?? s.sales_rep} />
               <Detail label="Recorded by" value={sale?.created_by_name ?? s.sale_agent_name} />
-              <Detail label="Retailer branch" value={sale?.retailer_branch} />
+              <Detail label={fieldLabel("retailer_branch")} value={sale?.retailer_branch} />
               <Detail label="Channel" value={sale?.platform ?? s.platform} />
               <Detail label="Sales app status" value={words(sale?.status ?? s.sale_status)} />
               <Detail
@@ -1032,7 +1033,7 @@ export default function StoveRecord({ stoveId }) {
                         </Link>
                       ) : (
                         <span className="font-mono font-medium text-red-900">
-                          {t.stove_serial_no ?? "an unknown serial"}
+                          {t.stove_serial_no ?? "an unknown serial number"}
                         </span>
                       )}
                       <span className="text-red-800">
@@ -1069,19 +1070,19 @@ export default function StoveRecord({ stoveId }) {
           note="The rest of the Sell Stove form, as it was filled in."
         >
           <Grid>
-            <Detail label="Pots" value={n(sale.pot_quantity)} />
-            <Detail label="Wonderbox" value={yesNo(sale.heat_retention_device)} />
+            <Detail label={fieldLabel("pot_quantity")} value={n(sale.pot_quantity)} />
+            <Detail label={fieldLabel("heat_retention_device")} value={yesNo(sale.heat_retention_device)} />
             <Detail
-              label="Previous stove"
+              label={fieldLabel("previous_stove_type")}
               value={
                 sale.previous_stove_type === "other"
                   ? (sale.previous_stove_other ?? "other")
                   : words(sale.previous_stove_type)
               }
             />
-            <Detail label="Meals a day" value={sale.meals_per_day} />
-            <Detail label="Cooking fuel" value={words(sale.cooking_fuel_source)} />
-            <Detail label="Cooks" value={words(sale.cooking_location)} />
+            <Detail label={fieldLabel("meals_per_day")} value={sale.meals_per_day} />
+            <Detail label={fieldLabel("cooking_fuel_source")} value={words(sale.cooking_fuel_source)} />
+            <Detail label={fieldLabel("cooking_location")} value={words(sale.cooking_location)} />
           </Grid>
           <Terms accepted={sale.terms_accepted} />
         </Section>
@@ -1095,9 +1096,9 @@ export default function StoveRecord({ stoveId }) {
           note="What was signed and photographed at the point of sale."
         >
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
-            <Proof label="Signature" src={sale.signature} alt="the buyer's signature" />
-            <Proof label="Stove photograph" src={sale.stove_image_url} alt="the stove" />
-            <Proof label="Signed agreement" src={sale.agreement_image_url} alt="the agreement" />
+            <Proof label={fieldLabel("signature")} src={sale.signature} alt="the buyer's signature" />
+            <Proof label={fieldLabel("stove_image_id")} src={sale.stove_image_url} alt="the stove" />
+            <Proof label={fieldLabel("agreement_image_id")} src={sale.agreement_image_url} alt="the agreement" />
           </div>
         </Section>
       )}
@@ -1143,12 +1144,12 @@ export default function StoveRecord({ stoveId }) {
                   above is left as written; these are what the module treats as true.
                 </p>
                 <div className="mt-2 grid grid-cols-2 gap-x-4 gap-y-2 sm:grid-cols-3 lg:grid-cols-4">
-                  <Detail label="Name" value={e.corrected_end_user_name} />
-                  <Detail label="Phone" value={e.corrected_phone} />
-                  <Detail label="Other phone" value={e.corrected_alt_phone} />
-                  <Detail label="Address" value={e.corrected_address} />
-                  <Detail label="State" value={e.corrected_state} />
-                  <Detail label="LGA" value={e.corrected_lga} />
+                  <Detail label={fieldLabel("end_user_name")} value={e.corrected_end_user_name} />
+                  <Detail label={fieldLabel("phone")} value={e.corrected_phone} />
+                  <Detail label={fieldLabel("other_phone")} value={e.corrected_alt_phone} />
+                  <Detail label={fieldLabel("full_address")} value={e.corrected_address} />
+                  <Detail label={fieldLabel("state_backup")} value={e.corrected_state} />
+                  <Detail label={fieldLabel("lga_backup")} value={e.corrected_lga} />
                 </div>
               </div>
             )}
@@ -1158,7 +1159,7 @@ export default function StoveRecord({ stoveId }) {
                 <Grid>
                   <Detail label="Ward" value={e.ward} />
                   <Detail label="Landmark" value={e.landmark} />
-                  <Detail label="Serial they read out" value={e.stated_serial} />
+                  <Detail label="Serial number they read out" value={e.stated_serial} />
                   <Detail label="Comments" value={e.other_comments} />
                 </Grid>
               </div>

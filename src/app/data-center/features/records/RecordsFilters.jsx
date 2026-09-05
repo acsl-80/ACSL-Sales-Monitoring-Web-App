@@ -1,6 +1,7 @@
 import { useMemo, useState } from "react";
 import Field from "../../components/Field";
 import { fieldWords } from "../../lib/completenessWords";
+import { fieldLabel } from "@/lib/saleDictionary";
 import { SearchableSelect } from "@/components/ui/searchable-select";
 import { Search, X, SlidersHorizontal, ArrowDownWideNarrow, ArrowUpWideNarrow } from "lucide-react";
 
@@ -145,7 +146,7 @@ export default function RecordsFilters({
             type="text"
             value={draft.search ?? ""}
             onChange={(e) => set("search", e.target.value)}
-            placeholder="Name, phone, stove ID or transaction ID"
+            placeholder="Name, phone, serial number or transaction ID"
             className="w-full rounded-md border border-gray-300 py-1.5 pl-8 pr-3 text-sm focus:border-(--dc-accent) focus:outline-none"
           />
         </div>
@@ -203,7 +204,7 @@ export default function RecordsFilters({
       {/* ----------------------------------------------------------- the panel */}
       {open && (
         <div className="grid grid-cols-1 gap-3 border-t border-gray-100 bg-(--dc-accent-soft)/25 px-4 py-3 sm:grid-cols-2 lg:grid-cols-4">
-          <Field label="Partner">
+          <Field label={fieldLabel("partner_name")}>
             <SearchableSelect
               value={draft.organizationId ?? ""}
               onChange={(next) => set("organizationId", next)}
@@ -271,7 +272,7 @@ export default function RecordsFilters({
             />
           </Field>
 
-          <Field label="Sales model">
+          <Field label={fieldLabel("payment_model_id")}>
             <SearchableSelect
               value={draft.salesModel ?? ""}
               onChange={(next) => set("salesModel", next)}

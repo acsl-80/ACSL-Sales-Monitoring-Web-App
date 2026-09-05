@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
+import { fieldLabel } from "@/lib/saleDictionary";
 import { TriangleAlert } from "lucide-react";
 import { SearchableSelect } from "@/components/ui/searchable-select";
 import { getGeoData } from "@/lib/geoDataService";
@@ -44,8 +45,8 @@ export default function StateLgaSelect({
   onLga,
   disabled = false,
   idPrefix = "geo",
-  stateLabel = "State",
-  lgaLabel = "Local government area",
+  stateLabel = fieldLabel("state_backup"),
+  lgaLabel = fieldLabel("lga_backup"),
   /** Rendered when a value is not in the reference list. */
   onNote = null,
 }) {

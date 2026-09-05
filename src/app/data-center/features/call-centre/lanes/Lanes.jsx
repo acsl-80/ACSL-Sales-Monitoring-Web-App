@@ -68,7 +68,7 @@ export function RecallsLane({ waiting, metrics }) {
       />
       <Lane
         count={waiting?.unconfirmed ?? 0}
-        title="Stove IDs unconfirmed"
+        title="Serial numbers unconfirmed"
         sub="another caller's rematch took the stove these records named"
         href="/data-center/call-centre?preset=unconfirmed"
         label="Show in queue"

@@ -23,7 +23,7 @@ import { dateOf as formatDate } from "../../lib/when";
  * per partner by the engine's own rule and a run of one partner's calls is one
  * conversation repeated rather than eight different ones.
  *
- * Ordering says what to do without being told. A stove ID somebody else took
+ * Ordering says what to do without being told. A serial number somebody else took
  * comes first - those buyers have a record naming a stove they have never
  * heard of. Then never called, then part-worked, then done. An agent reading
  * top to bottom is working in the right order.
@@ -34,14 +34,14 @@ const dateOf = (v) => formatDate(v, null);
 /** Where a record sits, and how urgent that makes it. */
 function standing(item) {
   if (item.serial_unconfirmed_at) {
-    return { rank: 0, label: "Stove ID unconfirmed", tone: "bg-red-100 text-red-800", icon: ShieldAlert };
+    return { rank: 0, label: "Serial number unconfirmed", tone: "bg-red-100 text-red-800", icon: ShieldAlert };
   }
   /*
    * A half-finished form outranks a stove nobody has touched.
    *
    * The buyer has already given their time once and answered some of it; the
    * quickest complete record on the list is the one that is already part
-   * done. It sits below an unconfirmed stove ID because that one is a record
+   * done. It sits below an unconfirmed serial number because that one is a record
    * naming a stove its owner has never heard of, which is wrong rather than
    * merely unfinished.
    */

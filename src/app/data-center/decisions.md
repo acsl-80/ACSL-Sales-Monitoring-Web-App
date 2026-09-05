@@ -185,3 +185,41 @@ the same statement, which was already true before this slice. The records
 filter still offers the word; retiring it, or giving that function a column of
 its own, is the sales app's call and is noted rather than done.
 
+## D27. CPA is the Terms and Conditions block (2026-09-05, his answer)
+
+The alignment document's "CPA" is the six consents the agreement carries,
+already stored on every sale as `terms_accepted` and shown on the web form,
+the workbench and the phone app. It is a naming and display job: the block is
+labelled "CPA (Terms and Conditions)" everywhere and the external API's empty
+`cpa` field carries the six consents. No new column.
+
+## D28. Sales model and installment term come from the payment models page and the transfer (2026-09-05, his answer)
+
+The models with their durations (Amina 12 months, Direct Community 6 and 8,
+and the rest) live on `/settings/payment-models` and that table populates the
+sales model dropdown on every surface; the term is shown from the model and
+never typed. The ERP transfer names a model per consignment, which D19 stores
+on the transfer and the workbench preselects. The document's list of terms
+(4, 8, 9, 12) is superseded by the models page, which is his data to edit.
+
+## D29. One dictionary, read by every surface; column names stay (2026-09-05, proposal accepted)
+
+The agreement's wording is the label of every sale field on every screen,
+sheet, export and API page, in the web app, the module and the phone app.
+One JSON dictionary under `supabase/functions/_shared/` is the source, read at
+build time by the web and served by a `sale-dictionary` endpoint for the phone
+app; its labels, options and mandatory-from dates move to a public rules table
+in F3 so wording changes without a release. Database column names do not
+change: renaming them would break the phone app, the ERP feed and every query
+for nothing a reader sees. "Mandatory" carries a date: a new record is refused
+without the field after it, a record dated before it is judged by the rule of
+its day, so the 2,340 historic sales are never made incomplete by a later
+rule. Two host-lane rules are lifted for this programme only and additively:
+columns may be added to `public.sales` (surname, first name, sales agent's
+name, two note columns) and `create-sale` and `update-sale` may learn the new
+payload keys. The external API keeps its current shapes and gains one with the
+Stove DB names; the parent database's analysts move at their own pace. Going
+forward is corrected first; history is managed, not rewritten, beyond the
+mapping of 51 free-text cooking answers and the rule-based name split, both
+marked as such.
+
