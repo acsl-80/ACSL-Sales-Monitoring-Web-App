@@ -128,7 +128,7 @@ test.describe("one stove ID anchors the whole module", () => {
     await signIn(page, USERS.admin);
     await page.goto("/data-center/stove/PRV999999");
 
-    await expect(page.getByText(/There is no stove with the ID PRV999999/)).toBeVisible({
+    await expect(page.getByText(/There is no stove with the serial number PRV999999/)).toBeVisible({
       timeout: 20_000,
     });
     await expect(page.getByRole("link", { name: "Search the register" })).toBeVisible();
