@@ -199,8 +199,9 @@ from _seed_rows r;
 -- The sales themselves.
 --
 -- `status` is computed here rather than by the trigger, which is disabled for
--- the load. The rule is copied from calculate_sale_status(): every required
--- field present, plus a signature, plus both images.
+-- the load. The rule is the form's, as calculate_sale_status() has it since
+-- slice 7b: every seeded row carries the required fields, so a row with a
+-- signature is completed and one without is pending. One row in four signs.
 insert into public.sales (
   id, transaction_id, stove_serial_no, sales_date,
   contact_person, contact_phone, end_user_name, aka,
@@ -230,7 +231,7 @@ select
   'Seed Partner ' || (1 + (r.n % 40)),
   'Branch ' || (1 + (r.n % 4)),
   (array[52000,56000,59000,62000,65000,58000])[1 + (r.n % 6)],
-  'data:image/png;base64,seed',
+  case when r.has_images then 'data:image/png;base64,seed' end,
   r.agent_id,
   r.agent_id,
   r.org_id,
@@ -238,7 +239,7 @@ select
   case when r.has_images then ('f5eed003-0000-4000-8000-' || lpad((2 + (r.n % 99) * 2)::text, 12, '0'))::uuid end,
   case when r.has_images then ('f5eed003-0000-4000-8000-' || lpad((1 + (r.n % 99) * 2)::text, 12, '0'))::uuid end,
   r.sales_date::timestamp + ((r.n % 86400) * interval '1 second'),
-  case when r.has_images then 'completed' else 'incomplete' end,
+  case when r.has_images then 'completed' else 'pending' end,
   r.is_installment,
   r.model_id,
   case

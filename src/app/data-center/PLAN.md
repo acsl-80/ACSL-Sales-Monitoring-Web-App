@@ -78,8 +78,9 @@ Recorded so this work does not quietly absorb them:
 - A parallel copy of sale records inside `data_center`.
 - Historical migration as a project. Import is an ongoing path, not a backfill.
 - Touching the ERP or `sales-mobile` in any way.
-- Fixing `calculate_sale_status()`. It is a real host-app defect, but repairing
-  it belongs to the sales app. This module works around it and flags it.
+- Changing the sales app's status rule again. Slice 7b (D1, D26) made
+  `calculate_sale_status()` the form's rule; anything further is the sales
+  app's decision, and this module keeps its own completeness definition.
 
 ## Stack
 

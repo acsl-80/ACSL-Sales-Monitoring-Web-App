@@ -146,8 +146,8 @@ names each part of the rule with the count of live sales missing it (undated,
 over every live sale, so the table it links to agrees by construction), linking
 to the records table narrowed by the new `missingField` filter, which the
 database validates against the rule (`data_center.missing_predicate`). The
-disagreement with the sales app is one sentence, and it reaches zero only with
-D1 (slice 7b).
+disagreement with the sales app is one sentence; D26 says what it counts once
+D1 has landed.
 
 ## D26. The sales app's status rule is its form's rule, and the module's disagreement metric compares like with like (2026-09-05, slice 7b)
 
@@ -175,4 +175,13 @@ as evidence and the app wanting a drawn signature, that count would read
 2,286 for ever and mean nothing. It now counts sales the app calls incomplete
 that the module calls complete: two rules disagreeing about whether a field is
 missing, which is the only disagreement worth a number.
+
+Two more things settled here. The recompute moves `updated_at` on every row
+whose status changes, because the external records API pages incremental
+syncs on `updated_at` and gates them on `completed`; without it the 54 newly
+completed sales would never reach the ERP. And `assigned` is a status nothing
+can reach: `assign-sale-to-agent` writes it and the trigger overwrites it in
+the same statement, which was already true before this slice. The records
+filter still offers the word; retiring it, or giving that function a column of
+its own, is the sales app's call and is noted rather than done.
 

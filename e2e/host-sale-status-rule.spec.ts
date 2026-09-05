@@ -55,24 +55,42 @@ async function writeSale(n: number, shape: Shape): Promise<string> {
   return row.status;
 }
 
+/**
+ * The four fixtures are written once, before every test, so a retried test
+ * (CI runs with one retry, in a fresh worker) still finds them, and so the
+ * metric test below does not depend on which test ran before it.
+ */
+const status: Record<number, string> = {};
+
 test.beforeAll(async () => {
   await branchSql(`delete from public.sales where transaction_id like '${TAG}-%'`);
+  status[1] = await writeSale(1, {});
+  status[2] = await writeSale(2, { signature: null });
+  status[3] = await writeSale(3, { lga: null });
+  // A scrawl too short to be a valid signature: the app calls this pending,
+  // the module (which asks only that the column be present) calls it complete.
+  status[4] = await writeSale(4, { signature: "scrawl" });
 });
 
 test.afterAll(async () => {
   await branchSql(`delete from public.sales where transaction_id like '${TAG}-%'`).catch(() => {});
+  await branchSql(`delete from public.addresses where full_address like '${TAG} %'`).catch(() => {});
 });
 
 test("every required field and a valid signature reads completed the moment it is written", async () => {
-  expect(await writeSale(1, {})).toBe("completed");
+  expect(status[1]).toBe("completed");
 });
 
 test("every required field and no signature reads pending, not incomplete", async () => {
-  expect(await writeSale(2, { signature: null })).toBe("pending");
+  expect(status[2]).toBe("pending");
 });
 
 test("a missing LGA reads incomplete, signature or not", async () => {
-  expect(await writeSale(3, { lga: null })).toBe("incomplete");
+  expect(status[3]).toBe("incomplete");
+});
+
+test("a signature too short to count reads pending", async () => {
+  expect(status[4]).toBe("pending");
 });
 
 test("one trigger computes the status, and the zero-argument function is gone", async () => {
@@ -109,7 +127,7 @@ test("the module's disagreement metric counts only sales the app calls incomplet
     `select count(*)::int as n from public.sales s
       where s.is_archived is not true and s.status = 'pending' and (${pred.sql})`,
   );
-  // The pending sale written above is complete by the module's rule and must
+  // Sale 4 above is pending to the app and complete to the module, and must
   // not count, or this assertion could pass with the old definition by luck.
   expect(Number(pendingComplete.n)).toBeGreaterThan(0);
   expect(reported).toBe(Number(oracle.n));

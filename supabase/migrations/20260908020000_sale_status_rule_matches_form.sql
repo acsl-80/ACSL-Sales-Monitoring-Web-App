@@ -79,11 +79,18 @@ drop function if exists public.calculate_sale_status();
 -- calling update_sale_status(), which calls the function above.
 
 -- ---------------------------------------------------------------------------
--- Recompute the column. Only rows whose status would change are written, so
--- the history trigger records a status change for exactly those, and nothing
--- else about any sale moves. The old trigger wrote a status that could not
--- have been right for any live sale, so every row it touched is one where the
--- stored word disagreed with the form.
+-- Recompute the column. Only rows whose status would change are written.
+--
+-- updated_at moves with them, on purpose. The external records API pages
+-- incremental syncs on updated_at and gates them on status = completed, so
+-- a sale that becomes completed here without a new updated_at would never
+-- reach the ERP until somebody edited it for another reason. Every consumer
+-- re-pulls the changed rows once, which is what a changed row deserves.
+--
+-- No history rows are written: create_sales_history returns early when the
+-- session carries no user, which a migration does not. The notice below is
+-- the record of what moved. The function is evaluated twice per candidate
+-- row; at a few thousand rows that is nothing, and this statement runs once.
 -- ---------------------------------------------------------------------------
 
 do $$
@@ -97,7 +104,7 @@ begin
     from (select coalesce(status, 'null') as status, count(*) as n from public.sales group by 1) c;
 
   update public.sales s
-     set status = public.calculate_sale_status(s)
+     set status = public.calculate_sale_status(s), updated_at = now()
    where s.status is distinct from public.calculate_sale_status(s);
   get diagnostics changed = row_count;
 

@@ -89,10 +89,12 @@ Data Center grant, it is wrong regardless of how convenient it is.
   metrics run both had an obvious check-then-act version, and both were raced
   in testing. `pg_try_advisory_lock` cannot be raced; reading a table to see
   whether something is already running can.
-- `sales.status` is not a trustworthy completeness signal: the form dropped the
-  photo and agreement requirements but `calculate_sale_status()` still demands
-  them, so 30 of 38 production rows read `incomplete`. Use the module's own
-  definition from `workflow_config`.
+- `sales.status` is the sales form's rule, not this module's. Since slice 7b
+  (2026-09-05) one trigger computes it from the form's required fields and a
+  valid signature: completed, pending, incomplete. It requires state, LGA and
+  an address line, which a digitised paper receipt often lacks. This module's
+  completeness comes from `workflow_config` (required fields plus evidence)
+  and answers a different question; never substitute one for the other.
 
 ## Modularity
 
