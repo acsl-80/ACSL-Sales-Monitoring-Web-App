@@ -93,7 +93,8 @@ function sample(f: Field, stamp: string, index = 0): unknown {
     case "image":
       return undefined;
     default:
-      return `${f.key}-${stamp}`;
+      // The address line carries the marker, so the cleanup finds the row.
+      return f.key === "full_address" ? `${MARKER} ${f.key}-${stamp}` : `${f.key}-${stamp}`;
   }
 }
 
@@ -122,7 +123,7 @@ test.afterAll(async () => {
       where sale_id in (select id from public.sales where transaction_id like '${MARKER}-%')`,
   ).catch(() => {});
   await branchSql(`delete from public.sales where transaction_id like '${MARKER}-%'`).catch(() => {});
-  await branchSql(`delete from public.addresses where full_address like '%${MARKER}%'`).catch(() => {});
+  await branchSql(`delete from public.addresses where full_address like '${MARKER} %'`).catch(() => {});
 });
 
 test("create-sale and update-sale accept every key the dictionary names", () => {
@@ -228,8 +229,16 @@ test("every correctable key sent to update-sale moves its column", async ({ page
 });
 
 test("the phone app names every key the rules require today", async () => {
-  expect(existsSync(join(MOBILE, "lib")), `the sales-mobile repo at ${MOBILE} (set SALES_MOBILE_DIR to point elsewhere)`).toBe(true);
-  const sources = dartFiles(join(MOBILE, "lib")).map((p) => readFileSync(p, "utf-8")).join("\n");
+  // Without the phone app's checkout there is nothing to judge. The skip
+  // names the path, so a run that meant to check the app sees it was not.
+  test.skip(!existsSync(join(MOBILE, "lib")), `no sales-mobile checkout at ${MOBILE}; set SALES_MOBILE_DIR to run this check`);
+  // Code only: comments stripped, test data left out. A key counts when it
+  // is a map key (`'key':`) or an index (`['key']`), the two ways a Dart
+  // payload names it; a word in a comment or a label does not.
+  const sources = dartFiles(join(MOBILE, "lib"))
+    .filter((p) => !/_test_data\.dart$|\.g\.dart$/.test(p))
+    .map((p) => readFileSync(p, "utf-8").replace(/\/\/[^\n]*/g, "").replace(/\/\*[\s\S]*?\*\//g, ""))
+    .join("\n");
   const rules = await branchSql<{ field_key: string; mandatory_from: string }>(
     `select field_key, mandatory_from::text as mandatory_from from public.sale_field_rules
       where 'sales_app' = any(applies_to) and mandatory_from is not null order by mandatory_from, field_key`,
@@ -237,7 +246,7 @@ test("the phone app names every key the rules require today", async () => {
   const today = new Date().toISOString().slice(0, 10);
   const byKey = new Map(LIVE.map((f) => [f.key, f]));
   const names = (f: Field) => (f.table === "addresses" ? ADDRESS_KEY[f.column] ?? f.column : f.payload!);
-  const mentions = (name: string) => sources.includes(`'${name}'`) || sources.includes(`"${name}"`);
+  const mentions = (name: string) => new RegExp(`(['"]${name}['"]\\s*:)|(\\[['"]${name}['"]\\])`).test(sources);
   const missingNow: string[] = [];
   const missingLater: string[] = [];
   for (const r of rules) {

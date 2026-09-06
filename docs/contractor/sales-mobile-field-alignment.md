@@ -63,7 +63,7 @@ Three things follow from it:
 | Agreement photo | (derived, not sent) | the upload id from the images endpoint | optional |
 | Stove photo | (derived, not sent) | the upload id from the images endpoint | optional |
 
-Not in the table and unchanged: `transactionId`, `organizationId`, `partnerName`, `isInstallment`, `paymentModelId`, `initialPaymentAmount`, `initialPaymentMethod`, `initialPaymentProofImageId`, `stoveImageId`, `agreementImageId`, `signature`.
+Sent as well, outside the agreement and unchanged: `transactionId`, `organizationId`, `stoveImageId`, `initialPaymentAmount`, `initialPaymentMethod`, `initialPaymentProofImageId`.
 
 ## What changes on the phone app, in order
 

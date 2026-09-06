@@ -52,10 +52,8 @@ Deno.serve(async (req) => {
     .from("sale_field_rules")
     .select("field_key, mandatory_from, updated_at");
   const rules = new Map<string, string | null>();
-  let rulesStamp = "";
   for (const r of (ruleRows ?? []) as { field_key: string; mandatory_from: string | null; updated_at: string }[]) {
     rules.set(r.field_key, r.mandatory_from);
-    if (r.updated_at > rulesStamp) rulesStamp = r.updated_at;
   }
   // The options of a field that names an optionList come from the registry
   // through public.sale_options(); the JSON's options are the seed and the
@@ -71,12 +69,21 @@ Deno.serve(async (req) => {
       return live.length ? { ...withDate, type: "select", options: live } : withDate;
     }),
   };
-  const etag = `"${SALE_DICTIONARY.version}+${rulesStamp || "seed"}"`;
-  if (req.headers.get("if-none-match") === etag) {
-    return new Response(null, { status: 304, headers: { ...corsHeaders, ETag: etag, Vary: "Authorization" } });
-  }
   // Revalidate every time, never serve from a cache: a browser that cached an
   // authenticated answer would otherwise hand it to a request with no token.
   // The ETag keeps a revalidation cheap (304).
-  return json(200, body, { ETag: etag, "Cache-Control": "private, no-cache", Vary: "Authorization" });
+  // The ETag is a digest of what is served, so a moved date, a retired option
+  // or a relabelled one all move it, and a cached copy is revalidated for
+  // every kind of change, not only the ones with a timestamp.
+  const text = JSON.stringify(body);
+  const digest = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(text));
+  const hex = Array.from(new Uint8Array(digest), (b) => b.toString(16).padStart(2, "0")).join("").slice(0, 24);
+  const etag = `"${SALE_DICTIONARY.version}+${hex}"`;
+  if (req.headers.get("if-none-match") === etag) {
+    return new Response(null, { status: 304, headers: { ...corsHeaders, ETag: etag, Vary: "Authorization" } });
+  }
+  return new Response(text, {
+    status: 200,
+    headers: { ...corsHeaders, "Content-Type": "application/json", ETag: etag, "Cache-Control": "private, no-cache", Vary: "Authorization" },
+  });
 });
