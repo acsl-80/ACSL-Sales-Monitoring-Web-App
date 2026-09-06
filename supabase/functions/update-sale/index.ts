@@ -4,7 +4,6 @@
 // organization_id). Sets updated_at / updated_by.
 
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
-import { resolveSaleStatus } from "../_shared/saleStatus.ts";
 import { resolveAssignedOrgIds } from "../_shared/resolveAssignedOrgIds.ts";
 
 function withCors(res: Response): Response {
@@ -191,13 +190,12 @@ Deno.serve(async (req) => {
     if (!endUserNameJoined) {
       return jsonError("End user name is required", 400);
     }
-    if (!contactPerson || !String(contactPerson).trim()) {
-      return jsonError("Contact person is required", 400);
-    }
+    // The contact pair is optional since A4: the customer is the contact
+    // when it is empty. A phone given is still a phone.
     if (!isValidNgPhone(phone)) {
       return jsonError(`End user phone: ${PHONE_FORMAT_MESSAGE}`, 400);
     }
-    if (!isValidNgPhone(contactPhone)) {
+    if (contactPhone && String(contactPhone).trim() && !isValidNgPhone(contactPhone)) {
       return jsonError(`Contact phone: ${PHONE_FORMAT_MESSAGE}`, 400);
     }
 
@@ -380,41 +378,14 @@ Deno.serve(async (req) => {
     // Recompute completeness from the merged before/after state. Without this a
     // sale saved as incomplete would stay incomplete forever, even once the
     // missing fields were supplied — see _shared/saleStatus.ts.
-    {
-      const merged = (col: string, incoming: unknown) =>
-        Object.prototype.hasOwnProperty.call(saleUpdate, col)
-          ? saleUpdate[col]
-          : incoming;
-      const currentAddress = Array.isArray(sale.address)
-        ? sale.address[0]
-        : sale.address;
-      saleUpdate.status = resolveSaleStatus({
-        // Immutable on this endpoint — always taken from the stored row.
-        transactionId: sale.transaction_id,
-        stoveSerialNo: sale.stove_serial_no,
-        partnerName: sale.partner_name,
-        salesDate: merged("sales_date", sale.sales_date),
-        amount: merged("amount", sale.amount),
-        contactPerson: merged("contact_person", sale.contact_person),
-        contactPhone: merged("contact_phone", sale.contact_phone),
-        endUserName: merged("end_user_name", sale.end_user_name),
-        phone: merged("phone", sale.phone),
-        stateBackup: merged("state_backup", sale.state_backup),
-        lgaBackup: merged("lga_backup", sale.lga_backup),
-        fullAddress:
-          addressData && sale.address_id
-            ? addressData.fullAddress
-            : currentAddress?.full_address,
-        signature: merged("signature", sale.signature),
-      });
-      console.log("📋 Sale status recomputed:", saleUpdate.status);
-    }
+    // The status is the trigger's to set on this update: update_sale_status()
+    // applies public.calculate_sale_status, which reads public.sale_field_rules.
 
     const { data: updated, error: updErr } = await supabase
       .from("sales")
       .update(saleUpdate)
       .eq("id", saleId)
-      .select("id")
+      .select("id, status")
       .maybeSingle();
 
     if (updErr || !updated) {
@@ -424,7 +395,7 @@ Deno.serve(async (req) => {
 
     return withCors(
       new Response(
-        JSON.stringify({ success: true, message: "Sale updated", data: { id: saleId } }),
+        JSON.stringify({ success: true, message: "Sale updated", status: (updated as { status?: string }).status ?? null, data: { id: saleId } }),
         { status: 200 }
       )
     );

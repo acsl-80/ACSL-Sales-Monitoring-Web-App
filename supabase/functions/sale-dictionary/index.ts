@@ -45,12 +45,29 @@ Deno.serve(async (req) => {
   const { data, error } = await userClient.auth.getUser(token);
   if (error || !data?.user) return json(401, { success: false, error: "Unauthorized" });
 
-  const etag = `"${SALE_DICTIONARY.version}"`;
+  // The dates come from public.sale_field_rules, which a signed-in user may
+  // read (RLS). The JSON's mandatoryFrom is the seed; the table is the truth.
+  const { data: ruleRows } = await userClient
+    .from("sale_field_rules")
+    .select("field_key, mandatory_from, updated_at");
+  const rules = new Map<string, string>();
+  let rulesStamp = "";
+  for (const r of (ruleRows ?? []) as { field_key: string; mandatory_from: string; updated_at: string }[]) {
+    rules.set(r.field_key, r.mandatory_from);
+    if (r.updated_at > rulesStamp) rulesStamp = r.updated_at;
+  }
+  const body = {
+    ...SALE_DICTIONARY,
+    fields: SALE_DICTIONARY.fields.map((f) =>
+      rules.has(f.key) ? { ...f, mandatoryFrom: rules.get(f.key) ?? f.mandatoryFrom } : f,
+    ),
+  };
+  const etag = `"${SALE_DICTIONARY.version}+${rulesStamp || "seed"}"`;
   if (req.headers.get("if-none-match") === etag) {
     return new Response(null, { status: 304, headers: { ...corsHeaders, ETag: etag, Vary: "Authorization" } });
   }
   // Revalidate every time, never serve from a cache: a browser that cached an
   // authenticated answer would otherwise hand it to a request with no token.
   // The ETag keeps a revalidation cheap (304).
-  return json(200, SALE_DICTIONARY, { ETag: etag, "Cache-Control": "private, no-cache", Vary: "Authorization" });
+  return json(200, body, { ETag: etag, "Cache-Control": "private, no-cache", Vary: "Authorization" });
 });

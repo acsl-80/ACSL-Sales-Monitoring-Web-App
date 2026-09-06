@@ -1,6 +1,5 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { resolveAssignedOrgIds } from "../_shared/resolveAssignedOrgIds.ts";
-import { resolveSaleStatus } from "../_shared/saleStatus.ts";
 
 function withCors(res: Response): Response {
   res.headers.set("Access-Control-Allow-Origin", "*");
@@ -225,8 +224,6 @@ Deno.serve(async (req) => {
     const requiredFieldChecks: Array<[unknown, string]> = [
       [transactionId, "Transaction ID is required"],
       [salesDate, "Sales date is required"],
-      [contactPerson, "Contact person is required"],
-      [contactPhone, "Contact phone is required"],
       [endUserNameJoined, "End user name is required"],
       [phone, "Phone number is required"],
       [partnerName, "Partner name is required"],
@@ -572,30 +569,10 @@ Deno.serve(async (req) => {
     }
     console.log("🏡 Address inserted:", address.id);
 
-    // ── Determine sale status ─────────────────────────────────────────────────
-    // Mirrors `validateSalesForm` on the web form — see _shared/saleStatus.ts.
-    // Stove and agreement images are optional on the form, so neither affects
-    // whether a sale counts as completed.
-    const saleStatus = resolveSaleStatus({
-      transactionId,
-      stoveSerialNo,
-      salesDate,
-      contactPerson,
-      contactPhone,
-      endUserName: endUserNameJoined,
-      phone,
-      partnerName,
-      amount: saleAmount, // the final amount being saved
-      stateBackup,
-      lgaBackup,
-      fullAddress: addressData?.fullAddress,
-      signature,
-    });
-
-    console.log("📋 Sale status evaluation:", { saleStatus });
-
     // ── Insert sale ───────────────────────────────────────────────────────────
-    console.log("📝 Inserting main sale with status:", saleStatus);
+    // The status is the trigger's to set: update_sale_status() applies
+    // public.calculate_sale_status, which reads public.sale_field_rules.
+    console.log("📝 Inserting main sale");
     const { data: saleInsertData, error: saleError } = await supabase
       .from("sales")
       .insert([
@@ -626,7 +603,6 @@ Deno.serve(async (req) => {
           retailer_branch: retailerBranch || null,
           amount: saleAmount,
           signature,
-          status: saleStatus,
           created_by: userId,
           organization_id: organizationId,
           address_id: address.id,
@@ -650,7 +626,7 @@ Deno.serve(async (req) => {
           terms_accepted: termsAccepted ?? null,
         },
       ])
-      .select("id")
+      .select("id, status")
       .maybeSingle();
 
     if (saleError || !saleInsertData?.id) {
@@ -659,6 +635,8 @@ Deno.serve(async (req) => {
     }
 
     const saleId = saleInsertData.id;
+    // The verdict the trigger wrote, returned to the caller as before.
+    const saleStatus = (saleInsertData as { status?: string }).status ?? "incomplete";
     console.log("✅ Sale inserted:", saleId);
 
     // ── Claim the stove ───────────────────────────────────────────────────────

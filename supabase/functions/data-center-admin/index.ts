@@ -16,6 +16,7 @@ import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.39.3";
 import { withConnection, withReadConnection } from "../_shared/data-center-db.ts";
 import { ROLE_FEATURES, featuresFor } from "../_shared/data-center-roles.ts";
+import { fieldByKey } from "../_shared/sale-dictionary.ts";
 
 const DEFAULT_ORIGINS = [
   "https://sales.atmosfair.com.ng",
@@ -894,6 +895,75 @@ serve(async (req) => {
             await conn.queryObject("rollback");
             throw err;
           }
+        }
+
+        /**
+         * The dated rules (slice F3a): which sale field is mandatory from
+         * which day. One table in public, read by the sales app's status
+         * rule, the module's completeness rule, the dictionary endpoint and
+         * the forms. Anyone who may open Settings may read it; changing a
+         * date is the registry permission, like rewriting a question.
+         */
+        case "field_rules_list": {
+          const r = await conn.queryObject<Record<string, unknown>>({
+            text: `select field_key, table_name, column_name, mandatory_from::text as mandatory_from,
+                          applies_to, note, updated_at::text as updated_at, updated_by::text as updated_by
+                     from public.sale_field_rules
+                    order by mandatory_from, field_key`,
+          });
+          return json({ data: { rules: r.rows } }, 200, cors);
+        }
+
+        case "field_rule_set": {
+          const denied = requireRegistry();
+          if (denied) return denied;
+          const rule = (body.rule ?? {}) as {
+            fieldKey?: unknown; mandatoryFrom?: unknown; appliesTo?: unknown; note?: unknown;
+          };
+          const fieldKey = String(rule.fieldKey ?? "").trim();
+          const field = fieldByKey(fieldKey);
+          if (!field) {
+            return json({ error: `No such field in the dictionary: ${fieldKey}`, code: "bad_input" }, 400, cors);
+          }
+          if (field.table !== "sales" && field.table !== "addresses") {
+            return json({ error: `${fieldKey} is not a column of the sale or its address, so it cannot carry a rule`, code: "bad_input" }, 400, cors);
+          }
+          const mandatoryFrom = rule.mandatoryFrom === null ? null : String(rule.mandatoryFrom ?? "").trim();
+          if (mandatoryFrom !== null && !/^\d{4}-\d{2}-\d{2}$/.test(mandatoryFrom)) {
+            return json(
+              { error: "mandatoryFrom is a day, YYYY-MM-DD, or null to lift the rule", code: "bad_input" },
+              400,
+              cors,
+            );
+          }
+          const appliesTo = Array.isArray(rule.appliesTo) ? rule.appliesTo.map(String) : null;
+          if (appliesTo && (appliesTo.length === 0 || appliesTo.some((a) => a !== "sales_app" && a !== "data_center"))) {
+            return json({ error: "appliesTo holds sales_app, data_center, or both", code: "bad_input" }, 400, cors);
+          }
+          const note = rule.note === undefined || rule.note === null ? null : String(rule.note);
+          const saved = await withActor(conn, callerId, async () => {
+            if (mandatoryFrom === null) {
+              const d = await conn.queryObject<{ field_key: string }>({
+                text: `delete from public.sale_field_rules where field_key = $1 returning field_key`,
+                args: [fieldKey],
+              });
+              return { field_key: fieldKey, mandatory_from: null, lifted: d.rows.length > 0 };
+            }
+            const r = await conn.queryObject<{ field_key: string; mandatory_from: string }>({
+              text: `insert into public.sale_field_rules
+                       (field_key, table_name, column_name, mandatory_from, applies_to, note, updated_by)
+                     values ($1, $2, $3, $4::date, coalesce($5::text[], array['sales_app', 'data_center']), $6, $7::uuid)
+                     on conflict (field_key) do update
+                        set mandatory_from = excluded.mandatory_from,
+                            applies_to = coalesce($5::text[], public.sale_field_rules.applies_to),
+                            note = coalesce($6, public.sale_field_rules.note),
+                            updated_by = excluded.updated_by
+                     returning field_key, mandatory_from::text as mandatory_from`,
+              args: [fieldKey, field.table, field.column, mandatoryFrom, appliesTo, note, callerId],
+            });
+            return r.rows[0];
+          });
+          return json({ data: saved }, 200, cors);
         }
 
         case "config_read": {
