@@ -6,6 +6,8 @@ import { buildQuery, computeScopeSets } from "./build-query.ts";
 import { fetchRelatedData } from "./fetch-related.ts";
 import { convertToCSV, prepareExportData } from "./export.ts";
 import { transformResponse } from "./format-transformer.ts";
+import { isStoveDbFormat } from "../_shared/stove-db-shape.ts";
+import { loadSaleOptions } from "../_shared/sale-options.ts";
 
 Deno.serve(async (req) => {
   console.log("🚀 Sales API started");
@@ -219,7 +221,9 @@ async function executeMainLogic(req: Request) {
 
     // Transform data based on requested format
     console.log(`🔄 Applying response format: ${filters.responseFormat || 'format1 (default)'}`);
-    const transformedData = transformResponse(sales || [], filters.responseFormat || 'format1');
+    const wantsStoveDb = isStoveDbFormat(filters.responseFormat);
+    const optionLists = wantsStoveDb ? await loadSaleOptions(adminSupabase) : null;
+    const transformedData = transformResponse(sales || [], filters.responseFormat || 'format1', optionLists);
     console.log(`✅ Data transformed to ${filters.responseFormat || 'format1'}: ${transformedData.length} records`);
 
     // Prepare response
@@ -229,7 +233,7 @@ async function executeMainLogic(req: Request) {
     const response = {
       success: true,
       data: transformedData,
-      responseFormat: filters.responseFormat || 'format1',
+      responseFormat: wantsStoveDb ? 'stove_db' : filters.responseFormat || 'format1',
       pagination: {
         page: filters.page || 1,
         limit,

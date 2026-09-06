@@ -32,17 +32,7 @@ import {
   AUTH_REQUIREMENTS,
   ERROR_RESPONSES,
 } from "../constants/apiEndpoints";
-import {
-  DOC_METADATA,
-  INTRO_CONTENT,
-  COMMON_SECTIONS,
-  ROLE_DESCRIPTIONS,
-  CODE_EXAMPLES,
-  BEST_PRACTICES,
-  TROUBLESHOOTING,
-  FOOTER_CONTENT,
-  RESPONSE_FORMATS,
-} from "../constants/content";
+import { DOC_METADATA, INTRO_CONTENT, COMMON_SECTIONS, ROLE_DESCRIPTIONS, CODE_EXAMPLES, BEST_PRACTICES, TROUBLESHOOTING, FOOTER_CONTENT, RESPONSE_FORMATS, STOVE_DB_FIELDS } from "../constants/content";
 
 const SuperAdminDocumentation = () => {
   const [copiedEndpoint, setCopiedEndpoint] = useState(null);
@@ -400,6 +390,46 @@ const SuperAdminDocumentation = () => {
                         2
                       )}
                     </pre>
+                  </div>
+
+                  <div className="border-t pt-6">
+                    <h3 className="text-xl font-semibold mb-4">
+                      {RESPONSE_FORMATS.formats.format3.title}
+                    </h3>
+                    <p className="text-muted-foreground mb-4">
+                      {RESPONSE_FORMATS.formats.format3.description}
+                    </p>
+                    <p className="text-sm text-purple-600 mb-4">
+                      <strong>Usage:</strong>{" "}
+                      {RESPONSE_FORMATS.formats.format3.usage}
+                    </p>
+                    <h4 className="font-semibold mb-2">Example Response:</h4>
+                    <pre className="bg-muted p-4 rounded text-xs overflow-x-auto">
+                      {JSON.stringify(RESPONSE_FORMATS.formats.format3.example, null, 2)}
+                    </pre>
+                    <h4 className="font-semibold mb-2 mt-4">The fields, from the dictionary</h4>
+                    <div className="overflow-x-auto">
+                      <table className="min-w-full border border-gray-200">
+                        <thead className="bg-gray-50">
+                          <tr>
+                            <th className="border border-gray-200 px-4 py-2 text-left">Stove DB name</th>
+                            <th className="border border-gray-200 px-4 py-2 text-left">Agreement wording</th>
+                            <th className="border border-gray-200 px-4 py-2 text-left">From</th>
+                            <th className="border border-gray-200 px-4 py-2 text-left">Carries</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {STOVE_DB_FIELDS.map((f) => (
+                            <tr key={f.name}>
+                              <td className="border border-gray-200 px-4 py-2 font-mono text-sm text-green-800">{f.name}</td>
+                              <td className="border border-gray-200 px-4 py-2 text-sm">{f.label}</td>
+                              <td className="border border-gray-200 px-4 py-2 font-mono text-xs text-blue-700">{f.from}</td>
+                              <td className="border border-gray-200 px-4 py-2 text-sm">{f.kind}</td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
                   </div>
 
                   <div className="border-t pt-6">

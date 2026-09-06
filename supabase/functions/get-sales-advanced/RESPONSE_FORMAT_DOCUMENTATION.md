@@ -179,3 +179,9 @@ curl -X POST "your-endpoint/get-sales-advanced" \
 3. Address fallback logic ensures best available address information
 4. All filtering, pagination, and other features work with both formats
 5. Export functionality maintains compatibility with both formats
+
+## Format 3 (stove_db, the Stove DB shape)
+
+Ask for it with `responseFormat=stove_db` (also `format3` or `3`). One object per sale whose keys are the parent Stove DB's own field names, word for word, as the field dictionary (`supabase/functions/_shared/sale-dictionary.json`, `stoveDbName`) records them: Sales date, Serial number, User surname, User firstname, Contact person, Address, LGA, State, Phone, Other contact phone, Sales agent, Sales partner, Sales branch, Number of Pots, Wonderbox, Baseline stove, Fuel source, CPA.
+
+Values come from the columns the record holds: the name in its two columns (never a guess), the sales agent as written on the agreement, the address line through the address row, the three choices as the words the agreement uses (the registry's labels), CPA as the six consents. The same shape is served by `end-user-records-api` with `format=stove_db`. Format 1 and Format 2 stay as they were, except that Format 1's `userName` and `userSurname` come from the two name columns and `cpa` carries the six consents.

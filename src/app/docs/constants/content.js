@@ -1,4 +1,4 @@
-import { fieldByKey } from "@/lib/saleDictionary";
+import { fieldByKey, LIVE_FIELDS, fieldLabel } from "@/lib/saleDictionary";
 
 /** The Stove DB name for a sale field, or null when the field has none. */
 const stoveDbName = (key) => fieldByKey(key)?.stoveDbName ?? null;
@@ -173,6 +173,40 @@ export const ROLE_DESCRIPTIONS = {
   },
 };
 
+/** The fields the Stove DB shape carries: every dictionary field with a Stove DB name, in order. */
+export const STOVE_DB_FIELDS = LIVE_FIELDS.filter((f) => Boolean(f.stoveDbName)).map((f) => ({
+  name: f.stoveDbName,
+  label: fieldLabel(f.key),
+  from: f.table === "sales" ? f.column : `${f.table}.${f.column}`,
+  kind:
+    f.key === "terms_accepted"
+      ? "the six consents as an object"
+      : ["previous_stove_type", "cooking_fuel_source", "cooking_location"].includes(f.key)
+        ? "the choice's label"
+        : f.type,
+}));
+
+const STOVE_DB_SAMPLE = {
+  "Sales date": "2026-06-01",
+  "Serial number": "SN123456",
+  "User surname": "Okoro",
+  "User firstname": "Mary Jane",
+  "Contact person": "Mary Jane Okoro",
+  Address: "12 Market Road, Lokoja",
+  LGA: "Lokoja",
+  State: "Kogi",
+  Phone: "08012345678",
+  "Other contact phone": "08098765432",
+  "Sales agent": "Bala Sani",
+  "Sales partner": "Twin Name Partner",
+  "Sales branch": "Lokoja branch",
+  "Number of Pots": 2,
+  Wonderbox: true,
+  "Baseline stove": "Charcoal",
+  "Fuel source": "Purchase it",
+  CPA: { poaGoverned: true, monitoring: true, noResell: true, emissionReductions: true, noExport: true, demonstration: true },
+};
+
 export const RESPONSE_FORMATS = {
   title: "API Response Formats",
   description:
@@ -249,6 +283,17 @@ export const RESPONSE_FORMATS = {
           offset: 0,
           hasMore: false,
         },
+      },
+    },
+    format3: {
+      title: "stove_db, the Stove DB shape",
+      description:
+        "The parent Stove DB's own field names, word for word, from the field dictionary. The name travels in its two columns, choices as the words the agreement uses, CPA as the six consents. Ask for it with responseFormat=stove_db on get-sales-advanced, or format=stove_db on end-user-records-api.",
+      usage: "The Stove DB's analysts; the two older shapes stay until they move",
+      example: {
+        success: true,
+        responseFormat: "stove_db",
+        data: [Object.fromEntries(STOVE_DB_FIELDS.map((f) => [f.name, STOVE_DB_SAMPLE[f.name] ?? null]))],
       },
     },
   },

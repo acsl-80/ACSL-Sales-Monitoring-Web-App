@@ -3,6 +3,8 @@
 // END_USER_RECORDS_API_KEY edge function secret. Reads via service role.
 
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { isStoveDbFormat, toStoveDbRows } from "../_shared/stove-db-shape.ts";
+import { loadSaleOptions } from "../_shared/sale-options.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -54,6 +56,8 @@ interface Params {
   status?: string[];
   search?: string;
   include_cancelled: boolean;
+  /** `stove_db` for the Stove DB shape (slice F4); anything else is this door's own shape. */
+  format?: string;
 }
 
 const VALID_STATUSES = ["completed", "pending", "incomplete"];
@@ -95,6 +99,7 @@ async function parseParams(req: Request): Promise<Params> {
     status: statusList.length > 0 ? statusList : undefined,
     search: get("search"),
     include_cancelled,
+    format: get("format") || get("responseFormat"),
   };
 }
 
@@ -105,6 +110,9 @@ const SELECT = `
   created_at,
   updated_at,
   end_user_name,
+  end_user_first_name,
+  end_user_surname,
+  selling_agent_name,
   contact_person,
   phone,
   contact_phone,
@@ -128,6 +136,8 @@ const SELECT = `
   meals_per_day,
   cooking_fuel_source,
   cooking_location,
+  cooking_fuel_source_note,
+  cooking_location_note,
   organization_id,
   created_by,
   updated_by,
@@ -326,15 +336,20 @@ Deno.serve(async (req) => {
       r.is_ready_to_sync = r.status === "completed" && !r.is_cancelled;
     }
 
+    // The Stove DB shape on request (slice F4); this door's own shape otherwise.
+    const wantsStoveDb = isStoveDbFormat(params.format);
+    const shaped = wantsStoveDb ? toStoveDbRows(rows, await loadSaleOptions(admin)) : rows;
+
     return json(200, {
       success: true,
+      format: wantsStoveDb ? "stove_db" : "records",
       pagination: {
         page: params.page,
         limit: params.limit,
         total: count || 0,
         totalPages: Math.ceil((count || 0) / params.limit),
       },
-      data: rows,
+      data: shaped,
     });
   } catch (e) {
     return json(500, { success: false, error: (e as Error).message });
