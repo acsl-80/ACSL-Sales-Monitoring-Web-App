@@ -501,8 +501,26 @@ const AdminSalesDetailModal: React.FC<AdminSalesDetailModalProps> = ({
                       }
                     />
                     <DetailItem label={fieldLabel("meals_per_day")} value={activeSale.meals_per_day} />
-                    <DetailItem label={fieldLabel("cooking_fuel_source")} value={<ChoiceLabel field="cooking_fuel_source" value={activeSale.cooking_fuel_source} />} />
-                    <DetailItem label={fieldLabel("cooking_location")} value={<ChoiceLabel field="cooking_location" value={activeSale.cooking_location} />} />
+                    <DetailItem
+                      label={fieldLabel("cooking_fuel_source")}
+                      value={
+                        <ChoiceLabel
+                          field="cooking_fuel_source"
+                          value={activeSale.cooking_fuel_source}
+                          empty={activeSale.cooking_fuel_source_note ? `${activeSale.cooking_fuel_source_note} (as written)` : ""}
+                        />
+                      }
+                    />
+                    <DetailItem
+                      label={fieldLabel("cooking_location")}
+                      value={
+                        <ChoiceLabel
+                          field="cooking_location"
+                          value={activeSale.cooking_location}
+                          empty={activeSale.cooking_location_note ? `${activeSale.cooking_location_note} (as written)` : ""}
+                        />
+                      }
+                    />
                   </div>
                 </SectionCard>
               </div>

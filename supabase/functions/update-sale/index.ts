@@ -377,11 +377,16 @@ Deno.serve(async (req) => {
       const c = normalizeChoice(optionLists, "baseline_stove", previousStoveType, {
         allowRetired: String(previousStoveType ?? "") === String((sale as { previous_stove_type?: string | null }).previous_stove_type ?? ""),
       });
-      saleUpdate.previous_stove_type = c.value;
-      // A placed value carries no description unless one was sent; the words
-      // nothing could place become the description.
-      if (previousStoveOther === undefined) {
-        saleUpdate.previous_stove_other = c.value === null ? c.note : null;
+      // An empty answer for a record that already holds none is not a change:
+      // the description kept from before stays.
+      const stored = (sale as { previous_stove_type?: string | null }).previous_stove_type ?? null;
+      if (!(c.matched === "empty" && stored === null)) {
+        saleUpdate.previous_stove_type = c.value;
+        // A placed value carries no description unless one was sent; the words
+        // nothing could place become the description.
+        if (previousStoveOther === undefined) {
+          saleUpdate.previous_stove_other = c.value === null ? c.note : null;
+        }
       }
     }
     if (previousStoveOther !== undefined) saleUpdate.previous_stove_other = previousStoveOther || null;
@@ -390,15 +395,23 @@ Deno.serve(async (req) => {
       const c = normalizeChoice(optionLists, "fuel_source", cookingFuelSource, {
         allowRetired: String(cookingFuelSource ?? "") === String((sale as { cooking_fuel_source?: string | null }).cooking_fuel_source ?? ""),
       });
-      saleUpdate.cooking_fuel_source = c.value;
-      if (c.matched !== "unchecked") saleUpdate.cooking_fuel_source_note = c.note;
+      // An empty answer for a record that already holds none is not a change:
+      // the words kept in the note from before stay.
+      const storedFuel = (sale as { cooking_fuel_source?: string | null }).cooking_fuel_source ?? null;
+      if (!(c.matched === "empty" && storedFuel === null)) {
+        saleUpdate.cooking_fuel_source = c.value;
+        if (c.matched !== "unchecked") saleUpdate.cooking_fuel_source_note = c.note;
+      }
     }
     if (cookingLocation !== undefined) {
       const c = normalizeChoice(optionLists, "cooking_location", cookingLocation, {
         allowRetired: String(cookingLocation ?? "") === String((sale as { cooking_location?: string | null }).cooking_location ?? ""),
       });
-      saleUpdate.cooking_location = c.value;
-      if (c.matched !== "unchecked") saleUpdate.cooking_location_note = c.note;
+      const storedLocation = (sale as { cooking_location?: string | null }).cooking_location ?? null;
+      if (!(c.matched === "empty" && storedLocation === null)) {
+        saleUpdate.cooking_location = c.value;
+        if (c.matched !== "unchecked") saleUpdate.cooking_location_note = c.note;
+      }
     }
     if (termsAccepted !== undefined) {
       // The same rule create-sale applies: the agreement carries six consents
