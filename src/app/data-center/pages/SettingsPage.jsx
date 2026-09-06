@@ -3,6 +3,7 @@ import AccessManager from "../features/access/AccessManager";
 import ChangeLog from "../features/access/ChangeLog";
 import CallFormEditor from "../features/settings/CallFormEditor";
 import Variables from "../features/settings/Variables";
+import FieldRules from "../features/settings/FieldRules";
 import SendBackRouting from "../features/settings/SendBackRouting";
 import { DATA_CENTER_FEATURES } from "../lib/features";
 
@@ -37,6 +38,7 @@ export default function SettingsPage() {
         */}
         <SendBackRouting canEdit />
         <CallFormEditor />
+        <FieldRules />
         <Variables />
         <ChangeLog />
       </div>

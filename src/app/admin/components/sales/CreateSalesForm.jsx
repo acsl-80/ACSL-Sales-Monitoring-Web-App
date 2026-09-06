@@ -2,6 +2,7 @@
 import { useState, useEffect, useRef, useMemo } from "react";
 import { supabaseUrl as SUPABASE_URL } from "@/lib/supabaseConfig";
 import { getSupabase } from "@/lib/supabaseClient";
+import { useSaleFieldRules } from "@/lib/saleFieldRules";
 import { useRouter } from "@/compat/navigation";
 import Link from "@/compat/Link";
 import { Button } from "@/components/ui/button";
@@ -81,6 +82,8 @@ const CreateSalesForm = ({
   userRole = null,
   userId = null,
 }) => {
+  // The dated rules (public.sale_field_rules): what a record of this day must carry.
+  const fieldRules = useSaleFieldRules();
   const router = useRouter();
   const { supabase } = useAuth();
   const isSuperAdmin = SAA_ROLES.includes(userRole);
@@ -985,7 +988,7 @@ const CreateSalesForm = ({
   };
 
   const validateForm = () => {
-    const newErrors = validateSalesForm(formData);
+    const newErrors = validateSalesForm(formData, { rules: fieldRules });
     setErrors(newErrors);
     return Object.keys(newErrors).length === 0;
   };
@@ -1775,7 +1778,7 @@ const CreateSalesForm = ({
                 </SelectContent>
               </Select>
             </FormField>
-            <FormField label={fieldLabel("city")} htmlFor="city">
+            <FormField label={fieldLabel("city")} htmlFor="city" error={errors.city}>
               <Input
                 id="city"
                 value={formData.addressData?.city ?? ""}

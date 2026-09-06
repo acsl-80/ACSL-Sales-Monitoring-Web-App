@@ -10,6 +10,10 @@
 -- ===========================================================================
 
 -- The presence predicate learns the addresses table, reached by address_id.
+-- The two-argument version goes first: left in place beside a three-argument
+-- one with a default, every two-argument call would be ambiguous. Its callers
+-- are plpgsql bodies, bound at run time, so nothing breaks in between.
+drop function if exists data_center.field_present_predicate(text, text);
 create or replace function data_center.field_present_predicate(p_field text, p_alias text default 's', p_table text default 'sales')
 returns text
 language plpgsql stable as $$

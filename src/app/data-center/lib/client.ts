@@ -1359,6 +1359,18 @@ export type SendBackConfig = {
   candidates: { id: string; full_name: string; email: string | null; role: string }[];
 };
 
+/** One row of public.sale_field_rules, as data-center-admin returns it. */
+export type FieldRuleRow = {
+  field_key: string;
+  table_name: string;
+  column_name: string;
+  mandatory_from: string;
+  applies_to: string[];
+  note: string | null;
+  updated_at: string | null;
+  updated_by: string | null;
+};
+
 export const dataCenterAdmin = {
   listAccess: () => call<AccessListEntry[]>("data-center-admin", "access_list"),
 
@@ -1438,6 +1450,12 @@ export const dataCenterAdmin = {
     call<{ config: WorkflowSetting[]; canEdit: boolean }>("data-center-admin", "config_read"),
   configSet: (key: string, value: unknown) =>
     call<{ key: string }>("data-center-admin", "config_set", { config: { key, value } }),
+
+  /** The dated rules: which sale field is mandatory from which day (slice F3a). */
+  fieldRules: () =>
+    call<{ rules: FieldRuleRow[]; canEdit: boolean }>("data-center-admin", "field_rules_list"),
+  setFieldRule: (rule: { fieldKey: string; mandatoryFrom: string | null; appliesTo?: string[]; note?: string | null }) =>
+    call<{ field_key: string; mandatory_from: string | null }>("data-center-admin", "field_rule_set", { rule }),
 
   /** Tier-2 features, ticked on per user on top of their level. */
   featureGrants: () =>

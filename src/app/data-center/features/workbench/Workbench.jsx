@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useSaleFieldRules } from "@/lib/saleFieldRules";
 import { SearchableSelect } from "@/components/ui/searchable-select";
 import { dataCenterClient, dataCenterImport, DataCenterError } from "../../lib/client";
 import { usePaged } from "../../lib/usePaged";
@@ -953,7 +954,7 @@ function Bench({ stoveId, onSaved, onBack, onNext, nextLabel, api = null }) {
 
   const { stove, work } = state;
   // The sales app's own rules, so a record accepted here is accepted there.
-  const problems = saleProblems(values);
+  const problems = saleProblems(values, rules);
   const problemCount = Object.keys(problems).length;
   const termsMissing = !TERMS.every((t) => values.termsAccepted?.[t.key] === true);
   // Kept current every render, because the keyboard handler below is bound
@@ -1086,6 +1087,7 @@ function Bench({ stoveId, onSaved, onBack, onNext, nextLabel, api = null }) {
         values={values}
         onChange={setField}
         models={stove.models ?? []}
+        rules={rules}
         orderModel={stove.orderModel ?? null}
         transactionId={stove.transactionId ?? null}
         modelsRestricted={Boolean(stove.modelsRestricted)}
@@ -1368,6 +1370,8 @@ function offeredOrderModel(stove) {
 }
 
 export default function Workbench() {
+  // The dated rules, so the bench refuses what the server would mark incomplete.
+  const rules = useSaleFieldRules();
   const [partner, setPartner] = useState(null);
   /**
    * What clicking a partner opens: everything they hold.

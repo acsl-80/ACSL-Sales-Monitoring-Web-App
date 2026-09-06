@@ -911,7 +911,7 @@ serve(async (req) => {
                      from public.sale_field_rules
                     order by mandatory_from, field_key`,
           });
-          return json({ data: { rules: r.rows } }, 200, cors);
+          return json({ data: { rules: r.rows, canEdit: canManageRegistry } }, 200, cors);
         }
 
         case "field_rule_set": {

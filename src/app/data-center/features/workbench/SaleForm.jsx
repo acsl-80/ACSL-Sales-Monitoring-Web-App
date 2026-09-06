@@ -5,6 +5,7 @@ import ImageUploadSection from "@/app/components/ui/ImageUploadSection";
 import SignatureCanvas from "@/app/components/ui/SignatureCanvas";
 import adminSalesService from "@/app/services/adminSalesService";
 import { validateSalesForm } from "@/app/utils/salesFormValidation";
+import { rulesInForce } from "@/lib/saleFieldRules";
 import { generateTransactionId } from "@/app/utils/salesFormUtils";
 import { fieldLabel, fieldOptions } from "@/lib/saleDictionary";
 import { Camera, FileText, Loader2, TriangleAlert } from "lucide-react";
@@ -161,8 +162,8 @@ export function problemsInFormOrder(problems) {
  * record accepted here and refused there, or worse the other way round. The
  * exemption list is the whole of the disagreement, and it is written down.
  */
-export function saleProblems(values) {
-  const problems = { ...(validateSalesForm(withDefaults(values)) ?? {}) };
+export function saleProblems(values, rules = []) {
+  const problems = { ...(validateSalesForm(withDefaults(values), { rules }) ?? {}) };
   for (const key of BENCH_OPTIONAL) delete problems[key];
   const model = modelProblem(values);
   if (model) problems.salesModel = model;
@@ -249,11 +250,14 @@ export default function SaleForm({
   onChange,
   disabled,
   errors = {},
+  /** The dated rules (lib/saleFieldRules); marks the fields they require on this record's day. */
+  rules = [],
   models = [],
   modelsRestricted = false,
   orderModel = null,
   transactionId = null,
 }) {
+  const inForce = new Set(rulesInForce(rules, values?.salesDate).map((r) => r.fieldKey));
   const [uploading, setUploading] = useState({ stove: false, agreement: false });
   const [previews, setPreviews] = useState({ stove: null, agreement: null });
   const [uploadError, setUploadError] = useState(null);
@@ -434,7 +438,13 @@ export default function SaleForm({
             onChange={(e) => setAddress("fullAddress", e.target.value)}
           />
         </Field>
-        <Field label={fieldLabel("city")} htmlFor="wb-city" help="The town or village on the agreement. The LGA is its own field above.">
+        <Field
+          label={fieldLabel("city")}
+          htmlFor="wb-city"
+          required={inForce.has("city")}
+          error={errors.city}
+          help="The town or village on the agreement. The LGA is its own field above."
+        >
           <input
             id="wb-city"
             className={INPUT}
@@ -449,6 +459,8 @@ export default function SaleForm({
         <Field
           label={fieldLabel("sales_agent_name")}
           htmlFor="wb-salesAgentName"
+          required={inForce.has("sales_agent_name")}
+          error={errors.salesAgentName}
           help="Prefilled from the transfer's sales rep; change it if the agreement says otherwise."
         >
           <input
