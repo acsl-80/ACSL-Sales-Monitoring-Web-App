@@ -6,7 +6,7 @@ import { buildQuery, computeScopeSets } from "./build-query.ts";
 import { fetchRelatedData } from "./fetch-related.ts";
 import { convertToCSV, prepareExportData } from "./export.ts";
 import { transformResponse } from "./format-transformer.ts";
-import { isStoveDbFormat } from "../_shared/stove-db-shape.ts";
+import { isStoveDbFormat, toStoveDbRows } from "../_shared/stove-db-shape.ts";
 import { loadSaleOptions } from "../_shared/sale-options.ts";
 
 Deno.serve(async (req) => {
@@ -199,10 +199,15 @@ async function executeMainLogic(req: Request) {
       console.log("✅ Additional data attached");
     }
 
+    // The Stove DB shape (slice F4) is decided once, before the export
+    // branch, so a CSV asked for in that shape carries the same names.
+    const wantsStoveDb = isStoveDbFormat(filters.responseFormat);
+    const optionLists = wantsStoveDb ? await loadSaleOptions(adminSupabase) : null;
+
     // Handle export if requested
     if (filters.export && sales) {
       console.log("📤 Handling export...");
-      const exportData = prepareExportData(sales, filters);
+      const exportData = wantsStoveDb ? toStoveDbRows(sales, optionLists) : prepareExportData(sales, filters);
 
       if (filters.export === "csv") {
         console.log("📤 Converting to CSV...");
@@ -221,8 +226,6 @@ async function executeMainLogic(req: Request) {
 
     // Transform data based on requested format
     console.log(`🔄 Applying response format: ${filters.responseFormat || 'format1 (default)'}`);
-    const wantsStoveDb = isStoveDbFormat(filters.responseFormat);
-    const optionLists = wantsStoveDb ? await loadSaleOptions(adminSupabase) : null;
     const transformedData = transformResponse(sales || [], filters.responseFormat || 'format1', optionLists);
     console.log(`✅ Data transformed to ${filters.responseFormat || 'format1'}: ${transformedData.length} records`);
 

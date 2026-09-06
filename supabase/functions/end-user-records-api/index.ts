@@ -138,6 +138,7 @@ const SELECT = `
   cooking_location,
   cooking_fuel_source_note,
   cooking_location_note,
+  terms_accepted,
   organization_id,
   created_by,
   updated_by,
