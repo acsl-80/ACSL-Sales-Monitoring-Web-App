@@ -243,3 +243,26 @@ sheet column asks for the name as written, and the call centre confirms it.
 A name entered over the default drops the account id, so a name and an id
 never point at two different people.
 
+## D31. A rule refuses at the form and marks at the server; "now" means go-live (2026-09-06, slice F3a)
+
+"Mandatory" lives in one public table, `sale_field_rules`, one row per field
+with the day it becomes mandatory and which rules read it. A sale is judged by
+the rows dated on or before its own sales date, so a record made before a rule
+is never made incomplete by it. Three dates carry the rows: 2000-01-01 for the
+form's own rule since the form existed (slice 7b's list minus the contact
+pair, which A4 made optional; the sales app reads these, the module keeps its
+six-field baseline of D25), the go-live of the field alignment for the
+proposal's "now" fields (surname, first name, city, sales agent, baseline
+stove, the consents), and 2027-01-05 for A5's four-months-out fields (pots,
+Wonderbox, fuel source). The dictionary's placeholder of 2026-01-01 was wrong
+for "now": every live sale is dated after it, so it would have judged all of
+history by the new rule.
+
+The web forms refuse a new record without a field the rules require for its
+day; `create-sale` accepts it and the status reads incomplete, as it does
+today for an LGA. Refusing at the server would have stopped the phone app's
+sales the day the rule landed, before brain-codes ship the fields. The status
+column is the enforcement, visible on every dashboard, and the phone app reads
+the same table through the dictionary endpoint when it catches up. The
+TypeScript mirror of the status rule is gone: the trigger owns the verdict and
+the two functions read it back.
