@@ -13,6 +13,8 @@ M8 exists: `get-sales-advanced` with `withSummary: true` returns a `summary`
 object beside the rows, computed in SQL and scoped to the caller. The items
 themselves are unchanged; nothing on this list has been closed from the web side.
 
+> The sale record's fields, their payload keys, options and mandatory dates are in `sales-mobile-field-alignment.md` beside this file, generated from the field dictionary. This brief covers caps, paging and the rest.
+
 ## Why this brief exists
 
 The web app and the mobile app share one Supabase project and one set of edge
