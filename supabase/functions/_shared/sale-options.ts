@@ -31,12 +31,20 @@ export const CHOICE_COLUMNS: Record<string, string> = {
   cooking_location: "cooking_location",
 };
 
-/** One read per request. The lists are a few rows; the door is a stable function. */
+/**
+ * One read per request. The lists are a few rows; the door is a stable
+ * function. A failed read is null, and the callers then keep what they were
+ * sent, as they did before the lists existed: an outage of the door must not
+ * turn every answer into a note.
+ */
 // deno-lint-ignore no-explicit-any
-export async function loadSaleOptions(supabase: any): Promise<SaleOptionLists> {
+export async function loadSaleOptions(supabase: any): Promise<SaleOptionLists | null> {
   const lists: SaleOptionLists = new Map();
   const { data, error } = await supabase.rpc("sale_options");
-  if (error || !Array.isArray(data)) return lists;
+  if (error || !Array.isArray(data)) {
+    console.error("sale_options could not be read; choices are kept as sent", error ?? "no rows");
+    return null;
+  }
   for (const row of data as SaleOptionRow[]) {
     const bucket = lists.get(row.list_key) ?? [];
     bucket.push(row);
@@ -78,16 +86,22 @@ const RULES: Record<string, Array<[RegExp, string]>> = {
   ],
 };
 
-export type Choice = { value: string | null; note: string | null; matched: "value" | "label" | "rule" | "none" | "empty" };
+export type Choice = {
+  value: string | null;
+  note: string | null;
+  matched: "value" | "label" | "rule" | "none" | "empty" | "unchecked";
+};
 
 /**
  * Place a word on a list. A stored value or a label (any case) matches
  * outright, retired ones included, so an older record re-saved keeps its
  * answer; then the rules; otherwise the word goes to the note.
  */
-export function normalizeChoice(lists: SaleOptionLists, listKey: string, raw: unknown): Choice {
+export function normalizeChoice(lists: SaleOptionLists | null, listKey: string, raw: unknown): Choice {
   const text = raw === null || raw === undefined ? "" : String(raw).trim();
   if (!text) return { value: null, note: null, matched: "empty" };
+  // No lists to check against: the word is kept as sent, as before.
+  if (!lists) return { value: text, note: null, matched: "unchecked" };
   const rows = lists.get(listKey) ?? [];
   const wanted = fold(text);
   const byValue = rows.find((r) => fold(r.value) === wanted);

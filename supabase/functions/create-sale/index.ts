@@ -628,7 +628,9 @@ Deno.serve(async (req) => {
           pot_quantity: potQuantity ?? null,
           heat_retention_device: heatRetentionDevice ?? false,
           previous_stove_type: stoveChoice.value,
-          previous_stove_other: previousStoveOther || stoveChoice.note || null,
+          // The description as typed, or the words nothing could place; a placed
+          // value carries no note, so nothing is orphaned behind it.
+          previous_stove_other: previousStoveOther || (stoveChoice.value === null ? stoveChoice.note : null) || null,
           meals_per_day: mealsPerDay || null,
           cooking_fuel_source: fuelChoice.value,
           cooking_fuel_source_note: fuelChoice.note,

@@ -1385,9 +1385,15 @@ serve(async (req) => {
             });
             for (const o of opts.rows) labelsByList.set(o.list_key, [...(labelsByList.get(o.list_key) ?? []), o.label]);
           }
-          const columns = specColumns.map((c) =>
-            typeof c.optionList === "string" ? { ...c, options: labelsByList.get(c.optionList) ?? [] } : c,
-          );
+          // A list with nothing offered falls back to the dictionary's seed,
+          // so the column never ships an empty dropdown.
+          const seedLabels = (listKey: string): string[] =>
+            (LIVE_FIELDS.find((f) => (f as { optionList?: string }).optionList === listKey)?.options ?? []).map((o) => o.label);
+          const columns = specColumns.map((c) => {
+            if (typeof c.optionList !== "string") return c;
+            const live = labelsByList.get(c.optionList) ?? [];
+            return { ...c, options: live.length ? live : seedLabels(c.optionList) };
+          });
 
           return json(
             {

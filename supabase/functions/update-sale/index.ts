@@ -371,22 +371,26 @@ Deno.serve(async (req) => {
       previousStoveType !== undefined || cookingFuelSource !== undefined || cookingLocation !== undefined
         ? await loadSaleOptions(supabase)
         : null;
-    if (previousStoveType !== undefined && optionLists) {
+    if (previousStoveType !== undefined) {
       const c = normalizeChoice(optionLists, "baseline_stove", previousStoveType);
       saleUpdate.previous_stove_type = c.value;
-      if (c.note && previousStoveOther === undefined) saleUpdate.previous_stove_other = c.note;
+      // A placed value carries no description unless one was sent; the words
+      // nothing could place become the description.
+      if (previousStoveOther === undefined) {
+        saleUpdate.previous_stove_other = c.value === null ? c.note : null;
+      }
     }
     if (previousStoveOther !== undefined) saleUpdate.previous_stove_other = previousStoveOther || null;
     if (mealsPerDay !== undefined) saleUpdate.meals_per_day = mealsPerDay || null;
-    if (cookingFuelSource !== undefined && optionLists) {
+    if (cookingFuelSource !== undefined) {
       const c = normalizeChoice(optionLists, "fuel_source", cookingFuelSource);
       saleUpdate.cooking_fuel_source = c.value;
-      saleUpdate.cooking_fuel_source_note = c.note;
+      if (c.matched !== "unchecked") saleUpdate.cooking_fuel_source_note = c.note;
     }
-    if (cookingLocation !== undefined && optionLists) {
+    if (cookingLocation !== undefined) {
       const c = normalizeChoice(optionLists, "cooking_location", cookingLocation);
       saleUpdate.cooking_location = c.value;
-      saleUpdate.cooking_location_note = c.note;
+      if (c.matched !== "unchecked") saleUpdate.cooking_location_note = c.note;
     }
     if (termsAccepted !== undefined) {
       // The same rule create-sale applies: the agreement carries six consents

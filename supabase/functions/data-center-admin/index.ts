@@ -551,7 +551,9 @@ serve(async (req) => {
               cors,
             );
           }
-          const sortOrder = Number(body.value?.sortOrder ?? 0) || 0;
+          // An edit that says nothing about the order keeps it; only a number moves it.
+          const sortOrderSent = body.value?.sortOrder !== undefined && body.value?.sortOrder !== null;
+          const sortOrder = sortOrderSent ? Number(body.value.sortOrder) || 0 : null;
           const isActive = body.value?.isActive !== false;
           const row = await withActor(conn, callerId, async () => {
             if (id) {
@@ -559,7 +561,7 @@ serve(async (req) => {
               // changes the wording and the ordering and never the key.
               const r = await conn.queryObject<{ id: string }>({
                 text: `update data_center.option_values
-                          set label = $2, sort_order = $3, is_active = $4
+                          set label = $2, sort_order = coalesce($3::int, sort_order), is_active = $4
                         where id = $1 returning id::text`,
                 args: [id, label, sortOrder, isActive],
               });
@@ -573,7 +575,7 @@ serve(async (req) => {
                        set label = excluded.label, sort_order = excluded.sort_order,
                            is_active = excluded.is_active
                      returning id::text`,
-              args: [listKey, value, label, sortOrder, isActive],
+              args: [listKey, value, label, sortOrder ?? 0, isActive],
             });
             return r.rows[0];
           });

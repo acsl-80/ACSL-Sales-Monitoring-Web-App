@@ -89,7 +89,7 @@ test("the dictionary endpoint serves the registry's options, and follows a retir
   try {
     const r = await callEdgeFunction(page, "data-center-admin", {
       action: "option_value_upsert",
-      value: { listKey: "cooking_location", id: semi.id, label: "Semi-indoor", isActive: false },
+      value: { listKey: "cooking_location", id: semi.id, label: "Semi-indoor", sortOrder: 3, isActive: false },
     });
     expect(r.status, JSON.stringify(r.body).slice(0, 200)).toBe(200);
     const after = await dictionary(page);
@@ -97,7 +97,7 @@ test("the dictionary endpoint serves the registry's options, and follows a retir
   } finally {
     await callEdgeFunction(page, "data-center-admin", {
       action: "option_value_upsert",
-      value: { listKey: "cooking_location", id: semi.id, label: "Semi-indoor", isActive: true },
+      value: { listKey: "cooking_location", id: semi.id, label: "Semi-indoor", sortOrder: 3, isActive: true },
     }).catch(() => {});
   }
 });
@@ -120,9 +120,10 @@ test("create-sale maps what it is sent onto the lists and keeps the words", asyn
       amount: 25000,
       endUserFirstName: "Options",
       endUserSurname: `Spec${n}`,
-      phone: `081${stamp}`.slice(0, 11).padEnd(11, String(n)),
+      // Eleven digits, unique per run and per sale.
+      phone: `081${stamp.slice(0, 7)}${n}`,
       contactPerson: "Options Spec",
-      contactPhone: `081${stamp}`.slice(0, 11).padEnd(11, String(n)),
+      contactPhone: `081${stamp.slice(0, 7)}${n}`,
       salesAgentName: "Bala Sani",
       stateBackup: "Kogi",
       lgaBackup: "Lokoja",
@@ -176,7 +177,8 @@ test("the bench offers the lists and asks the payment type on its own", async ({
   const location = page.getByLabel("Cooking location", { exact: true });
   expect(await location.locator("option").allTextContents()).toEqual(expect.arrayContaining(["Indoor", "Outdoor", "Semi-indoor"]));
   expect(await page.getByRole("radio", { name: /Firewood|Charcoal|LPG/ }).count()).toBe(3);
-  const type = page.getByLabel("Payment type", { exact: true });
+  // The label carries a required mark, so the control is found by its id.
+  const type = page.locator("#wb-paymentType");
   await expect(type).toBeVisible();
   expect(await type.locator("option").allTextContents()).toEqual(expect.arrayContaining(["Cash purchase", "Installment purchase"]));
 });

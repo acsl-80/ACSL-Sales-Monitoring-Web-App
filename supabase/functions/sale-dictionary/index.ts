@@ -67,7 +67,7 @@ Deno.serve(async (req) => {
       const withDate = rules.has(f.key) ? { ...f, mandatoryFrom: rules.get(f.key) ?? null } : { ...f };
       const listKey = (f as { optionList?: string }).optionList;
       if (!listKey) return withDate;
-      const live = activeOptions(optionLists, listKey);
+      const live = optionLists ? activeOptions(optionLists, listKey) : [];
       return live.length ? { ...withDate, type: "select", options: live } : withDate;
     }),
   };

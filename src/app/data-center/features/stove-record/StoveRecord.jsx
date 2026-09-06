@@ -1077,8 +1077,8 @@ export default function StoveRecord({ stoveId }) {
             <Detail
               label={fieldLabel("previous_stove_type")}
               value={
-                sale.previous_stove_type === "other"
-                  ? (sale.previous_stove_other ?? "other")
+                sale.previous_stove_type === "other" || !sale.previous_stove_type
+                  ? (sale.previous_stove_other ? `${sale.previous_stove_other} (as written)` : "")
                   : <ChoiceLabel field="previous_stove_type" value={sale.previous_stove_type} />
               }
             />

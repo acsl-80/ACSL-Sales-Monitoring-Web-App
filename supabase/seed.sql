@@ -964,7 +964,7 @@ select
   'a0000000-0000-4000-8000-000000000001',
   ('c0000000-0000-4000-8000-00000000000' || g)::uuid,
   'b0000000-0000-4000-8000-000000000005',
-  (array['charcoal','wood_stove','charcoal','wood_stove','other'])[g],
+  (array['charcoal','firewood','charcoal','firewood','other'])[g],
   1, (g % 2 = 0), 'web'
 from generate_series(1, 5) g
 on conflict (id) do nothing;

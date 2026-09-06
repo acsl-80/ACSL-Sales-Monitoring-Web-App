@@ -495,8 +495,8 @@ const AdminSalesDetailModal: React.FC<AdminSalesDetailModalProps> = ({
                     <DetailItem
                       label={fieldLabel("previous_stove_type")}
                       value={
-                        activeSale.previous_stove_type === "other"
-                          ? `Other, ${activeSale.previous_stove_other || "not specified"}`
+                        activeSale.previous_stove_type === "other" || !activeSale.previous_stove_type
+                          ? (activeSale.previous_stove_other ? `${activeSale.previous_stove_other} (as written)` : "")
                           : <ChoiceLabel field="previous_stove_type" value={activeSale.previous_stove_type} />
                       }
                     />
