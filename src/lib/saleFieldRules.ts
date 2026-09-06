@@ -107,16 +107,18 @@ export function rulesInForce(
   return rules.filter((r) => r.appliesTo.includes(scope) && r.mandatoryFrom <= day);
 }
 
-/** Present means someone answered: not null, not blank, not an empty object. */
+/** Present means someone answered: not null, not blank, and every consent given. */
 export function isPresentValue(value: unknown): boolean {
   if (value === null || value === undefined) return false;
   if (typeof value === "string") return value.trim() !== "";
   if (typeof value === "boolean" || typeof value === "number") return true;
   if (Array.isArray(value)) return value.length > 0;
-  if (typeof value === "object")
-    return Object.values(value as Record<string, unknown>).some(
-      (v) => v === true || (v !== null && v !== undefined && v !== ""),
-    );
+  if (typeof value === "object") {
+    // The one object column is the consents: an answer only when every
+    // consent in it is given, the same reading the status rule takes.
+    const values = Object.values(value as Record<string, unknown>);
+    return values.length > 0 && values.every((v) => v === true);
+  }
   return true;
 }
 

@@ -42,6 +42,10 @@ begin
   if col_type in ('text', 'character varying', 'character') then
     return format('nullif(trim(coalesce(%I.%I, %L)), %L) is not null', p_alias, p_field, '', '');
   end if;
+  if col_type = 'jsonb' then
+    -- A consents object is present only when every consent in it is given.
+    return format('coalesce((select bool_and(v_.value = %L) from jsonb_each_text(%I.%I) v_), false)', 'true', p_alias, p_field);
+  end if;
   return format('%I.%I is not null', p_alias, p_field);
 end;
 $$;
@@ -63,8 +67,9 @@ begin
      where 'data_center' = any(applies_to)
      order by mandatory_from, field_key
   loop
+    -- A sale with no date is judged as of today, as the status rule judges it.
     parts := parts || format(
-      '(%I.sales_date::date < %L or %s)',
+      '(coalesce(%I.sales_date::date, current_date) < %L or %s)',
       p_alias, r.mandatory_from::text,
       data_center.field_present_predicate(r.column_name, p_alias, r.table_name)
     );
@@ -78,6 +83,54 @@ $$;
 
 comment on function data_center.dated_rules_predicate is
   'One clause per row of public.sale_field_rules marked data_center: a sale dated on or after the row''s date carries the field, a sale dated before it is judged by the rule of its day. Null when the table has no such row.';
+
+-- The Missing filter (slice 7a) accepts a dated field too, and asks for the
+-- rows the dated clause refuses: dated on or after the rule and lacking it.
+create or replace function data_center.missing_predicate(p_field text, p_alias text default 's')
+returns text
+language plpgsql stable as $$
+declare
+  fields text[];
+  present text;
+  rule record;
+begin
+  if p_field = 'evidence' then
+    present := data_center.completeness_evidence_predicate(p_alias);
+    if present is null then
+      raise exception 'no evidence rule is configured, so nothing can be missing it';
+    end if;
+    return 'not ' || present;
+  end if;
+
+  select array(select jsonb_array_elements_text(value))
+    into fields
+    from data_center.workflow_config
+   where key = 'completeness_required_fields';
+
+  if fields is not null and p_field = any (fields) then
+    return 'not (' || data_center.field_present_predicate(p_field, p_alias) || ')';
+  end if;
+
+  select table_name, column_name, mandatory_from
+    into rule
+    from public.sale_field_rules
+   where 'data_center' = any(applies_to)
+     and (field_key = p_field or column_name = p_field)
+   limit 1;
+  if rule.column_name is not null then
+    return format(
+      'not (coalesce(%I.sales_date::date, current_date) < %L or %s)',
+      p_alias, rule.mandatory_from::text,
+      data_center.field_present_predicate(rule.column_name, p_alias, rule.table_name)
+    );
+  end if;
+
+  raise exception '% is not a field the completeness rule requires', p_field;
+end;
+$$;
+
+comment on function data_center.missing_predicate is
+  'The rows missing one field of the completeness rule: a configured field, a dated field of public.sale_field_rules (dated on or after the rule and lacking it), or the evidence. Anything else raises.';
 
 create or replace function data_center.completeness_predicate(alias text default 's')
 returns text

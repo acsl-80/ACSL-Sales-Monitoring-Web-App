@@ -130,6 +130,12 @@ begin
       if addr_json is null or nullif(trim(coalesce(addr_json ->> r.column_name, '')), '') is null then
         return 'incomplete';
       end if;
+    elsif jsonb_typeof(sale_json -> r.column_name) = 'object' then
+      -- A consents object (terms_accepted) is an answer only when every
+      -- consent in it is given; an empty object or a refused consent is not.
+      if not coalesce((select bool_and(v.value = 'true') from jsonb_each_text(sale_json -> r.column_name) v), false) then
+        return 'incomplete';
+      end if;
     elsif nullif(trim(coalesce(sale_json ->> r.column_name, '')), '') is null then
       return 'incomplete';
     end if;
