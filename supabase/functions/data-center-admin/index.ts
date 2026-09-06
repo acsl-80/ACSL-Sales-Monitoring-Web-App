@@ -942,14 +942,9 @@ serve(async (req) => {
           }
           const note = rule.note === undefined || rule.note === null ? null : String(rule.note);
           const saved = await withActor(conn, callerId, async () => {
-            if (mandatoryFrom === null) {
-              const d = await conn.queryObject<{ field_key: string }>({
-                text: `delete from public.sale_field_rules where field_key = $1 returning field_key`,
-                args: [fieldKey],
-              });
-              return { field_key: fieldKey, mandatory_from: null, lifted: d.rows.length > 0 };
-            }
-            const r = await conn.queryObject<{ field_key: string; mandatory_from: string }>({
+            // A lifted rule keeps its row with no date, so the seed's on conflict
+            // do nothing can never bring it back, and the log keeps who lifted it.
+            const r = await conn.queryObject<{ field_key: string; mandatory_from: string | null }>({
               text: `insert into public.sale_field_rules
                        (field_key, table_name, column_name, mandatory_from, applies_to, note, updated_by)
                      values ($1, $2, $3, $4::date, coalesce($5::text[], array['sales_app', 'data_center']), $6, $7::uuid)

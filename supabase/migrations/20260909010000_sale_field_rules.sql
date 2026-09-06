@@ -22,7 +22,7 @@ create table if not exists public.sale_field_rules (
   table_name     text not null default 'sales'
                  constraint sale_field_rules_table_check check (table_name in ('sales', 'addresses')),
   column_name    text not null,
-  mandatory_from date not null,
+  mandatory_from date,
   applies_to     text[] not null default array['sales_app', 'data_center']
                  constraint sale_field_rules_applies_check
                  check (applies_to <@ array['sales_app', 'data_center'] and cardinality(applies_to) > 0),
@@ -33,7 +33,7 @@ create table if not exists public.sale_field_rules (
 
 comment on table public.sale_field_rules is
   'Per sale field, the date from which a sale must carry it. field_key is the dictionary key (supabase/functions/_shared/sale-dictionary.json); table_name and column_name say where the value lives. applies_to names the rules that read the row: sales_app is public.calculate_sale_status, data_center is data_center.completeness_predicate. A sale is judged against rows whose date is on or before its sales date.';
-comment on column public.sale_field_rules.mandatory_from is 'A sale dated on or after this day must carry the field. 2000-01-01 means since the form existed.';
+comment on column public.sale_field_rules.mandatory_from is 'A sale dated on or after this day must carry the field. 2000-01-01 means since the form existed; null means the rule is lifted, and the row stays so a re-run of the seed cannot bring it back.';
 comment on column public.sale_field_rules.applies_to is 'Which rules read this row: sales_app, data_center, or both.';
 
 -- A row naming a column that does not exist would judge every sale
@@ -57,6 +57,12 @@ drop trigger if exists sale_field_rules_check_column on public.sale_field_rules;
 create trigger sale_field_rules_check_column
   before insert or update on public.sale_field_rules
   for each row execute function public.sale_field_rules_check_column();
+
+-- Every change to a rule is audited the way the module's own settings are:
+-- who moved which date, and from what.
+drop trigger if exists audit_sale_field_rules on public.sale_field_rules;
+create trigger audit_sale_field_rules after insert or update or delete on public.sale_field_rules
+  for each row execute function data_center.log_change('field_key');
 
 alter table public.sale_field_rules enable row level security;
 

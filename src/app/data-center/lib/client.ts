@@ -1364,7 +1364,7 @@ export type FieldRuleRow = {
   field_key: string;
   table_name: string;
   column_name: string;
-  mandatory_from: string;
+  mandatory_from: string | null;
   applies_to: string[];
   note: string | null;
   updated_at: string | null;

@@ -370,7 +370,20 @@ Deno.serve(async (req) => {
     if (mealsPerDay !== undefined) saleUpdate.meals_per_day = mealsPerDay || null;
     if (cookingFuelSource !== undefined) saleUpdate.cooking_fuel_source = cookingFuelSource || null;
     if (cookingLocation !== undefined) saleUpdate.cooking_location = cookingLocation || null;
-    if (termsAccepted !== undefined) saleUpdate.terms_accepted = termsAccepted;
+    if (termsAccepted !== undefined) {
+      // The same rule create-sale applies: the agreement carries six consents
+      // and a sale carries all of them or none. A partial object is refused
+      // rather than written over the consents already given.
+      const requiredConsents = ["poaGoverned", "monitoring", "noResell", "emissionReductions", "noExport", "demonstration"];
+      if (!termsAccepted || typeof termsAccepted !== "object") {
+        return jsonError("Terms & conditions must be accepted", 400);
+      }
+      const missingConsents = requiredConsents.filter((key) => (termsAccepted as Record<string, unknown>)[key] !== true);
+      if (missingConsents.length > 0) {
+        return jsonError(`All terms & conditions must be accepted (missing: ${missingConsents.join(", ")})`, 400);
+      }
+      saleUpdate.terms_accepted = termsAccepted;
+    }
     if (signature !== undefined && signature !== null && signature !== "") saleUpdate.signature = signature;
     if (stoveImageId !== undefined && stoveImageId !== "") saleUpdate.stove_image_id = stoveImageId || null;
     if (agreementImageId !== undefined && agreementImageId !== "") saleUpdate.agreement_image_id = agreementImageId || null;

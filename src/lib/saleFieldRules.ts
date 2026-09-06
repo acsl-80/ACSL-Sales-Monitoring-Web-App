@@ -24,8 +24,8 @@ export type SaleFieldRule = {
   fieldKey: string;
   tableName: "sales" | "addresses";
   columnName: string;
-  /** YYYY-MM-DD. A sale dated on or after this day must carry the field. */
-  mandatoryFrom: string;
+  /** YYYY-MM-DD. A sale dated on or after this day must carry the field; null when the rule is lifted. */
+  mandatoryFrom: string | null;
   appliesTo: RuleScope[];
   note: string | null;
   updatedAt: string | null;
@@ -35,7 +35,7 @@ type Row = {
   field_key: string;
   table_name: string;
   column_name: string;
-  mandatory_from: string;
+  mandatory_from: string | null;
   applies_to: string[] | null;
   note: string | null;
   updated_at: string | null;
@@ -46,7 +46,7 @@ export function rowToRule(r: Row): SaleFieldRule {
     fieldKey: r.field_key,
     tableName: r.table_name === "addresses" ? "addresses" : "sales",
     columnName: r.column_name,
-    mandatoryFrom: String(r.mandatory_from).slice(0, 10),
+    mandatoryFrom: r.mandatory_from ? String(r.mandatory_from).slice(0, 10) : null,
     appliesTo: (r.applies_to ?? []).filter(
       (a): a is RuleScope => a === "sales_app" || a === "data_center",
     ),
@@ -104,7 +104,9 @@ export function rulesInForce(
   scope: RuleScope = "sales_app",
 ): SaleFieldRule[] {
   const day = ruleDay(saleDate);
-  return rules.filter((r) => r.appliesTo.includes(scope) && r.mandatoryFrom <= day);
+  return rules.filter(
+    (r) => r.appliesTo.includes(scope) && r.mandatoryFrom !== null && r.mandatoryFrom <= day,
+  );
 }
 
 /** Present means someone answered: not null, not blank, and every consent given. */
@@ -122,18 +124,35 @@ export function isPresentValue(value: unknown): boolean {
   return true;
 }
 
-/** Where the form keeps the value a rule asks for, and the error key it reports under. */
+/** snake_case column to the camelCase key both forms use: full_address to fullAddress. */
+export function camelKey(column: string): string {
+  return column.replace(/_([a-z0-9])/g, (_, c: string) => c.toUpperCase());
+}
+
+/**
+ * Where the form keeps the value a rule asks for. Both forms hold a sale's
+ * columns under the dictionary's payload key (camelCase), and the address
+ * under `addressData` with camelCase keys of its own.
+ */
 export function ruleFormKey(rule: SaleFieldRule): string {
-  if (rule.tableName === "addresses") return rule.columnName;
-  return fieldByKey(rule.fieldKey)?.payload ?? rule.columnName;
+  if (rule.tableName === "addresses") return camelKey(rule.columnName);
+  const payload = fieldByKey(rule.fieldKey)?.payload;
+  return payload && payload !== "addressData" ? payload : camelKey(rule.columnName);
+}
+
+/** The key the validator reports a missing value under; the address line has its own name there. */
+export function ruleErrorKey(rule: SaleFieldRule): string {
+  const key = ruleFormKey(rule);
+  return rule.tableName === "addresses" && key === "fullAddress" ? "address" : key;
 }
 
 export function ruleValue(rule: SaleFieldRule, formData: Record<string, unknown>): unknown {
+  const key = ruleFormKey(rule);
   if (rule.tableName === "addresses") {
     const address = formData.addressData as Record<string, unknown> | undefined;
-    return address?.[rule.columnName] ?? formData[rule.columnName];
+    return address?.[key] ?? formData[key];
   }
-  return formData[ruleFormKey(rule)];
+  return formData[key];
 }
 
 /** The rules in force that the form has not answered, with the words to say so. */
@@ -144,5 +163,5 @@ export function missingByRules(
 ): { key: string; label: string; rule: SaleFieldRule }[] {
   return rulesInForce(rules, formData.salesDate, scope)
     .filter((rule) => !isPresentValue(ruleValue(rule, formData)))
-    .map((rule) => ({ key: ruleFormKey(rule), label: fieldLabel(rule.fieldKey), rule }));
+    .map((rule) => ({ key: ruleErrorKey(rule), label: fieldLabel(rule.fieldKey), rule }));
 }

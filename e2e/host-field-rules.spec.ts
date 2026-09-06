@@ -58,6 +58,16 @@ async function resave(saleId: string): Promise<string> {
   return r.status;
 }
 
+test.afterAll(async () => {
+  // The sale test 6 makes goes, and its stove is free again for the next run.
+  await branchSql(
+    `update public.stove_ids_base set status = 'available', sale_id = null
+      where sale_id in (select id from public.sales where transaction_id like '${MARKER}-%')`,
+  ).catch(() => {});
+  await branchSql(`delete from public.sales where transaction_id like '${MARKER}-%'`).catch(() => {});
+  await branchSql(`delete from public.addresses where full_address like '${MARKER}%'`).catch(() => {});
+});
+
 test("the rules table exists, seeded with dated rows and no contact pair", async () => {
   const rows = await branchSql<{ field_key: string; d: string; applies_to: string }>(
     `select field_key, mandatory_from::text as d, array_to_string(applies_to, ',') as applies_to

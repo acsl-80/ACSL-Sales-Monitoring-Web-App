@@ -50,16 +50,16 @@ Deno.serve(async (req) => {
   const { data: ruleRows } = await userClient
     .from("sale_field_rules")
     .select("field_key, mandatory_from, updated_at");
-  const rules = new Map<string, string>();
+  const rules = new Map<string, string | null>();
   let rulesStamp = "";
-  for (const r of (ruleRows ?? []) as { field_key: string; mandatory_from: string; updated_at: string }[]) {
+  for (const r of (ruleRows ?? []) as { field_key: string; mandatory_from: string | null; updated_at: string }[]) {
     rules.set(r.field_key, r.mandatory_from);
     if (r.updated_at > rulesStamp) rulesStamp = r.updated_at;
   }
   const body = {
     ...SALE_DICTIONARY,
     fields: SALE_DICTIONARY.fields.map((f) =>
-      rules.has(f.key) ? { ...f, mandatoryFrom: rules.get(f.key) ?? f.mandatoryFrom } : f,
+      rules.has(f.key) ? { ...f, mandatoryFrom: rules.get(f.key) ?? null } : f,
     ),
   };
   const etag = `"${SALE_DICTIONARY.version}+${rulesStamp || "seed"}"`;

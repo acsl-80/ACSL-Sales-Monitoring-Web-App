@@ -65,6 +65,7 @@ begin
     select table_name, column_name, mandatory_from
       from public.sale_field_rules
      where 'data_center' = any(applies_to)
+       and mandatory_from is not null
      order by mandatory_from, field_key
   loop
     -- A sale with no date is judged as of today, as the status rule judges it.
@@ -115,6 +116,7 @@ begin
     into rule
     from public.sale_field_rules
    where 'data_center' = any(applies_to)
+     and mandatory_from is not null
      and (field_key = p_field or column_name = p_field)
    limit 1;
   if rule.column_name is not null then

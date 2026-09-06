@@ -149,7 +149,7 @@ export default function FieldRules() {
                 const draft = draftOf(field);
                 const dateId = `rule-date-${field.key}`;
                 return (
-                  <tr key={field.key} className={rule ? "" : "text-gray-500"}>
+                  <tr key={field.key} className={rule?.mandatory_from ? "" : "text-gray-500"}>
                     <td className="px-4 py-2">
                       <div className="font-medium text-gray-900">{fieldLabel(field.key)}</div>
                       <div className="text-xs text-gray-500">{groupLabel(field.key)}</div>
@@ -168,6 +168,9 @@ export default function FieldRules() {
                       />
                       {rule?.mandatory_from === SINCE_ALWAYS && (
                         <div className="mt-0.5 text-xs text-gray-500">Since the form existed</div>
+                      )}
+                      {rule && rule.mandatory_from === null && (
+                        <div className="mt-0.5 text-xs text-gray-500">Lifted</div>
                       )}
                     </td>
                     <td className="px-4 py-2">

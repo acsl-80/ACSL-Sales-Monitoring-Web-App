@@ -136,6 +136,8 @@ export const FIELD_META = {
   stateBackup: { id: "wb-stateBackup", label: fieldLabel("state_backup") },
   lgaBackup: { id: "wb-stateBackup", label: fieldLabel("lga_backup") },
   address: { id: "wb-address", label: fieldLabel("full_address") },
+  city: { id: "wb-city", label: fieldLabel("city") },
+  salesAgentName: { id: "wb-salesAgentName", label: fieldLabel("sales_agent_name") },
   salesDate: { id: "wb-salesDate", label: fieldLabel("sales_date") },
   // The sales app's own reference, not a field on the agreement.
   transactionId: { id: "wb-salesDate", label: "Transaction ID" },
