@@ -48,7 +48,7 @@ Three things follow from it:
 | Retailer/sales branch/agency | `retailerBranch` | text | optional |
 | Pots quantity | `potQuantity` | one of 0, 1, 2; send the `value` | from 2027-01-05 (live date from the endpoint) |
 | Wonderbox | `heatRetentionDevice` | true or false | from 2027-01-05 (live date from the endpoint) |
-| Payment type | `isInstallment` | one of Cash purchase, Installment purchase; send the `value` | optional |
+| Payment type | `isInstallment` | true for an installment purchase, false for cash; the sales model goes in `paymentModelId` | optional |
 | Total Amount (full stove price) | `amount` | a number, naira | since the form existed |
 | Total paid to date | `amountReceived` | a number, naira | optional |
 | Amount paid (first installment) | (derived, not sent) | a number, naira | optional |
