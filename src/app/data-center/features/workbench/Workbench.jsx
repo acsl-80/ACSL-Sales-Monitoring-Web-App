@@ -469,6 +469,8 @@ function asSaleRecord(values, stove) {
 
 
 function Bench({ stoveId, onSaved, onBack, onNext, nextLabel, api = null }) {
+  // The dated rules, so the bench refuses what the server would mark incomplete.
+  const rules = useSaleFieldRules();
   const [state, setState] = useState(null);
   const [values, setValues] = useState({});
   const [error, setError] = useState(null);
@@ -1370,8 +1372,6 @@ function offeredOrderModel(stove) {
 }
 
 export default function Workbench() {
-  // The dated rules, so the bench refuses what the server would mark incomplete.
-  const rules = useSaleFieldRules();
   const [partner, setPartner] = useState(null);
   /**
    * What clicking a partner opens: everything they hold.

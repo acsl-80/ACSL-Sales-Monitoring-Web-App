@@ -111,7 +111,7 @@ test("the status rule judges a sale by the rule of its day, and follows a moved 
 
 test("the module's completeness rule carries the dated clauses and still runs", async () => {
   const [p] = await branchSql<{ p: string }>(`select data_center.completeness_predicate('s') as p`);
-  expect(p.p).toMatch(/s\.sales_date < '2027-01-05'/);
+  expect(p.p).toMatch(/s\.sales_date::date < '2027-01-05'/);
   expect(p.p).toContain("pot_quantity");
   // The baseline stays the module's own six fields: LGA is not in it.
   expect(p.p).not.toContain("lga_backup");
