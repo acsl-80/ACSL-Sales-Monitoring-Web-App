@@ -106,7 +106,7 @@ test("create-sale maps what it is sent onto the lists and keeps the words", asyn
   await signIn(page, USERS.admin);
   const stoves = await callEdgeFunction(page, "data-center-read", { action: "partner_stoves", organizationId: TWIN_A, limit: 100 });
   const free = ((stoves.body as { data?: { stoves?: { stove_id: string; sale_id: string | null }[] } }).data?.stoves ?? []).filter((s) => !s.sale_id);
-  expect(free.length, "two free stoves of the twin partner").toBeGreaterThanOrEqual(2);
+  expect(free.length, "three free stoves of the twin partner").toBeGreaterThanOrEqual(3);
   const [partner] = await branchSql<{ partner_name: string }>(`select partner_name from public.organizations where id = '${TWIN_A}'`);
   const stamp = String(Date.now()).slice(-8);
 
@@ -136,15 +136,19 @@ test("create-sale maps what it is sent onto the lists and keeps the words", asyn
   expect([200, 201], JSON.stringify(a.body).slice(0, 300)).toContain(a.status);
   const b = await make(free[1].stove_id, 2, { cookingFuelSource: "xyz", cookingLocation: "Outdoor", previousStoveType: "Charcoal" });
   expect([200, 201], JSON.stringify(b.body).slice(0, 300)).toContain(b.status);
+  // A retired value is not for a new record: "other" goes to the description.
+  const c = await make(free[2].stove_id, 3, { previousStoveType: "other", previousStoveOther: "Kerosene stove" });
+  expect([200, 201], JSON.stringify(c.body).slice(0, 300)).toContain(c.status);
 
-  const rows = await branchSql<{ tx: string; fuel: string | null; fuel_note: string | null; loc: string | null; loc_note: string | null; stove: string | null }>(
+  const rows = await branchSql<{ tx: string; fuel: string | null; fuel_note: string | null; loc: string | null; loc_note: string | null; stove: string | null; other: string | null }>(
     `select transaction_id as tx, cooking_fuel_source as fuel, cooking_fuel_source_note as fuel_note,
-            cooking_location as loc, cooking_location_note as loc_note, previous_stove_type as stove
+            cooking_location as loc, cooking_location_note as loc_note, previous_stove_type as stove, previous_stove_other as other
        from public.sales where transaction_id like '${MARKER}-${stamp}-%' order by transaction_id`,
   );
-  expect(rows.map((r) => [r.fuel, r.fuel_note, r.loc, r.loc_note, r.stove])).toEqual([
-    ["purchase", "Local market", "indoor", "kitchen", "firewood"],
-    [null, "xyz", "outdoor", null, "charcoal"],
+  expect(rows.map((r) => [r.fuel, r.fuel_note, r.loc, r.loc_note, r.stove, r.other])).toEqual([
+    ["purchase", "Local market", "indoor", "kitchen", "firewood", null],
+    [null, "xyz", "outdoor", null, "charcoal", null],
+    [null, null, null, null, null, "Kerosene stove"],
   ]);
 });
 

@@ -97,19 +97,30 @@ export type Choice = {
  * outright, retired ones included, so an older record re-saved keeps its
  * answer; then the rules; otherwise the word goes to the note.
  */
-export function normalizeChoice(lists: SaleOptionLists | null, listKey: string, raw: unknown): Choice {
+export function normalizeChoice(
+  lists: SaleOptionLists | null,
+  listKey: string,
+  raw: unknown,
+  /**
+   * A retired value matches only when the caller says so: update-sale, for a
+   * record that already holds it, so re-saving keeps history. A new record
+   * never picks a retired value; the word goes through the rules instead.
+   */
+  { allowRetired = false }: { allowRetired?: boolean } = {},
+): Choice {
   const text = raw === null || raw === undefined ? "" : String(raw).trim();
   if (!text) return { value: null, note: null, matched: "empty" };
   // No lists to check against: the word is kept as sent, as before.
   if (!lists) return { value: text, note: null, matched: "unchecked" };
-  const rows = lists.get(listKey) ?? [];
+  const all = lists.get(listKey) ?? [];
+  const rows = allowRetired ? all : all.filter((r) => r.is_active);
   const wanted = fold(text);
   const byValue = rows.find((r) => fold(r.value) === wanted);
   if (byValue) return { value: byValue.value, note: null, matched: "value" };
   const byLabel = rows.find((r) => fold(r.label) === wanted);
   if (byLabel) return { value: byLabel.value, note: null, matched: "label" };
   for (const [re, value] of RULES[listKey] ?? []) {
-    if (re.test(wanted) && rows.some((r) => r.value === value)) {
+    if (re.test(wanted) && all.some((r) => r.value === value && r.is_active)) {
       return { value, note: text, matched: "rule" };
     }
   }

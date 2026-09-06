@@ -104,6 +104,7 @@ Deno.serve(async (req) => {
          transaction_id, stove_serial_no, partner_name, sales_date, amount,
          contact_person, contact_phone, end_user_name, state_backup, lga_backup,
          signature, is_installment, total_paid,
+         previous_stove_type, cooking_fuel_source, cooking_location,
          address:addresses!left(full_address)`
       )
       .eq("id", saleId)
@@ -372,7 +373,10 @@ Deno.serve(async (req) => {
         ? await loadSaleOptions(supabase)
         : null;
     if (previousStoveType !== undefined) {
-      const c = normalizeChoice(optionLists, "baseline_stove", previousStoveType);
+      // A record re-saved with the value it already holds keeps it, retired or not.
+      const c = normalizeChoice(optionLists, "baseline_stove", previousStoveType, {
+        allowRetired: String(previousStoveType ?? "") === String((sale as { previous_stove_type?: string | null }).previous_stove_type ?? ""),
+      });
       saleUpdate.previous_stove_type = c.value;
       // A placed value carries no description unless one was sent; the words
       // nothing could place become the description.
@@ -383,12 +387,16 @@ Deno.serve(async (req) => {
     if (previousStoveOther !== undefined) saleUpdate.previous_stove_other = previousStoveOther || null;
     if (mealsPerDay !== undefined) saleUpdate.meals_per_day = mealsPerDay || null;
     if (cookingFuelSource !== undefined) {
-      const c = normalizeChoice(optionLists, "fuel_source", cookingFuelSource);
+      const c = normalizeChoice(optionLists, "fuel_source", cookingFuelSource, {
+        allowRetired: String(cookingFuelSource ?? "") === String((sale as { cooking_fuel_source?: string | null }).cooking_fuel_source ?? ""),
+      });
       saleUpdate.cooking_fuel_source = c.value;
       if (c.matched !== "unchecked") saleUpdate.cooking_fuel_source_note = c.note;
     }
     if (cookingLocation !== undefined) {
-      const c = normalizeChoice(optionLists, "cooking_location", cookingLocation);
+      const c = normalizeChoice(optionLists, "cooking_location", cookingLocation, {
+        allowRetired: String(cookingLocation ?? "") === String((sale as { cooking_location?: string | null }).cooking_location ?? ""),
+      });
       saleUpdate.cooking_location = c.value;
       if (c.matched !== "unchecked") saleUpdate.cooking_location_note = c.note;
     }
