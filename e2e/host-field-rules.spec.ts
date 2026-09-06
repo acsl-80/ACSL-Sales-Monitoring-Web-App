@@ -164,6 +164,7 @@ test("create-sale accepts a sale without a dated field, and the status says inco
   const free = ((stoves.body as { data?: { stoves?: { stove_id: string; sale_id: string | null }[] } }).data?.stoves ?? []).find((s) => !s.sale_id);
   expect(free, "a free stove of the twin partner").toBeTruthy();
   const [partner] = await branchSql<{ partner_name: string }>(`select partner_name from public.organizations where id = '${TWIN_A}'`);
+  const phone = `080${String(Date.now()).slice(-8)}`;
   try {
     await setRule(page, RULE, "2020-01-01");
     const created = await callEdgeFunction(page, "create-sale", {
@@ -175,9 +176,10 @@ test("create-sale accepts a sale without a dated field, and the status says inco
       amount: 25000,
       endUserFirstName: "Rules",
       endUserSurname: "Spec",
-      phone: "08012345688",
+      // A phone is unique across sales, so each run brings its own.
+      phone,
       contactPerson: "Rules Spec",
-      contactPhone: "08012345688",
+      contactPhone: phone,
       salesAgentName: "Bala Sani",
       stateBackup: "Kogi",
       lgaBackup: "Lokoja",
