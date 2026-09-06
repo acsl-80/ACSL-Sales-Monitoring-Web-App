@@ -110,6 +110,28 @@ test("get-sales-advanced answers stove_db with the Stove DB names, word for word
   const row = body.data.find((d) => d["Serial number"] === sale.serial);
   expect(row, "our sale, in the Stove DB shape").toBeTruthy();
   expectStoveDbRow(row!);
+
+  // A CSV asked for in the same shape carries the same names as its header.
+  const csv = await page.evaluate(
+    async ({ serial }) => {
+      const key = Object.keys(window.localStorage).find((k) => k.startsWith("sb-") && k.endsWith("-auth-token"));
+      const stored = JSON.parse(window.localStorage.getItem(key ?? "") ?? "{}");
+      const token = stored.access_token ?? stored?.currentSession?.access_token;
+      const ref = (key ?? "").replace(/^sb-/, "").replace(/-auth-token$/, "");
+      const res = await fetch(`https://${ref}.supabase.co/functions/v1/get-sales-advanced`, {
+        method: "POST",
+        headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
+        body: JSON.stringify({ responseFormat: "stove_db", export: "csv", stoveSerialNo: serial, limit: 5 }),
+      });
+      return { status: res.status, type: res.headers.get("content-type") ?? "", text: await res.text() };
+    },
+    { serial: sale.serial },
+  );
+  expect(csv.status).toBe(200);
+  expect(csv.type).toContain("text/csv");
+  const header = csv.text.split(/\r?\n/)[0];
+  expect(header).toContain("User surname");
+  expect(header).toContain("Number of Pots");
 });
 
 test("format1 takes the name from its two columns and fills cpa", async ({ page }) => {
