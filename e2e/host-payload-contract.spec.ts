@@ -45,6 +45,9 @@ const DICTIONARY = JSON.parse(readFileSync(join(REPO, "supabase/functions/_share
 const LIVE = DICTIONARY.fields.filter((f) => f.status !== "planned");
 /** The fields a writer sends: on the sale or its address, with a payload key. */
 const SENT = LIVE.filter((f) => f.payload && (f.table === "sales" || f.table === "addresses"));
+/** The payment trio is written by the payment path, proven by the bench model spec; the round trips leave it out. */
+const PAYMENT = new Set(["payment_model_id", "is_installment", "total_paid"]);
+const ROUND_TRIP = SENT.filter((f) => !PAYMENT.has(f.key));
 const ADDRESS_KEY: Record<string, string> = { full_address: "fullAddress", city: "city" };
 
 /** The key a field travels under: `addressData.<camel>` for the address, the payload key otherwise. */
@@ -55,11 +58,14 @@ function payloadKeyOf(f: Field): string {
 /** The keys a function destructures from its body: `const { a, b, } = body`. */
 function acceptedKeys(source: string): Set<string> {
   const keys = new Set<string>();
-  const re = /const\s*\{([\s\S]*?)\}\s*=\s*body/g;
+  // Comments go first, so a brace or a comma inside one cannot shape the match;
+  // then the one destructure whose braces hold no other braces and end at `= body`.
+  const clean = source.replace(/\/\/[^\n]*/g, "").replace(/\/\*[\s\S]*?\*\//g, "");
+  const re = /const\s*\{([^{}]*)\}\s*=\s*body/g;
   let m: RegExpExecArray | null;
-  while ((m = re.exec(source))) {
+  while ((m = re.exec(clean))) {
     for (const raw of m[1].split(",")) {
-      const name = raw.replace(/\/\/[^\n]*/g, "").replace(/\/\*[\s\S]*?\*\//g, "").trim().split(":")[0].trim();
+      const name = raw.trim().split(":")[0].trim();
       if (/^[A-Za-z_][A-Za-z0-9_]*$/.test(name)) keys.add(name);
     }
   }
@@ -67,11 +73,12 @@ function acceptedKeys(source: string): Set<string> {
 }
 
 /** A value of the field's type, distinct per field, that reads back as sent. */
-function sample(f: Field, stamp: string): unknown {
+function sample(f: Field, stamp: string, index = 0): unknown {
   if (f.options?.length) return f.options[0].value;
   switch (f.type) {
     case "phone":
-      return `08${stamp.slice(0, 9)}`;
+      // Eleven digits, distinct per field, so two numbers on one record differ.
+      return `0803${stamp.slice(0, 6)}${index % 10}`;
     case "date":
       return "2026-06-01";
     case "money":
@@ -88,6 +95,15 @@ function sample(f: Field, stamp: string): unknown {
     default:
       return `${f.key}-${stamp}`;
   }
+}
+
+/** JSON with sorted keys, so two objects compare by content. */
+function canonical(v: unknown): string {
+  if (v && typeof v === "object" && !Array.isArray(v)) {
+    const o = v as Record<string, unknown>;
+    return JSON.stringify(Object.fromEntries(Object.keys(o).sort().map((k) => [k, o[k]])));
+  }
+  return JSON.stringify(v);
 }
 
 function dartFiles(dir: string): string[] {
@@ -136,9 +152,10 @@ test("every key sent to create-sale lands in its column and reads back as sent",
     addressData: { state: "Kogi" },
   };
   const sent = new Map<Field, unknown>();
-  for (const f of SENT) {
+  let index = 0;
+  for (const f of ROUND_TRIP) {
     if (["stove_serial_no", "partner_name"].includes(f.key)) continue;
-    const v = sample(f, stamp);
+    const v = sample(f, stamp, index++);
     if (v === undefined) continue;
     if (f.table === "addresses") (payload.addressData as Record<string, unknown>)[ADDRESS_KEY[f.column] ?? f.column] = v;
     else payload[f.payload!] = v;
@@ -165,7 +182,7 @@ test("every key sent to create-sale lands in its column and reads back as sent",
     if (["state_backup", "lga_backup", "end_user_name"].includes(f.key)) continue;
     const got = f.table === "addresses" ? address[f.column] : row[f.column];
     const want = typeof v === "number" ? Number(got) : got;
-    const same = typeof v === "object" ? JSON.stringify(got) === JSON.stringify(v) : String(want) === String(v);
+    const same = typeof v === "object" ? canonical(got) === canonical(v) : String(want) === String(v);
     if (!same) mismatches.push(`${payloadKeyOf(f)} sent ${JSON.stringify(v)}, column ${f.table}.${f.column} holds ${JSON.stringify(got)}`);
   }
   expect(mismatches, "keys that did not land in their column").toEqual([]);
@@ -180,9 +197,10 @@ test("every correctable key sent to update-sale moves its column", async ({ page
   const stamp = String(Date.now()).slice(-9);
   const patch: Record<string, unknown> = { addressData: {} };
   const sent = new Map<Field, unknown>();
-  for (const f of SENT) {
+  let index = 0;
+  for (const f of ROUND_TRIP) {
     if (!f.correctable || f.type === "signature" || f.type === "image") continue;
-    const v = f.type === "phone" ? `07${stamp.slice(0, 9)}` : sample(f, stamp);
+    const v = f.type === "phone" ? `0806${stamp.slice(0, 6)}${index++ % 10}` : sample(f, stamp, index++);
     if (v === undefined) continue;
     if (f.table === "addresses") (patch.addressData as Record<string, unknown>)[ADDRESS_KEY[f.column] ?? f.column] = v;
     else patch[f.payload!] = v;
@@ -191,9 +209,6 @@ test("every correctable key sent to update-sale moves its column", async ({ page
   patch.stateBackup = "Kogi";
   patch.lgaBackup = "Lokoja";
   patch.endUserName = `${patch.endUserFirstName ?? "Contract"} ${patch.endUserSurname ?? "Spec"}`;
-  // Two phones on one record may not collide.
-  if (patch.contactPhone === patch.phone) patch.contactPhone = `09${stamp.slice(0, 9)}`;
-  if (patch.otherPhone === patch.phone) patch.otherPhone = `09${stamp.slice(1, 9)}1`;
 
   const updated = await callEdgeFunction(page, `update-sale?id=${target.id}`, patch);
   expect([200], JSON.stringify(updated.body).slice(0, 300)).toContain(updated.status);
@@ -206,7 +221,7 @@ test("every correctable key sent to update-sale moves its column", async ({ page
   for (const [f, v] of sent) {
     if (["state_backup", "lga_backup", "end_user_name", "contact_phone", "other_phone"].includes(f.key)) continue;
     const got = f.table === "addresses" ? address[f.column] : row[f.column];
-    const same = typeof v === "object" ? JSON.stringify(got) === JSON.stringify(v) : String(got) === String(v);
+    const same = typeof v === "object" ? canonical(got) === canonical(v) : String(got) === String(v);
     if (!same) mismatches.push(`${payloadKeyOf(f)} sent ${JSON.stringify(v)}, column ${f.table}.${f.column} holds ${JSON.stringify(got)}`);
   }
   expect(mismatches, "correctable keys that did not move their column").toEqual([]);

@@ -291,3 +291,23 @@ is not.
 The payment type is its own control on both forms, apart from the sales
 model (A9): cash or installment first, the model for an installment; picking
 a model on the bench sets the type. The payload does not change.
+
+## D33. The contract is a spec, and the guide is generated (2026-09-06, slice F5)
+
+The payload contract between the dictionary and the two apps is held by a
+spec, `e2e/host-payload-contract.spec.ts`, not by a document: it reads the
+keys create-sale and update-sale destructure from their own source, sends
+every dictionary key through create-sale and reads each back from its
+column, moves every correctable key through update-sale, and scans the phone
+app's Dart sources for every key the rules table requires today. A key
+required from a later day is reported, not failed, so the go-live date an
+administrator holds in Settings is the switch that turns the app's gap red.
+It is a guard rather than a red: the web side already meets it.
+
+The phone app guide, `docs/contractor/sales-mobile-field-alignment.md`, is
+one document whose field table is generated from the dictionary by a script,
+so the wording, keys, options and dates in it cannot drift from what the
+endpoint serves. The copy beside the repos is written from the same script.
+The dictionary's seed dates were moved to say what the rules table says
+(2000-01-01 since the form existed, the go-live day, 2027-01-05), so the
+JSON fallback, the endpoint and the guide agree.
