@@ -1,6 +1,6 @@
 # Sales app (mobile): the sale record, aligned with the User Agreement
 
-Canonical copy: `docs/contractor/sales-mobile-field-alignment.md` in the sales-web repo (the parity brief beside it covers caps and paging). The copy beside the repos is written from this file. Field table generated from `supabase/functions/_shared/sale-dictionary.json` version 2026-09-06.2 on 2026-09-06.
+Canonical copy: `docs/contractor/sales-mobile-field-alignment.md` in the sales-web repo (the parity brief beside it covers caps and paging). The copy beside the repos is written from this file. Field table generated from `supabase/functions/_shared/sale-dictionary.json` version 2026-09-06.3 on 2026-09-06.
 
 ## Why this exists
 
@@ -30,8 +30,8 @@ Three things follow from it:
 |---|---|---|---|
 | Sales date | `salesDate` | YYYY-MM-DD | since the form existed |
 | Serial number | (derived, not sent) | text | since the form existed |
-| Surname | `endUserSurname` | text | from 2026-09-08 (live date from the endpoint) |
-| First name | `endUserFirstName` | text | from 2026-09-08 (live date from the endpoint) |
+| Surname | `endUserSurname` | text | from 2026-09-11 (live date from the endpoint) |
+| First name | `endUserFirstName` | text | from 2026-09-11 (live date from the endpoint) |
 | Customer name | `endUserName` | text | since the form existed |
 | Also known as | `aka` | text | optional |
 | Buyer Name | `contactPerson` | text | optional |
@@ -39,10 +39,10 @@ Three things follow from it:
 | Other telephone number | `otherPhone` | a Nigerian number; 080..., +234... and 234... all work | optional |
 | Contact phone | `contactPhone` | a Nigerian number; 080..., +234... and 234... all work | optional |
 | Address | `addressData.fullAddress` | inside `addressData` | since the form existed |
-| City/town/village | `addressData.city` | inside `addressData` | from 2026-09-08 (live date from the endpoint) |
+| City/town/village | `addressData.city` | inside `addressData` | from 2026-09-11 (live date from the endpoint) |
 | LGA | `lgaBackup` | text | since the form existed |
 | State | `stateBackup` | text | since the form existed |
-| Sales agent's name | `salesAgentName` | text | from 2026-09-08 (live date from the endpoint) |
+| Sales agent's name | `salesAgentName` | text | from 2026-09-11 (live date from the endpoint) |
 | Sales model | `paymentModelId` | a payment model id from `payment_models` | optional |
 | Sales partner | `partnerName` | text | since the form existed |
 | Retailer/sales branch/agency | `retailerBranch` | text | optional |
@@ -53,12 +53,12 @@ Three things follow from it:
 | Total paid to date | `amountReceived` | a number, naira | optional |
 | Amount paid (first installment) | (derived, not sent) | a number, naira | optional |
 | Installment term | (derived, not sent) | a whole number | optional |
-| Baseline stove | `previousStoveType` | one of the endpoint's `options` values (Firewood, Charcoal, LPG today); send the `value` | from 2026-09-08 (live date from the endpoint) |
+| Baseline stove | `previousStoveType` | one of the endpoint's `options` values (Firewood, Charcoal, LPG today); send the `value` | from 2026-09-11 (live date from the endpoint) |
 | Baseline stove, other | `previousStoveOther` | text | optional |
 | Fuel source | `cookingFuelSource` | one of the endpoint's `options` values (Collect it, Purchase it today); send the `value` | from 2027-01-05 (live date from the endpoint) |
 | Cooking location | `cookingLocation` | one of the endpoint's `options` values (Indoor, Outdoor, Semi-indoor today); send the `value` | optional |
 | Meals per day | `mealsPerDay` | text | optional |
-| CPA (Terms and Conditions) | `termsAccepted` | an object of the six consents, each true | from 2026-09-08 (live date from the endpoint) |
+| CPA (Terms and Conditions) | `termsAccepted` | an object of the six consents, each true | from 2026-09-11 (live date from the endpoint) |
 | Signature | `signature` | a data URL of the drawn signature, or the upload id | optional |
 | Agreement photo | (derived, not sent) | the upload id from the images endpoint | optional |
 | Stove photo | (derived, not sent) | the upload id from the images endpoint | optional |
@@ -71,7 +71,7 @@ Sent as well, outside the agreement and unchanged: `transactionId`, `organizatio
 2. **The name in two fields.** Surname and first name, sent as `endUserSurname` and `endUserFirstName`. Keep sending `endUserName` joined as well until the web side says it can go.
 3. **City/town/village** inside `addressData.city`. **Sales agent's name** as `salesAgentName`, defaulting to the signed-in person and editable.
 4. **Baseline stove, Fuel source, Cooking location as dropdowns** from `options`. Send the `value`.
-5. **Required from `mandatoryFrom`.** Surname, first name, city, sales agent, baseline stove and the six consents from 2026-09-08; pots, Wonderbox and fuel source from 2027-01-05; both dates live on the endpoint and an administrator can move them.
+5. **Required from `mandatoryFrom`.** Surname, first name, city, sales agent, baseline stove and the six consents from 2026-09-11; pots, Wonderbox and fuel source from 2027-01-05; both dates live on the endpoint and an administrator can move them.
 6. **Payment type as its own control** (Cash purchase, Installment purchase) with the sales model for an installment. The payload does not change: `isInstallment` and `paymentModelId`.
 7. **Pots quantity** as the dropdown 0, 1, 2. **Wonderbox** is the label. **CPA (Terms and Conditions)** is the heading of the six consents.
 

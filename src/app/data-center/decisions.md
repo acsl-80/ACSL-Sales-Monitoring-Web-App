@@ -311,3 +311,13 @@ endpoint serves. The copy beside the repos is written from the same script.
 The dictionary's seed dates were moved to say what the rules table says
 (2000-01-01 since the form existed, the go-live day, 2027-01-05), so the
 JSON fallback, the endpoint and the guide agree.
+
+## D34. Go-live is 11 September 2026 (2026-09-06, his word)
+
+Brain-codes have until 11 September to ship the phone app's new fields, so
+the six go-live rows of `public.sale_field_rules` (surname, first name, city,
+sales agent, baseline stove, the consents) moved from the 8th to the 11th,
+by migration on production the same day, and the dictionary's seed and the
+phone app guide say the 11th. The rule and the deadline are the same day, so
+no phone sale reads incomplete for want of a field the app was not yet asked
+to send. The date stays movable in Settings.
