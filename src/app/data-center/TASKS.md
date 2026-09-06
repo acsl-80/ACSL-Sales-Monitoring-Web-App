@@ -34,14 +34,14 @@ decisions D27 to D29.
 - [x] 6b Queue facets in the URL. PR #75 merged and live 2026-09-04 (main 72df1a9 to a80f2ec; client only, bundle crawl confirmed)
 - [x] 7a Completeness evidence config and the tile's plain line. PR #76 merged and live 2026-09-05 (main a80f2ec to 6ae5db7; migration applied with ledger row, read v18, full run 2,340 of 2,340 complete)
 - [x] 7b The sales app's status rule (D17). PR #77 merged and live 2026-09-05 (main 6ae5db7 to 855e860; both migrations applied with ledger rows; production reads 54 completed, 333 pending, 1,953 incomplete; 406 rows recomputed)
-- [ ] 8 Settings: used by, retire warning, previous_stove list, typed editors, gates. folded into F3
-- [ ] 9 Order model on the transfer, preselected on the bench (D19). folded into F2 and F3
+- [ ] 8 Settings: used by, retire warning and the previous_stove list shipped in F3b. Still open: typed editors for `assignment.batch_size_by_partner` and `import.model_map` in Variables (raw JSON today), and `SendBackRouting`'s `canEdit` read from the access payload instead of always true. Small, module lane.
+- [ ] 9 Order model on the transfer, preselected on the bench (D19): shipped in F2b except the rail's per-row model chip, which needs the rail's list read to carry the transfer's model. Small, module lane.
 
 ## Deferred
 
 - Host, seen while fixing the render loop (PR #79): the sidebar declares two entries with the same `route` key ("agents"), which React warns about on every render; and a username-based login falls through to the direct email path on any non-ok answer from `login-with-credentials`, reporting a transient server fault as wrong credentials. Two small host fixes.
 - Done in F3b: `sales.incomplete_by_missing` (the Complete card's breakdown and the Missing facet's options) still enumerates only `completeness_required_fields`; a sale incomplete only for a dated field (city, surname, agent from go-live) counts in `sales.incomplete` but has no bucket. `missing_predicate` already accepts the dated fields. F3b extends the compute loop over the dated rules so the breakdown sums again.
-- Host, seen in the F1 review: the Sell Stove form's previous-stove value rendering ("Charcoal Stove", "Wood Stove (3 stone)") on the detail views differs from the form's option labels; F3's option pass should carry it.
+- Done in F3b: the two detail views label the previous stove, fuel source and cooking location through one component reading the dictionary's live options.
 - The 181 live sales whose payment model is outside their partner's entitlement: an observation for the sales team, not a module change.
 - The host form's own copy of the previous-stove list (`CreateSalesForm.jsx`): host lane.
 - A structured editor for the sheet columns config.
