@@ -331,26 +331,6 @@ export function fromSheetValues(row: Record<string, unknown>): Record<string, un
     out.termsAccepted = Object.fromEntries(TERMS_KEYS.map((k) => [k, false]));
   }
 
-  // The three choices are placed on the registry's lists (slice F3b): a
-  // dropdown gives the label, a typed cell may give the value, an older word
-  // or free text. A word the rules cannot place is refused here with the
-  // choices named, so the row is corrected rather than silently emptied.
-  if (defaults.options) {
-    for (const [key, listKey] of [["previousStoveType", "baseline_stove"], ["cookingFuelSource", "fuel_source"], ["cookingLocation", "cooking_location"]] as const) {
-      const raw = out[key];
-      if (typeof raw !== "string" || !raw.trim()) continue;
-      const choice = normalizeChoice(defaults.options, listKey, raw);
-      if (choice.value === null) {
-        return {
-          ok: false,
-          reason: `${key === "previousStoveType" ? "Baseline stove" : key === "cookingFuelSource" ? "Fuel source" : "Cooking location"} "${raw}" is not one of the choices`,
-          hint: `Use one of: ${offeredLabels(defaults.options, listKey)}.`,
-        };
-      }
-      out[key] = choice.value;
-    }
-  }
-
   return out;
 }
 
@@ -980,6 +960,31 @@ export function normalizeRow(
   const otherPhoneWarning = otherPhoneRaw && !otherResult?.ok
     ? `Alternative phone "${otherPhoneRaw}" was not usable and has been left out`
     : null;
+
+  // The three choices are placed on the registry's lists (slice F3b): a
+  // dropdown gives the label, a typed cell may give the value, an older word
+  // or free text. create-sale places the word; here a word the rules cannot
+  // place is refused with the choices named, so the row is corrected rather
+  // than silently emptied.
+  if (defaults.options) {
+    const choiceFields = [
+      ["previousStoveType", "baseline_stove", "Baseline stove"],
+      ["cookingFuelSource", "fuel_source", "Fuel source"],
+      ["cookingLocation", "cooking_location", "Cooking location"],
+    ] as const;
+    for (const [key, listKey, label] of choiceFields) {
+      const word = field(raw, key);
+      if (!word) continue;
+      const choice = normalizeChoice(defaults.options, listKey, word);
+      if (choice.value === null) {
+        return {
+          ok: false,
+          reason: `${label} "${word}" is not one of the choices`,
+          hint: `Use one of: ${offeredLabels(defaults.options, listKey)}.`,
+        };
+      }
+    }
+  }
 
   return {
     ok: true,
