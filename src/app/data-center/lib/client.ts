@@ -978,6 +978,8 @@ export type RegistryOptionList = {
   label: string;
   description: string | null;
   values: RegistryOptionValue[];
+  /** The questions that offer this list: the call form's by option_list_key, the sale record's by the dictionary. */
+  usedBy?: { source: "call_form" | "sale"; key: string; label: string; active: boolean }[];
 };
 
 /** One question on the call form, as Settings edits it. */

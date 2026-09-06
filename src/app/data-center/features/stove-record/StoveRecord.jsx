@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
+import { ChoiceLabel } from "@/components/ChoiceLabel";
 import Link from "@/compat/Link";
 import { dataCenterClient, DataCenterError } from "../../lib/client";
 import { plural } from "../../lib/plural";
@@ -1078,12 +1079,18 @@ export default function StoveRecord({ stoveId }) {
               value={
                 sale.previous_stove_type === "other"
                   ? (sale.previous_stove_other ?? "other")
-                  : words(sale.previous_stove_type)
+                  : <ChoiceLabel field="previous_stove_type" value={sale.previous_stove_type} />
               }
             />
             <Detail label={fieldLabel("meals_per_day")} value={sale.meals_per_day} />
-            <Detail label={fieldLabel("cooking_fuel_source")} value={words(sale.cooking_fuel_source)} />
-            <Detail label={fieldLabel("cooking_location")} value={words(sale.cooking_location)} />
+            <Detail
+              label={fieldLabel("cooking_fuel_source")}
+              value={<ChoiceLabel field="cooking_fuel_source" value={sale.cooking_fuel_source} empty={sale.cooking_fuel_source_note ? `${sale.cooking_fuel_source_note} (as written)` : ""} />}
+            />
+            <Detail
+              label={fieldLabel("cooking_location")}
+              value={<ChoiceLabel field="cooking_location" value={sale.cooking_location} empty={sale.cooking_location_note ? `${sale.cooking_location_note} (as written)` : ""} />}
+            />
           </Grid>
           <Terms accepted={sale.terms_accepted} />
         </Section>

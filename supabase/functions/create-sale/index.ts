@@ -1,4 +1,5 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { loadSaleOptions, normalizeChoice } from "../_shared/sale-options.ts";
 import { resolveAssignedOrgIds } from "../_shared/resolveAssignedOrgIds.ts";
 
 function withCors(res: Response): Response {
@@ -570,6 +571,14 @@ Deno.serve(async (req) => {
     console.log("🏡 Address inserted:", address.id);
 
     // ── Insert sale ───────────────────────────────────────────────────────────
+    // The three choices come from the registry (slice F3b). A value, a label,
+    // an older value or free text is placed on the list where it can be; what
+    // cannot be placed keeps its words in the note column.
+    const optionLists = await loadSaleOptions(supabase);
+    const stoveChoice = normalizeChoice(optionLists, "baseline_stove", previousStoveType);
+    const fuelChoice = normalizeChoice(optionLists, "fuel_source", cookingFuelSource);
+    const locationChoice = normalizeChoice(optionLists, "cooking_location", cookingLocation);
+
     // The status is the trigger's to set: update_sale_status() applies
     // public.calculate_sale_status, which reads public.sale_field_rules.
     console.log("📝 Inserting main sale");
@@ -618,11 +627,13 @@ Deno.serve(async (req) => {
           payment_status: installmentData ? installmentData.paymentStatus : "fully_paid",
           pot_quantity: potQuantity ?? null,
           heat_retention_device: heatRetentionDevice ?? false,
-          previous_stove_type: previousStoveType || null,
-          previous_stove_other: previousStoveOther || null,
+          previous_stove_type: stoveChoice.value,
+          previous_stove_other: previousStoveOther || stoveChoice.note || null,
           meals_per_day: mealsPerDay || null,
-          cooking_fuel_source: cookingFuelSource || null,
-          cooking_location: cookingLocation || null,
+          cooking_fuel_source: fuelChoice.value,
+          cooking_fuel_source_note: fuelChoice.note,
+          cooking_location: locationChoice.value,
+          cooking_location_note: locationChoice.note,
           terms_accepted: termsAccepted ?? null,
         },
       ])

@@ -1,5 +1,6 @@
 // Data Center: bulk import of digitalized paper receipts.
 import { normalizeNigerianPhone } from "../_shared/nigerian-phone.ts";
+import { normalizeChoice, offeredLabels, type SaleOptionLists, type SaleOptionRow } from "../_shared/sale-options.ts";
 import { excelSerialToIso } from "../_shared/data-center-dates.ts";
 //
 // THE SHAPE, AND WHY IT IS THIS SHAPE
@@ -330,10 +331,24 @@ export function fromSheetValues(row: Record<string, unknown>): Record<string, un
     out.termsAccepted = Object.fromEntries(TERMS_KEYS.map((k) => [k, false]));
   }
 
-  // A dropdown gives the stored value already; a typed cell may not.
-  if (typeof out.previousStoveType === "string") {
-    const t = out.previousStoveType.trim().toLowerCase().replace(/[\s-]+/g, "_");
-    if (["charcoal", "wood_stove", "other"].includes(t)) out.previousStoveType = t;
+  // The three choices are placed on the registry's lists (slice F3b): a
+  // dropdown gives the label, a typed cell may give the value, an older word
+  // or free text. A word the rules cannot place is refused here with the
+  // choices named, so the row is corrected rather than silently emptied.
+  if (defaults.options) {
+    for (const [key, listKey] of [["previousStoveType", "baseline_stove"], ["cookingFuelSource", "fuel_source"], ["cookingLocation", "cooking_location"]] as const) {
+      const raw = out[key];
+      if (typeof raw !== "string" || !raw.trim()) continue;
+      const choice = normalizeChoice(defaults.options, listKey, raw);
+      if (choice.value === null) {
+        return {
+          ok: false,
+          reason: `${key === "previousStoveType" ? "Baseline stove" : key === "cookingFuelSource" ? "Fuel source" : "Cooking location"} "${raw}" is not one of the choices`,
+          hint: `Use one of: ${offeredLabels(defaults.options, listKey)}.`,
+        };
+      }
+      out[key] = choice.value;
+    }
   }
 
   return out;
@@ -749,6 +764,19 @@ function field(raw: Record<string, unknown>, key: keyof typeof HEADER_ALIASES, .
  * Returns the reason as a sentence rather than a code. The person reading it is
  * a data clerk with the receipt in front of them, not a developer.
  */
+/** The sale's three option lists, read once per request through the module's own connection. */
+async function saleOptionLists(conn: { queryObject: (q: unknown) => Promise<unknown> }): Promise<SaleOptionLists> {
+  const r = (await conn.queryObject({
+    text: `select list_key, value, label, is_active, sort_order
+             from data_center.option_values
+            where list_key in ('baseline_stove', 'fuel_source', 'cooking_location')
+            order by list_key, sort_order, label`,
+  })) as { rows: SaleOptionRow[] };
+  const lists: SaleOptionLists = new Map();
+  for (const row of r.rows) lists.set(row.list_key, [...(lists.get(row.list_key) ?? []), row]);
+  return lists;
+}
+
 export function normalizeRow(
   raw: Record<string, unknown>,
   /**
@@ -760,7 +788,7 @@ export function normalizeRow(
    * was writing the price into `raw`, and `raw` is what a rejected row is shown
    * as - the version the person fixing it recognises - so it stays as typed.
    */
-  defaults: { amount?: number | null } = {},
+  defaults: { amount?: number | null; options?: SaleOptionLists | null } = {},
 ):
   // `hint` says what to do about it. A reason without a fix leaves a digitiser
   // with four hundred rows and no next step, which is how a rejection file gets
@@ -1526,7 +1554,8 @@ serve(async (req) => {
         // Priced by the same rule a file is. One validator, whatever the
         // channel, and that has to include what the validator is given.
         const typedPrice = await withReadConnection((c) => modelPriceFor(c, record));
-        const shape = normalizeRow(record, { amount: typedPrice });
+        const typedOptions = await withReadConnection((c) => saleOptionLists(c));
+        const shape = normalizeRow(record, { amount: typedPrice, options: typedOptions });
         if (!shape.ok) {
           throw new BadRequest(shape.hint ? `${shape.reason}. ${shape.hint}` : shape.reason);
         }
@@ -1653,6 +1682,7 @@ serve(async (req) => {
             };
             const priceOf = (raw: Record<string, unknown>) =>
               resolveModel(raw)?.price ?? null;
+            const batchOptions = await withReadConnection((c) => saleOptionLists(c));
 
             const shaped = pending.rows.map((r) => ({
               id: r.id,
@@ -1660,7 +1690,7 @@ serve(async (req) => {
               // Kept, because the columns the system filled in are checked
               // against the stove ID below and normalizeRow does not carry them.
               raw: r.raw,
-              result: normalizeRow(r.raw, { amount: priceOf(r.raw) }),
+              result: normalizeRow(r.raw, { amount: priceOf(r.raw), options: batchOptions }),
             }));
             const serials = shaped
               .filter((s) => s.result.ok)
@@ -4340,7 +4370,8 @@ serve(async (req) => {
           ? await withReadConnection((c) => modelFor(c, record))
           : null;
         const benchPrice = model?.price ?? null;
-        const shape = complete ? normalizeRow(record, { amount: benchPrice }) : null;
+        const benchOptions = complete ? await withReadConnection((c) => saleOptionLists(c)) : null;
+        const shape = complete ? normalizeRow(record, { amount: benchPrice, options: benchOptions }) : null;
         if (complete) {
           if (shape && !shape.ok) {
             return json(

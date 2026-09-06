@@ -14,6 +14,9 @@
  */
 
 import dictionary from "../../supabase/functions/_shared/sale-dictionary.json";
+import { useEffect, useState } from "react";
+import { getSupabase } from "./supabaseClient";
+import { supabaseUrl } from "./supabaseConfig";
 
 export type SaleFieldOption = { value: string; label: string };
 
@@ -102,4 +105,64 @@ export function isMandatory(field: DictionaryField, on: Date = new Date()): bool
 /** The label of a group of fields, for section headings. */
 export function groupLabel(key: string): string {
   return SALE_DICTIONARY.groups.find((g) => g.key === key)?.label ?? key;
+}
+
+// ---------------------------------------------------------------------------
+// The live dictionary (slice F3b). The JSON above is the seed the build
+// carries; the sale-dictionary endpoint serves the same fields with the
+// registry's options and the rules table's dates. Read once per session.
+// ---------------------------------------------------------------------------
+
+let liveCache: Promise<SaleDictionary | null> | null = null;
+
+/** The endpoint's dictionary, or null when it cannot be reached. A failure is not cached. */
+export function loadLiveDictionary(force = false): Promise<SaleDictionary | null> {
+  if (!liveCache || force) {
+    liveCache = (async () => {
+      try {
+        const { data } = await getSupabase().auth.getSession();
+        const token = data.session?.access_token;
+        if (!token) return null;
+        const res = await fetch(`${supabaseUrl}/functions/v1/sale-dictionary`, {
+          headers: { Authorization: `Bearer ${token}` },
+        });
+        if (!res.ok) return null;
+        return (await res.json()) as SaleDictionary;
+      } catch {
+        return null;
+      }
+    })().then((v) => {
+      if (v === null) liveCache = null;
+      return v;
+    });
+  }
+  return liveCache;
+}
+
+/** The live dictionary for a component's life; null until it arrives or when it cannot. */
+export function useLiveDictionary(): SaleDictionary | null {
+  const [live, setLive] = useState<SaleDictionary | null>(null);
+  useEffect(() => {
+    let on = true;
+    loadLiveDictionary().then((v) => {
+      if (on && v) setLive(v);
+    });
+    return () => {
+      on = false;
+    };
+  }, []);
+  return live;
+}
+
+/** A field's options as the registry has them now, the seed until then. */
+export function useFieldOptions(key: string): SaleFieldOption[] {
+  const live = useLiveDictionary();
+  const field = live?.fields.find((f) => f.key === key);
+  return field?.options?.length ? field.options : fieldOptions(key);
+}
+
+/** The label of one value against a given option set, or the value itself. */
+export function labelFor(options: SaleFieldOption[], value: string | null | undefined): string {
+  if (value === null || value === undefined || value === "") return "";
+  return options.find((o) => o.value === String(value))?.label ?? String(value);
 }

@@ -110,6 +110,13 @@ function OptionListEditor({ lists, canEdit, onSaved, onError }) {
         </Field>
         <p className="pb-1.5 text-sm text-gray-600">
           {list.description || plural(values.length, "choice")}
+          {list.usedBy?.length ? (
+            <span className="ml-2 text-xs text-gray-500">
+              Used by: {list.usedBy.map((u) => `${u.label}${u.source === "sale" ? " (sale record)" : ""}`).join(", ")}
+            </span>
+          ) : (
+            <span className="ml-2 text-xs text-gray-500">Used by no question yet</span>
+          )}
         </p>
       </div>
 
@@ -126,6 +133,12 @@ function OptionListEditor({ lists, canEdit, onSaved, onError }) {
           </thead>
           <tbody className="divide-y divide-gray-100">
             {paged.slice.map((v) => {
+              // The same word offered in another list: retiring it here does
+              // not retire it there, which is how an option "still appeared".
+              const alsoIn = (value) =>
+                lists
+                  .filter((l) => l.key !== list.key && l.values.some((x) => x.value === value.value && x.is_active))
+                  .map((l) => l.label);
               const isEditing = editing?.id === v.id;
               return (
                 <tr key={v.id} className={v.is_active ? "" : "bg-gray-50 text-gray-500"}>
@@ -160,6 +173,11 @@ function OptionListEditor({ lists, canEdit, onSaved, onError }) {
                       <span className="text-xs text-gray-600">Offered</span>
                     ) : (
                       <span className="text-xs text-amber-700">Retired</span>
+                    )}
+                    {v.is_active && alsoIn(v).length > 0 && (
+                      <span className="ml-2 text-xs text-amber-700" title="Retiring it here leaves it offered there.">
+                        Also in {alsoIn(v).join(", ")}
+                      </span>
                     )}
                   </td>
                   {canEdit && (

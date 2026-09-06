@@ -52,7 +52,7 @@ import paymentModelService from "../../../services/paymentModelService";
 import superAdminAgentService from "../../../services/superAdminAgentService";
 import { useAuth } from "../../../contexts/useAuth";
 import { formatCurrency as formatCurrencyShared } from "@/app/utils/formatCurrency";
-import { fieldLabel, fieldOptions, groupLabel, payloadLabel } from "@/lib/saleDictionary";
+import { fieldLabel, fieldOptions, groupLabel, payloadLabel, useFieldOptions } from "@/lib/saleDictionary";
 
 const FormField = ({ label, error, children, htmlFor }) => (
   <div>
@@ -84,6 +84,10 @@ const CreateSalesForm = ({
 }) => {
   // The dated rules (public.sale_field_rules): what a record of this day must carry.
   const fieldRules = useSaleFieldRules();
+  // The three choices as the registry has them now (slice F3b).
+  const previousStoveOptions = useFieldOptions("previous_stove_type");
+  const fuelSourceOptions = useFieldOptions("cooking_fuel_source");
+  const cookingLocationOptions = useFieldOptions("cooking_location");
   const router = useRouter();
   const { supabase } = useAuth();
   const isSuperAdmin = SAA_ROLES.includes(userRole);
@@ -1670,19 +1674,46 @@ const CreateSalesForm = ({
               <ReadOnlyTile label={payloadLabel("isInstallment")} value="Full Payment" />
             ) : paymentModels.length > 0 ? (
               <FormField label={`${payloadLabel("isInstallment")} *`} htmlFor="paymentType">
-                <Select value={isInstallment ? selectedModelId : "full_payment"} onValueChange={handlePaymentTypeChange}>
-                  <SelectTrigger>
+                {/* Payment type and sales model are two controls (A9): cash or
+                    installment first, then the model for an installment. */}
+                <Select
+                  value={isInstallment ? "installment" : "cash"}
+                  onValueChange={(kind) => {
+                    if (kind === "cash") handlePaymentTypeChange("full_payment");
+                    else if (!isInstallment) {
+                      setIsInstallment(true);
+                      setFormData((prev) => ({ ...prev, amountReceived: "" }));
+                    }
+                  }}
+                >
+                  <SelectTrigger id="paymentType">
                     <SelectValue placeholder="Select type" />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="full_payment">Full Payment</SelectItem>
-                    {visiblePaymentModels.map((model) => (
-                      <SelectItem key={model.id} value={model.id}>
-                        {model.name} — {formatCurrency(model.fixed_price)} / {model.duration_months} mo
+                    {fieldOptions("is_installment").map((o) => (
+                      <SelectItem key={o.value} value={o.value}>
+                        {o.label}
                       </SelectItem>
                     ))}
                   </SelectContent>
                 </Select>
+                {isInstallment && (
+                  <div className="mt-2">
+                    <Label htmlFor="paymentModel">{payloadLabel("paymentModelId")} *</Label>
+                    <Select value={selectedModelId} onValueChange={handlePaymentTypeChange}>
+                      <SelectTrigger id="paymentModel">
+                        <SelectValue placeholder="Pick the sales model" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {visiblePaymentModels.map((model) => (
+                          <SelectItem key={model.id} value={model.id}>
+                            {model.name} ({formatCurrency(model.fixed_price)}, {model.duration_months} months)
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                )}
                 {partnerModelsUnresolved && (
                   <p className="mt-1 text-xs text-amber-600">
                     This partner is assigned {orgPaymentModelIds.length} sales
@@ -1897,7 +1928,7 @@ const CreateSalesForm = ({
             <div className="md:col-span-2 lg:col-span-3">
               <Label>{payloadLabel("previousStoveType")}</Label>
               <div className="flex flex-wrap gap-4 mt-2">
-                {fieldOptions("previous_stove_type").map(({ value, label }) => (
+                {previousStoveOptions.map(({ value, label }) => (
                   <label key={value} className="flex items-center gap-2 cursor-pointer">
                     <input
                       type="radio"
@@ -1923,11 +1954,31 @@ const CreateSalesForm = ({
             <FormField label={payloadLabel("mealsPerDay")} htmlFor="mealsPerDay">
               <Input id="mealsPerDay" value={formData.mealsPerDay} onChange={(e) => handleInputChange("mealsPerDay", e.target.value)} placeholder="e.g., 2 meals" />
             </FormField>
-            <FormField label={payloadLabel("cookingFuelSource")} htmlFor="cookingFuelSource">
-              <Input id="cookingFuelSource" value={formData.cookingFuelSource} onChange={(e) => handleInputChange("cookingFuelSource", e.target.value)} placeholder="e.g., Local market" />
+            <FormField label={payloadLabel("cookingFuelSource")} htmlFor="cookingFuelSource" error={errors.cookingFuelSource}>
+              <select
+                id="cookingFuelSource"
+                className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
+                value={formData.cookingFuelSource ?? ""}
+                onChange={(e) => handleInputChange("cookingFuelSource", e.target.value)}
+              >
+                <option value="">Not answered</option>
+                {fuelSourceOptions.map((o) => (
+                  <option key={o.value} value={o.value}>{o.label}</option>
+                ))}
+              </select>
             </FormField>
-            <FormField label={payloadLabel("cookingLocation")} htmlFor="cookingLocation">
-              <Input id="cookingLocation" value={formData.cookingLocation} onChange={(e) => handleInputChange("cookingLocation", e.target.value)} placeholder="e.g., Outdoors, kitchen" />
+            <FormField label={payloadLabel("cookingLocation")} htmlFor="cookingLocation" error={errors.cookingLocation}>
+              <select
+                id="cookingLocation"
+                className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
+                value={formData.cookingLocation ?? ""}
+                onChange={(e) => handleInputChange("cookingLocation", e.target.value)}
+              >
+                <option value="">Not answered</option>
+                {cookingLocationOptions.map((o) => (
+                  <option key={o.value} value={o.value}>{o.label}</option>
+                ))}
+              </select>
             </FormField>
           </div>
         </div>

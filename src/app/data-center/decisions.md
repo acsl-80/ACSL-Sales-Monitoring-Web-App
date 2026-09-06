@@ -266,3 +266,28 @@ column is the enforcement, visible on every dashboard, and the phone app reads
 the same table through the dictionary endpoint when it catches up. The
 TypeScript mirror of the status rule is gone: the trigger owns the verdict and
 the two functions read it back.
+
+## D32. One door onto the sale's option lists; what a client sends is placed, never refused (2026-09-06, slice F3b)
+
+The sale record's three choices (baseline stove, fuel source, cooking
+location) are option lists in the Data Center registry, the same registry
+the call form reads, so one list serves the sale and the call (A7). The
+schema stays out of PostgREST; the host reads the three lists through one
+security-definer function, `public.sale_options()`, which returns those lists
+and nothing else. The dictionary endpoint serves the options live to the web
+forms and the phone app; the JSON in the repo is the seed and the fallback.
+
+What a client sends for a choice is placed on the list: a value, a label, an
+older value, or the free text the phone app still sends, by the rules the
+proposal named (market, buying and kasuwa to purchase; farm to collect;
+kitchen to indoor; outdoors to outdoor; wood_stove to firewood). A word the
+rules cannot place keeps its text in the note column and leaves the choice
+empty for the call centre. History was mapped the same way, with every
+original kept in the note columns, so the mapping reverses from them. The
+import is the one channel that refuses an unplaceable word, naming the
+choices, because a rejected row is corrected where a silently emptied cell
+is not.
+
+The payment type is its own control on both forms, apart from the sales
+model (A9): cash or installment first, the model for an installment; picking
+a model on the bench sets the type. The payload does not change.

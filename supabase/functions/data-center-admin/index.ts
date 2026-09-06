@@ -16,7 +16,7 @@ import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.39.3";
 import { withConnection, withReadConnection } from "../_shared/data-center-db.ts";
 import { ROLE_FEATURES, featuresFor } from "../_shared/data-center-roles.ts";
-import { fieldByKey } from "../_shared/sale-dictionary.ts";
+import { LIVE_FIELDS, fieldByKey } from "../_shared/sale-dictionary.ts";
 
 const DEFAULT_ORIGINS = [
   "https://sales.atmosfair.com.ng",
@@ -473,8 +473,24 @@ serve(async (req) => {
                      from data_center.field_defs
                     order by section, sort_order, label`,
           });
+          // Which questions use each list: the call form's fields by
+          // option_list_key, and the sale record's fields by the dictionary's
+          // optionList. Settings says so beside the list, so retiring a value
+          // is done knowing every place it disappears from (slice 8, F3b).
+          const fieldRows = fields.rows as { key: string; label: string; option_list_key: string | null; is_active: boolean }[];
+          const listsWithUse = (lists.rows as { key: string }[]).map((l) => ({
+            ...l,
+            usedBy: [
+              ...fieldRows
+                .filter((f) => f.option_list_key === l.key)
+                .map((f) => ({ source: "call_form", key: f.key, label: f.label, active: f.is_active !== false })),
+              ...LIVE_FIELDS
+                .filter((f) => (f as { optionList?: string }).optionList === l.key)
+                .map((f) => ({ source: "sale", key: f.key, label: f.label, active: true })),
+            ],
+          }));
           return json(
-            { data: { lists: lists.rows, fields: fields.rows, canEdit: canManageRegistry } },
+            { data: { lists: listsWithUse, fields: fields.rows, canEdit: canManageRegistry } },
             200,
             cors,
           );

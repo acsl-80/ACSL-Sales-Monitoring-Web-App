@@ -7,7 +7,7 @@ import adminSalesService from "@/app/services/adminSalesService";
 import { validateSalesForm } from "@/app/utils/salesFormValidation";
 import { rulesInForce } from "@/lib/saleFieldRules";
 import { generateTransactionId } from "@/app/utils/salesFormUtils";
-import { fieldLabel, fieldOptions } from "@/lib/saleDictionary";
+import { fieldLabel, fieldOptions, useFieldOptions } from "@/lib/saleDictionary";
 import { Camera, FileText, Loader2, TriangleAlert } from "lucide-react";
 
 /**
@@ -45,7 +45,6 @@ export const TERMS = [
 ];
 
 /** The baseline stove choices, worded and valued by the dictionary. */
-const PREVIOUS_STOVES = fieldOptions("previous_stove_type");
 
 /** The shape Sell Stove starts from, so the two forms hold the same record. */
 export function blankSale() {
@@ -141,6 +140,7 @@ export const FIELD_META = {
   salesDate: { id: "wb-salesDate", label: fieldLabel("sales_date") },
   // The sales app's own reference, not a field on the agreement.
   transactionId: { id: "wb-salesDate", label: "Transaction ID" },
+  isInstallment: { id: "wb-paymentType", label: fieldLabel("is_installment") },
   salesModel: { id: "wb-salesModel", label: fieldLabel("payment_model_id") },
   amount: { id: "wb-amount", label: fieldLabel("amount") },
   amountReceived: { id: "wb-amountReceived", label: fieldLabel("first_payment") },
@@ -180,16 +180,22 @@ export function saleProblems(values, rules = []) {
  * the refusal lands before any request, on the field itself.
  */
 export function modelProblem(values) {
-  if (String(values.salesModel ?? "").trim()) return null;
+  const hasModel = String(values.salesModel ?? "").trim() !== "";
+  // An installment purchase names its model (A9); picking a model on the
+  // bench sets the type, so the two cannot disagree.
+  if (values.isInstallment) {
+    return hasModel ? null : "Pick the sales model on the receipt for an installment purchase.";
+  }
+  if (hasModel) return null;
   const amount = Number(String(values.amount ?? "").replace(/[^0-9.]/g, ""));
   if (!Number.isFinite(amount) || amount <= 0) return null; // the amount has its own error
   const receivedRaw = String(values.amountReceived ?? "").trim();
   if (receivedRaw === "") {
-    return "Pick the sales model on the receipt, or fill in Amount paid if the buyer paid in full.";
+    return "Fill in Amount paid: a cash purchase is paid in full. Otherwise pick Installment purchase and the sales model.";
   }
   const received = Number(receivedRaw.replace(/[^0-9.]/g, ""));
   if (!Number.isFinite(received) || received === amount) return null;
-  return "The buyer has not paid in full, and the balance is tracked against the sales model.";
+  return "The buyer has not paid in full. Pick Installment purchase and the sales model, and the balance is tracked against it.";
 }
 
 /**
@@ -260,6 +266,11 @@ export default function SaleForm({
   transactionId = null,
 }) {
   const inForce = new Set(rulesInForce(rules, values?.salesDate).map((r) => r.fieldKey));
+  // The three choices as the registry has them now (slice F3b).
+  const previousStoves = useFieldOptions("previous_stove_type");
+  const fuelOptions = useFieldOptions("cooking_fuel_source");
+  const locationOptions = useFieldOptions("cooking_location");
+  const paymentTypes = fieldOptions("is_installment");
   const [uploading, setUploading] = useState({ stove: false, agreement: false });
   const [previews, setPreviews] = useState({ stove: null, agreement: null });
   const [uploadError, setUploadError] = useState(null);
@@ -483,6 +494,21 @@ export default function SaleForm({
             onChange={(e) => set("salesDate", e.target.value)}
           />
         </Field>
+        <Field label={fieldLabel("is_installment")} htmlFor="wb-paymentType" required help="Cash when the buyer paid in full; installment when a balance is tracked against the sales model.">
+          <select
+            id="wb-paymentType"
+            className={INPUT}
+            value={values.isInstallment ? "installment" : "cash"}
+            disabled={disabled}
+            onChange={(e) => set("isInstallment", e.target.value === "installment")}
+          >
+            {paymentTypes.map((o) => (
+              <option key={o.value} value={o.value}>
+                {o.label}
+              </option>
+            ))}
+          </select>
+        </Field>
         <Field
           label={fieldLabel("payment_model_id")}
           htmlFor="wb-salesModel"
@@ -503,6 +529,7 @@ export default function SaleForm({
             onChange={(e) => {
               const name = e.target.value;
               set("salesModel", name);
+              if (name) set("isInstallment", true);
               // The model's price fills an EMPTY amount. A typed amount is never
               // overwritten: the receipt wins.
               const picked = models.find((m) => m.name === name);
@@ -607,7 +634,7 @@ export default function SaleForm({
         <div className="sm:col-span-2 lg:col-span-3">
           <p className="mb-1 text-xs font-medium text-gray-700">{fieldLabel("previous_stove_type")}</p>
           <div className="flex flex-wrap gap-4">
-            {PREVIOUS_STOVES.map((o) => (
+            {previousStoves.map((o) => (
               <label key={o.value} className="flex items-center gap-2 text-sm text-gray-700">
                 <input
                   type="radio"
@@ -642,25 +669,43 @@ export default function SaleForm({
             onChange={(e) => set("mealsPerDay", e.target.value)}
           />
         </Field>
-        <Field label={fieldLabel("cooking_fuel_source")} htmlFor="wb-cookingFuelSource">
-          <input
+        <Field label={fieldLabel("cooking_fuel_source")} htmlFor="wb-cookingFuelSource" required={inForce.has("cooking_fuel_source")} error={errors.cookingFuelSource}>
+          <select
             id="wb-cookingFuelSource"
             className={INPUT}
-            placeholder="e.g. Local market"
             value={values.cookingFuelSource ?? ""}
             disabled={disabled}
             onChange={(e) => set("cookingFuelSource", e.target.value)}
-          />
+          >
+            <option value="">Not answered</option>
+            {values.cookingFuelSource && !fuelOptions.some((o) => o.value === values.cookingFuelSource) && (
+              <option value={values.cookingFuelSource}>{values.cookingFuelSource} (as typed)</option>
+            )}
+            {fuelOptions.map((o) => (
+              <option key={o.value} value={o.value}>
+                {o.label}
+              </option>
+            ))}
+          </select>
         </Field>
-        <Field label={fieldLabel("cooking_location")} htmlFor="wb-cookingLocation">
-          <input
+        <Field label={fieldLabel("cooking_location")} htmlFor="wb-cookingLocation" error={errors.cookingLocation}>
+          <select
             id="wb-cookingLocation"
             className={INPUT}
-            placeholder="e.g. Outdoors, kitchen"
             value={values.cookingLocation ?? ""}
             disabled={disabled}
             onChange={(e) => set("cookingLocation", e.target.value)}
-          />
+          >
+            <option value="">Not answered</option>
+            {values.cookingLocation && !locationOptions.some((o) => o.value === values.cookingLocation) && (
+              <option value={values.cookingLocation}>{values.cookingLocation} (as typed)</option>
+            )}
+            {locationOptions.map((o) => (
+              <option key={o.value} value={o.value}>
+                {o.label}
+              </option>
+            ))}
+          </select>
         </Field>
       </Section>
 

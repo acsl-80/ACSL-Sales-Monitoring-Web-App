@@ -4,6 +4,7 @@
 // organization_id). Sets updated_at / updated_by.
 
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { loadSaleOptions, normalizeChoice } from "../_shared/sale-options.ts";
 import { resolveAssignedOrgIds } from "../_shared/resolveAssignedOrgIds.ts";
 
 function withCors(res: Response): Response {
@@ -365,11 +366,28 @@ Deno.serve(async (req) => {
         potQuantity === null || potQuantity === "" ? null : Number(potQuantity);
     }
     if (heatRetentionDevice !== undefined) saleUpdate.heat_retention_device = !!heatRetentionDevice;
-    if (previousStoveType !== undefined) saleUpdate.previous_stove_type = previousStoveType || null;
+    // The three choices come from the registry (slice F3b); see create-sale.
+    const optionLists =
+      previousStoveType !== undefined || cookingFuelSource !== undefined || cookingLocation !== undefined
+        ? await loadSaleOptions(supabase)
+        : null;
+    if (previousStoveType !== undefined && optionLists) {
+      const c = normalizeChoice(optionLists, "baseline_stove", previousStoveType);
+      saleUpdate.previous_stove_type = c.value;
+      if (c.note && previousStoveOther === undefined) saleUpdate.previous_stove_other = c.note;
+    }
     if (previousStoveOther !== undefined) saleUpdate.previous_stove_other = previousStoveOther || null;
     if (mealsPerDay !== undefined) saleUpdate.meals_per_day = mealsPerDay || null;
-    if (cookingFuelSource !== undefined) saleUpdate.cooking_fuel_source = cookingFuelSource || null;
-    if (cookingLocation !== undefined) saleUpdate.cooking_location = cookingLocation || null;
+    if (cookingFuelSource !== undefined && optionLists) {
+      const c = normalizeChoice(optionLists, "fuel_source", cookingFuelSource);
+      saleUpdate.cooking_fuel_source = c.value;
+      saleUpdate.cooking_fuel_source_note = c.note;
+    }
+    if (cookingLocation !== undefined && optionLists) {
+      const c = normalizeChoice(optionLists, "cooking_location", cookingLocation);
+      saleUpdate.cooking_location = c.value;
+      saleUpdate.cooking_location_note = c.note;
+    }
     if (termsAccepted !== undefined) {
       // The same rule create-sale applies: the agreement carries six consents
       // and a sale carries all of them or none. A partial object is refused

@@ -1370,12 +1370,31 @@ serve(async (req) => {
                        where key = 'digitisation.sheet_format')  as format`,
           });
 
+          // A column that names an optionList takes its dropdown from the
+          // registry as it stands, labels for the typist, so a value retired
+          // in Settings leaves the sheet without a release (slice F3b).
+          const specColumns = Array.isArray(spec.rows[0]?.columns) ? (spec.rows[0]!.columns as Record<string, unknown>[]) : [];
+          const listKeys = [...new Set(specColumns.map((c) => c.optionList).filter((k): k is string => typeof k === "string"))];
+          const labelsByList = new Map<string, string[]>();
+          if (listKeys.length) {
+            const opts = await connection.queryObject<{ list_key: string; label: string }>({
+              text: `select list_key, label from data_center.option_values
+                      where list_key = any($1::text[]) and is_active
+                      order by list_key, sort_order, label`,
+              args: [listKeys],
+            });
+            for (const o of opts.rows) labelsByList.set(o.list_key, [...(labelsByList.get(o.list_key) ?? []), o.label]);
+          }
+          const columns = specColumns.map((c) =>
+            typeof c.optionList === "string" ? { ...c, options: labelsByList.get(c.optionList) ?? [] } : c,
+          );
+
           return json(
             {
               data: {
                 rows: rows.rows,
                 months: months.rows,
-                columns: spec.rows[0]?.columns ?? [],
+                columns,
                 format: spec.rows[0]?.format ?? "xlsx",
               },
             },

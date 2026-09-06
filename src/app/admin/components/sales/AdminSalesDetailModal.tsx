@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback } from "react";
+import { ChoiceLabel } from "@/components/ChoiceLabel";
 import {
   Dialog,
   DialogContent,
@@ -494,18 +495,14 @@ const AdminSalesDetailModal: React.FC<AdminSalesDetailModalProps> = ({
                     <DetailItem
                       label={fieldLabel("previous_stove_type")}
                       value={
-                        activeSale.previous_stove_type === "wood_stove"
-                          ? "Wood Stove (3 stone)"
-                          : activeSale.previous_stove_type === "charcoal"
-                          ? "Charcoal Stove"
-                          : activeSale.previous_stove_type === "other"
-                          ? `Other — ${activeSale.previous_stove_other || "not specified"}`
-                          : activeSale.previous_stove_type
+                        activeSale.previous_stove_type === "other"
+                          ? `Other, ${activeSale.previous_stove_other || "not specified"}`
+                          : <ChoiceLabel field="previous_stove_type" value={activeSale.previous_stove_type} />
                       }
                     />
                     <DetailItem label={fieldLabel("meals_per_day")} value={activeSale.meals_per_day} />
-                    <DetailItem label={fieldLabel("cooking_fuel_source")} value={activeSale.cooking_fuel_source} />
-                    <DetailItem label={fieldLabel("cooking_location")} value={activeSale.cooking_location} />
+                    <DetailItem label={fieldLabel("cooking_fuel_source")} value={<ChoiceLabel field="cooking_fuel_source" value={activeSale.cooking_fuel_source} />} />
+                    <DetailItem label={fieldLabel("cooking_location")} value={<ChoiceLabel field="cooking_location" value={activeSale.cooking_location} />} />
                   </div>
                 </SectionCard>
               </div>

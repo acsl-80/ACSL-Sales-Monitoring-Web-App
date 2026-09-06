@@ -12,6 +12,7 @@
 
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { SALE_DICTIONARY } from "../_shared/sale-dictionary.ts";
+import { activeOptions, loadSaleOptions } from "../_shared/sale-options.ts";
 
 const corsHeaders: Record<string, string> = {
   "Access-Control-Allow-Origin": "*",
@@ -56,11 +57,19 @@ Deno.serve(async (req) => {
     rules.set(r.field_key, r.mandatory_from);
     if (r.updated_at > rulesStamp) rulesStamp = r.updated_at;
   }
+  // The options of a field that names an optionList come from the registry
+  // through public.sale_options(); the JSON's options are the seed and the
+  // fallback when the list is empty.
+  const optionLists = await loadSaleOptions(userClient);
   const body = {
     ...SALE_DICTIONARY,
-    fields: SALE_DICTIONARY.fields.map((f) =>
-      rules.has(f.key) ? { ...f, mandatoryFrom: rules.get(f.key) ?? null } : f,
-    ),
+    fields: SALE_DICTIONARY.fields.map((f) => {
+      const withDate = rules.has(f.key) ? { ...f, mandatoryFrom: rules.get(f.key) ?? null } : { ...f };
+      const listKey = (f as { optionList?: string }).optionList;
+      if (!listKey) return withDate;
+      const live = activeOptions(optionLists, listKey);
+      return live.length ? { ...withDate, type: "select", options: live } : withDate;
+    }),
   };
   const etag = `"${SALE_DICTIONARY.version}+${rulesStamp || "seed"}"`;
   if (req.headers.get("if-none-match") === etag) {
