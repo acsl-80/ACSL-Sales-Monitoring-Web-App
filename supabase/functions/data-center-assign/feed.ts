@@ -5,12 +5,12 @@ import { withReadConnection } from "../_shared/data-center-db.ts";
  *
  * `pool_partners` every partner with work waiting: waiting, new in the recent
  *                 window, oldest sale, who holds an open batch of it, the
- *                 configured batch size. Filtered, sorted, paged by offset,
- *                 because the list is 59 rows long and a manager reads it as
- *                 pages, not as a scroll.
+ *                 configured batch size. Filtered, sorted, and paged by
+ *                 keyset cursor like every list in the module (never an
+ *                 offset), even at 59 rows: the rule holds so it cannot creep.
  * `activity`      one row per thing that happened: a call logged, a batch
  *                 handed out or reclaimed, a record sent back, a fix
- *                 reviewed. Filtered, paged, with an hourly histogram over
+ *                 reviewed. Filtered, keyset paged, with an hourly histogram over
  *                 the same window. An agent without assignment.manage reads
  *                 only their own rows.
  */
@@ -22,8 +22,9 @@ export type FeedContext = {
     state?: string | null;
     nobodyOn?: boolean | null;
     sort?: string | null;
-    page?: number | null;
-    pageSize?: number | null;
+    limit?: number | null;
+    /** Keyset cursor from the previous page's `nextCursor`; never an offset. */
+    cursor?: string | null;
     from?: string | null;
     to?: string | null;
     agentId?: string | null;
@@ -41,10 +42,26 @@ const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const STAMP = /^\d{4}-\d{2}-\d{2}(T[\d:.+Z-]*)?$/;
 const KINDS = ["call", "handed_out", "reclaimed", "sent_back", "reviewed"] as const;
 
-function paging(body: FeedContext["body"], defaultSize: number, maxSize: number) {
-  const pageSize = Math.min(maxSize, Math.max(1, Math.trunc(Number(body.pageSize) || defaultSize)));
-  const page = Math.max(1, Math.trunc(Number(body.page) || 1));
-  return { page, pageSize, offset: (page - 1) * pageSize };
+/** The page size, bounded on the server whatever the caller asked for. */
+function limitOf(body: FeedContext["body"], defaultSize: number, maxSize: number) {
+  return Math.min(maxSize, Math.max(1, Math.trunc(Number(body.limit) || defaultSize)));
+}
+/**
+ * Keyset cursors travel as base64 JSON of the last row's sort key. Timestamps
+ * inside them are the text Postgres produced, never a JavaScript Date: the
+ * driver would round microseconds to milliseconds and the next page would
+ * skip every row sharing that millisecond.
+ */
+function encodeCursor(obj: Record<string, unknown>): string {
+  return btoa(unescape(encodeURIComponent(JSON.stringify(obj))));
+}
+function decodeCursor<T>(raw: unknown): T | null {
+  if (typeof raw !== "string" || !raw) return null;
+  try {
+    return JSON.parse(decodeURIComponent(escape(atob(raw)))) as T;
+  } catch {
+    return null;
+  }
 }
 function uuidOrNull(v: unknown): string | null {
   return typeof v === "string" && UUID.test(v) ? v : null;
@@ -140,9 +157,17 @@ const ACTIVITY_EVENTS_SQL = `
       left join public.organizations ob on ob.id = b.organization_id
      where e.at is not null
   ),
+  -- The window. A bare date is a call-centre day, whole, in the call centre's
+  -- own timezone; a full stamp is taken as sent; nothing means the last week.
   window_ as (
-    select coalesce($1::timestamptz, now() - interval '7 days') as from_at,
-           coalesce($2::timestamptz, now()) as to_at
+    select case when $1::text ~ '^\\d{4}-\\d{2}-\\d{2}$' then timezone(cfg.tz, ($1::text)::date::timestamp)
+                when $1::text is null then now() - interval '7 days'
+                else ($1::text)::timestamptz end as from_at,
+           case when $2::text ~ '^\\d{4}-\\d{2}-\\d{2}$' then timezone(cfg.tz, (($2::text)::date + 1)::timestamp) - interval '1 microsecond'
+                when $2::text is null then now()
+                else ($2::text)::timestamptz end as to_at
+      from (select coalesce((select value #>> '{}' from data_center.workflow_config
+                              where key = 'call_centre.timezone'), 'Africa/Lagos') as tz) cfg
   ),
   filtered as (
     select x.* from shaped x, window_ w
@@ -172,34 +197,74 @@ export async function handleFeed(ctx: FeedContext): Promise<Response> {
   switch (action) {
     case "pool_partners": {
       if (!canManage) return denied();
-      const { page, pageSize, offset } = paging(body, 25, 200);
+      const limit = limitOf(body, 25, 200);
       const q = typeof body.q === "string" && body.q.trim() ? body.q.trim() : null;
       const state = typeof body.state === "string" && body.state.trim() ? body.state.trim() : null;
       const nobodyOn = body.nobodyOn === true;
-      const sortSql = ({
-        waiting: "waiting desc, partner_name",
-        new: "new_recent desc, waiting desc, partner_name",
-        oldest: "oldest_sale asc nulls last, partner_name",
-        name: "partner_name",
-      } as Record<string, string>)[String(body.sort ?? "waiting")] ?? "waiting desc, partner_name";
+      // Each sort names its order and the keyset predicate that continues it
+      // after the last row seen. The partner id is the final tiebreaker, so
+      // two partners with one name and one count still page cleanly. The
+      // predicate is written with named slots and numbered here, so the
+      // placeholder numbers can never drift from the args list.
+      type PoolCursor = { w?: number; n?: number; o?: string | null; p: string; id: string };
+      const sorts: Record<string, { order: string; after: string }> = {
+        waiting: {
+          order: "r.waiting desc, r.partner_name asc, r.organization_id asc",
+          after: "(r.waiting < :W or (r.waiting = :W and (r.partner_name, r.organization_id) > (:P, :ID)))",
+        },
+        new: {
+          order: "r.new_recent desc, r.waiting desc, r.partner_name asc, r.organization_id asc",
+          after: "(r.new_recent < :N or (r.new_recent = :N and (r.waiting < :W or (r.waiting = :W and (r.partner_name, r.organization_id) > (:P, :ID)))))",
+        },
+        oldest: {
+          order: "r.oldest_sale asc nulls last, r.partner_name asc, r.organization_id asc",
+          after: "((r.oldest_sale > :O::date) or (r.oldest_sale is null and :O::date is not null) or (r.oldest_sale is not distinct from :O::date and (r.partner_name, r.organization_id) > (:P, :ID)))",
+        },
+        name: {
+          order: "r.partner_name asc, r.organization_id asc",
+          after: "((r.partner_name, r.organization_id) > (:P, :ID))",
+        },
+      };
+      const sortKey = sorts[String(body.sort ?? "waiting")] ? String(body.sort ?? "waiting") : "waiting";
+      const sort = sorts[sortKey];
+      const cursor = decodeCursor<PoolCursor>(body.cursor);
+      const where = [
+        "($1::text is null or r.partner_name ilike '%' || $1 || '%')",
+        "($2::text is null or r.state = $2)",
+        "(not $3::boolean or cardinality(r.on_it) = 0)",
+      ];
+      const args: unknown[] = [q, state, nobodyOn];
+      if (cursor && typeof cursor.p === "string" && typeof cursor.id === "string") {
+        const slots: [string, unknown, string][] = [
+          [":W", cursor.w ?? 0, "::int"],
+          [":N", cursor.n ?? 0, "::int"],
+          [":O", cursor.o ?? null, "::text"],
+          [":P", cursor.p, "::text"],
+          [":ID", cursor.id, "::text"],
+        ];
+        let sql = sort.after;
+        for (const [slot, value, cast] of slots) {
+          if (!sql.includes(slot)) continue;
+          args.push(value);
+          const n = args.length;
+          // ":O::date" keeps its date cast; the others take the slot's own.
+          sql = sql.split(`${slot}::date`).join(`$${n}::date`).split(slot).join(`$${n}${cast}`);
+        }
+        where.push(sql);
+      }
       return await withReadConnection(async (conn) => {
-        // The total is its own statement: a window count rides on the rows that
-        // come back, and a page past the end has none, which would read as zero.
-        const POOL_WHERE = `where ($1::text is null or r.partner_name ilike '%' || $1 || '%')
-                 and ($2::text is null or r.state = $2)
-                 and (not $3::boolean or cardinality(r.on_it) = 0)`;
         const [rows, counted, totals] = await Promise.all([
           conn.queryObject<Record<string, unknown>>({
             text: `${POOL_ROWS_SQL}
               select r.* from rows r
-               ${POOL_WHERE}
-               order by ${sortSql}
-               limit $4 offset $5`,
-            args: [q, state, nobodyOn, pageSize, offset],
+               where ${where.join(" and ")}
+               order by ${sort.order}
+               limit ${limit + 1}`,
+            args,
           }),
           conn.queryObject<{ total: number }>({
-            text: `${POOL_ROWS_SQL} select count(*)::int as total from rows r ${POOL_WHERE}`,
-            args: [q, state, nobodyOn],
+            text: `${POOL_ROWS_SQL} select count(*)::int as total from rows r where ${where.slice(0, 3).join(" and ")}`,
+            args: args.slice(0, 3),
           }),
           conn.queryObject<{ waiting: number; partners: number; nobody_on: number; new_recent: number; recent_days: number }>({
             text: `${POOL_ROWS_SQL}
@@ -210,13 +275,26 @@ export async function handleFeed(ctx: FeedContext): Promise<Response> {
                 from rows`,
           }),
         ]);
+        const hasMore = rows.rows.length > limit;
+        const page = hasMore ? rows.rows.slice(0, limit) : rows.rows;
+        const last = page[page.length - 1];
+        const nextCursor = hasMore && last
+          ? encodeCursor({
+            w: Number(last.waiting),
+            n: Number(last.new_recent),
+            o: last.oldest_sale == null ? null : String(last.oldest_sale).slice(0, 10),
+            p: String(last.partner_name),
+            id: String(last.organization_id),
+          })
+          : null;
         return json(
           {
             data: {
-              rows: rows.rows,
+              rows: page,
               total: Number(counted.rows[0]?.total ?? 0),
-              page,
-              pageSize,
+              limit,
+              nextCursor,
+              sort: sortKey,
               totals: totals.rows[0],
             },
           },
@@ -227,7 +305,7 @@ export async function handleFeed(ctx: FeedContext): Promise<Response> {
     }
 
     case "activity": {
-      const { page, pageSize, offset } = paging(body, 50, 500);
+      const limit = limitOf(body, 50, 500);
       const from = stampOrNull(body.from);
       const to = stampOrNull(body.to);
       // An editor without the manage permission reads their own trail only.
@@ -236,20 +314,34 @@ export async function handleFeed(ctx: FeedContext): Promise<Response> {
       const outcome = typeof body.outcome === "string" && body.outcome.trim() ? body.outcome.trim() : null;
       const orgId = uuidOrNull(body.organizationId);
       const q = typeof body.q === "string" && body.q.trim() ? body.q.trim() : null;
-      const args = [from, to, agentId, kind, outcome, orgId, q];
+      const filterArgs: unknown[] = [from, to, agentId, kind, outcome, orgId, q];
+      // Newest first, then kind, then the record or batch the event names. The
+      // cursor is the last row's (at, kind, key), with `at` as Postgres text.
+      type FeedCursor = { at: string; k: string; key: string };
+      const cursor = decodeCursor<FeedCursor>(body.cursor);
+      const pageArgs: unknown[] = [...filterArgs];
+      let after = "";
+      if (cursor && typeof cursor.at === "string") {
+        pageArgs.push(cursor.at, cursor.k ?? "", cursor.key ?? "");
+        after = `where (f.at < $8::timestamptz
+                    or (f.at = $8::timestamptz
+                        and (f.kind, coalesce(f.sale_id, f.batch_id, '')) > ($9::text, $10::text)))`;
+      }
+      pageArgs.push(limit + 1);
+      const limitSlot = `$${pageArgs.length}`;
       return await withReadConnection(async (conn) => {
         const [rows, counted, hist, totals] = await Promise.all([
           conn.queryObject<Record<string, unknown>>({
             text: `with ${ACTIVITY_EVENTS_SQL}
-              select f.* from filtered f
-               order by f.at desc
-               limit $8 offset $9`,
-            args: [...args, pageSize, offset],
+              select f.*, f.at::text as at_text from filtered f
+               ${after}
+               order by f.at desc, f.kind asc, coalesce(f.sale_id, f.batch_id, '') asc
+               limit ${limitSlot}`,
+            args: pageArgs,
           }),
-          // Its own statement, for the same reason as the partner list's total.
           conn.queryObject<{ total: number }>({
             text: `with ${ACTIVITY_EVENTS_SQL} select count(*)::int as total from filtered`,
-            args,
+            args: filterArgs,
           }),
           conn.queryObject<Record<string, unknown>>({
             text: `with ${ACTIVITY_EVENTS_SQL}
@@ -261,7 +353,7 @@ export async function handleFeed(ctx: FeedContext): Promise<Response> {
                 from filtered f
                group by 1
                order by 1`,
-            args,
+            args: filterArgs,
           }),
           conn.queryObject<Record<string, unknown>>({
             text: `with ${ACTIVITY_EVENTS_SQL}
@@ -277,16 +369,26 @@ export async function handleFeed(ctx: FeedContext): Promise<Response> {
                      (select from_at from window_) as from_at,
                      (select to_at from window_) as to_at
                 from filtered`,
-            args,
+            args: filterArgs,
           }),
         ]);
+        const hasMore = rows.rows.length > limit;
+        const page = hasMore ? rows.rows.slice(0, limit) : rows.rows;
+        const last = page[page.length - 1];
+        const nextCursor = hasMore && last
+          ? encodeCursor({
+            at: String(last.at_text),
+            k: String(last.kind),
+            key: String(last.sale_id ?? last.batch_id ?? ""),
+          })
+          : null;
         return json(
           {
             data: {
-              rows: rows.rows,
+              rows: page.map(({ at_text: _t, ...r }) => r),
               total: Number(counted.rows[0]?.total ?? 0),
-              page,
-              pageSize,
+              limit,
+              nextCursor,
               histogram: hist.rows.map((h) => ({
                 ...h,
                 spoke: Number(h.calls) - Number(h.callback) - Number(h.unreached),

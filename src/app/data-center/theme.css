@@ -178,6 +178,11 @@
   --dc-fig-sold: linear-gradient(135deg, #5b7314 0%, #3d4d0c 100%);
   --dc-fig-verified: linear-gradient(135deg, #10736d 0%, #0a4744 100%);
   --dc-fig-unverified: linear-gradient(135deg, #a86a12 0%, #7a4b08 100%);
+  /* Phase 26: the two figure fills the call centre's colour rule needed and the dashboard did not. */
+  --dc-fig-plum: linear-gradient(135deg, #8a4d8e 0%, #542c57 100%);
+  --dc-fig-crit: linear-gradient(135deg, #b83232 0%, #7d1d1d 100%);
+  /* The shift board's hour grid: ten faint cells behind the marks. */
+  --dc-track-grid: repeating-linear-gradient(90deg, #fafafa 0, #fafafa calc(10% - 1px), #e5e7eb calc(10% - 1px), #e5e7eb 10%);
 
   /* The second row is support, not headline: tinted grounds, dark text. */
   --dc-fig-soft-neutral: linear-gradient(135deg, #f6f7f2 0%, #eceee4 100%);

@@ -179,27 +179,35 @@ test("the pool by partner is paged, totalled, and knows who is on it", async ({ 
     `select count(distinct organization_id)::int as partners, count(*)::int as waiting
        from data_center.v_callable_records`,
   );
-  const first = data<{
+  type PoolPage = {
     rows: { organization_id: string; waiting: number; on_it: string[]; batch_size: number }[];
     total: number;
-    page: number;
-    pageSize: number;
+    limit: number;
+    nextCursor: string | null;
     totals: { waiting: number; partners: number; nobody_on: number; new_recent: number };
-  }>(await assign(admin, { action: "pool_partners", page: 1, pageSize: 2 }));
+  };
+  const first = data<PoolPage>(await assign(admin, { action: "pool_partners", limit: 2 }));
   expect(first.total).toBe(oracle.partners);
   expect(first.totals.waiting).toBe(oracle.waiting);
   expect(first.rows.length).toBeLessThanOrEqual(2);
   for (let i = 1; i < first.rows.length; i++) {
     expect(first.rows[i - 1].waiting).toBeGreaterThanOrEqual(first.rows[i].waiting);
   }
-  // A page past the end still says how many there are (review finding, C1).
-  const beyond = data<{ rows: unknown[]; total: number }>(
-    await assign(admin, { action: "pool_partners", page: 999, pageSize: 2 }),
-  );
-  expect(beyond.rows).toEqual([]);
-  expect(beyond.total).toBe(oracle.partners);
+  // Keyset, never offset: following nextCursor to the end visits every
+  // partner exactly once.
+  const seen = first.rows.map((r) => r.organization_id);
+  let cursor = first.nextCursor;
+  for (let guard = 0; cursor && guard < 200; guard++) {
+    const next = data<PoolPage>(await assign(admin, { action: "pool_partners", limit: 2, cursor }));
+    expect(next.total).toBe(oracle.partners);
+    seen.push(...next.rows.map((r) => r.organization_id));
+    cursor = next.nextCursor;
+  }
+  expect(cursor).toBeNull();
+  expect(new Set(seen).size).toBe(seen.length);
+  expect(seen.length).toBe(oracle.partners);
   const nobody = data<{ rows: { on_it: string[] }[]; total: number }>(
-    await assign(admin, { action: "pool_partners", nobodyOn: true, pageSize: 50 }),
+    await assign(admin, { action: "pool_partners", nobodyOn: true, limit: 50 }),
   );
   expect(nobody.total).toBe(first.totals.nobody_on);
   for (const r of nobody.rows) expect(r.on_it).toEqual([]);
@@ -216,14 +224,15 @@ test("the activity feed carries the call as an event, filters by agent and kind,
   });
   expect(logged.status, JSON.stringify(logged.body)).toBe(200);
 
-  const feed = data<{
+  type FeedPage = {
     rows: { at: string; kind: string; actor_id: string | null; sale_id: string | null }[];
     total: number;
-    page: number;
-    pageSize: number;
+    limit: number;
+    nextCursor: string | null;
     histogram: { bucket: string; calls: number }[];
     totals: { calls: number; handed_out: number; reclaimed: number };
-  }>(await assign(admin, { action: "activity", agentId: me.agent_id, kind: "call", pageSize: 20 }));
+  };
+  const feed = data<FeedPage>(await assign(admin, { action: "activity", agentId: me.agent_id, kind: "call", limit: 20 }));
   expect(feed.total).toBeGreaterThan(0);
   expect(feed.rows.some((r) => r.sale_id === sale.sale_id)).toBe(true);
   for (const r of feed.rows) {
@@ -232,15 +241,24 @@ test("the activity feed carries the call as an event, filters by agent and kind,
   }
   const summed = feed.histogram.reduce((n, b) => n + b.calls, 0);
   expect(summed).toBe(feed.totals.calls);
-  expect(feed.pageSize).toBe(20);
-  const beyond = data<{ rows: unknown[]; total: number }>(
-    await assign(admin, { action: "activity", agentId: me.agent_id, kind: "call", page: 999, pageSize: 20 }),
-  );
-  expect(beyond.rows).toEqual([]);
-  expect(beyond.total).toBe(feed.total);
+  expect(feed.limit).toBe(20);
+  // Keyset through this agent's calls two at a time: every row once, none twice.
+  const keys: string[] = [];
+  let cursor: string | null = null;
+  for (let guard = 0; guard < 500; guard++) {
+    const page: FeedPage = data<FeedPage>(
+      await assign(admin, { action: "activity", agentId: me.agent_id, kind: "call", limit: 2, cursor }),
+    );
+    keys.push(...page.rows.map((r) => `${r.at}|${r.sale_id}`));
+    cursor = page.nextCursor;
+    if (!cursor) break;
+  }
+  expect(cursor).toBeNull();
+  expect(keys.length).toBe(feed.total);
+  expect(new Set(keys).size).toBe(keys.length);
 
   const handouts = data<{ rows: { kind: string }[]; total: number }>(
-    await assign(admin, { action: "activity", kind: "handed_out", pageSize: 5 }),
+    await assign(admin, { action: "activity", kind: "handed_out", limit: 5 }),
   );
   for (const r of handouts.rows) expect(r.kind).toBe("handed_out");
   const [oracle] = await branchSql<{ n: number }>(
@@ -251,7 +269,7 @@ test("the activity feed carries the call as an event, filters by agent and kind,
 
   // An editor without assignment.manage sees only their own activity.
   const own = data<{ rows: { actor_id: string | null }[]; scope: string }>(
-    await assign(agent, { action: "activity", kind: "call", pageSize: 50 }),
+    await assign(agent, { action: "activity", kind: "call", limit: 50 }),
   );
   expect(own.scope).toBe("own");
   for (const r of own.rows) expect(r.actor_id).toBe(me.agent_id);

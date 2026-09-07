@@ -47,7 +47,14 @@ const DAY_CTE = `
 
 /** The day the window ends on, and the timezone it was read in. $1 day or null. */
 const RESOLVE_DAY_SQL = `
-  select coalesce($1::date, timezone(c.tz, now())::date)::text as d, c.tz
+  select coalesce($1::date, timezone(c.tz, now())::date)::text as d, c.tz,
+         timezone(c.tz, now())::date::text as today,
+         coalesce((select (value #>> '{}')::int from data_center.workflow_config
+                    where key = 'call_centre.daily_target'), 0) as daily_target,
+         coalesce((select (value #>> '{}')::int from data_center.workflow_config
+                    where key = 'call_centre.refresh_seconds'), 60) as refresh_seconds,
+         coalesce((select (value #>> '{}')::int from data_center.workflow_config
+                    where key = 'assignment.stale_after_days'), 3) as stale_after_days
     from (select coalesce((select value #>> '{}' from data_center.workflow_config
                             where key = 'call_centre.timezone'), 'Africa/Lagos') as tz) c`;
 
@@ -129,6 +136,9 @@ type Flag = {
   kind: string; at: Date | string; reclaim_reason: string | null; on_day: string;
 };
 type Verified = { agent_id: string; on_day: string; verified: number };
+type ResolvedDay = {
+  d: string; tz: string; today: string; daily_target: number; refresh_seconds: number; stale_after_days: number;
+};
 
 function dayArg(raw: unknown): string | null {
   return typeof raw === "string" && DAY.test(raw) ? raw : null;
@@ -167,7 +177,7 @@ export async function handleBoard(ctx: BoardContext): Promise<Response> {
           conn.queryObject<Mark>({ text: MARKS_SQL, args: [day, null, back] }),
           conn.queryObject<Flag>({ text: FLAGS_SQL, args: [day, null, back] }),
           conn.queryObject<Verified>({ text: VERIFIED_SQL, args: [day, null, back] }),
-          conn.queryObject<{ d: string; tz: string }>({ text: RESOLVE_DAY_SQL, args: [day] }),
+          conn.queryObject<ResolvedDay>({ text: RESOLVE_DAY_SQL, args: [day] }),
         ]);
         const d = resolved.rows[0];
         const days = dayList(d.d, back);
@@ -206,6 +216,10 @@ export async function handleBoard(ctx: BoardContext): Promise<Response> {
             data: {
               day: d.d,
               tz: d.tz,
+              today: d.today,
+              dailyTarget: d.daily_target,
+              refreshSeconds: d.refresh_seconds,
+              staleAfterDays: d.stale_after_days,
               range: back === 0 ? "day" : "week",
               days,
               agents,
@@ -233,7 +247,7 @@ export async function handleBoard(ctx: BoardContext): Promise<Response> {
           conn.queryObject<Flag>({ text: FLAGS_SQL, args: [day, target, back] }),
           conn.queryObject<Verified>({ text: VERIFIED_SQL, args: [day, target, back] }),
           conn.queryObject<Record<string, unknown>>({ text: TO_CALL_SQL, args: [target] }),
-          conn.queryObject<{ d: string; tz: string }>({ text: RESOLVE_DAY_SQL, args: [day] }),
+          conn.queryObject<ResolvedDay>({ text: RESOLVE_DAY_SQL, args: [day] }),
         ]);
         const agent = roster.rows.find((a) => String(a.agent_id) === target) ?? null;
         if (!agent && target !== userId) {
@@ -247,6 +261,8 @@ export async function handleBoard(ctx: BoardContext): Promise<Response> {
               agent: agent ?? { agent_id: target },
               day: d.d,
               tz: d.tz,
+              today: d.today,
+              dailyTarget: d.daily_target,
               range: back === 0 ? "day" : "week",
               called: marks.rows.length,
               verified: verified.rows.reduce((n, v) => n + v.verified, 0),

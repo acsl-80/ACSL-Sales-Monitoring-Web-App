@@ -2057,6 +2057,10 @@ export type BoardAgent = {
 export type BoardData = {
   day: string;
   tz: string;
+  today: string;
+  dailyTarget: number;
+  refreshSeconds: number;
+  staleAfterDays: number;
   range: "day" | "week";
   days: string[];
   agents: BoardAgent[];
@@ -2083,6 +2087,8 @@ export type AgentDayData = {
   agent: Partial<BoardAgent> & { agent_id: string };
   day: string;
   tz: string;
+  today: string;
+  dailyTarget: number;
   range: "day" | "week";
   called: number;
   verified: number;
@@ -2128,8 +2134,10 @@ export type PoolPartnerRow = {
 export type PoolPartnersData = {
   rows: PoolPartnerRow[];
   total: number;
-  page: number;
-  pageSize: number;
+  limit: number;
+  /** Keyset cursor for the next page; null on the last page. */
+  nextCursor: string | null;
+  sort: "waiting" | "new" | "oldest" | "name";
   totals: { waiting: number; partners: number; nobody_on: number; new_recent: number; recent_days: number };
 };
 export type ActivityKind = "call" | "handed_out" | "reclaimed" | "sent_back" | "reviewed";
@@ -2150,8 +2158,9 @@ export type ActivityRow = {
 export type ActivityData = {
   rows: ActivityRow[];
   total: number;
-  page: number;
-  pageSize: number;
+  limit: number;
+  /** Keyset cursor for the next page; null on the last page. */
+  nextCursor: string | null;
   histogram: { bucket: string; calls: number; callback: number; unreached: number; other: number; spoke: number }[];
   totals: {
     calls: number; handed_out: number; reclaimed: number; sent_back: number; reviewed: number;
@@ -2188,8 +2197,8 @@ export const dataCenterAssign = {
     state?: string | null;
     nobodyOn?: boolean;
     sort?: "waiting" | "new" | "oldest" | "name";
-    page?: number;
-    pageSize?: number;
+    limit?: number;
+    cursor?: string | null;
   } = {}) => call<PoolPartnersData>("data-center-assign", "pool_partners", opts),
   /** Phase 26: the activity feed. An agent without assignment.manage reads their own rows. */
   activity: (opts: {
@@ -2200,8 +2209,8 @@ export const dataCenterAssign = {
     outcome?: string | null;
     organizationId?: string | null;
     q?: string | null;
-    page?: number;
-    pageSize?: number;
+    limit?: number;
+    cursor?: string | null;
   } = {}) => call<ActivityData>("data-center-assign", "activity", opts),
 
   /**
