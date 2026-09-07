@@ -30,7 +30,7 @@ test.describe("the assignment console shows who holds what", () => {
       .locator("xpath=ancestor::*[contains(@class,'rounded-xl')][1]");
     // Phase 24: the agents panel. State is presence; capacity sits beside the
     // open batches; last save replaces last activity.
-    for (const column of ["Agent", "State", "Open batches", "Held", "Done today", "Last save", "On record"]) {
+    for (const column of ["Agent", "State", "Called", "Verified", "To call", "Open batches"]) {
       await expect(
         console_.getByRole("columnheader", { name: column, exact: true }),
       ).toBeVisible();
@@ -96,7 +96,7 @@ test.describe("the assignment console shows who holds what", () => {
     await expect(picker).toBeVisible();
     await expect(picker.getByRole("button", { name: "Select all" })).toBeVisible();
     await expect(picker.getByRole("button", { name: "Clear all" })).toBeVisible();
-    await expect(picker.getByRole("checkbox", { name: "Records held" })).toBeChecked();
+    await expect(picker.getByRole("checkbox", { name: "To call" })).toBeChecked();
   });
 });
 
@@ -229,76 +229,51 @@ test.describe("assigning by hand goes through the engine's own tables", () => {
 });
 
 /**
- * The assignment log, as a place of work.
- *
- * It was a table you could only look at, which made it a report: seeing that a
- * record had been rung twice and concluded nothing, you then went and found it
- * in the queue. The row is now the way in.
+ * The activity page (Phase 26, C2) took over from the assignment log: one row
+ * per thing that happened, keyset paged, readable by anyone with call-centre
+ * view and worked from by anyone who may edit.
  */
-test.describe("the assignment log can be worked from", () => {
+test.describe("the activity page can be worked from", () => {
   test("it says what a row is, and pages without an offset", async ({ page }) => {
     const bodies: string[] = [];
     page.on("request", (req) => {
-      if (req.url().includes("/functions/v1/data-center-read")) {
+      if (req.url().includes("/functions/v1/data-center-assign")) {
         bodies.push(req.postData() ?? "");
       }
     });
-
     await signIn(page, USERS.admin);
-    await page.goto("/data-center/call-centre");
-
-    await expect(page.getByText("Assignment Log")).toBeVisible({ timeout: 20_000 });
-    // The table was read as a list of batches, which it is not.
-    await expect(
-      page.getByText(/One line per record handed to an agent/),
-    ).toBeVisible();
-
+    await page.goto("/data-center/call-centre/activity");
+    await expect(page.getByRole("heading", { name: "Activity" }).first()).toBeVisible({ timeout: 20_000 });
+    await expect(page.getByText(/calls logged, batches handed out and reclaimed/)).toBeVisible();
     await expect(page.getByRole("button", { name: "Previous page" })).toBeDisabled();
     await expect(page.getByLabel("Per page")).toBeVisible();
-
-    // Keyset, never OFFSET: at 500,000 rows page 400 would read every row
-    // before it.
     await expect
-      .poll(() => bodies.some((b) => b.includes('"assignment_log"')), { timeout: 15_000 })
+      .poll(() => bodies.some((b) => b.includes('"activity"')), { timeout: 15_000 })
       .toBe(true);
-    for (const body of bodies) {
+    for (const body of bodies.filter((b) => b.includes('"activity"'))) {
       expect(body).not.toContain('"offset"');
+      expect(body).not.toContain('"page"');
     }
   });
 
   test("a row opens the record", async ({ page }) => {
     await signIn(page, USERS.admin);
-    await page.goto("/data-center/call-centre");
-    await expect(page.getByText("Assignment Log")).toBeVisible({ timeout: 20_000 });
-
-    /*
-     * Wait for the log to have LOADED, not merely to exist: the footer counts
-     * the rows it drew, so it is the signal that the data is there. Phase 24
-     * removed the quick edit from the log (history only; the work happens in
-     * the record), so what is left to prove is that a row is a door.
-     *
-     * A CELL, not the row: the row's centre can land on the stove serial link,
-     * which stops propagation on purpose. The first cell holds a state chip
-     * and can never hold a link, and a click on it still bubbles to the row.
-     */
-    await expect(page.getByText(/\d+ records? on page \d+/)).toBeVisible({ timeout: 20_000 });
-    const log = page.getByText("Assignment Log").locator("xpath=ancestor::*[contains(@class,'rounded-xl')][1]");
-    const firstRow = log.locator("tbody tr").first();
-    await expect(firstRow).toBeVisible();
-    await firstRow.locator("td").first().click();
+    await page.goto("/data-center/call-centre/activity?kind=call");
+    await expect(page.getByRole("heading", { name: "Activity" }).first()).toBeVisible({ timeout: 20_000 });
+    await expect(page.getByText(/\d+ events? on page \d+/)).toBeVisible({ timeout: 20_000 });
+    const open = page.locator("tbody tr").first().getByRole("button", { name: "Open" });
+    await expect(open, "a call event on the branch to open").toBeVisible({ timeout: 20_000 });
+    await open.click();
     await expect(page.getByRole("dialog")).toBeVisible({ timeout: 20_000 });
     await page.keyboard.press("Escape");
     await expect(page.getByRole("dialog")).toHaveCount(0);
   });
 
-  test("a viewer gets the log to read and nothing to press", async ({ page }) => {
+  test("a viewer gets the activity page to read and nothing to press", async ({ page }) => {
     await signIn(page, USERS.manager);
-    await page.goto("/data-center/call-centre");
-    await expect(page.getByText("Assignment Log")).toBeVisible({ timeout: 20_000 });
-
-    // A viewer holds no call_records.edit, so the row is not a door and the
-    // pencil is not drawn. The endpoint refuses regardless.
+    await page.goto("/data-center/call-centre/activity");
+    await expect(page.getByRole("heading", { name: "Activity" }).first()).toBeVisible({ timeout: 20_000 });
+    await expect(page.getByRole("button", { name: "Assign now" })).toHaveCount(0);
     await expect(page.getByRole("button", { name: /^Quick edit / })).toHaveCount(0);
-    await expect(page.getByText(/Open a row to enrich it/)).toHaveCount(0);
   });
 });

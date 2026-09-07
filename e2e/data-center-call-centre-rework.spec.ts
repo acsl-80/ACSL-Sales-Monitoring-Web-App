@@ -138,14 +138,14 @@ test.describe("finished work has somewhere to live", () => {
   });
 });
 
-test.describe("the assignment log is worked, not just read", () => {
-  test("it filters by agent and can group by them", async ({ page }) => {
+test.describe("the activity page is worked, not just read", () => {
+  test("it filters by agent and by kind", async ({ page }) => {
     await signIn(page, USERS.admin);
-    await page.goto("/data-center/call-centre");
-    await expect(page.getByText("Assignment Log")).toBeVisible({ timeout: 30_000 });
+    await page.goto("/data-center/call-centre/activity");
+    await expect(page.getByRole("heading", { name: "Activity" }).first()).toBeVisible({ timeout: 30_000 });
 
     await expect(page.getByLabel("Agent", { exact: true })).toBeVisible();
-    await expect(page.getByRole("checkbox", { name: /Group by agent/ })).toBeVisible();
+    await expect(page.getByLabel("Kind", { exact: true })).toBeVisible();
   });
 
   test("reassignment needs somewhere to send it", async ({ page }) => {

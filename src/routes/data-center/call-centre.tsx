@@ -29,14 +29,21 @@ type CallCentreSearch = {
    */
   period?: string;
   /**
-   * The assignment log's own period. Separate from the queue's because they
-   * are stacked on one page and ask about two different dates: when a stove
-   * was sold, and when the work on it was handed out.
+   * The assignment log's own period. The log retired in Phase 26, C2; the
+   * parameter is still accepted so an old link does not break, and ignored.
    */
   logPeriod?: string;
+  /**
+   * The shift board's day (YYYY-MM-DD in the call centre's timezone) and
+   * range ("week" for the seven days ending on it). Today is the default and
+   * stays out of the URL.
+   */
+  day?: string;
+  range?: "week";
 };
 
 const str = (v: unknown) => (typeof v === "string" && v !== "" ? v : undefined);
+const DAY = /^\d{4}-\d{2}-\d{2}$/;
 
 export const Route = createFileRoute("/data-center/call-centre")({
   validateSearch: (search: Record<string, unknown>): CallCentreSearch => ({
@@ -51,6 +58,8 @@ export const Route = createFileRoute("/data-center/call-centre")({
     verificationOutcome: str(search.verificationOutcome),
     period: str(search.period),
     logPeriod: str(search.logPeriod),
+    day: typeof search.day === "string" && DAY.test(search.day) ? search.day : undefined,
+    range: search.range === "week" ? "week" : undefined,
   }),
   component: Page,
 });

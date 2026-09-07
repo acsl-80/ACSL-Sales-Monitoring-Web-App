@@ -163,7 +163,7 @@ test.describe("slice 7b: the levers ask first, and No does nothing", () => {
     });
     await signIn(page, USERS.admin);
     await openQueue(page);
-    await expect(page.getByText("Assignment Log")).toBeVisible({ timeout: 40_000 });
+    await expect(page.getByRole("heading", { name: "Agents and their work" })).toBeVisible({ timeout: 40_000 });
 
     await page.getByRole("button", { name: "Assign now" }).click();
     let ask = page.getByRole("alertdialog");
@@ -172,7 +172,7 @@ test.describe("slice 7b: the levers ask first, and No does nothing", () => {
     await ask.getByRole("button", { name: "Not now" }).click();
     await expect(ask).toHaveCount(0);
 
-    await page.getByRole("button", { name: "Reclaim quiet batches" }).click();
+    await page.locator("#agents-panel").getByRole("button", { name: "Reclaim quiet batches" }).click();
     ask = page.getByRole("alertdialog");
     await expect(ask, "Reclaim should ask first").toBeVisible({ timeout: 10_000 });
     await expect(ask).toContainText("Reclaim quiet batches?");

@@ -1,5 +1,5 @@
 import { useState } from "react";
-import Link from "@/compat/Link";
+import Door from "./Door";
 import { ArrowRight, Loader2, RefreshCw } from "lucide-react";
 import { dataCenterDashboard, DataCenterError } from "../../../lib/client";
 import { metricValue } from "../../../lib/metricValue";
@@ -39,9 +39,9 @@ function Figure({ label, value, sub, href, tone, big = false }) {
   );
   const cls = `relative block rounded-xl p-3 text-left shadow-sm transition hover:-translate-y-px ${tones[tone]}`;
   return (
-    <Link href={href} className={cls} data-board-tile={label}>
+    <Door href={href} className={cls} data-board-tile={label}>
       {body}
-    </Link>
+    </Door>
   );
 }
 
