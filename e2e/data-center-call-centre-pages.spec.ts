@@ -57,38 +57,60 @@ async function holderWithWork(page: Page) {
   return { holder: holder!, items };
 }
 
-test("the agent's page shows their day, their work and their calls, and hands out more", async ({ page }) => {
+test("the agent's page shows their day, their work and their calls, and hands out more", async ({ page, browser }) => {
   await signIn(page, USERS.admin);
-  const { holder, items } = await holderWithWork(page);
-  const logged = await callEdgeFunction(page, "data-center-write", { action: "log_attempt", saleId: items[0].sale_id, note: "pages spec" });
+  // The call is logged by the agent themselves: a call counts against the
+  // login that logged it (D35), so an admin's call would not be theirs.
+  const agentPage = await (await browser.newContext()).newPage();
+  await signIn(agentPage, USERS.callCentre);
+  const { agents } = await agentsAndPool(page);
+  const me = agents.find((a) => a.email === USERS.callCentre)!;
+  expect(me, "the seeded call-centre editor is an agent").toBeTruthy();
+  if (!me.is_enabled) await callEdgeFunction(page, "data-center-assign", { action: "agent_profile_set", agentId: me.agent_id, isEnabled: true });
+  let day = (await callEdgeFunction(agentPage, "data-center-assign", { action: "agent_day" })).body as { data: { to_call: { sale_id: string; stove_serial_no: string }[] } };
+  if (day.data.to_call.length === 0) {
+    let { pool } = await agentsAndPool(page);
+    if (!pool.some((p) => p.callable > 0)) {
+      await replenish(page);
+      ({ pool } = await agentsAndPool(page));
+    }
+    const partner = pool.find((p) => p.callable > 0);
+    expect(partner, "a partner with a callable record").toBeTruthy();
+    const made = await callEdgeFunction(page, "data-center-assign", {
+      action: "assign_manual", agentId: me.agent_id, organizationId: partner!.organization_id, size: 1, overrideReason: "pages spec",
+    });
+    expect(made.status, JSON.stringify(made.body)).toBe(200);
+    day = (await callEdgeFunction(agentPage, "data-center-assign", { action: "agent_day" })).body as typeof day;
+  }
+  const item = day.data.to_call[0];
+  expect(item, "a record in the agent's hands").toBeTruthy();
+  const logged = await callEdgeFunction(agentPage, "data-center-write", { action: "log_attempt", saleId: item.sale_id, note: "pages spec" });
   expect(logged.status, JSON.stringify(logged.body)).toBe(200);
 
   // From the board: the row's Open is a link to the page.
   await page.goto("/data-center/call-centre");
-  const row = page.locator(`[data-agent-row="${holder.agent_id}"]`);
+  const row = page.locator(`[data-agent-row="${me.agent_id}"]`);
   await expect(row).toBeVisible({ timeout: 30_000 });
   await row.getByRole("link", { name: /^Open / }).click();
-  await expect(page).toHaveURL(new RegExp(`/data-center/call-centre/agents/${holder.agent_id}`));
-  await expect(page.locator(`[data-agent-page="${holder.agent_id}"]`)).toBeVisible({ timeout: 30_000 });
-  await expect(page.locator(`[data-agent-page="${holder.agent_id}"]`)).toContainText(holder.full_name || holder.email, { timeout: 30_000 });
-  await expect(page.locator("[data-track]")).toBeVisible();
+  await expect(page).toHaveURL(new RegExp(`/data-center/call-centre/agents/${me.agent_id}`));
+  await expect(page.locator(`[data-agent-page="${me.agent_id}"]`)).toContainText(me.full_name || me.email, { timeout: 30_000 });
+  await expect(page.locator("[data-track]")).toBeVisible({ timeout: 30_000 });
 
   // To call carries the record; Called carries the call just logged.
-  await expect(page.getByText(items[0].stove_serial_no).first()).toBeVisible({ timeout: 30_000 });
+  await expect(page.getByText(item.stove_serial_no).first()).toBeVisible({ timeout: 30_000 });
   await page.getByRole("tab", { name: /^Called/ }).click();
   await expect(page).toHaveURL(/tab=called/);
-  await expect(page.locator("[data-called-row]").first()).toBeVisible({ timeout: 30_000 });
-  await expect(page.locator("[data-called-row]").filter({ hasText: items[0].stove_serial_no }).first()).toBeVisible();
+  await expect(page.locator("[data-called-row]").filter({ hasText: item.stove_serial_no }).first()).toBeVisible({ timeout: 30_000 });
   await expect(page.getByRole("button", { name: "Export calls" })).toBeVisible();
 
   // The week view tallies; the day chips carry the agent's route.
   await page.getByRole("button", { name: "This week" }).click();
-  await expect(page).toHaveURL(new RegExp(`agents/${holder.agent_id}.*range=week`));
+  await expect(page).toHaveURL(new RegExp(`agents/${me.agent_id}.*range=week`));
   await expect(page.locator("[data-week]")).toBeVisible({ timeout: 30_000 });
 
   // Hand out more opens the dialog with this agent fixed.
   await page.getByRole("button", { name: "Hand out more" }).click();
-  await expect(page.getByRole("dialog")).toContainText(`Assign work to ${holder.full_name || holder.email}`);
+  await expect(page.getByRole("dialog")).toContainText(`Assign work to ${me.full_name || me.email}`);
   await expect(page.getByRole("combobox", { name: "Who takes it" })).toHaveCount(0);
   await page.keyboard.press("Escape");
 });
