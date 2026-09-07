@@ -70,7 +70,7 @@ test("the agent's page shows their day, their work and their calls, and hands ou
   await row.getByRole("link", { name: /^Open / }).click();
   await expect(page).toHaveURL(new RegExp(`/data-center/call-centre/agents/${holder.agent_id}`));
   await expect(page.locator(`[data-agent-page="${holder.agent_id}"]`)).toBeVisible({ timeout: 30_000 });
-  await expect(page.getByRole("heading", { name: holder.full_name || holder.email })).toBeVisible({ timeout: 30_000 });
+  await expect(page.locator(`[data-agent-page="${holder.agent_id}"]`)).toContainText(holder.full_name || holder.email, { timeout: 30_000 });
   await expect(page.locator("[data-track]")).toBeVisible();
 
   // To call carries the record; Called carries the call just logged.

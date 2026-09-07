@@ -59,8 +59,9 @@ async function restore(r: Seeded) {
 
 async function openRecord(page: Page, name: string, outcome?: string) {
   const search = outcome ? `?verificationOutcome=${outcome}` : "";
-  await page.goto(`/data-center/call-centre${search}`);
-  await expect(page.getByRole("heading", { name: "Call Centre" })).toBeVisible({ timeout: 20_000 });
+  // The queue lives on the Records page since Phase 26, C3.
+  await page.goto(`/data-center/call-centre/records${search}`);
+  await expect(page.getByRole("heading", { name: "Call centre records" })).toBeVisible({ timeout: 20_000 });
   const first = name.trim().split(/\s+/)[0];
   await page
     .getByRole("button", { name: new RegExp(`^Open call record for .*${first}`, "i") })

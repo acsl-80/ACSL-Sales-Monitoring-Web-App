@@ -324,7 +324,7 @@ test.describe("the headline figures", () => {
     await expect(page.getByRole("link", { name: /^Imported rows:/ })).toBeVisible();
 
     // Displaced rather than dropped: both are still on the page, below.
-    for (const label of ["Complete", "Open corrections"]) {
+    for (const label of ["Complete", "Waiting on Sales"]) {
       await expect(page.getByRole("link", { name: new RegExp(`^${label}:`) })).toBeVisible();
     }
   });

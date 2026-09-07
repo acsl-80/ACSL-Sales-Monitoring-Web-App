@@ -63,6 +63,11 @@ async function ensureWork(admin: Page, agent: Page) {
       }
       ({ agents, pool } = await agentsAndPool(admin));
       partner = pool.find((p) => p.callable >= 1);
+      if (!partner) {
+        await replenish(admin);
+        ({ agents, pool } = await agentsAndPool(admin));
+        partner = pool.find((p) => p.callable >= 1);
+      }
     }
     expect(partner, "a partner with work to hand out").toBeTruthy();
     const made = await callEdgeFunction(admin, "data-center-assign", {

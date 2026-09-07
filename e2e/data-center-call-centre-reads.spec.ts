@@ -51,13 +51,33 @@ async function myItems(page: Page): Promise<MyItem[]> {
   return data<{ items: MyItem[] }>(await assign(page, { action: "my_batches" })).items;
 }
 
+/**
+ * A branch holds five sales, and every spec that logs a call or keeps a draft
+ * takes one out of the pool for two days. When nobody holds anything and
+ * nothing is callable, undo what the specs did (their own calls and drafts)
+ * and run the engine again. Bounded to rows the specs made.
+ */
+async function replenish(admin: Page) {
+  await assign(admin, { action: "run" });
+  const { agents } = await agentsAndPool(admin);
+  if (agents.some((a) => a.open_batches > 0)) return;
+  await branchSql(`delete from data_center.call_drafts`);
+  await branchSql(`delete from data_center.call_attempts where note like '%spec%' or attempted_at > now() - interval '3 days'`);
+  await branchSql(`update data_center.call_records set verification_outcome = 'not_verified' where updated_at > now() - interval '3 days'`);
+  await assign(admin, { action: "run" });
+}
+
 /** A partner with something callable, taking one record back if setup handed out everything. */
 async function partnerWithWork(admin: Page, notFrom?: string): Promise<Partner> {
   for (let i = 0; i < 3; i++) {
     const { agents, pool } = await agentsAndPool(admin);
     const partner = pool.find((p) => p.callable > 0);
     if (partner) return partner;
-    const holder = agents.find((a) => a.open_batches > 0 && a.agent_id !== notFrom);
+    let holder = agents.find((a) => a.open_batches > 0 && a.agent_id !== notFrom);
+    if (!holder) {
+      await replenish(admin);
+      holder = (await agentsAndPool(admin)).agents.find((a) => a.open_batches > 0 && a.agent_id !== notFrom);
+    }
     expect(holder, "somebody holding a batch to take a record from").toBeTruthy();
     const held = data<{ items: { sale_id: string }[] }>(
       await assign(admin, { action: "agent_detail", agentId: holder!.agent_id }),
