@@ -285,6 +285,16 @@ export default function BenchRail({
                   <span className="max-w-[7rem] truncate text-[11px] text-gray-500">
                     {s.end_user_name ?? ""}
                   </span>
+                  {/* The sales model the transfer named, when it named one (slice 9). */}
+                  {s.order_model_name && (
+                    <span
+                      className="max-w-[5.5rem] shrink-0 truncate rounded-full border border-(--dc-brief-money) bg-(--dc-brief-money-soft) px-1.5 text-[10px] font-semibold text-(--dc-brief-money)"
+                      title={`Sent with the transfer as ${s.order_model_name}`}
+                      data-rail-model={s.order_model_name}
+                    >
+                      {s.order_model_name}
+                    </span>
+                  )}
                 </button>
               </li>
             );

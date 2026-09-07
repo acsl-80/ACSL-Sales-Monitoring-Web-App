@@ -62,6 +62,13 @@ test("the bench is told the transfer's model and preselects it", async ({ page }
     expect(stove.orderModel!.id).toBe(amina.id);
     expect(stove.orderModel!.name).toBe(amina.name);
 
+    // The rail's list read carries it too (slice 9), so the chip needs no
+    // second call per row.
+    const listed = await callEdgeFunction(page, "data-center-read", { action: "partner_stoves", organizationId: TWIN_A, search: stoveId, limit: 5 });
+    const row = ((listed.body as { data?: { stoves?: { stove_id: string; order_model_name: string | null }[] } }).data?.stoves ?? []).find((s) => s.stove_id === stoveId);
+    expect(row, "the stove is in the partner's list").toBeTruthy();
+    expect(row!.order_model_name).toBe("Amina Model");
+
     // On the bench the select starts on that model and says where it came from.
     await page.goto("/data-center/import");
     await expect(page.getByRole("heading", { name: "Bulk Import" })).toBeVisible({ timeout: 30_000 });
@@ -72,6 +79,8 @@ test("the bench is told the transfer's model and preselects it", async ({ page }
     await expect(page.getByText(/all consignments/).first()).toBeVisible({ timeout: 30_000 });
     await page.locator("tbody tr", { hasText: stoveId }).first().click();
     await expect(page.locator("#wb-endUserName")).toBeVisible({ timeout: 30_000 });
+    // The rail shows the model the transfer named, beside the stove (slice 9).
+    await expect(page.locator('[data-rail-model="Amina Model"]').first()).toBeVisible({ timeout: 30_000 });
     const select = page.getByLabel("Sales model", { exact: true });
     await expect(select).toBeVisible({ timeout: 30_000 });
     await expect(select).toHaveValue(amina.name);

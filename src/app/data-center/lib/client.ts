@@ -1366,6 +1366,8 @@ export type SendBackConfig = {
     waiting: number;
   }[];
   candidates: { id: string; full_name: string; email: string | null; role: string }[];
+  /** Whether the caller may change the routing; the server's own verdict. */
+  canEdit?: boolean;
 };
 
 /** One row of public.sale_field_rules, as data-center-admin returns it. */

@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { SearchableSelect } from "@/components/ui/searchable-select";
-import { dataCenterAdmin, DataCenterError } from "../../lib/client";
+import { dataCenterAdmin, dataCenterClient, DataCenterError } from "../../lib/client";
+import { PartnerSizeEditor, ModelMapEditor } from "./MapEditors";
 import { Loader2, SlidersHorizontal, Check, RotateCcw } from "lucide-react";
 
 /**
@@ -31,6 +32,16 @@ const GROUP_LABEL = {
   general: "General",
 };
 
+/** A draft that is not valid JSON yet reads as an empty map to the typed editors. */
+function safeParse(text) {
+  try {
+    const v = JSON.parse(text);
+    return v && typeof v === "object" && !Array.isArray(v) ? v : {};
+  } catch {
+    return {};
+  }
+}
+
 /** What kind of control the stored value asks for. */
 function kindOf(value) {
   if (typeof value === "boolean") return "boolean";
@@ -39,8 +50,19 @@ function kindOf(value) {
   return "json";
 }
 
-function Row({ setting, canEdit, onSaved, onError }) {
+/**
+ * Two map-shaped settings get a typed editor (slice 8): a partner picker and
+ * a number, a sheet spelling and a model picker. The value saved is the same
+ * shape the server reads; only the way it is typed changes.
+ */
+const TYPED = {
+  "assignment.batch_size_by_partner": "partners",
+  "import.model_map": "models",
+};
+
+function Row({ setting, canEdit, onSaved, onError, facets }) {
   const kind = kindOf(setting.value);
+  const typed = TYPED[setting.key];
   const asText = kind === "json" ? JSON.stringify(setting.value) : String(setting.value);
   const [draft, setDraft] = useState(asText);
   const [busy, setBusy] = useState(false);
@@ -102,6 +124,22 @@ function Row({ setting, canEdit, onSaved, onError }) {
               { value: "false", label: "No" },
             ]}
           />
+        ) : typed === "partners" && facets ? (
+          <PartnerSizeEditor
+            id={setting.key}
+            value={safeParse(draft)}
+            partners={facets.partners.filter((p) => p.name).map((p) => ({ id: p.id, name: p.name }))}
+            disabled={!canEdit || busy}
+            onChange={(next) => setDraft(JSON.stringify(next))}
+          />
+        ) : typed === "models" && facets ? (
+          <ModelMapEditor
+            id={setting.key}
+            value={safeParse(draft)}
+            models={facets.salesModels}
+            disabled={!canEdit || busy}
+            onChange={(next) => setDraft(JSON.stringify(next))}
+          />
         ) : kind === "json" ? (
           <textarea
             rows={2}
@@ -153,6 +191,12 @@ export default function Variables() {
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
+  /*
+   * Partners and payment models for the two typed editors, from the facets
+   * read the records filters already use. Read once; if it fails the two
+   * settings fall back to their JSON box rather than to nothing.
+   */
+  const [facets, setFacets] = useState(null);
 
   const load = useCallback(async () => {
     try {
@@ -167,6 +211,10 @@ export default function Variables() {
 
   useEffect(() => {
     load();
+    dataCenterClient
+      .recordFacets()
+      .then((f) => setFacets({ partners: f.partners ?? [], salesModels: f.salesModels ?? [] }))
+      .catch(() => setFacets(null));
   }, [load]);
 
   if (loading) {
@@ -215,6 +263,7 @@ export default function Variables() {
                         canEdit={canEdit}
                         onSaved={load}
                         onError={setError}
+                        facets={facets}
                       />
                     ))}
                 </tbody>

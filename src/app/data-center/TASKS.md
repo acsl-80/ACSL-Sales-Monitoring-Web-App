@@ -52,8 +52,8 @@ decisions D27 to D29.
 - [x] 6b Queue facets in the URL. PR #75 merged and live 2026-09-04 (main 72df1a9 to a80f2ec; client only, bundle crawl confirmed)
 - [x] 7a Completeness evidence config and the tile's plain line. PR #76 merged and live 2026-09-05 (main a80f2ec to 6ae5db7; migration applied with ledger row, read v18, full run 2,340 of 2,340 complete)
 - [x] 7b The sales app's status rule (D17). PR #77 merged and live 2026-09-05 (main 6ae5db7 to 855e860; both migrations applied with ledger rows; production reads 54 completed, 333 pending, 1,953 incomplete; 406 rows recomputed)
-- [ ] 8 Settings: used by, retire warning and the previous_stove list shipped in F3b. Still open: typed editors for `assignment.batch_size_by_partner` and `import.model_map` in Variables (raw JSON today), and `SendBackRouting`'s `canEdit` read from the access payload instead of always true. Small, module lane; picked up after Phase 26 closes.
-- [ ] 9 Order model on the transfer, preselected on the bench (D19): shipped in F2b except the rail's per-row model chip, which needs the rail's list read to carry the transfer's model. Small, module lane; picked up after Phase 26 closes.
+- [ ] 8 Settings: used by, retire warning and the previous_stove list shipped in F3b. Remainder: typed editors for `assignment.batch_size_by_partner` (partner picker and a number) and `import.model_map` (sheet spelling and a model picker) in Variables, values saved in the shapes the server reads; `SendBackRouting` takes `canEdit` from the routing read, which now carries the server's own verdict (`canRoute`). in review, one PR with slice 9's remainder, lands after #96
+- [ ] 9 Order model on the transfer, preselected on the bench (D19): shipped in F2b. Remainder: `partner_stoves` carries `order_model_name` from the transfer and the bench rail shows it as a chip per row. in review, one PR with slice 8's remainder, lands after #96
 
 ## Deferred
 

@@ -763,6 +763,8 @@ serve(async (req) => {
                 recipients: recipients.rows,
                 reps: withAccess,
                 candidates: candidates.rows,
+                /** The same shoulders that may write: super admin, corrections.route, ACSL agent manager. */
+                canEdit: canRoute,
               },
             },
             200,

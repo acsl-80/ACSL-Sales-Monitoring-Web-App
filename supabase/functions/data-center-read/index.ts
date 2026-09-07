@@ -1541,7 +1541,8 @@ serve(async (req) => {
                           c.user_state, c.verification_outcome, c.attempt_count,
                           ba.assigned_to::text as agent_id,
                           ap.full_name as agent_name,
-                          ba.state as batch_state
+                          ba.state as batch_state,
+                          sth.order_sales_model_name as order_model_name
                      from data_center.v_transfer_stoves b
                      join data_center.transfer_funnel f on f.transfer_id = b.transfer_id
                      left join public.stove_ids_base sb on sb.stove_id = b.stove_id
@@ -1550,6 +1551,7 @@ serve(async (req) => {
                             on ai.sale_id = sb.sale_id and ai.is_active
                      left join data_center.assignment_batches ba on ba.id = ai.batch_id
                      left join public.profiles ap on ap.id = ba.assigned_to
+                     left join public.stove_transfer_history sth on sth.id = b.transfer_id
                     where b.transfer_id = $1 and ${scope.sql}
                     order by b.stove_id
                     limit 2000`,
@@ -1682,7 +1684,8 @@ serve(async (req) => {
                           c.user_state, c.verification_outcome, c.attempt_count,
                           ba.assigned_to::text as agent_id,
                           ap.full_name as agent_name,
-                          ba.state as batch_state
+                          ba.state as batch_state,
+                          sth.order_sales_model_name as order_model_name
                      from data_center.v_transfer_stoves b
                      join data_center.transfer_funnel f on f.transfer_id = b.transfer_id
                      left join public.stove_ids_base sb on sb.stove_id = b.stove_id
@@ -1691,6 +1694,7 @@ serve(async (req) => {
                             on ai.sale_id = sb.sale_id and ai.is_active
                      left join data_center.assignment_batches ba on ba.id = ai.batch_id
                      left join public.profiles ap on ap.id = ba.assigned_to
+                     left join public.stove_transfer_history sth on sth.id = b.transfer_id
                     where ${scope.sql}
                       and ($1::text is null
                            or (f.sales_date ~ '^[0-9]{4}-[0-9]{2}'

@@ -36,7 +36,7 @@ export default function SettingsPage() {
           and it decides whether anybody sees the answer at all - where the
           call form's wording is something they tune afterwards.
         */}
-        <SendBackRouting canEdit />
+        <SendBackRouting />
         <CallFormEditor />
         <FieldRules />
         <Variables />

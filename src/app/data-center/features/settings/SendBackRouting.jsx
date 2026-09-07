@@ -57,8 +57,14 @@ function Person({ name, email, role }) {
   );
 }
 
-export default function SendBackRouting({ canEdit }) {
+export default function SendBackRouting() {
   const [data, setData] = useState(null);
+  /*
+   * Who may change the routing is the server's answer, carried beside the
+   * read (slice 8; the prop was always true before). The same check gates
+   * the writes: super admin, corrections.route, or an ACSL agent manager.
+   */
+  const canEdit = data?.canEdit === true;
   const [error, setError] = useState(null);
   const [notice, setNotice] = useState(null);
   const [busy, setBusy] = useState(null);
