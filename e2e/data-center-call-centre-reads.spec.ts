@@ -192,6 +192,12 @@ test("the pool by partner is paged, totalled, and knows who is on it", async ({ 
   for (let i = 1; i < first.rows.length; i++) {
     expect(first.rows[i - 1].waiting).toBeGreaterThanOrEqual(first.rows[i].waiting);
   }
+  // A page past the end still says how many there are (review finding, C1).
+  const beyond = data<{ rows: unknown[]; total: number }>(
+    await assign(admin, { action: "pool_partners", page: 999, pageSize: 2 }),
+  );
+  expect(beyond.rows).toEqual([]);
+  expect(beyond.total).toBe(oracle.partners);
   const nobody = data<{ rows: { on_it: string[] }[]; total: number }>(
     await assign(admin, { action: "pool_partners", nobodyOn: true, pageSize: 50 }),
   );
@@ -227,6 +233,11 @@ test("the activity feed carries the call as an event, filters by agent and kind,
   const summed = feed.histogram.reduce((n, b) => n + b.calls, 0);
   expect(summed).toBe(feed.totals.calls);
   expect(feed.pageSize).toBe(20);
+  const beyond = data<{ rows: unknown[]; total: number }>(
+    await assign(admin, { action: "activity", agentId: me.agent_id, kind: "call", page: 999, pageSize: 20 }),
+  );
+  expect(beyond.rows).toEqual([]);
+  expect(beyond.total).toBe(feed.total);
 
   const handouts = data<{ rows: { kind: string }[]; total: number }>(
     await assign(admin, { action: "activity", kind: "handed_out", pageSize: 5 }),

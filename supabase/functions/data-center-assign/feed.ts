@@ -183,17 +183,23 @@ export async function handleFeed(ctx: FeedContext): Promise<Response> {
         name: "partner_name",
       } as Record<string, string>)[String(body.sort ?? "waiting")] ?? "waiting desc, partner_name";
       return await withReadConnection(async (conn) => {
-        const [rows, totals] = await Promise.all([
+        // The total is its own statement: a window count rides on the rows that
+        // come back, and a page past the end has none, which would read as zero.
+        const POOL_WHERE = `where ($1::text is null or r.partner_name ilike '%' || $1 || '%')
+                 and ($2::text is null or r.state = $2)
+                 and (not $3::boolean or cardinality(r.on_it) = 0)`;
+        const [rows, counted, totals] = await Promise.all([
           conn.queryObject<Record<string, unknown>>({
             text: `${POOL_ROWS_SQL}
-              select r.*, count(*) over ()::int as total
-                from rows r
-               where ($1::text is null or r.partner_name ilike '%' || $1 || '%')
-                 and ($2::text is null or r.state = $2)
-                 and (not $3::boolean or cardinality(r.on_it) = 0)
+              select r.* from rows r
+               ${POOL_WHERE}
                order by ${sortSql}
                limit $4 offset $5`,
             args: [q, state, nobodyOn, pageSize, offset],
+          }),
+          conn.queryObject<{ total: number }>({
+            text: `${POOL_ROWS_SQL} select count(*)::int as total from rows r ${POOL_WHERE}`,
+            args: [q, state, nobodyOn],
           }),
           conn.queryObject<{ waiting: number; partners: number; nobody_on: number; new_recent: number; recent_days: number }>({
             text: `${POOL_ROWS_SQL}
@@ -204,12 +210,11 @@ export async function handleFeed(ctx: FeedContext): Promise<Response> {
                 from rows`,
           }),
         ]);
-        const total = rows.rows.length > 0 ? Number(rows.rows[0].total) : 0;
         return json(
           {
             data: {
-              rows: rows.rows.map(({ total: _t, ...r }) => r),
-              total,
+              rows: rows.rows,
+              total: Number(counted.rows[0]?.total ?? 0),
               page,
               pageSize,
               totals: totals.rows[0],
@@ -233,14 +238,18 @@ export async function handleFeed(ctx: FeedContext): Promise<Response> {
       const q = typeof body.q === "string" && body.q.trim() ? body.q.trim() : null;
       const args = [from, to, agentId, kind, outcome, orgId, q];
       return await withReadConnection(async (conn) => {
-        const [rows, hist, totals] = await Promise.all([
+        const [rows, counted, hist, totals] = await Promise.all([
           conn.queryObject<Record<string, unknown>>({
             text: `with ${ACTIVITY_EVENTS_SQL}
-              select f.*, count(*) over ()::int as total
-                from filtered f
+              select f.* from filtered f
                order by f.at desc
                limit $8 offset $9`,
             args: [...args, pageSize, offset],
+          }),
+          // Its own statement, for the same reason as the partner list's total.
+          conn.queryObject<{ total: number }>({
+            text: `with ${ACTIVITY_EVENTS_SQL} select count(*)::int as total from filtered`,
+            args,
           }),
           conn.queryObject<Record<string, unknown>>({
             text: `with ${ACTIVITY_EVENTS_SQL}
@@ -271,12 +280,11 @@ export async function handleFeed(ctx: FeedContext): Promise<Response> {
             args,
           }),
         ]);
-        const total = rows.rows.length > 0 ? Number(rows.rows[0].total) : 0;
         return json(
           {
             data: {
-              rows: rows.rows.map(({ total: _t, ...r }) => r),
-              total,
+              rows: rows.rows,
+              total: Number(counted.rows[0]?.total ?? 0),
               page,
               pageSize,
               histogram: hist.rows.map((h) => ({
