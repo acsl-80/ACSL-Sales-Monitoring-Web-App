@@ -276,9 +276,8 @@ test.describe("one press is the whole ask", () => {
       await page.reload();
 
       // Press the row's own Commit button, then confirm the dialog.
-      const row = page
-        .locator("tr", { hasText: `ui${testInfo.workerIndex}` })
-        .locator("xpath=following-sibling::tr[1]");
+      // The next step lives in the batch's own row since the import redesign.
+      const row = page.locator("tr", { hasText: `ui${testInfo.workerIndex}` }).first();
       await row.getByRole("button", { name: /^Commit \d+$/ }).click();
       // The confirm is a shadcn AlertDialog whose CTA repeats the count.
       await page.getByRole("alertdialog").getByRole("button", { name: /^Commit \d+$/ }).click();
@@ -310,11 +309,7 @@ test.describe("one press is the whole ask", () => {
         const finished = await mainRow.locator("td", { hasText: "committed" }).count();
         expect(midRun + finished).toBeGreaterThan(0);
       }).toPass({ timeout: 30_000 });
-      await expect(
-        mainRow
-          .locator("xpath=following-sibling::tr[1]")
-          .getByRole("button", { name: /^Commit \d+$/ }),
-      ).toHaveCount(0);
+      await expect(mainRow.getByRole("button", { name: /^Commit \d+$/ })).toHaveCount(0);
 
       const done = await waitDrained(page, batchId);
       expect(done.committed_rows).toBe(4);

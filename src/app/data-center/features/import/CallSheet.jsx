@@ -8,7 +8,7 @@ import CallBatches from "./CallBatches";
 import GetTheCallSheet from "./GetTheCallSheet";
 import NumberedStep from "../../components/NumberedStep";
 import Steps, { advance } from "../../components/Steps";
-import { PhoneCall, ArrowRight, Loader2, CircleAlert, CircleCheck, Undo2 } from "lucide-react";
+import { PhoneCall, Upload, ArrowRight, Loader2, CircleAlert, CircleCheck, Undo2 } from "lucide-react";
 
 /**
  * The call centre's own backlog, in and out.
@@ -272,8 +272,8 @@ export default function CallSheet({ canCommit = false, canResolve = false }) {
 
   return (
     <>
-      <section className="rounded-xl border border-gray-200 border-t-[3px] border-t-(--dc-accent) bg-white p-4 shadow-sm">
-        <div className="flex items-start gap-3">
+      <section className="rounded-xl border border-gray-200 border-t-[3px] border-t-(--dc-accent) bg-white shadow-sm">
+        <div className="flex items-start gap-3 p-4 pb-0">
           <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-(--dc-accent) text-white">
             <PhoneCall className="h-5 w-5" />
           </span>
@@ -288,12 +288,16 @@ export default function CallSheet({ canCommit = false, canResolve = false }) {
         </div>
 
         {error && (
-          <p className="mt-3 flex items-start gap-2 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-800">
+          <p className="mx-4 mt-3 flex items-start gap-2 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-800">
             <CircleAlert className="mt-0.5 h-4 w-4 shrink-0" /> {error}
           </p>
         )}
 
-        <ol className="mt-4 space-y-2">
+        {/*
+        Three steps, side by side once there is room for them. Below `md` they
+        stack, in the same order a phone reads them top to bottom.
+      */}
+        <ol className="grid gap-3 p-4 md:grid-cols-3 md:items-start">
           {/*
           Step one lives in its own component now. Handing somebody a file and
           taking one back share no state, and together they had grown this file
@@ -315,141 +319,157 @@ export default function CallSheet({ canCommit = false, canResolve = false }) {
               aria-label="Call-centre sheet"
               onChange={(e) => upload(e.target.files?.[0])}
               disabled={busy !== ""}
-              className="block w-full text-sm text-gray-700 file:mr-3 file:rounded-md file:border-0 file:bg-(--dc-accent-soft) file:px-3 file:py-1.5 file:text-sm file:font-semibold file:text-(--dc-accent-strong)"
+              className="hidden"
             />
+            <button
+              type="button"
+              disabled={busy !== ""}
+              onClick={() => fileRef.current?.click()}
+              className="inline-flex items-center gap-1.5 rounded-md bg-(image:--dc-fig-sold) px-3 py-1.5 text-sm font-semibold text-white shadow-sm transition hover:brightness-110 disabled:opacity-50"
+            >
+              {busy === "upload" ? (
+                <Loader2 className="h-4 w-4 animate-spin" />
+              ) : (
+                <Upload className="h-4 w-4" />
+              )}
+              Choose a file
+            </button>
+
             {steps && (
               <div className="mt-2 overflow-hidden rounded-lg border border-gray-200">
                 <Steps steps={steps} />
               </div>
             )}
+
+            {checked && (
+              <div className="mt-3 rounded-lg border border-gray-200 bg-(--dc-surface-muted) p-3">
+                <p className="text-sm font-semibold text-gray-900">
+                  {plural(checked.total, "row")} checked
+                </p>
+                <dl className="mt-2 grid grid-cols-3 gap-2">
+                  {[
+                    ["Ready", checked.valid, "text-(--dc-brief-who)"],
+                    ["Need a look", checked.exceptions, "text-(--dc-brief-place)"],
+                    ["Unreadable", checked.rejected, "text-(--dc-sev-critical)"],
+                  ].map(([label, n, tone]) => (
+                    <div key={label} className="rounded-lg border border-gray-200 bg-white px-2.5 py-2">
+                      <dt className="text-xs text-gray-500">{label}</dt>
+                      <dd className={`text-lg font-bold tabular-nums ${tone}`}>{n}</dd>
+                    </div>
+                  ))}
+                </dl>
+
+                {/*
+                What "Ready" is about to do, split.
+                Attaching a new record and rewriting one somebody already worked
+                are different acts, and a single "Ready: 52" hides which this is.
+              */}
+                {checked.valid > 0 && (checked.updating ?? 0) > 0 && (
+                  <p className="mt-2 text-xs text-gray-700">
+                    Of those, {plural(checked.creating ?? 0, "row")} attaches a new record and{" "}
+                    <strong>{plural(checked.updating, "row")} updates one that already exists</strong>.
+                    A row whose record changed in the app after you downloaded the sheet is not in
+                    this count; it is waiting for a person instead.
+                  </p>
+                )}
+
+                {checked.exceptions > 0 && (
+                  <p className="mt-2 text-xs text-gray-600">
+                    Rows needing a look are usually stoves whose receipt has not been digitalised
+                    yet. They stay in this batch with the reason on each one; nothing about them is
+                    lost.
+                  </p>
+                )}
+
+                {!result && (
+                  <div className="mt-3 flex flex-wrap items-center gap-2">
+                    <button
+                      type="button"
+                      onClick={commit}
+                      disabled={!canCommit || busy !== "" || checked.valid === 0}
+                      className="inline-flex items-center gap-1.5 rounded-md bg-(image:--dc-fig-sold) px-3 py-1.5 text-sm font-semibold text-white shadow-sm transition hover:brightness-110 disabled:opacity-50"
+                    >
+                      {busy === "commit" ? (
+                        <Loader2 className="h-4 w-4 animate-spin" />
+                      ) : (
+                        <ArrowRight className="h-4 w-4" />
+                      )}
+                      Attach {plural(checked.valid, "call")}
+                    </button>
+                    {!canCommit && (
+                      <span className="text-xs text-gray-500">
+                        Somebody with the commit grant releases these.
+                      </span>
+                    )}
+                    {progress && (
+                      <span className="text-xs text-gray-600">
+                        {progress.done} of {progress.total} attached. This continues on the server,
+                        so you can leave this page.
+                      </span>
+                    )}
+                  </div>
+                )}
+              </div>
+            )}
+
+            {result && (
+              /*
+              Green only when it all went in.
+
+              This box was emerald whatever happened, with one line saying some rows
+              "kept its reason" - which tells somebody a reason exists without
+              showing it, in the colour used for success. A run that refused half
+              the file should not look like a run that did not.
+            */
+              <div
+                className={`mt-3 rounded-lg border p-3 ${
+                  result.groups?.length > 0
+                    ? "border-(--dc-brief-place) bg-(--dc-brief-place-soft)"
+                    : "border-(--dc-brief-who) bg-(--dc-brief-who-soft)"
+                }`}
+              >
+                <p
+                  className={`flex items-center gap-2 text-sm font-semibold ${
+                    result.groups?.length > 0 ? "text-(--dc-brief-place)" : "text-(--dc-brief-who)"
+                  }`}
+                >
+                  <CircleCheck className="h-4 w-4" /> {plural(result.committed, "call record")}{" "}
+                  attached
+                </p>
+                {result.groups?.length > 0 && (
+                  <div className="mt-2 overflow-hidden rounded-lg border border-(--dc-brief-place) bg-white">
+                    <Unlanded groups={result.groups} />
+                  </div>
+                )}
+
+                {canCommit && (
+                  <button
+                    type="button"
+                    onClick={undo}
+                    disabled={busy !== ""}
+                    className="mt-2 inline-flex items-center gap-1.5 rounded-md border border-(--dc-accent) px-3 py-1.5 text-sm font-semibold text-(--dc-accent) transition hover:bg-(--dc-accent-soft) disabled:opacity-50"
+                  >
+                    {busy === "undo" ? (
+                      <Loader2 className="h-4 w-4 animate-spin" />
+                    ) : (
+                      <Undo2 className="h-4 w-4" />
+                    )}
+                    Undo this import
+                  </button>
+                )}
+                {/*
+                Undo here removes the call records and nothing else. It is not the
+                receipt import's rollback, which deletes the sale itself - doing
+                that here would delete somebody's sale because an outcome was
+                mis-typed.
+              */}
+                <p className="mt-2 text-xs text-gray-700">
+                  Undo removes these call records only. The sales stay exactly as they were.
+                </p>
+              </div>
+            )}
           </NumberedStep>
         </ol>
-
-        {checked && (
-          <div className="mt-4 rounded-xl border border-gray-200 bg-(--dc-surface-muted) p-4">
-            <p className="text-sm font-semibold text-gray-900">
-              {plural(checked.total, "row")} checked
-            </p>
-            <dl className="mt-2 grid grid-cols-2 gap-2 sm:grid-cols-4">
-              {[
-                ["Ready", checked.valid, "text-emerald-700"],
-                ["Need a person", checked.exceptions, "text-amber-700"],
-                ["Unreadable", checked.rejected, "text-red-700"],
-              ].map(([label, n, tone]) => (
-                <div key={label} className="rounded-lg border border-gray-200 bg-white px-3 py-2">
-                  <dt className="text-xs text-gray-500">{label}</dt>
-                  <dd className={`text-lg font-bold ${tone}`}>{n}</dd>
-                </div>
-              ))}
-            </dl>
-
-            {/*
-            What "Ready" is about to do, split.
-            Attaching a new record and rewriting one somebody already worked
-            are different acts, and a single "Ready: 52" hides which this is.
-          */}
-            {checked.valid > 0 && (checked.updating ?? 0) > 0 && (
-              <p className="mt-2 text-xs text-gray-700">
-                Of those, {plural(checked.creating ?? 0, "row")} attaches a new record and{" "}
-                <strong>{plural(checked.updating, "row")} updates one that already exists</strong>.
-                A row whose record changed in the app after you downloaded the sheet is not in this
-                count; it is waiting for a person instead.
-              </p>
-            )}
-
-            {checked.exceptions > 0 && (
-              <p className="mt-2 text-xs text-gray-600">
-                Rows needing a person are usually stoves whose receipt has not been digitalised yet.
-                They stay in this batch with the reason on each one; nothing about them is lost.
-              </p>
-            )}
-
-            {!result && (
-              <div className="mt-3 flex flex-wrap items-center gap-2">
-                <button
-                  type="button"
-                  onClick={commit}
-                  disabled={!canCommit || busy !== "" || checked.valid === 0}
-                  className="inline-flex items-center gap-1.5 rounded-md bg-(--dc-accent) px-3 py-1.5 text-sm font-semibold text-white transition hover:bg-(--dc-accent-strong) disabled:opacity-50"
-                >
-                  {busy === "commit" ? (
-                    <Loader2 className="h-4 w-4 animate-spin" />
-                  ) : (
-                    <ArrowRight className="h-4 w-4" />
-                  )}
-                  Attach {plural(checked.valid, "call")}
-                </button>
-                {!canCommit && (
-                  <span className="text-xs text-gray-500">
-                    Somebody with the commit grant releases these.
-                  </span>
-                )}
-                {progress && (
-                  <span className="text-xs text-gray-600">
-                    {progress.done} of {progress.total} attached. This continues on the server, so
-                    you can leave this page.
-                  </span>
-                )}
-              </div>
-            )}
-          </div>
-        )}
-
-        {result && (
-          /*
-          Green only when it all went in.
-
-          This box was emerald whatever happened, with one line saying some rows
-          "kept its reason" - which tells somebody a reason exists without
-          showing it, in the colour used for success. A run that refused half
-          the file should not look like a run that did not.
-        */
-          <div
-            className={`mt-3 rounded-xl border p-4 ${
-              result.groups?.length > 0
-                ? "border-amber-200 bg-amber-50"
-                : "border-emerald-200 bg-emerald-50"
-            }`}
-          >
-            <p
-              className={`flex items-center gap-2 text-sm font-semibold ${
-                result.groups?.length > 0 ? "text-amber-900" : "text-emerald-900"
-              }`}
-            >
-              <CircleCheck className="h-4 w-4" /> {plural(result.committed, "call record")} attached
-            </p>
-            {result.groups?.length > 0 && (
-              <div className="mt-2 overflow-hidden rounded-lg border border-amber-200 bg-white">
-                <Unlanded groups={result.groups} />
-              </div>
-            )}
-
-            {canCommit && (
-              <button
-                type="button"
-                onClick={undo}
-                disabled={busy !== ""}
-                className="mt-2 inline-flex items-center gap-1.5 rounded-md border border-emerald-300 bg-white px-3 py-1.5 text-sm font-semibold text-emerald-800 transition hover:bg-emerald-100 disabled:opacity-50"
-              >
-                {busy === "undo" ? (
-                  <Loader2 className="h-4 w-4 animate-spin" />
-                ) : (
-                  <Undo2 className="h-4 w-4" />
-                )}
-                Undo this import
-              </button>
-            )}
-            {/*
-            Undo here removes the call records and nothing else. It is not the
-            receipt import's rollback, which deletes the sale itself - doing
-            that here would delete somebody's sale because an outcome was
-            mis-typed.
-          */}
-            <p className="mt-2 text-xs text-emerald-800">
-              Undo removes these call records only. The sales stay exactly as they were.
-            </p>
-          </div>
-        )}
       </section>
 
       {/*

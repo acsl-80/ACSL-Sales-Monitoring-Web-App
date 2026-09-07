@@ -342,3 +342,30 @@ value, `call_centre.dialler_name`, never a literal, so a change of vendor is
 a setting. After Save the form offers the next assigned record, See all
 assigned and Back, and says when nothing is left.
 
+## D37. The import page's mode lives in the URL (2026-09-07)
+
+`/data-center/import?mode=bulk|bench|calls|confirm`, beside the period that
+was already there. The mode was component state, so a reload, a deploy, back
+and a shared link all landed on Bulk import whatever the person was doing.
+Unknown values fall back to the first mode the person may use; a mode the
+person does not hold is never shown. The bench stays mounted across modes,
+as before, so a half-typed receipt survives a look at the queue.
+
+## D38. A screen redesign on a live page lands once, after hours (2026-09-07)
+
+Production is live and six people upload through the import page. A
+redesign of what is seen ships as one PR for the whole page, with the old
+files deleted in the same commit, proven on its preview by the specs, a
+screenshot of every mode at 1366 and 375 and a fresh-context review, and
+merged as one production deployment after 18:00 Lagos with its tracker line
+in the same push. Two deployments minutes apart gave a person a blank
+sign-in page on 2026-09-07; that is why the docs ride with the code.
+
+## D39. Figures on a working page are counts over reads it already makes (2026-09-07)
+
+The import page's four figures (rows waiting on a person, records waiting to
+be confirmed, records landed this period, still being drafted at the bench)
+sum the `batches` and `awaiting_confirmation` reads the modes make, and each
+opens the mode behind it. No new endpoint and no compute row for a page
+whose lists are small. A figure whose read the person may not make, or
+that failed, shows a dash, never a zero.

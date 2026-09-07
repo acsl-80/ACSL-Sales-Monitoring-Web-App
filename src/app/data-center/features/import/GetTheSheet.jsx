@@ -24,13 +24,14 @@ import {
  * import cannot recover from: a mistyped serial does not look like a typo, it
  * looks like a stove that is not ours.
  *
- * WHY THE WHOLE PATH IS ON SCREEN
+ * THE ACTION IS OUT OF THE FOLD (import redesign, 2026-09-07)
  *
- * Three numbered steps, with the middle one happening outside the app
- * entirely. Naming the step that is not on screen is the point: somebody who
- * has downloaded a sheet and gone quiet for two days has not got stuck, and
- * somebody who has never downloaded one should be able to see that they are
- * missing a step rather than concluding the upload is broken.
+ * Picking a partner and building the sheet used to sit inside step one of a
+ * folded explainer, so the thing most people came here to do was one click
+ * behind a heading that read like documentation. The picker and the button
+ * now sit on the card itself; the explainer still names all three steps,
+ * including the one that happens outside the app, for whoever is doing this
+ * for the first time.
  *
  * WHY YOU PICK A PARTNER HERE AND NOT ON UPLOAD
  *
@@ -72,12 +73,9 @@ export default function GetTheSheet({ onGoToUpload }) {
   /**
    * Folded by default.
    *
-   * Deciding this from whether the operator has work in flight was the obvious
-   * version and it flickers: the panel below is what knows, and it knows a beat
-   * later, so the block would open and then shut itself in front of the reader.
-   *
-   * Folded for everybody is calmer and costs a first-time reader one click on a
-   * heading that says exactly what is behind it.
+   * The explainer is the story, not the action: somebody who has built sheets
+   * before does not need three panels of instructions between them and the
+   * picker, and somebody who has not can open it in one click.
    */
   const [showHow, setShowHow] = useState(false);
   const [error, setError] = useState(null);
@@ -112,47 +110,40 @@ export default function GetTheSheet({ onGoToUpload }) {
 
   return (
     <div className="overflow-hidden rounded-xl border border-gray-200 border-t-[3px] border-t-(--dc-accent) bg-white shadow-sm">
-      {/*
-        Folded away once somebody is past it.
-
-        This explains three steps: get the sheet, fill it in, upload it back.
-        Read on the way in, that is help. Read by somebody whose file is already
-        staged and waiting on a decision, it is three panels of instructions for
-        work they have finished, sitting above the thing they actually need.
-
-        It stays one click away, because the person doing this next month has
-        not done it before.
-      */}
-      <button
-        type="button"
-        onClick={() => setShowHow((v) => !v)}
-        aria-expanded={showHow}
-        className="flex w-full items-center gap-2 border-b border-gray-100 bg-(--dc-accent-soft)/30 px-4 py-3 text-left transition hover:bg-(--dc-accent-soft)/50"
-      >
-        <FileSpreadsheet className="h-4 w-4 shrink-0 text-(--dc-accent)" />
-        <span className="text-sm font-semibold text-gray-900">
-          How a bulk import works
-        </span>
-        <span className="hidden text-sm text-gray-500 sm:inline">
-          Many receipts in one pass, from a sheet the system builds for you
-        </span>
-        <ChevronDown
-          className={`ml-auto h-4 w-4 shrink-0 text-gray-400 transition ${showHow ? "" : "-rotate-90"}`}
-          aria-hidden="true"
-        />
-      </button>
-      {showHow && (
-      <>
-
-      <ol className="grid grid-cols-1 gap-3 p-4 lg:grid-cols-3">
-        <Step n={1} title="Download the sheet for a partner" tone="active">
-          <p>
-            One row per stove that partner was sent. The stove ID and the
-            transfer reference are already in it, so nobody types a serial. The
-            columns with fixed answers are dropdowns.
+      <div className="flex flex-wrap items-start justify-between gap-3 bg-(--dc-accent-soft)/30 px-4 py-3">
+        <div className="min-w-0">
+          <p className="text-sm font-semibold text-gray-900">Get a sheet for a partner</p>
+          <p className="text-xs text-gray-600">
+            one row per stove they were sent, serials already in
           </p>
+        </div>
+        {/*
+          Folded away once somebody is past it.
 
-          <div className="mt-3 space-y-2">
+          Read on the way in, the three steps are help. Read by somebody whose
+          file is already staged and waiting on a decision, they are three
+          panels of instructions for work already finished. It stays one click
+          away, because the person doing this next month has not done it
+          before.
+        */}
+        <button
+          type="button"
+          onClick={() => setShowHow((v) => !v)}
+          aria-expanded={showHow}
+          className="inline-flex shrink-0 items-center gap-1.5 rounded-md border border-(--dc-accent)/30 bg-white px-2.5 py-1.5 text-xs font-medium text-(--dc-accent-strong) transition hover:bg-(--dc-accent-soft)/60"
+        >
+          <FileSpreadsheet className="h-3.5 w-3.5" />
+          How a bulk import works
+          <ChevronDown
+            className={`h-3.5 w-3.5 transition ${showHow ? "" : "-rotate-90"}`}
+            aria-hidden="true"
+          />
+        </button>
+      </div>
+
+      <div className="border-b border-gray-100 p-4">
+        <div className="flex flex-wrap items-end gap-3">
+          <div className="min-w-[240px] flex-1">
             {/*
               Explicitly associated, for the same reason as the records filter
               panel: wrapping folds every <option> into the accessible name, so
@@ -198,74 +189,90 @@ export default function GetTheSheet({ onGoToUpload }) {
                 hint: p.state ?? null,
               }))}
             />
-
-            <button
-              type="button"
-              disabled={!chosen}
-              onClick={() => setSheetOpen(true)}
-              className="inline-flex w-full items-center justify-center gap-1.5 rounded-md bg-(--dc-accent) px-3 py-2 text-sm font-medium text-white transition hover:bg-(--dc-accent-strong) disabled:opacity-40"
-            >
-              <Download className="h-4 w-4" /> Build the sheet
-            </button>
-
-            {partners !== null && partners.length === 0 && (
-              <p className="text-xs text-gray-600">
-                {/* Two different facts. A partner user has one partner and it
-                    should be here; an empty list means something is wrong with
-                    the grant, not with the partner. */}
-                {error ?? "No partners are available to you."}
-              </p>
-            )}
           </div>
-        </Step>
 
-        <Step n={2} title="Fill it in, away from the app">
-          <p>
-            Type the buyer beside each stove: name, phone, address, what they
-            paid. As many rows as you have receipts - that is the whole point
-            of this path.
-          </p>
-          <p className="mt-2 flex items-start gap-1.5 rounded-md border border-amber-200 bg-amber-50 px-2 py-1.5 text-xs text-amber-900">
-            <Info className="mt-0.5 h-3.5 w-3.5 shrink-0" />
-            {/* The one thing a spreadsheet gets wrong on its own, said before
-                it happens rather than in a rejection afterwards. */}
-            Leave the stove ID and transfer columns exactly as they came. Rows
-            you do not fill in are simply skipped.
-          </p>
-          <p className="mt-2 text-xs text-gray-600">
-            The sheet can go by email, live on a shared drive, or be filled in
-            by several people. Nothing here is holding a lock on it.
-          </p>
-        </Step>
-
-        <Step n={3} title="Upload it back">
-          <p>
-            Every row is checked before anything is written. You will see what
-            matched, what needs a person, and what a commit would do - and
-            nothing reaches the sales app until you say so.
-          </p>
-          <p className="mt-2 text-xs text-gray-600">
-            You are not asked which partner it is. The stove IDs already say.
-          </p>
           <button
             type="button"
-            onClick={onGoToUpload}
-            className="mt-3 inline-flex items-center gap-1.5 rounded-md border border-(--dc-accent)/40 px-3 py-1.5 text-sm font-medium text-(--dc-accent) transition hover:bg-(--dc-accent-soft)/60"
+            disabled={!chosen}
+            onClick={() => setSheetOpen(true)}
+            className="inline-flex w-full shrink-0 items-center justify-center gap-1.5 rounded-md bg-(image:--dc-fig-transferred) px-4 py-2 text-sm font-medium text-white transition hover:brightness-110 disabled:opacity-40 sm:w-auto"
           >
-            <Upload className="h-4 w-4" /> Go to the upload
-            <ArrowRight className="h-3.5 w-3.5" />
+            <Download className="h-4 w-4" /> Build the sheet
           </button>
-        </Step>
-      </ol>
+        </div>
 
-      <p className="flex flex-wrap items-center gap-1.5 border-t border-gray-100 bg-gray-50/70 px-4 py-2.5 text-xs text-gray-600">
-        <PenLine className="h-3.5 w-3.5 shrink-0 text-gray-500" />
-        One receipt on its own does not need a sheet - use the digitalisation
-        workbench, which walks a partner&apos;s stoves one at a time. It goes
-        through exactly the same checks as a file.
-      </p>
+        {partners !== null && partners.length === 0 && (
+          <p className="mt-2 text-xs text-gray-600">
+            {/* Two different facts. A partner user has one partner and it
+                should be here; an empty list means something is wrong with
+                the grant, not with the partner. */}
+            {error ?? "No partners are available to you."}
+          </p>
+        )}
 
-      </>
+        <p className="mt-2 text-xs text-gray-600">
+          Excel with the dropdowns, or CSV. Fill it in away from the app;
+          several people can share one file.
+        </p>
+      </div>
+
+      {showHow && (
+        <>
+          <ol className="grid grid-cols-1 gap-3 p-4 lg:grid-cols-3">
+            <Step n={1} title="Download the sheet for a partner" tone="active">
+              <p>
+                One row per stove that partner was sent. The stove ID and the
+                transfer reference are already in it, so nobody types a
+                serial. The columns with fixed answers are dropdowns.
+              </p>
+            </Step>
+
+            <Step n={2} title="Fill it in, away from the app">
+              <p>
+                Type the buyer beside each stove: name, phone, address, what they
+                paid. As many rows as you have receipts - that is the whole point
+                of this path.
+              </p>
+              <p className="mt-2 flex items-start gap-1.5 rounded-md border border-amber-200 bg-amber-50 px-2 py-1.5 text-xs text-amber-900">
+                <Info className="mt-0.5 h-3.5 w-3.5 shrink-0" />
+                {/* The one thing a spreadsheet gets wrong on its own, said before
+                    it happens rather than in a rejection afterwards. */}
+                Leave the stove ID and transfer columns exactly as they came. Rows
+                you do not fill in are simply skipped.
+              </p>
+              <p className="mt-2 text-xs text-gray-600">
+                The sheet can go by email, live on a shared drive, or be filled in
+                by several people. Nothing here is holding a lock on it.
+              </p>
+            </Step>
+
+            <Step n={3} title="Upload it back">
+              <p>
+                Every row is checked before anything is written. You will see what
+                matched, what needs a person, and what a commit would do - and
+                nothing reaches the sales app until you say so.
+              </p>
+              <p className="mt-2 text-xs text-gray-600">
+                You are not asked which partner it is. The stove IDs already say.
+              </p>
+              <button
+                type="button"
+                onClick={onGoToUpload}
+                className="mt-3 inline-flex items-center gap-1.5 rounded-md border border-(--dc-accent)/40 px-3 py-1.5 text-sm font-medium text-(--dc-accent) transition hover:bg-(--dc-accent-soft)/60"
+              >
+                <Upload className="h-4 w-4" /> Go to the upload
+                <ArrowRight className="h-3.5 w-3.5" />
+              </button>
+            </Step>
+          </ol>
+
+          <p className="flex flex-wrap items-center gap-1.5 border-t border-gray-100 bg-gray-50/70 px-4 py-2.5 text-xs text-gray-600">
+            <PenLine className="h-3.5 w-3.5 shrink-0 text-gray-500" />
+            One receipt on its own does not need a sheet - use the digitalisation
+            workbench, which walks a partner&apos;s stoves one at a time. It goes
+            through exactly the same checks as a file.
+          </p>
+        </>
       )}
 
       {sheetOpen && chosen && (

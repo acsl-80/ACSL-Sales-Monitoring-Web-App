@@ -162,8 +162,8 @@ test.describe("the door rule, at check and at commit", () => {
         .locator("xpath=ancestor::tr[1]");
       await expect(row).toBeVisible({ timeout: 30_000 });
       await expect(row.getByText("committed", { exact: true })).toHaveCount(0);
-      const step = row.locator("xpath=following-sibling::tr[1]");
-      await expect(step.getByText(/needs a person first/)).toBeVisible();
+      // The sentence sits in the batch's own row (redesign, 2026-09-07).
+      await expect(row.getByText(/needs a person first/)).toBeVisible();
     } finally {
       await dropBatch(batchId);
     }

@@ -288,14 +288,13 @@ export default function GetTheCallSheet({ active = true }) {
   };
 
   return (
-    <>
+    <NumberedStep n={1} title="Get the sheet" tone={active ? "active" : "plain"}>
       {error && (
         <p className="mb-2 flex items-start gap-2 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-800">
           <CircleAlert className="mt-0.5 h-4 w-4 shrink-0" /> {error}
         </p>
       )}
-      <NumberedStep n={1} title="Get the sheet" tone={active ? "active" : "plain"}>
-        <p>
+      <p>
           One row per record, with the stove ID, the buyer and the number we hold already filled in
           and locked. A record somebody has already worked comes down with what it currently says,
           so the sheet can correct it as well as fill it in. Its Record Version comes with it, and
@@ -419,7 +418,7 @@ export default function GetTheCallSheet({ active = true }) {
             type="button"
             onClick={() => download(true)}
             disabled={busy !== "" || columns.length === 0}
-            className="inline-flex items-center gap-1.5 rounded-md bg-(--dc-accent) px-3 py-1.5 text-sm font-semibold text-white transition hover:bg-(--dc-accent-strong) disabled:opacity-50"
+            className="inline-flex items-center gap-1.5 rounded-md bg-(image:--dc-fig-transferred) px-3 py-1.5 text-sm font-semibold text-white shadow-sm transition hover:brightness-110 disabled:opacity-50"
           >
             {busy === "download" ? (
               <Loader2 className="h-4 w-4 animate-spin" />
@@ -432,7 +431,7 @@ export default function GetTheCallSheet({ active = true }) {
             type="button"
             onClick={() => download(false)}
             disabled={busy !== "" || columns.length === 0}
-            className="inline-flex items-center gap-1.5 rounded-md border border-(--dc-accent) px-3 py-1.5 text-sm font-semibold text-(--dc-accent) transition hover:bg-(--dc-accent-soft) disabled:opacity-50"
+            className="inline-flex items-center gap-1.5 rounded-md border border-(--dc-brief-stove) px-3 py-1.5 text-sm font-semibold text-(--dc-brief-stove) transition hover:bg-(--dc-brief-stove-soft) disabled:opacity-50"
           >
             <Download className="h-4 w-4" /> CSV instead
           </button>
@@ -444,7 +443,6 @@ export default function GetTheCallSheet({ active = true }) {
             Settings, not here.
           </p>
         )}
-      </NumberedStep>
-    </>
+    </NumberedStep>
   );
 }

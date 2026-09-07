@@ -1,40 +1,42 @@
 import { useEffect, useRef, useState } from "react";
+import { useNavigate, useSearch } from "@tanstack/react-router";
 import DataCentreShell from "../components/DataCentreShell";
 import ImportPanel from "../features/import/ImportPanel";
 import GetTheSheet from "../features/import/GetTheSheet";
 import ConfirmationQueue from "../features/import/ConfirmationQueue";
 import CallSheet from "../features/import/CallSheet";
 import Workbench from "../features/workbench/Workbench";
+import ImportFigures from "../features/import/parts/ImportFigures";
+import { useImportFigures } from "../features/import/parts/useImportFigures";
 import { useFeature } from "../lib/access";
 import { DATA_CENTER_FEATURES } from "../lib/features";
+import { usePeriod } from "../lib/usePeriod";
 import { Upload, PenLine, ShieldCheck, PhoneCall } from "lucide-react";
 
 /**
- * Getting paper into the system, three ways of looking at one job.
+ * Getting paper into the system, four ways of looking at one job.
  *
  * A spreadsheet somebody filled in away from the app, a bench for working
- * through receipts one at a time, and the desk where what has been entered is
- * released. They are tabs rather than three pages because they are one
- * activity: the same person does all three in a morning, and making them
- * navigate away and back between each would be making them lose their place.
+ * through receipts one at a time, a sheet of calls an agent already made, and
+ * the desk where what has been entered is released. They are modes of one page
+ * rather than four pages because they are one activity: the same person does
+ * them in a morning, and navigating away between each would lose their place.
  *
- * Which tabs exist depends on what the person holds. A viewer with
- * import.upload but no import.commit can enter and cannot release, and the
- * confirmation tab says so rather than hiding: knowing the step exists is part
- * of understanding why nothing has appeared in the sales app yet.
+ * Import redesign, 2026-09-07 (D37): the mode lives in the URL beside the
+ * period, so a reload, a deploy, back and a shared link land where the person
+ * was. Four figures over the modes are doors into them, counted from reads
+ * the modes already make. Which modes exist depends on what the person holds.
  */
 
-const TABS = [
+const ROUTE_ID = "/data-center/import";
+
+const MODES = [
   {
     key: "bulk",
     label: "Bulk import",
     icon: Upload,
-    // The blurb names the whole path, not the last step of it. It used to say
-    // "upload a spreadsheet somebody has already filled in", which describes
-    // the half that happens here and leaves the half that produces the
-    // spreadsheet to be guessed at.
     blurb:
-      "Many receipts at once: download a sheet the system has already filled with serial numbers, type the buyers into it, upload it back.",
+      "Many receipts at once: a sheet the system has filled with serial numbers, typed into away from the app, uploaded back.",
     needs: DATA_CENTER_FEATURES.IMPORT_UPLOAD,
   },
   {
@@ -42,7 +44,7 @@ const TABS = [
     label: "One receipt at a time",
     icon: PenLine,
     blurb:
-      "The digitalisation workbench: a partner's stoves worked through in the app, one receipt per stove. No spreadsheet involved.",
+      "The digitalisation workbench: a partner's stoves worked through in the app, one receipt per stove.",
     needs: DATA_CENTER_FEATURES.DIGITISATION_WORK,
   },
   {
@@ -50,9 +52,9 @@ const TABS = [
     label: "Calls already made",
     icon: PhoneCall,
     blurb:
-      "Call-centre work an agent already did on their own spreadsheet: download the records waiting to be called, fill in what the calls found, upload it back. It attaches to sales that exist and never creates one.",
-    // Its own grant, not import.upload. This is an occasional backlog intake,
-    // and the people who digitalise receipts all day should not see it.
+      "Calls an agent already made on their own spreadsheet, attached to records that exist. It never creates a sale.",
+    // Its own grant, not import.upload: an occasional backlog intake that the
+    // people digitalising receipts all day should not see.
     needs: DATA_CENTER_FEATURES.CALL_IMPORT,
   },
   {
@@ -66,15 +68,26 @@ const TABS = [
 
 function Inner() {
   const { can } = useFeature();
-  const available = TABS.filter((t) => can(t.needs));
-  const [tab, setTab] = useState(available[0]?.key ?? "bulk");
+  const available = MODES.filter((m) => can(m.needs));
+  const search = useSearch({ from: ROUTE_ID });
+  const navigate = useNavigate();
+  const current = available.find((m) => m.key === search.mode) ?? available[0];
+  const setMode = (key) => {
+    // A push, not a replace: back returns to the mode the person left.
+    navigate({ to: ROUTE_ID, search: (prev) => ({ ...prev, mode: key }) });
+  };
+  const hrefFor = (key) => {
+    const q = new URLSearchParams();
+    q.set("mode", key);
+    if (search.period) q.set("period", search.period);
+    return `${ROUTE_ID}?${q.toString()}`;
+  };
   const uploadRef = useRef(null);
-  const current = available.find((t) => t.key === tab) ?? available[0];
 
   /*
    * Once the bench has been opened it stays mounted, hidden by CSS while
-   * another tab is up. Unmounting it threw away the open partner, the search
-   * term and the page every time somebody glanced at the confirmation queue -
+   * another mode is up. Unmounting it threw away the open partner, the search
+   * term and the page every time somebody glanced at the confirmation queue,
    * losing their place in the middle of a run of forty receipts. Mounted but
    * hidden, its drafts also keep autosaving through the visit. It is not
    * mounted before the first visit: somebody working bulk uploads all day
@@ -85,26 +98,87 @@ function Inner() {
     if (current?.key === "bench") setBenchLive(true);
   }, [current?.key]);
 
+  const { resolved } = usePeriod(ROUTE_ID);
+  const canBatches =
+    can(DATA_CENTER_FEATURES.IMPORT_UPLOAD) || can(DATA_CENTER_FEATURES.CALL_IMPORT);
+  const canQueue = can(DATA_CENTER_FEATURES.RECORDS_VIEW);
+  const { counts } = useImportFigures({
+    canBatches,
+    canQueue,
+    dateFrom: resolved.dateFrom,
+    dateTo: resolved.dateTo,
+    mode: current?.key,
+  });
+  const has = (key) => available.some((m) => m.key === key);
+  const figures = [
+    canBatches && {
+      key: "needs-person",
+      value: counts.needsPerson,
+      label: "rows waiting on a person",
+      tone: "unverified",
+      href: has("bulk") ? hrefFor("bulk") : null,
+    },
+    canQueue && {
+      key: "awaiting",
+      value: counts.awaiting,
+      label: "records waiting to be confirmed",
+      tone: "verified",
+      href: has("confirm") ? hrefFor("confirm") : null,
+    },
+    canBatches && {
+      key: "landed",
+      value: counts.landed,
+      label: "records landed this period",
+      tone: "sold",
+      href: has("bulk") ? hrefFor("bulk") : null,
+    },
+    canQueue && {
+      key: "drafting",
+      value: counts.drafting,
+      label: "still being drafted at the bench",
+      tone: "transferred",
+      href: has("bench") ? hrefFor("bench") : null,
+    },
+  ];
+  const tabCount = { bulk: counts.files, calls: counts.sheets, confirm: counts.awaiting };
+  const tabWord = { bulk: ["file", "files"], calls: ["sheet", "sheets"], confirm: null };
+
   return (
     <div className="space-y-4">
-      <div className="rounded-xl border border-gray-200 border-t-[3px] border-t-(--dc-accent) bg-(--dc-accent-soft)/30 p-4 shadow-sm">
-        <div className="flex flex-wrap gap-1.5">
-          {available.map((t) => {
-            const selected = current?.key === t.key;
+      <ImportFigures figures={figures} />
+
+      <div>
+        <div
+          className="flex gap-0.5 overflow-x-auto border-b-2 border-gray-200"
+          role="group"
+          aria-label="What to do"
+        >
+          {available.map((m) => {
+            const selected = current?.key === m.key;
+            const n = tabCount[m.key];
+            const w = tabWord[m.key];
+            const small =
+              n == null
+                ? null
+                : w
+                  ? `${n.toLocaleString()} ${n === 1 ? w[0] : w[1]}`
+                  : n.toLocaleString();
             return (
               <button
-                key={t.key}
+                key={m.key}
                 type="button"
                 aria-pressed={selected}
-                onClick={() => setTab(t.key)}
-                className={`inline-flex items-center gap-1.5 rounded-full border px-3 py-1.5 text-sm font-medium transition ${
+                onClick={() => setMode(m.key)}
+                data-import-mode={m.key}
+                className={`-mb-0.5 inline-flex shrink-0 items-center gap-1.5 whitespace-nowrap border-b-[3px] px-3.5 py-2 text-sm font-semibold transition ${
                   selected
-                    ? "border-(--dc-accent) bg-(--dc-accent) text-white"
-                    : "border-gray-300 bg-white text-gray-700 hover:border-(--dc-accent)/40 hover:bg-(--dc-accent-soft)/50"
+                    ? "border-(--dc-accent) text-(--dc-accent-strong)"
+                    : "border-transparent text-gray-500 hover:border-gray-300 hover:text-gray-800"
                 }`}
               >
-                <t.icon className="h-4 w-4" />
-                {t.label}
+                <m.icon className="h-4 w-4" aria-hidden />
+                {m.label}
+                {small && <span className="text-xs font-medium text-gray-500">{small}</span>}
               </button>
             );
           })}
@@ -114,15 +188,9 @@ function Inner() {
 
       {current?.key === "bulk" && (
         <>
-          {/*
-            The path first, the panel second.
-
-            The panel is where the work is done and it is still the bigger
-            surface - but it starts at "choose a file", and a file only exists
-            because somebody did step one. Putting the three steps above it
-            means the page reads in the order the job happens rather than
-            starting in the middle of it.
-          */}
+          {/* The path first, the panel second: a file only exists because
+              somebody got a sheet, so the page reads in the order the job
+              happens. */}
           {can(DATA_CENTER_FEATURES.IMPORT_UPLOAD) && (
             <GetTheSheet
               onGoToUpload={() =>
@@ -154,9 +222,7 @@ function Inner() {
         <ConfirmationQueue
           canConfirm={can(DATA_CENTER_FEATURES.IMPORT_COMMIT)}
           // Only people who can work the bench are sent to it.
-          onOpenBench={
-            available.some((t) => t.key === "bench") ? () => setTab("bench") : null
-          }
+          onOpenBench={has("bench") ? () => setMode("bench") : null}
         />
       )}
     </div>
@@ -171,15 +237,11 @@ export default function ImportPage() {
       breadcrumb="Bulk Import"
       area="import"
       /*
-       * Any of the three ways in opens it. The tabs then narrow to what the
-       * person actually holds, so somebody with only the bench does not land
-       * on an upload panel they cannot use.
-       *
-       * `call_import.use` was missing from this list. It is granted to nobody
-       * by default and is deliberately not implied by `import.upload`, so an
-       * account holding exactly it - the intended shape for a call-centre
-       * supervisor - was refused the page that contains the only tab it
-       * unlocks.
+       * Any of the three ways in opens it. The modes then narrow to what the
+       * person actually holds. `call_import.use` is granted to nobody by
+       * default and is not implied by `import.upload`, so an account holding
+       * exactly it, the shape for a call-centre supervisor, needs to be let in
+       * here for the one mode it unlocks.
        */
       feature={[
         DATA_CENTER_FEATURES.IMPORT_UPLOAD,

@@ -1,8 +1,8 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { dataCenterImport, DataCenterError } from "../../lib/client";
-import { usePaged } from "../../lib/usePaged";
-import Pagination from "../../components/Pagination";
 import ExportButton from "../../components/ExportButton";
+import ImportFigures from "./parts/ImportFigures";
+import ConfirmationStream from "./ConfirmationStream";
 import { plural } from "../../lib/plural";
 import {
   AlertDialog,
@@ -15,7 +15,7 @@ import {
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
 import {
-  Loader2, ShieldCheck, Upload, PenLine, TriangleAlert, Clock, CheckCircle2, Lock,
+  Loader2, ShieldCheck, Upload, PenLine, TriangleAlert, CheckCircle2, Clock, Lock,
 } from "lucide-react";
 
 /**
@@ -32,9 +32,12 @@ import {
  * a judgement about a spreadsheet, the other about a person's work - and a
  * single queue with one button over it would flatten them into the same
  * gesture.
+ *
+ * The figures, the search and the source chips are all read over the same
+ * `awaitingConfirmation()` rows the streams already hold: no new endpoint, no
+ * second request, just a different look at the one list (import redesign,
+ * 2026-09-07).
  */
-
-const whenOf = (v) => (v ? new Date(v).toLocaleString() : "-");
 
 const STREAMS = [
   {
@@ -68,158 +71,11 @@ const COLUMNS = [
   { key: "last_worked_on", label: "Last worked on" },
 ];
 
-function StreamTable({ stream, rows, canConfirm, onConfirm, onOpenBench, busy }) {
-  const paged = usePaged(rows, 10);
-  const Icon = stream.icon;
-  const waiting = rows.reduce((n, r) => n + Number(r.awaiting ?? 0), 0);
-  const drafting = rows.reduce((n, r) => n + Number(r.still_drafting ?? 0), 0);
-  const refused = rows.reduce(
-    (n, r) => n + Number(r.refused ?? 0) + Number(r.exceptions ?? 0),
-    0,
-  );
-  /*
-   * The bench stream can point at the bench. A row with nothing waiting used
-   * to show a greyed "Confirm 0" and nothing else, and the person looking at
-   * twenty-seven drafts had no idea what to press next: a draft is finished
-   * at the bench, and so is a refused receipt. The action column exists when
-   * either action can be offered, not only for people who can confirm.
-   */
-  const canPoint = stream.key === "workbench" && typeof onOpenBench === "function";
-  const showActions = canConfirm || canPoint;
-
-  return (
-    <section className="overflow-hidden rounded-xl border border-gray-200 bg-white">
-      <div className="flex flex-wrap items-center gap-2 border-b border-gray-100 bg-(--dc-accent-soft)/30 px-4 py-3">
-        <Icon className="h-4 w-4 text-(--dc-accent)" />
-        <h3 className="text-sm font-semibold text-gray-900">{stream.title}</h3>
-        <span className="text-xs text-gray-600">{stream.blurb}</span>
-        <span className="ml-auto text-sm tabular-nums text-gray-700">
-          {plural(waiting, "record")} waiting
-          {drafting > 0 ? `, ${drafting} still being typed` : ""}
-        </span>
-      </div>
-
-      {rows.length === 0 ? (
-        <p className="m-4 rounded-lg border border-dashed border-(--dc-accent)/30 px-4 py-6 text-center text-sm text-gray-600">
-          {stream.empty}
-        </p>
-      ) : (
-        <>
-          <div className="overflow-x-auto">
-            <table className="w-full min-w-[46rem] text-sm">
-              <thead>
-                <tr className="border-b-2 border-(--dc-accent)/20 bg-(--dc-accent-soft) text-left text-xs font-semibold uppercase tracking-wide text-(--dc-accent-strong)">
-                  <th className="px-3 py-2">{stream.key === "workbench" ? "Typed by" : "File"}</th>
-                  <th className="px-3 py-2">Partner</th>
-                  <th className="px-3 py-2 text-right">Waiting</th>
-                  <th className="px-3 py-2 text-right">Drafting</th>
-                  <th className="px-3 py-2 text-right">Needs a look</th>
-                  <th className="px-3 py-2">Last worked on</th>
-                  {showActions && <th className="w-36 px-3 py-2" />}
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-gray-100">
-                {paged.slice.map((r) => {
-                  const needsLook = Number(r.refused ?? 0) + Number(r.exceptions ?? 0);
-                  return (
-                    <tr key={r.batch_id} className="transition hover:bg-(--dc-accent-soft)/40">
-                      <td className="max-w-[16rem] truncate px-3 py-2">
-                        <span className="block font-medium text-gray-900">
-                          {stream.key === "workbench"
-                            ? (r.worked_by?.[0] ?? r.uploaded_by_name ?? "somebody")
-                            : (r.filename ?? "(no filename)")}
-                        </span>
-                        {stream.key !== "workbench" && r.uploaded_by_name && (
-                          <span className="block text-xs text-gray-600">
-                            uploaded by {r.uploaded_by_name}
-                          </span>
-                        )}
-                      </td>
-                      <td className="max-w-[14rem] truncate px-3 py-2 text-gray-700">
-                        {r.partner_name ?? "-"}
-                      </td>
-                      <td className="px-3 py-2 text-right tabular-nums font-medium text-gray-900">
-                        {r.awaiting}
-                      </td>
-                      <td className="px-3 py-2 text-right tabular-nums text-gray-600">
-                        {r.still_drafting}
-                      </td>
-                      <td
-                        className={`px-3 py-2 text-right tabular-nums ${
-                          needsLook > 0 ? "font-medium text-amber-700" : "text-gray-500"
-                        }`}
-                      >
-                        {needsLook}
-                      </td>
-                      <td className="whitespace-nowrap px-3 py-2 text-xs text-gray-600">
-                        {whenOf(r.last_worked_on ?? r.uploaded_at)}
-                      </td>
-                      {showActions && Number(r.awaiting) === 0 && canPoint &&
-                        (Number(r.still_drafting ?? 0) > 0 || needsLook > 0) && (
-                        <td className="px-3 py-2 text-right">
-                          <button
-                            type="button"
-                            onClick={() => onOpenBench(r)}
-                            title={
-                              needsLook > 0
-                                ? "Refused receipts are fixed at the bench, then saved as finished again."
-                                : "Drafts are finished at the bench by the person typing them."
-                            }
-                            className="inline-flex items-center gap-1 whitespace-nowrap rounded-md border border-(--dc-accent)/40 px-2.5 py-1 text-xs font-medium text-(--dc-accent-strong) transition hover:bg-(--dc-accent-soft)/50"
-                          >
-                            <PenLine className="h-3.5 w-3.5" /> Open the bench
-                          </button>
-                        </td>
-                      )}
-                      {showActions && Number(r.awaiting) === 0 && !(canPoint &&
-                        (Number(r.still_drafting ?? 0) > 0 || needsLook > 0)) && (
-                        <td className="px-3 py-2" />
-                      )}
-                      {showActions && Number(r.awaiting) > 0 && canConfirm && (
-                        <td className="px-3 py-2 text-right">
-                          <button
-                            type="button"
-                            disabled={busy}
-                            onClick={() => onConfirm(r)}
-                            className="inline-flex items-center gap-1 whitespace-nowrap rounded-md bg-(--dc-accent) px-2.5 py-1.5 text-xs font-medium text-white transition hover:bg-(--dc-accent-strong) disabled:opacity-40"
-                          >
-                            <CheckCircle2 className="h-3.5 w-3.5" /> Confirm {r.awaiting}
-                          </button>
-                        </td>
-                      )}
-                      {showActions && Number(r.awaiting) > 0 && !canConfirm && (
-                        <td className="px-3 py-2" />
-                      )}
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
-          </div>
-          <Pagination
-            page={paged.page}
-            pageSize={paged.pageSize}
-            total={paged.total}
-            onPage={paged.setPage}
-            onPageSize={paged.setPageSize}
-            noun="batch"
-          />
-          {stream.key === "workbench" && (drafting > 0 || refused > 0) && (
-            <p className="border-t border-gray-100 px-4 py-2.5 text-xs text-gray-600">
-              Confirm releases finished receipts only.
-              {drafting > 0 &&
-                ` ${plural(drafting, "draft is", "drafts are")} still being typed and ${
-                  drafting === 1 ? "is" : "are"
-                } finished at the bench, by the person typing.`}
-              {refused > 0 &&
-                ` ${plural(refused, "receipt was", "receipts were")} refused; each is opened at the bench, where the reason is shown, fixed and saved as finished again.`}
-            </p>
-          )}
-        </>
-      )}
-    </section>
-  );
-}
+const SOURCE_CHIPS = [
+  { key: "all", label: "All" },
+  { key: "bulk_import", label: "Files" },
+  { key: "workbench", label: "Bench" },
+];
 
 export default function ConfirmationQueue({ canConfirm, onOpenBench = null }) {
   const [rows, setRows] = useState(null);
@@ -227,6 +83,9 @@ export default function ConfirmationQueue({ canConfirm, onOpenBench = null }) {
   const [notice, setNotice] = useState(null);
   const [busy, setBusy] = useState(false);
   const [pending, setPending] = useState(null);
+  const [search, setSearch] = useState("");
+  const [source, setSource] = useState("all");
+  const [typedBy, setTypedBy] = useState("all");
   // Read by the event listeners below, which are bound once and would
   // otherwise see the busy flag as it stood when they were bound.
   const busyRef = useRef(busy);
@@ -283,6 +142,81 @@ export default function ConfirmationQueue({ canConfirm, onOpenBench = null }) {
   }, [rows]);
 
   const totalWaiting = (rows ?? []).reduce((n, r) => n + Number(r.awaiting ?? 0), 0);
+
+  /**
+   * The four counts over the whole loaded list, unfiltered.
+   *
+   * The strip says what is actually waiting; narrowing it by the search or the
+   * source chips would make the numbers answer the filter rather than the
+   * queue, which is the same trap a scorecard under a forgotten filter falls
+   * into. `null` while the read has not landed or has failed, so a stalled
+   * queue never shows a false zero.
+   */
+  const figureTotals = useMemo(() => {
+    if (rows === null) return null;
+    let bulkWaiting = 0;
+    let benchWaiting = 0;
+    let drafting = 0;
+    let needLook = 0;
+    for (const r of rows) {
+      const awaiting = Number(r.awaiting ?? 0);
+      if (r.stream === "workbench") benchWaiting += awaiting;
+      else bulkWaiting += awaiting;
+      drafting += Number(r.still_drafting ?? 0);
+      needLook += Number(r.refused ?? 0) + Number(r.exceptions ?? 0);
+    }
+    return { bulkWaiting, benchWaiting, drafting, needLook };
+  }, [rows]);
+
+  const figures = [
+    {
+      key: "bulk_waiting",
+      value: figureTotals?.bulkWaiting ?? null,
+      label: "uploaded in bulk, waiting",
+      href: null,
+      tone: "verified",
+    },
+    {
+      key: "bench_waiting",
+      value: figureTotals?.benchWaiting ?? null,
+      label: "typed at the bench, waiting",
+      href: null,
+      tone: "verified",
+    },
+    {
+      key: "drafting",
+      value: figureTotals?.drafting ?? null,
+      label: "still being drafted",
+      href: null,
+      tone: "transferred",
+    },
+    {
+      key: "need_look",
+      value: figureTotals?.needLook ?? null,
+      label: "need a look first",
+      href: null,
+      tone: "unverified",
+    },
+  ];
+
+  /** Everyone who has typed a bench batch still waiting, for the "Typed by" filter. */
+  const benchTypists = useMemo(
+    () => Array.from(new Set((byStream.workbench ?? []).flatMap((r) => r.worked_by ?? []))).sort(),
+    [byStream],
+  );
+  const showTypedBy = benchTypists.length > 1;
+
+  /** Client-side over the rows already loaded, the way the period filter works today. */
+  const filteredByStream = useMemo(() => {
+    const q = search.trim().toLowerCase();
+    const byPartner = (r) => !q || (r.partner_name ?? "").toLowerCase().includes(q);
+    const bulk = source === "workbench" ? [] : (byStream.bulk_import ?? []).filter(byPartner);
+    let bench = source === "bulk_import" ? [] : (byStream.workbench ?? []).filter(byPartner);
+    if (showTypedBy && typedBy !== "all") {
+      bench = bench.filter((r) => (r.worked_by ?? []).includes(typedBy));
+    }
+    return { bulk_import: bulk, workbench: bench };
+  }, [byStream, search, source, typedBy, showTypedBy]);
 
   /**
    * Confirming is committing.
@@ -397,13 +331,84 @@ export default function ConfirmationQueue({ canConfirm, onOpenBench = null }) {
             go through in slices, so this can take a moment.
           </p>
         )}
+
+        <ImportFigures figures={figures} compact className="mt-4" />
+
+        <div className="mt-4 flex flex-wrap items-end gap-3 border-t border-gray-100 pt-4">
+          <div className="w-full sm:w-56">
+            <label
+              htmlFor="cq-partner-search"
+              className="mb-1 block text-[11px] font-semibold uppercase tracking-wide text-gray-600"
+            >
+              Partner
+            </label>
+            <input
+              id="cq-partner-search"
+              type="text"
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              placeholder="Partner"
+              className="w-full rounded-md border border-gray-300 px-2.5 py-1.5 text-sm focus:border-(--dc-accent) focus:outline-none"
+            />
+          </div>
+
+          <div>
+            <p className="mb-1 text-[11px] font-semibold uppercase tracking-wide text-gray-600">
+              Source
+            </p>
+            <div className="flex flex-wrap gap-1.5">
+              {SOURCE_CHIPS.map((c) => {
+                const on = source === c.key;
+                return (
+                  <button
+                    key={c.key}
+                    type="button"
+                    aria-pressed={on}
+                    onClick={() => setSource(c.key)}
+                    className={`rounded-full border px-3 py-1 text-xs font-medium transition ${
+                      on
+                        ? "border-(--dc-accent) bg-(--dc-accent) text-white"
+                        : "border-gray-300 text-gray-700 hover:border-(--dc-accent)/40 hover:bg-(--dc-accent-soft)/30"
+                    }`}
+                  >
+                    {c.label}
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+
+          {showTypedBy && (
+            <div className="w-full sm:w-auto">
+              <label
+                htmlFor="cq-typed-by"
+                className="mb-1 block text-[11px] font-semibold uppercase tracking-wide text-gray-600"
+              >
+                Typed by
+              </label>
+              <select
+                id="cq-typed-by"
+                value={typedBy}
+                onChange={(e) => setTypedBy(e.target.value)}
+                className="w-full rounded-md border border-gray-300 px-2.5 py-1.5 text-sm focus:border-(--dc-accent) focus:outline-none sm:w-auto"
+              >
+                <option value="all">Anyone</option>
+                {benchTypists.map((name) => (
+                  <option key={name} value={name}>
+                    {name}
+                  </option>
+                ))}
+              </select>
+            </div>
+          )}
+        </div>
       </div>
 
       {STREAMS.map((stream) => (
-        <StreamTable
+        <ConfirmationStream
           key={stream.key}
           stream={stream}
-          rows={byStream[stream.key] ?? []}
+          rows={filteredByStream[stream.key] ?? []}
           canConfirm={canConfirm}
           busy={busy}
           onConfirm={setPending}

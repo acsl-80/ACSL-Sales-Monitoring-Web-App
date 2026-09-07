@@ -195,6 +195,24 @@ call form; both inherit the system above and add one grammar each.
   says "called" or "verified" reads `call_attempts.created_by` or
   `call_records.updated_by`, never the registry's agent dropdown.
 
+## The import page (Phase 27, 2026-09-07)
+
+The same rules as the call centre, on the plum area. Four figures over the
+page are doors into its modes, counted from reads the modes already make
+(D39). The mode is in the URL (D37). A file or a sheet is one row: the name
+pinned, then the three-cell strip, read · checked · landed (attached for a
+call sheet), each cell in the colour of what happened in it and striped while
+a commit runs, then the counts as columns, then the one next action at the
+end of the row in the six-colour rule (commit green, open blue, confirm teal,
+fix amber, roll back or discard outlined plum, failed red). The next-step
+sentence sits under the strip in the same row; the detail opens beneath. An
+exception is shown as the row it came from, with the fix box in the serial
+column. The explainer is a fold under the action, not a fold around it.
+Below `sm`, every table here is a card per row.
+
+Gradient tokens are painted with `bg-(image:--dc-fig-…)`. The colour form
+compiles to background-color and paints nothing; that is what PR #94 fixed.
+
 ## Rules for anything added here
 
 1. No hex literals in JSX. Everything reads a `--dc-` token.

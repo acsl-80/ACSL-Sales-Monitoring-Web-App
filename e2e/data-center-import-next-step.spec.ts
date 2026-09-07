@@ -75,11 +75,9 @@ test.describe("a staged batch says what to do next", () => {
      * refuses it. Passing alone and failing in the suite is the signature of a
      * test asserting on somebody else's data.
      *
-     * The next-step line is the sibling row immediately after the batch's own.
+     * The next-step line lives in the batch's own row (redesign, 2026-09-07).
      */
-    const row = page
-      .locator("tr", { hasText: `${marker}.csv` })
-      .locator("xpath=following-sibling::tr[1]");
+    const row = page.locator("tr", { hasText: `${marker}.csv` });
     await expect(row.getByText(/none has been checked yet/)).toBeVisible({ timeout: 30_000 });
 
     const check = row.getByRole("button", { name: "Check the rows" });

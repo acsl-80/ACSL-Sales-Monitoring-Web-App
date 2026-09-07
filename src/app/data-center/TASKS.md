@@ -4,6 +4,12 @@ Flat, one line per slice, newest programme first. States: todo, spec red,
 green, in review, merged, live. The why lives in `decisions.md`; the evidence
 lives on each PR.
 
+## Phase 27, the import page redrawn (proposed and approved 2026-09-07)
+
+Display and layout only: figures as doors, the mode in the URL, one row per file with a state strip and one action, the fix beside the row it fixes, pinned first columns and cards on a phone. Every action keeps its client call. Proposal: https://claude.ai/code/artifact/a952e1ef-2202-49a9-a656-48625e45bbb4. Decisions D37 to D39.
+
+- [ ] I1 The whole page in one PR: route `mode`, `ImportFigures`, `StateStrip`, `ImportPanel` split into `UploadStrip`, `FilesTable`, `FileDetail`, `ExceptionsTable`; `CallSheet` as three steps side by side with `CallSheetsTable`; `ConfirmationQueue` with its strip and filter row; `GetTheSheet` with the action out of the fold. in progress
+
 ## Phase 26, the call centre in two surfaces (opened 2026-09-06, approved 2026-09-07)
 
 A shift-board control centre for managers and My calls for agents, on the call form that exists. Proposal: https://claude.ai/code/artifact/df3f05d2-9661-403e-8b8a-9f05bd5fbddc. Decisions D35 and D36.
