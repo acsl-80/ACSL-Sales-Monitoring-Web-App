@@ -52,17 +52,8 @@ export default function CallSheet({ canCommit = false, canResolve = false }) {
    * partner resolved, or which stove IDs found no sale.
    */
   const [steps, setSteps] = useState(null);
-  const [spec, setSpec] = useState(null);
-  const [schema, setSchema] = useState(null);
   const [busy, setBusy] = useState("");
   const [error, setError] = useState("");
-  const [partners, setPartners] = useState(null);
-  /** True when the partner list could not be fetched, as opposed to being empty. */
-  const [partnersFailed, setPartnersFailed] = useState(false);
-  /** "" is everything this person may see. Otherwise an organization id. */
-  const [orgId, setOrgId] = useState("");
-  /** Narrow to records nobody has called. Off by default under update mode. */
-  const [uncalledOnly, setUncalledOnly] = useState(false);
   const [downloaded, setDownloaded] = useState(null); // { rows, partner }
   const [batch, setBatch] = useState(null); // { batchId, staged }
   const [checked, setChecked] = useState(null); // validate summary

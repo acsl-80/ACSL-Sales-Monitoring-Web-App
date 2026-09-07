@@ -63,7 +63,10 @@ export function useImportFigures({ canBatches, canQueue, dateFrom, dateTo, mode 
     counts: {
       needsPerson: sum(live, "exception_rows"),
       awaiting: sum(queue, "awaiting"),
-      landed: sum(receipts?.filter((b) => b.state === "committed") ?? null, "committed_rows"),
+      // Every landed row counts, including those of a batch still mid-commit or
+      // stopped part way (state validated with committed_rows above zero);
+      // rolled-back batches are already out of `live`.
+      landed: sum(receipts, "committed_rows"),
       drafting: queue
         ? sum(
             queue.filter((b) => b.stream === "workbench"),
