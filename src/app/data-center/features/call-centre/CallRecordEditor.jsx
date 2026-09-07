@@ -110,6 +110,8 @@ export default function CallRecordEditor({ saleId, canEdit, onClose, onSaved, ne
   useEffect(() => {
     setHandoff(null);
     setCallbackAt("");
+    setNextOutcome("");
+    setNextNote("");
   }, [saleId]);
   /*
    * Whether this agent has typed anything since the record loaded.

@@ -23,6 +23,8 @@ export default function CopyField({ value, label, diallerName, compact = false, 
   const copy = async (e) => {
     e.preventDefault();
     e.stopPropagation();
+    // React clears currentTarget once the handler yields; keep the element.
+    const container = e.currentTarget.parentElement;
     try {
       await navigator.clipboard.writeText(String(value));
       setState("done");
@@ -30,7 +32,7 @@ export default function CopyField({ value, label, diallerName, compact = false, 
     } catch {
       setState("failed");
       const sel = window.getSelection();
-      const node = e.currentTarget.parentElement?.querySelector("[data-copy-value]");
+      const node = container?.querySelector("[data-copy-value]");
       if (sel && node) {
         const range = document.createRange();
         range.selectNodeContents(node);

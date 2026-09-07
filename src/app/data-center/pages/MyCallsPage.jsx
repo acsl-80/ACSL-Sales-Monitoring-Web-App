@@ -94,10 +94,15 @@ function Inner() {
   const tz = day?.tz ?? "Africa/Lagos";
   const doneOpen = Boolean(search.done);
 
+  // What follows the saved record in calling order. A record that was last
+  // has no next: the hand-off says so rather than circling to the head.
   const nextAfter = (saleId) => {
     const i = queue.findIndex((q) => q.sale_id === saleId);
-    const after = queue.slice(i + 1).find((q) => q.sale_id !== saleId) ?? queue.find((q) => q.sale_id !== saleId) ?? null;
-    return after ? { saleId: after.sale_id, label: `${after.end_user_name ?? after.stove_serial_no}, ${after.partner_name ?? ""}, ${after.stove_serial_no}`, remaining: Math.max(0, queue.length - 2) } : null;
+    const rest = i === -1 ? queue.filter((q) => q.sale_id !== saleId) : queue.slice(i + 1);
+    const after = rest[0] ?? null;
+    return after
+      ? { saleId: after.sale_id, label: `${after.end_user_name ?? after.stove_serial_no}, ${after.partner_name ?? ""}, ${after.stove_serial_no}`, remaining: Math.max(0, rest.length - 1) }
+      : null;
   };
 
   return (

@@ -115,7 +115,6 @@ test("the call form copies, takes a callback time, and after Save offers the nex
   const admin = await pageFor(browser, USERS.admin);
   const agent = await pageFor(browser, USERS.callCentre, true);
   const day = await ensureWork(admin, agent);
-  const first = day.to_call[0];
 
   await agent.goto("/data-center/my-calls");
   await expect(agent.locator("[data-my-next]")).toBeVisible({ timeout: 30_000 });
@@ -152,7 +151,7 @@ test("the call form copies, takes a callback time, and after Save offers the nex
   if (day.to_call.length > 1) {
     await expect(handoff).toContainText("Next for you");
     await handoff.getByRole("button", { name: "Next record" }).click();
-    await expect(dialog.locator("[data-copy-numbers] [data-copy-value]").last()).not.toHaveText(first.stove_serial_no, { timeout: 15_000 });
+    await expect(dialog.locator("[data-copy-numbers] [data-copy-value]").last()).not.toHaveText((saleOnForm ?? "").trim(), { timeout: 15_000 });
   } else {
     await expect(handoff).toContainText("last record assigned to you");
   }
