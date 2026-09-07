@@ -10,9 +10,10 @@ A shift-board control centre for managers and My calls for agents, on the call f
 
 - [x] C0 Proposal, content plan and mockups for both surfaces, checked at 375 pixels. approved 2026-09-07
 - [x] C1 The reads (board, agent_day, pool_partners, activity) and assign_preview on data-center-assign; client methods; no migration. PR #90 merged and live 2026-09-07 (main c8f380e to 655e3c2; data-center-assign v8; API build; bundle crawl confirmed; sandbox green four of four, neighbours 23 of 23)
-- [ ] C2 The control centre: figures, the shift board, waiting by partner (with the Partners page behind See all), needs a decision, what happened today (with the Activity page behind All activity); the old board, agents panel, pool table, lanes and log retired; the queue and the register stay on the page until C3 moves them. PR #91 merged and live 2026-09-07 (main d4f3282 to b97e0b1; migration 20260910010000 with ledger row; data-center-assign v9; API build; bundle crawl confirmed; 77 of 77 on the PR's preview)
-- [ ] C3 The pages behind it: agent page (with Move to on a batch), hand-out dialog with the live preview, the Records page with the outcome strip (the queue moves there; the call-centre route sends any narrowing on), shared phones on its own page. in review (PR open)
-- [ ] C4 My calls (`/data-center/my-calls`, agents land there): copy fields on the queue and in the call form's header, the after-save hand-off (Next record, See all assigned, Back), the callback time beside a callback outcome (`call_attempts.callback_at`), the dialler name setting (`call_centre.dialler_name`, Call Savvy). in review (PR open, stacked on C3)
+- [x] C2 The control centre: figures, the shift board, waiting by partner (with the Partners page behind See all), needs a decision, what happened today (with the Activity page behind All activity); the old board, agents panel, pool table, lanes and log retired; the queue and the register stay on the page until C3 moves them. PR #91 merged and live 2026-09-07 (main d4f3282 to b97e0b1; migration 20260910010000 with ledger row; data-center-assign v9; API build; bundle crawl confirmed; 77 of 77 on the PR's preview)
+- [ ] C3 The pages behind it: agent page (with Move to on a batch), hand-out dialog with the live preview, the Records page with the outcome strip (the queue moves there; the call-centre route sends any narrowing on), shared phones on its own page. PR #92 merged and live 2026-09-07 (main 325773d to 354bca8; no migration, no function; proven on PR #93's preview, which carried it; API build 802e95f; bundle crawl found "Call centre records")
+- [ ] C4 My calls (`/data-center/my-calls`, agents land there): copy fields on the queue and in the call form's header, the after-save hand-off (Next record, See all assigned, Back), the callback time beside a callback outcome (`call_attempts.callback_at`), the dialler name setting (`call_centre.dialler_name`, Call Savvy). PR #93 merged and live 2026-09-07 (main 354bca8 to 802e95f; migration 20260910020000 with ledger row on production and the sandbox; data-center-write v9, data-center-assign v10; API build aliased; bundle crawl found "My calls")
+- [ ] C5 Closing hygiene: `CallRecordEditor.jsx` (833 lines) split into the call log section and the save footer with its hand-off; no behaviour change; drafts, completes, my-calls, says-what-it-means and send-back-panel specs as the proof. in progress
 
 ## Phase 25, field alignment (opened 2026-09-05)
 
@@ -32,7 +33,7 @@ decisions D27 to D29.
 ## Phase 24 (opened 2026-09-04)
 
 - [x] 0 Docs and tracker: this file, `decisions.md`, PLAN.md and ROADMAP.md entries. merged, live (PR #66, 2026-09-04)
-- [ ] 0.5 Design canvas, ten surfaces in the module's theme, approved before code. published 2026-09-04, awaiting his review
+- [x] 0.5 Design canvas, ten surfaces in the module's theme, approved before code. published 2026-09-04; superseded by the Phase 26 proposal for the call centre surfaces and by the slices' own screens for the rest; closed 2026-09-07
 - [x] 1 Corrections lifecycle, function, backfill, access on link. merged, live (PR #67, 2026-09-04): 30 episodes backfilled, 11 reps given the door
 - [x] 2 Correction workspace: disputed record, edit through update-sale, serial through rematch. merged, live (PR #68, 2026-09-04); carries the slice 1 review fixes and the update-sale scope fix
 - [x] 2h Hotfix from the slice 2 review: update-sale writes only the fields it was sent, partner agent kept to their own sales, money offered only when disputed. merged, live (PR #69, 2026-09-04; update-sale v23 since 11:09Z)
@@ -44,15 +45,14 @@ decisions D27 to D29.
 - [x] 6b Queue facets in the URL. PR #75 merged and live 2026-09-04 (main 72df1a9 to a80f2ec; client only, bundle crawl confirmed)
 - [x] 7a Completeness evidence config and the tile's plain line. PR #76 merged and live 2026-09-05 (main a80f2ec to 6ae5db7; migration applied with ledger row, read v18, full run 2,340 of 2,340 complete)
 - [x] 7b The sales app's status rule (D17). PR #77 merged and live 2026-09-05 (main 6ae5db7 to 855e860; both migrations applied with ledger rows; production reads 54 completed, 333 pending, 1,953 incomplete; 406 rows recomputed)
-- [ ] 8 Settings: used by, retire warning, previous_stove list, typed editors, gates. folded into F3
-- [ ] 9 Order model on the transfer, preselected on the bench (D19). folded into F2 and F3
+- [ ] 8 Settings: used by, retire warning and the previous_stove list shipped in F3b. Still open: typed editors for `assignment.batch_size_by_partner` and `import.model_map` in Variables (raw JSON today), and `SendBackRouting`'s `canEdit` read from the access payload instead of always true. Small, module lane; picked up after Phase 26 closes.
+- [ ] 9 Order model on the transfer, preselected on the bench (D19): shipped in F2b except the rail's per-row model chip, which needs the rail's list read to carry the transfer's model. Small, module lane; picked up after Phase 26 closes.
 
 ## Deferred
 
-- `features/call-centre/CallRecordEditor.jsx` is 833 lines after C4 (it was 755 before Phase 26), past the module's ~600 split rule. The call log section (outcome, callback time, attempts) and the footer with its after-save hand-off are each a component of their own; split them in the next slice that touches the form, with the drafts and completes specs as the proof.
 - Host, seen while fixing the render loop (PR #79): the sidebar declares two entries with the same `route` key ("agents"), which React warns about on every render; and a username-based login falls through to the direct email path on any non-ok answer from `login-with-credentials`, reporting a transient server fault as wrong credentials. Two small host fixes.
 - Done in F3b: `sales.incomplete_by_missing` (the Complete card's breakdown and the Missing facet's options) still enumerates only `completeness_required_fields`; a sale incomplete only for a dated field (city, surname, agent from go-live) counts in `sales.incomplete` but has no bucket. `missing_predicate` already accepts the dated fields. F3b extends the compute loop over the dated rules so the breakdown sums again.
-- Host, seen in the F1 review: the Sell Stove form's previous-stove value rendering ("Charcoal Stove", "Wood Stove (3 stone)") on the detail views differs from the form's option labels; F3's option pass should carry it.
+- Done in F3b: the two detail views label the previous stove, fuel source and cooking location through one component reading the dictionary's live options.
 - The 181 live sales whose payment model is outside their partner's entitlement: an observation for the sales team, not a module change.
 - The host form's own copy of the previous-stove list (`CreateSalesForm.jsx`): host lane.
 - A structured editor for the sheet columns config.

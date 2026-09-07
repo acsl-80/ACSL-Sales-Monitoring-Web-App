@@ -156,6 +156,45 @@ Structural, never fluid type.
 - Search boxes and selects go full width below `sm` and back to their lanes
   above it. Grids step 1 to 2 to 4.
 
+## The call centre's two surfaces (Phase 26, 2026-09-07)
+
+The control centre is a shift board and the agent's day is a queue with the
+call form; both inherit the system above and add one grammar each.
+
+- **One gradient per kind of action, from the figure tokens.** Hand out,
+  start a call and save wear `--dc-fig-sold`; open, see all and navigate
+  wear `--dc-fig-transferred`; confirm and verified wear `--dc-fig-verified`;
+  review, callback and partial wear `--dc-fig-unverified`; reclaim, reassign
+  and send back wear `--dc-fig-plum`; unreachable and over the limit wear
+  `--dc-fig-crit`. A solid gradient is the one primary action in its section;
+  the same hue as an outlined border is a secondary one. The rule is a
+  wayfinding device, so the same verb never changes colour between pages.
+- **The track.** An agent's day is a line from the working hours, drawn in
+  percentages so it scales to any width. A mark per call, in its outcome
+  family (`--dc-brief-who` answered, `--dc-brief-place` callback,
+  `--dc-sev-critical` not reached); a flag per hand-out (`--dc-primary-mid`)
+  or reclaim (`--dc-brief-history`); a line at now. Marks carry no text; the
+  tooltip and the feed under the board say the same in words. The grid behind
+  it is `--dc-track-grid`. The week view is seven cells with a count each.
+- **A figure is a door.** The six figures over the board keep the dashboard's
+  contract: `data-board-tile` on each, the value in the second span, an href
+  to the rows it counts, and an in-page anchor for the board itself rendered
+  as a plain anchor so the router does not fold the hash into the path.
+- **Counts and verbs.** The decisions card is a list of counts, each with the
+  verb that clears it in the verb's colour, and nothing else; the work happens
+  on the page the verb opens.
+- **Numbers copy, nothing dials (D36).** Every number on the agent's surface
+  is a copy field: the value in mono, a Copy button in the navigate gradient
+  that turns to the verified gradient and reads Copied, and a status line that
+  names the call app from `call_centre.dialler_name`. No `tel:` link anywhere.
+- **A day lives in the URL.** `day` and `range` on the board and the agent's
+  page; today is the default and stays out of the URL. Every list pages by
+  keyset cursor with the same footer: what is shown of how many, the sort in
+  words, page numbers, rows per page.
+- **A call counts against the login that logged it (D35).** Every figure that
+  says "called" or "verified" reads `call_attempts.created_by` or
+  `call_records.updated_by`, never the registry's agent dropdown.
+
 ## Rules for anything added here
 
 1. No hex literals in JSX. Everything reads a `--dc-` token.
