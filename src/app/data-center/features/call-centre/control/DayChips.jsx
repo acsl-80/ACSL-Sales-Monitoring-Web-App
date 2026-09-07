@@ -44,12 +44,16 @@ export default function DayChips({ today, day, range }) {
   const isWeek = range === "week";
   const isPicked = !isToday && !isYesterday && !isWeek;
 
+  // Until the board has said what today is, the chips cannot compute
+  // yesterday; they wait, disabled, rather than doing nothing on a click.
+  const ready = Boolean(today);
   const chip = (active, text, onClick, extra = {}) => (
     <button
       type="button"
       onClick={onClick}
+      disabled={!ready}
       aria-pressed={active}
-      className={`rounded-full border px-3 py-1 text-xs font-semibold transition ${
+      className={`rounded-full border px-3 py-1 text-xs font-semibold transition disabled:opacity-60 ${
         active
           ? "border-(--dc-accent) bg-(--dc-accent) text-white"
           : "border-gray-300 bg-white text-gray-700 hover:border-(--dc-accent)/60"

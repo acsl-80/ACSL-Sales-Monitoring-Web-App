@@ -70,12 +70,16 @@ export default function HappenedToday({ activity, board, canEdit, dayLabel }) {
       <header className="flex flex-wrap items-center gap-2 border-b border-gray-100 bg-(--dc-brief-history-soft)/30 px-4 py-2.5">
         <h2 id="cc-happened" className="text-sm font-semibold text-gray-900">What happened {dayLabel}</h2>
         <span className="text-xs text-gray-600">calls concluded, hand-outs, reclaims and send-backs, newest first</span>
-        <Link
-          href={allHref}
-          className="ml-auto inline-flex items-center gap-1 rounded-md bg-(--dc-fig-transferred) px-2.5 py-1 text-xs font-semibold text-white shadow-sm transition hover:brightness-110"
-        >
-          All activity
-        </Link>
+        {board ? (
+          <Link
+            href={allHref}
+            className="ml-auto inline-flex items-center gap-1 rounded-md bg-(--dc-fig-transferred) px-2.5 py-1 text-xs font-semibold text-white shadow-sm transition hover:brightness-110"
+          >
+            All activity
+          </Link>
+        ) : (
+          <span className="ml-auto inline-flex items-center rounded-md bg-gray-200 px-2.5 py-1 text-xs font-semibold text-gray-500">All activity</span>
+        )}
       </header>
       <ul className="divide-y divide-gray-100" data-feed>
         {!activity && <li className="px-4 py-4 text-center text-xs text-gray-500">Loading the day...</li>}
