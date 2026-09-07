@@ -9,9 +9,9 @@ lives on each PR.
 A shift-board control centre for managers and My calls for agents, on the call form that exists. Proposal: https://claude.ai/code/artifact/df3f05d2-9661-403e-8b8a-9f05bd5fbddc. Decisions D35 and D36.
 
 - [x] C0 Proposal, content plan and mockups for both surfaces, checked at 375 pixels. approved 2026-09-07
-- [ ] C1 The reads (board, agent_day, pool_partners, activity) and assign_preview on data-center-assign; client methods; no migration. spec red
-- [ ] C2 The control centre: figures, the shift board, waiting by partner, needs a decision, what happened today; the old sections retired. todo
-- [ ] C3 The pages behind it: agent page, partners, hand-out dialog with preview, records with the strip, shared phones, activity. todo
+- [x] C1 The reads (board, agent_day, pool_partners, activity) and assign_preview on data-center-assign; client methods; no migration. PR #90 merged and live 2026-09-07 (main c8f380e to 655e3c2; data-center-assign v8; API build; bundle crawl confirmed; sandbox green four of four, neighbours 23 of 23)
+- [ ] C2 The control centre: figures, the shift board, waiting by partner (with the Partners page behind See all), needs a decision, what happened today (with the Activity page behind All activity); the old board, agents panel, pool table, lanes and log retired; the queue and the register stay on the page until C3 moves them. todo
+- [ ] C3 The pages behind it: agent page, hand-out dialog with preview, records with the strip, shared phones. todo
 - [ ] C4 My calls: copy fields, the after-save hand-off, the callback time beside the outcome (one column), the dialler name setting. todo
 
 ## Phase 25, field alignment (opened 2026-09-05)
