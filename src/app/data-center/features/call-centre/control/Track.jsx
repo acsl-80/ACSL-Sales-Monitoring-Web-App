@@ -52,7 +52,7 @@ export default function Track({ marks = [], flags = [], tz = "Africa/Lagos", isT
         {labels.map((h) => <span key={h}>{String(h).padStart(2, "0")}</span>)}
       </div>
       <div
-        className={`relative mt-0.5 rounded-md border border-gray-200 bg-(--dc-track-grid) ${tall ? "h-8" : "h-6"}`}
+        className={`relative mt-0.5 rounded-md border border-gray-200 bg-(image:--dc-track-grid) ${tall ? "h-8" : "h-6"}`}
         role="img"
         aria-label={marks.length ? `${marks.length} calls on this day` : emptyText ?? "no calls on this day"}
       >

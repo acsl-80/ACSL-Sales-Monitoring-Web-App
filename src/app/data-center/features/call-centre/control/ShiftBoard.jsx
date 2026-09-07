@@ -201,7 +201,7 @@ export default function ShiftBoard({ board, agentsMeta, canManage, reload, dayLa
               type="button"
               disabled={busy}
               onClick={() => setConfirm("run")}
-              className="inline-flex items-center gap-1.5 rounded-md bg-(--dc-fig-sold) px-2.5 py-1.5 text-xs font-semibold text-white shadow-sm transition hover:brightness-110 disabled:opacity-60"
+              className="inline-flex items-center gap-1.5 rounded-md bg-(image:--dc-fig-sold) px-2.5 py-1.5 text-xs font-semibold text-white shadow-sm transition hover:brightness-110 disabled:opacity-60"
             >
               {busy ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Play className="h-3.5 w-3.5" />}
               Assign now
@@ -272,7 +272,7 @@ export default function ShiftBoard({ board, agentsMeta, canManage, reload, dayLa
               const primary = !agent.is_enabled
                 ? { text: "Resume", cls: "border-(--dc-brief-who) text-(--dc-brief-who) hover:bg-(--dc-brief-who-soft)", onClick: () => togglePause(agent), icon: Play }
                 : agent.to_call === 0
-                ? { text: "Hand out", cls: "bg-(--dc-fig-sold) text-white border-transparent hover:brightness-110", onClick: () => setAssigning(agent), icon: UserPlus }
+                ? { text: "Hand out", cls: "bg-(image:--dc-fig-sold) text-white border-transparent hover:brightness-110", onClick: () => setAssigning(agent), icon: UserPlus }
                 : { text: "Open", cls: "border-(--dc-brief-stove) text-(--dc-brief-stove) hover:bg-(--dc-brief-stove-soft)", href: `/data-center/call-centre/agents/${agent.agent_id}`, icon: null };
               return (
                 <Fragment key={agent.agent_id}>
@@ -317,7 +317,7 @@ export default function ShiftBoard({ board, agentsMeta, canManage, reload, dayLa
                     <td className="px-3 py-2 text-right tabular-nums text-(--dc-brief-who)">{agent.verified}</td>
                     <td className="px-3 py-2 text-right tabular-nums">
                       <span className={`inline-flex items-center justify-end gap-1.5 ${over ? "font-semibold text-(--dc-sev-critical)" : "text-gray-900"}`}>
-                        <i aria-hidden className={`inline-block h-2.5 rounded-sm ${over ? "bg-(--dc-fig-crit)" : agent.to_call > 0 ? "bg-(--dc-fig-sold)" : "bg-gray-200"}`} style={{ width: `${Math.min(64, 6 + agent.to_call)}px` }} />
+                        <i aria-hidden className={`inline-block h-2.5 rounded-sm ${over ? "bg-(image:--dc-fig-crit)" : agent.to_call > 0 ? "bg-(image:--dc-fig-sold)" : "bg-gray-200"}`} style={{ width: `${Math.min(64, 6 + agent.to_call)}px` }} />
                         {agent.to_call}
                       </span>
                     </td>

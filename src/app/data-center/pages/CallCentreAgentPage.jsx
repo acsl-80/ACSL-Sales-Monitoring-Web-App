@@ -149,7 +149,7 @@ function Inner() {
               <button
                 type="button"
                 onClick={() => setHanding(true)}
-                className="inline-flex items-center gap-1 rounded-md bg-(--dc-fig-sold) px-2.5 py-1 font-semibold text-white shadow-sm transition hover:brightness-110"
+                className="inline-flex items-center gap-1 rounded-md bg-(image:--dc-fig-sold) px-2.5 py-1 font-semibold text-white shadow-sm transition hover:brightness-110"
               >
                 <UserPlus className="h-3.5 w-3.5" /> Hand out more
               </button>

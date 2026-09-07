@@ -110,10 +110,10 @@ function Inner() {
       {error && <p className="rounded-md bg-red-50 px-3 py-2 text-xs text-red-700">{error}</p>}
       <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
         {[
-          ["to call", queue.length, "bg-(--dc-fig-sold)"],
-          ["called today", day?.called, "bg-(--dc-fig-verified)"],
-          ["callbacks due", callbacksDue, "bg-(--dc-fig-unverified)"],
-          ["fixed by Sales, ring again", ringAgain, "bg-(--dc-fig-plum)"],
+          ["to call", queue.length, "bg-(image:--dc-fig-sold)"],
+          ["called today", day?.called, "bg-(image:--dc-fig-verified)"],
+          ["callbacks due", callbacksDue, "bg-(image:--dc-fig-unverified)"],
+          ["fixed by Sales, ring again", ringAgain, "bg-(image:--dc-fig-plum)"],
         ].map(([label, value, cls]) => (
           <div key={label} className={`rounded-xl p-3 text-white shadow-sm ${cls}`} data-my-figure={label}>
             <span className="block text-2xl font-semibold tabular-nums">{day ? Number(value ?? 0).toLocaleString() : "…"}</span>
@@ -145,7 +145,7 @@ function Inner() {
             <span className="text-xs text-gray-600">{next.attempt_count ? `${plural(next.attempt_count, "try", "tries")} · last ${whenOf(next.last_attempt_at)}` : "never called"}</span>
           </div>
           {canEdit && (
-            <button type="button" onClick={() => setOpenSale(next.sale_id)} className="mt-3 inline-flex items-center gap-2 rounded-lg bg-(--dc-fig-sold) px-4 py-2 text-sm font-semibold text-white shadow-sm transition hover:brightness-110">
+            <button type="button" onClick={() => setOpenSale(next.sale_id)} className="mt-3 inline-flex items-center gap-2 rounded-lg bg-(image:--dc-fig-sold) px-4 py-2 text-sm font-semibold text-white shadow-sm transition hover:brightness-110">
               <PhoneCall className="h-4 w-4" /> Open the call form
             </button>
           )}

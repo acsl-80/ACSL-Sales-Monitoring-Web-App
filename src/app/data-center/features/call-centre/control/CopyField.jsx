@@ -49,7 +49,7 @@ export default function CopyField({ value, label, diallerName, compact = false, 
         type="button"
         onClick={copy}
         aria-label={`Copy ${label ?? "number"} ${value}`}
-        className={`inline-flex items-center gap-1 rounded px-1.5 py-0.5 text-[11px] font-semibold text-white transition ${state === "done" ? "bg-(--dc-fig-verified)" : "bg-(--dc-fig-transferred) hover:brightness-110"}`}
+        className={`inline-flex items-center gap-1 rounded px-1.5 py-0.5 text-[11px] font-semibold text-white transition ${state === "done" ? "bg-(image:--dc-fig-verified)" : "bg-(image:--dc-fig-transferred) hover:brightness-110"}`}
       >
         {state === "done" ? <Check className="h-3 w-3" /> : <Copy className="h-3 w-3" />}
         {state === "done" ? "Copied" : "Copy"}

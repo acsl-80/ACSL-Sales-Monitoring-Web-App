@@ -771,7 +771,7 @@ export default function CallRecordEditor({ saleId, canEdit, onClose, onSaved, ne
               <button type="button" onClick={() => setHandoff(null)} className="rounded-md border border-gray-300 px-3 py-1.5 text-sm font-medium text-gray-700 transition hover:bg-gray-50">Back</button>
               <Link href={allHref} onClick={() => onClose?.()} className="rounded-md border border-(--dc-brief-stove) px-3 py-1.5 text-sm font-semibold text-(--dc-brief-stove) transition hover:bg-(--dc-brief-stove-soft)">See all assigned</Link>
               {handoff.next && onNext && (
-                <button type="button" onClick={() => { const id = handoff.next.saleId; setHandoff(null); onNext(id); }} className="rounded-md bg-(--dc-fig-sold) px-4 py-1.5 text-sm font-semibold text-white shadow-sm transition hover:brightness-110">
+                <button type="button" onClick={() => { const id = handoff.next.saleId; setHandoff(null); onNext(id); }} className="rounded-md bg-(image:--dc-fig-sold) px-4 py-1.5 text-sm font-semibold text-white shadow-sm transition hover:brightness-110">
                   Next record
                 </button>
               )}

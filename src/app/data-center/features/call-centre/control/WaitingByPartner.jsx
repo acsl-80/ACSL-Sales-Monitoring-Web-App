@@ -31,7 +31,7 @@ export default function WaitingByPartner({ partners, agentsMeta, canManage, relo
         </span>
         <Link
           href="/data-center/call-centre/partners"
-          className="ml-auto inline-flex items-center gap-1 rounded-md bg-(--dc-fig-transferred) px-2.5 py-1 text-xs font-semibold text-white shadow-sm transition hover:brightness-110"
+          className="ml-auto inline-flex items-center gap-1 rounded-md bg-(image:--dc-fig-transferred) px-2.5 py-1 text-xs font-semibold text-white shadow-sm transition hover:brightness-110"
         >
           See all {totals?.partners ?? ""} partners
         </Link>

@@ -20,12 +20,12 @@ import { whenOf } from "../../../lib/when";
  */
 function Figure({ label, value, sub, href, tone, big = false }) {
   const tones = {
-    sold: "bg-(--dc-fig-sold)",
-    verified: "bg-(--dc-fig-verified)",
-    transferred: "bg-(--dc-fig-transferred)",
-    plum: "bg-(--dc-fig-plum)",
-    unverified: "bg-(--dc-fig-unverified)",
-    crit: "bg-(--dc-fig-crit)",
+    sold: "bg-(image:--dc-fig-sold)",
+    verified: "bg-(image:--dc-fig-verified)",
+    transferred: "bg-(image:--dc-fig-transferred)",
+    plum: "bg-(image:--dc-fig-plum)",
+    unverified: "bg-(image:--dc-fig-unverified)",
+    crit: "bg-(image:--dc-fig-crit)",
   };
   const body = (
     <>

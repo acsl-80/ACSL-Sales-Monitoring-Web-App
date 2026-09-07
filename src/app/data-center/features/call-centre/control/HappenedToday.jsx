@@ -73,7 +73,7 @@ export default function HappenedToday({ activity, board, canEdit, dayLabel }) {
         {board ? (
           <Link
             href={allHref}
-            className="ml-auto inline-flex items-center gap-1 rounded-md bg-(--dc-fig-transferred) px-2.5 py-1 text-xs font-semibold text-white shadow-sm transition hover:brightness-110"
+            className="ml-auto inline-flex items-center gap-1 rounded-md bg-(image:--dc-fig-transferred) px-2.5 py-1 text-xs font-semibold text-white shadow-sm transition hover:brightness-110"
           >
             All activity
           </Link>
