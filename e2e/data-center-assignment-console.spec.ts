@@ -64,7 +64,7 @@ test.describe("the assignment console shows who holds what", () => {
       page.getByRole("heading", { name: "Agents and their work" }),
     ).toBeVisible({ timeout: 20_000 });
 
-    await page.getByRole("button", { name: "Hand out", exact: true }).first().click();
+    await page.getByRole("button", { name: "Hand out calls" }).click();
 
     await expect(page.getByRole("dialog")).toBeVisible();
     await expect(page.getByText(/Assign work to /)).toBeVisible();
@@ -258,6 +258,16 @@ test.describe("the activity page can be worked from", () => {
 
   test("a row opens the record", async ({ page }) => {
     await signIn(page, USERS.admin);
+    // Arrange one call on the branch: global setup hands out work but logs
+    // no calls, and a feed of calls needs at least one to open.
+    const held = await callEdgeFunction(page, "data-center-assign", { action: "agents" });
+    const holder = (held.body as { data: { agents: { agent_id: string; open_batches: number }[] } }).data.agents.find((a) => a.open_batches > 0);
+    expect(holder, "an agent holding a batch").toBeTruthy();
+    const detail = await callEdgeFunction(page, "data-center-assign", { action: "agent_detail", agentId: holder!.agent_id });
+    const item = (detail.body as { data: { items: { sale_id: string }[] } }).data.items[0];
+    expect(item, "a record in that batch").toBeTruthy();
+    const logged = await callEdgeFunction(page, "data-center-write", { action: "log_attempt", saleId: item.sale_id, note: "console spec" });
+    expect(logged.status, JSON.stringify(logged.body)).toBe(200);
     await page.goto("/data-center/call-centre/activity?kind=call");
     await expect(page.getByRole("heading", { name: "Activity" }).first()).toBeVisible({ timeout: 20_000 });
     await expect(page.getByText(/\d+ events? on page \d+/)).toBeVisible({ timeout: 20_000 });

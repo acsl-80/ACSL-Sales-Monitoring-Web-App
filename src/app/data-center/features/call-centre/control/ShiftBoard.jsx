@@ -191,6 +191,13 @@ export default function ShiftBoard({ board, agentsMeta, canManage, reload, dayLa
           <div className="ml-auto flex flex-wrap items-center gap-2">
             <button
               type="button"
+              onClick={() => setAssigning("any")}
+              className="inline-flex items-center gap-1.5 rounded-md border border-(--dc-primary-mid) px-2.5 py-1.5 text-xs font-semibold text-(--dc-primary-strong) transition hover:bg-(--dc-primary-soft)"
+            >
+              <UserPlus className="h-3.5 w-3.5" /> Hand out calls
+            </button>
+            <button
+              type="button"
               disabled={busy}
               onClick={() => setConfirm("run")}
               className="inline-flex items-center gap-1.5 rounded-md bg-(--dc-fig-sold) px-2.5 py-1.5 text-xs font-semibold text-white shadow-sm transition hover:brightness-110 disabled:opacity-60"
@@ -283,7 +290,8 @@ export default function ShiftBoard({ board, agentsMeta, canManage, reload, dayLa
                     <td className="px-3 py-2">
                       <span className="block font-medium text-gray-900">{agent.full_name || agent.email}</span>
                       <span className="block text-xs text-gray-500">
-                        {agent.current_serial ? <>on <span className="font-mono">{agent.current_serial}</span></> : whenOf(agent.last_seen_at, "no save yet") === "-" ? "" : `last save ${whenOf(agent.last_seen_at)}`}
+                        {agent.email}
+                        {agent.current_serial ? <> · on <span className="font-mono">{agent.current_serial}</span></> : agent.last_seen_at ? ` · last save ${whenOf(agent.last_seen_at)}` : ""}
                         {idleFlag && <span className="ml-1 rounded-full bg-(--dc-sev-warning-soft) px-1.5 text-[10px] font-semibold text-(--dc-sev-warning)">idle {idle} min</span>}
                       </span>
                     </td>
@@ -375,7 +383,8 @@ export default function ShiftBoard({ board, agentsMeta, canManage, reload, dayLa
       </p>
       {assigning && (
         <AssignDialog
-          agent={assigning}
+          agent={assigning === "any" ? null : assigning}
+          agents={agentsMeta?.agents ?? []}
           pool={agentsMeta?.pool ?? []}
           batchSize={agentsMeta?.batchSize ?? 20}
           priority={agentsMeta?.priority}
