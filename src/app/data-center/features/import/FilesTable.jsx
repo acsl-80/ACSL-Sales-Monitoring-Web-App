@@ -438,7 +438,6 @@ export default function FilesTable({
                 <th scope="col" className="px-3 py-2 text-right">Need a look</th>
                 <th scope="col" className="px-3 py-2 text-right">Unreadable</th>
                 <th scope="col" className="px-3 py-2 text-right">Landed</th>
-                <th scope="col" className="px-3 py-2" />
               </tr>
             </thead>
             <tbody>
@@ -455,8 +454,11 @@ export default function FilesTable({
                         change what the cell is called, and the file name is
                         how every other surface and every spec finds this row.
                       */}
-                      <td className="sticky left-0 z-10 max-w-[16rem] truncate bg-white px-3 py-2 font-medium text-gray-900 group-hover:bg-(--dc-accent-soft)/40">
+                      <td className="sticky left-0 z-10 max-w-[14rem] truncate bg-white px-3 py-2 font-medium text-gray-900 group-hover:bg-(--dc-accent-soft)/40">
                         {b.filename ?? "(typed in, no file)"}
+                        {open === b.id
+                          ? <ChevronDown className="ml-1 inline h-3.5 w-3.5 text-gray-400" aria-hidden />
+                          : <ChevronRight className="ml-1 inline h-3.5 w-3.5 text-gray-400" aria-hidden />}
                       </td>
                       <td className="max-w-[13rem] px-3 py-2 text-gray-700">
                         <span className="block truncate">{partnerOf(b)}</span>
@@ -476,6 +478,20 @@ export default function FilesTable({
                             {step.say}
                           </span>
                         )}
+                        {/* The one action sits with the words that call for it,
+                            so it is on screen at a desk's width. */}
+                        <span className="mt-1.5 flex items-center gap-2">
+                          <RowAction
+                            batch={b}
+                            step={step}
+                            busy={busy}
+                            canUpload={canUpload}
+                            canCommit={canCommit}
+                            onValidate={onValidate}
+                            onAsk={onAsk}
+                            onOpen={onToggle}
+                          />
+                        </span>
                       </td>
                       <td className="px-3 py-2 text-right tabular-nums text-gray-700">
                         {b.total_rows}
@@ -498,28 +514,11 @@ export default function FilesTable({
                       <td className="px-3 py-2 text-right tabular-nums text-(--dc-accent)">
                         {b.committed_rows}
                       </td>
-                      <td className="px-3 py-2">
-                        <span className="flex items-center justify-end gap-2">
-                          <RowAction
-                            batch={b}
-                            step={step}
-                            busy={busy}
-                            canUpload={canUpload}
-                            canCommit={canCommit}
-                            onValidate={onValidate}
-                            onAsk={onAsk}
-                            onOpen={onToggle}
-                          />
-                          {open === b.id
-                            ? <ChevronDown className="h-4 w-4 shrink-0 text-gray-400" />
-                            : <ChevronRight className="h-4 w-4 shrink-0 text-gray-400" />}
-                        </span>
-                      </td>
                     </tr>
 
                     {open === b.id && (
                       <tr className="border-b border-gray-100 bg-(--dc-surface-muted)">
-                        <td colSpan={9} className="px-4 py-3">
+                        <td colSpan={8} className="px-4 py-3">
                           <FileDetail
                             batch={b}
                             busy={busy}
