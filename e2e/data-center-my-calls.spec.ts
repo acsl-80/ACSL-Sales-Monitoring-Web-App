@@ -143,6 +143,7 @@ test("the call form copies, takes a callback time, and after Save offers the nex
   const handoff = dialog.locator("[data-handoff]");
   await expect(handoff).toBeVisible({ timeout: 15_000 });
   await expect(handoff).toContainText("Saved");
+  await expect(handoff.getByRole("link", { name: "See all assigned" })).toHaveAttribute("href", /\/data-center\/my-calls/);
   if (day.to_call.length > 1) {
     await expect(handoff).toContainText("Next for you");
     await handoff.getByRole("button", { name: "Next record" }).click();
@@ -150,7 +151,6 @@ test("the call form copies, takes a callback time, and after Save offers the nex
   } else {
     await expect(handoff).toContainText("last record assigned to you");
   }
-  await expect(handoff.getByRole("link", { name: "See all assigned" })).toHaveAttribute("href", /\/data-center\/my-calls/);
 });
 
 test("nothing crosses the viewport at 375 pixels on My calls", async ({ browser }) => {
