@@ -78,9 +78,10 @@ function fold(days) {
       "released",
     ])
       p[k] += r[k] ?? 0;
+    // A day counts as worked only when something was entered; releasing
+    // alone is a reviewer's day, tallied in its own column.
     const entered = (r.typed ?? 0) + (r.uploaded ?? 0);
-    if (entered > 0 || (r.released ?? 0) > 0)
-      p.byDay.set(r.day, (p.byDay.get(r.day) ?? 0) + entered);
+    if (entered > 0) p.byDay.set(r.day, (p.byDay.get(r.day) ?? 0) + entered);
     people.set(r.user_id, p);
   }
   return [...people.values()]

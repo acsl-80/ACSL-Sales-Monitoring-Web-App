@@ -2277,6 +2277,7 @@ serve(async (req) => {
         if (!superAdmin && !resolved.features.includes("records.view")) {
           return json({ error: "Not permitted", code: "no_feature" }, 403, cors);
         }
+        const b = body as { dateFrom?: string | null; dateTo?: string | null };
         const dateFrom = typeof b.dateFrom === "string" && b.dateFrom ? b.dateFrom : null;
         const dateTo = typeof b.dateTo === "string" && b.dateTo ? b.dateTo : null;
         const WINDOW = `with cfg as (
@@ -2284,7 +2285,8 @@ serve(async (req) => {
                                             where key = 'analysis.timezone'), 'Africa/Lagos') as tz),
                         win as (
                           select coalesce($2::date, timezone(cfg.tz, now())::date) as d_to,
-                                 coalesce($1::date, coalesce($2::date, timezone(cfg.tz, now())::date) - 30) as d_from,
+                                 greatest(coalesce($1::date, coalesce($2::date, timezone(cfg.tz, now())::date) - 30),
+                                          coalesce($2::date, timezone(cfg.tz, now())::date) - 399) as d_from,
                                  cfg.tz
                             from cfg)`;
         return await withReadConnection(async (connection) => {

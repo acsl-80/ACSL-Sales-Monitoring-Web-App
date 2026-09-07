@@ -72,7 +72,8 @@ test("the page shows the team for the period, with the days drawn", async ({ pag
 });
 
 test("somebody without records.view is refused the read and never sees the mode", async ({ page }) => {
-  await signIn(page, USERS.callCentre);
+  // The partner account is seeded with no Data Center access at all.
+  await signIn(page, USERS.partner);
   const r = await callEdgeFunction(page, "data-center-read", { action: "digitisation_team" });
   expect(r.status).toBe(403);
 });

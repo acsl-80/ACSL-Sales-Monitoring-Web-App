@@ -358,3 +358,42 @@ the next record).
   the dialler name setting.
 
 Tracker: TASKS.md, Phase 26.
+
+## Phase 27: the import page redrawn, and who is digitising (approved 2026-09-07)
+
+His asks, verbatim: "take learnings from the redesign of the call center, and
+propose redesign for the bulk import page ... this should just be about
+frontend display, what is seen, what goes where ... not to change the
+workings of the module"; then "live production app and current users are
+active, any update or merge must be holistic such that it is complete so it
+does not disrupt app use"; then "I want to see who is doing the
+digitalisation, and I also want to measure how much they are doing daily,
+weekly, monthly, and custom ... whether via the bulk imports or one receipt
+at a time ... let this various buttons or items pop, sharp contrast ... but
+let it sit properly with the cards."
+
+**I1, the page (PR #96, live 2026-09-07 18:05 Lagos).** Display only.
+Figures as doors over the page (D39), the mode in the URL (D37), one row per
+file with a three-cell state strip and the one action beside its sentence,
+the exception fix beside its row, the sheet action out of the fold, the
+calls steps side by side, a strip and a filter row on the confirmation
+queue, pinned first columns and cards on a phone. One PR, one deployment
+after hours (D38). Every client call unchanged; the proposal's table of
+actions was the review checklist.
+
+**I2, who is digitising (PR #98).** A fifth mode, "Who is digitising", for
+records.view. One read on data-center-read, `digitisation_team`, answers a
+row per person per day (D40): a bench receipt counts for whoever last edited
+it on the day they did, a file's rows for whoever uploaded it on the day it
+came in, a release for whoever confirmed. Days are the analysis timezone.
+The page sums the shared period control, so today, this week, this month and
+a custom range are one mechanism; four figures, a table per person with the
+period drawn as bars, an export with a column picker, cards on a phone. The
+mode row becomes a segmented control on a card of its own: solid accent for
+the chosen mode, outlined for the rest, counts as pills. No migration; one
+additive read action.
+
+Non-goals: a metric family in compute for this (the lists are small and the
+read is one aggregate over bounded rows; it moves to compute when the row
+count says so); per-agent targets or pace alerts; any change to how a
+receipt is typed, uploaded, checked or released.
