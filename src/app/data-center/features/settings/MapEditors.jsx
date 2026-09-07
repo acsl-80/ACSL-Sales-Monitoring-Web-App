@@ -25,18 +25,41 @@ const FIELD =
 let seq = 0;
 const rowsOf = (value) => Object.entries(value ?? {}).map(([k, v]) => ({ id: ++seq, k, v }));
 
-/** Local rows that follow the stored value when it changes from outside (save, reset). */
-function useRows(value) {
+/** What stops a list of rows becoming a map: a blank key, a repeated key, a bad value. */
+function problemOf(rows, { blankKey, dupKey, badValue }) {
+  const keys = rows.map((r) => r.k.trim());
+  if (keys.some((k) => !k)) return blankKey;
+  if (new Set(keys).size !== keys.length) return dupKey;
+  if (rows.some((r) => !badValue.ok(r.v))) return badValue.say;
+  return null;
+}
+
+/**
+ * Local rows that follow the stored value when it changes from outside (a
+ * save, a discard) and hold still while the person types. The value the
+ * editor itself just handed back comes straight back in as the parent's
+ * draft; that echo must not rebuild the rows, or every keystroke would
+ * remount the input under the cursor. So the last published text is
+ * remembered and an incoming value equal to it is left alone.
+ */
+function useRows(value, onChange, rules) {
   const asText = JSON.stringify(value ?? {});
   const [rows, setRows] = useState(() => rowsOf(value));
   const seen = useRef(asText);
+  const published = useRef(asText);
   useEffect(() => {
-    if (seen.current !== asText) {
-      seen.current = asText;
-      setRows(rowsOf(value));
-    }
+    if (seen.current === asText) return;
+    seen.current = asText;
+    if (asText !== published.current) setRows(rowsOf(value));
   }, [asText, value]);
-  return [rows, setRows];
+  const update = (next) => {
+    setRows(next);
+    const error = problemOf(next, rules);
+    const obj = error ? null : Object.fromEntries(next.map((r) => [r.k.trim(), r.v]));
+    if (!error) published.current = JSON.stringify(obj);
+    onChange(obj, error);
+  };
+  return [rows, update];
 }
 
 function Remove({ onClick, disabled, label }) {
@@ -66,23 +89,8 @@ function Add({ onClick, disabled, children }) {
   );
 }
 
-/** What stops a list of rows becoming a map: a blank key, a repeated key, a bad value. */
-function problemOf(rows, { blankKey, dupKey, badValue }) {
-  const keys = rows.map((r) => r.k.trim());
-  if (keys.some((k) => !k)) return blankKey;
-  if (new Set(keys).size !== keys.length) return dupKey;
-  if (rows.some((r) => !badValue.ok(r.v))) return badValue.say;
-  return null;
-}
-
-function publish(rows, onChange, rules) {
-  const error = problemOf(rows, rules);
-  onChange(error ? null : Object.fromEntries(rows.map((r) => [r.k.trim(), r.v])), error);
-}
-
 /** Partner to batch size. `partners` is `{ id, name }[]`. */
 export function PartnerSizeEditor({ id, value, partners, disabled, onChange }) {
-  const [rows, setRows] = useRows(value);
   const rules = {
     blankKey: "Choose a partner for every row before saving.",
     dupKey: "A partner is listed twice; keep one row per partner.",
@@ -91,10 +99,7 @@ export function PartnerSizeEditor({ id, value, partners, disabled, onChange }) {
       say: "A batch size is a whole number of at least 1.",
     },
   };
-  const update = (next) => {
-    setRows(next);
-    publish(next, onChange, rules);
-  };
+  const [rows, update] = useRows(value, onChange, rules);
   const taken = new Set(rows.map((r) => r.k));
   const nameOf = (orgId) =>
     partners.find((p) => p.id === orgId)?.name ?? `${orgId.slice(0, 8)}… (not in the partner list)`;
@@ -171,7 +176,6 @@ export function PartnerSizeEditor({ id, value, partners, disabled, onChange }) {
 
 /** Sheet spelling to payment model name. `models` is `{ id, name }[]`; the value saved is the name. */
 export function ModelMapEditor({ id, value, models, disabled, onChange }) {
-  const [rows, setRows] = useRows(value);
   const names = models.map((m) => m.name);
   const rules = {
     blankKey: "Type what the sheet says for every row before saving.",
@@ -181,10 +185,7 @@ export function ModelMapEditor({ id, value, models, disabled, onChange }) {
       say: "Choose a model for every spelling.",
     },
   };
-  const update = (next) => {
-    setRows(next);
-    publish(next, onChange, rules);
-  };
+  const [rows, update] = useRows(value, onChange, rules);
   return (
     <div className="space-y-1.5" data-typed-editor={id}>
       {rows.length === 0 && (
