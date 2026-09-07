@@ -57,6 +57,7 @@ decisions D27 to D29.
 
 ## Deferred
 
+- Stale since F3b (seen 2026-09-07 on main's own build): two tests in `e2e/data-center-import.spec.ts` ("the sheet downloads, and the same file uploads back", "the sheet's columns come from settings") expect the previous-stove column to offer the literal `charcoal, wood_stove, other`; since F3b the column reads the registry's `baseline_stove` list. Update the spec to read the list from the registry. Spec only.
 - Host, seen while fixing the render loop (PR #79): the sidebar declares two entries with the same `route` key ("agents"), which React warns about on every render; and a username-based login falls through to the direct email path on any non-ok answer from `login-with-credentials`, reporting a transient server fault as wrong credentials. Two small host fixes.
 - Done in F3b: `sales.incomplete_by_missing` (the Complete card's breakdown and the Missing facet's options) still enumerates only `completeness_required_fields`; a sale incomplete only for a dated field (city, surname, agent from go-live) counts in `sales.incomplete` but has no bucket. `missing_predicate` already accepts the dated fields. F3b extends the compute loop over the dated rules so the breakdown sums again.
 - Done in F3b: the two detail views label the previous stove, fuel source and cooking location through one component reading the dictionary's live options.
