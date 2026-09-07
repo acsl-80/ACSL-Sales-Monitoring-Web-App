@@ -73,8 +73,9 @@ export function useImportFigures({ canBatches, canQueue, dateFrom, dateTo, mode 
             "still_drafting",
           )
         : null,
-      files: receipts ? receipts.length : null,
-      sheets: sheets ? sheets.length : null,
+      // The tab counts say what the lists show, rolled-back batches included.
+      files: batches ? batches.filter((b) => !b.source || RECEIPT_SOURCES.includes(b.source)).length : null,
+      sheets: batches ? batches.filter((b) => b.source === "call_center").length : null,
     },
   };
 }

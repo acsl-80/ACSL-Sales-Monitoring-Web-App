@@ -427,19 +427,17 @@ export default function FilesTable({
         </ul>
       ) : (
         <div className="overflow-x-auto">
-          <table className="w-full min-w-[72rem] text-sm">
+          <table className="w-full text-sm">
             <thead>
               <tr className="border-b-2 border-(--dc-accent) bg-(--dc-accent-soft) text-left text-[11px] font-semibold uppercase tracking-wide text-(--dc-accent-strong)">
                 <th scope="col" className="sticky left-0 bg-(--dc-accent-soft) px-3 py-2">File</th>
-                <th scope="col" className="px-3 py-2">Partner</th>
+                <th scope="col" className="px-3 py-2">Partner, uploaded</th>
                 <th scope="col" className="px-3 py-2">Read · checked · landed</th>
                 <th scope="col" className="px-3 py-2 text-right">Rows</th>
                 <th scope="col" className="px-3 py-2 text-right">Ready</th>
                 <th scope="col" className="px-3 py-2 text-right">Need a look</th>
                 <th scope="col" className="px-3 py-2 text-right">Unreadable</th>
                 <th scope="col" className="px-3 py-2 text-right">Landed</th>
-                <th scope="col" className="px-3 py-2">Uploaded</th>
-                <th scope="col" className="px-3 py-2">By</th>
                 <th scope="col" className="px-3 py-2" />
               </tr>
             </thead>
@@ -460,8 +458,11 @@ export default function FilesTable({
                       <td className="sticky left-0 z-10 max-w-[16rem] truncate bg-white px-3 py-2 font-medium text-gray-900 group-hover:bg-(--dc-accent-soft)/40">
                         {b.filename ?? "(typed in, no file)"}
                       </td>
-                      <td className="max-w-[12rem] truncate px-3 py-2 text-gray-700">
-                        {partnerOf(b)}
+                      <td className="max-w-[13rem] px-3 py-2 text-gray-700">
+                        <span className="block truncate">{partnerOf(b)}</span>
+                        <span className="block truncate text-xs text-gray-500" title={whenOf(b.uploaded_at)}>
+                          {dateOf(b.uploaded_at)} · {b.uploaded_by_name ?? "-"}
+                        </span>
                       </td>
                       <td className="min-w-[17rem] px-3 py-2">
                         <span className="flex flex-wrap items-center gap-2">
@@ -497,15 +498,6 @@ export default function FilesTable({
                       <td className="px-3 py-2 text-right tabular-nums text-(--dc-accent)">
                         {b.committed_rows}
                       </td>
-                      <td
-                        className="whitespace-nowrap px-3 py-2 text-xs text-gray-600"
-                        title={whenOf(b.uploaded_at)}
-                      >
-                        {dateOf(b.uploaded_at)}
-                      </td>
-                      <td className="max-w-[10rem] truncate px-3 py-2 text-xs text-gray-600">
-                        {b.uploaded_by_name ?? "-"}
-                      </td>
                       <td className="px-3 py-2">
                         <span className="flex items-center justify-end gap-2">
                           <RowAction
@@ -527,7 +519,7 @@ export default function FilesTable({
 
                     {open === b.id && (
                       <tr className="border-b border-gray-100 bg-(--dc-surface-muted)">
-                        <td colSpan={11} className="px-4 py-3">
+                        <td colSpan={9} className="px-4 py-3">
                           <FileDetail
                             batch={b}
                             busy={busy}
