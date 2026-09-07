@@ -70,7 +70,8 @@ export default function AssignDialog({ agent = null, agents = [], initialOrgId =
           if (!alive) return;
           setPreview(d);
           setShowAll(false);
-          if (d.agent?.over_capacity) setNeedsReason(true);
+          // Both ways: switching to an agent with room takes the reason box away.
+          setNeedsReason(Boolean(d.agent?.over_capacity));
         })
         .catch((err) => alive && setError(err instanceof DataCenterError ? err.message : "Could not preview that hand-out."))
         .finally(() => alive && setPreviewBusy(false));
