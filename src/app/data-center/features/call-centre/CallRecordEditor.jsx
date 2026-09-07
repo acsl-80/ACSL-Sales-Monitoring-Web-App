@@ -1,10 +1,11 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { SearchableSelect } from "@/components/ui/searchable-select";
 import AgentBrief from "./AgentBrief";
 import SerialRematch from "./SerialRematch";
 import SendBackPanel from "./SendBackPanel";
 import CopyField from "./control/CopyField";
 import Link from "@/compat/Link";
+import CallLog from "./CallLog";
+import SaveFooter from "./SaveFooter";
 import { dataCenterWrite, DataCenterError } from "../../lib/client";
 import { OUTCOME_WORDS, OUTCOME_PILL } from "../../lib/outcome";
 import { dateOf, whenOf } from "../../lib/when";
@@ -18,7 +19,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import {
-  Loader2, Phone, AlertTriangle, Check, RotateCcw, PhoneCall, Save, PenLine,
+  Loader2, Phone, AlertTriangle, Check, RotateCcw, PenLine,
 } from "lucide-react";
 
 /**
@@ -86,10 +87,6 @@ export default function CallRecordEditor({ saleId, canEdit, onClose, onSaved, ne
   const [values, setValues] = useState({});
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
-  const [nextOutcome, setNextOutcome] = useState("");
-  const [nextNote, setNextNote] = useState("");
-  /** When the buyer asked to be rung again; only sent with a callback outcome. */
-  const [callbackAt, setCallbackAt] = useState("");
   /** After Save: what comes next for this agent, or "nothing left". */
   const [handoff, setHandoff] = useState(null);
   const [error, setError] = useState(null);
@@ -109,9 +106,6 @@ export default function CallRecordEditor({ saleId, canEdit, onClose, onSaved, ne
   const [draftBusy, setDraftBusy] = useState(false);
   useEffect(() => {
     setHandoff(null);
-    setCallbackAt("");
-    setNextOutcome("");
-    setNextNote("");
   }, [saleId]);
   /*
    * Whether this agent has typed anything since the record loaded.
@@ -306,13 +300,14 @@ export default function CallRecordEditor({ saleId, canEdit, onClose, onSaved, ne
     }
   };
 
-  const logAttempt = async (outcomeId, note) => {
+  /** Writes one attempt from the call log section; the callback time only travels with a callback outcome. */
+  const logAttempt = async ({ outcomeId, note, callbackAt }) => {
     setSaving(true);
     try {
       await dataCenterWrite.logAttempt(saleId, {
         outcomeId: outcomeId || null,
         note: note?.trim() || null,
-        callbackAt: callbackIsPicked && callbackAt ? new Date(callbackAt).toISOString() : null,
+        callbackAt: callbackAt ? new Date(callbackAt).toISOString() : null,
       });
       await load();
       setNotice("Call logged.");
@@ -325,33 +320,6 @@ export default function CallRecordEditor({ saleId, canEdit, onClose, onSaved, ne
     }
   };
 
-  const callOutcomes = schema?.options?.call_outcome ?? [];
-
-  /**
-   * "Something else" is the outcome that has to be typed out.
-   *
-   * The nine seeded outcomes came from a closed list, and the July data shows
-   * what an agent does when the call does not fit one: they invent a tenth and
-   * type it into a constrained column. RESPONDED, REPONDED and NO PHONE NUMBER
-   * all arrived that way. Giving them one place to say what happened is what
-   * stops the next three inventions, so when this outcome is picked the note
-   * stops being optional.
-   */
-  const otherIsPicked =
-    callOutcomes.find((o) => o.id === nextOutcome)?.value === "other";
-  // An attempt needs an outcome; "something else" needs the words as well.
-  const callbackIsPicked =
-    callOutcomes.find((o) => o.id === nextOutcome)?.value === "callback_requested";
-  const canLog = Boolean(nextOutcome) && (!otherIsPicked || nextNote.trim().length > 0);
-  /** Quick times for a callback, in the browser's local clock. */
-  const quickCallback = (kind) => {
-    const d = new Date();
-    if (kind === "hour") d.setHours(d.getHours() + 1, 0, 0, 0);
-    if (kind === "evening") { d.setHours(17, 0, 0, 0); if (d.getTime() < Date.now()) d.setDate(d.getDate() + 1); }
-    if (kind === "tomorrow") { d.setDate(d.getDate() + 1); d.setHours(9, 0, 0, 0); }
-    const pad = (n) => String(n).padStart(2, "0");
-    setCallbackAt(`${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`);
-  };
   // Every active reason, offered as chips by the send-back panel; the panel
   // holds the choice itself so nothing about a send-back travels in the draft.
   const correctionReasons = schema?.options?.correction_reason ?? [];
@@ -584,110 +552,16 @@ export default function CallRecordEditor({ saleId, canEdit, onClose, onSaved, ne
               </div>
             </div>
 
-            {/* Attempts. Rows, so a fourth call is a click and not a migration. */}
-            <div>
-              <div className="mb-2 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-                <h3 className="text-xs font-semibold uppercase tracking-wide text-gray-500">
-                  Calls ({attempts.length})
-                </h3>
-                {canEdit && (
-                  <div className="flex items-center gap-2">
-                    {/* State, not the DOM. This read the select back through
-                        getElementById, which worked only while exactly one
-                        editor existed on the page. */}
-                    <label htmlFor="dc-next-outcome" className="sr-only">
-                      Outcome of this call
-                    </label>
-                    <div className="min-w-0 flex-1 sm:flex-none sm:min-w-[12rem]">
-                      <SearchableSelect
-                        id="dc-next-outcome"
-                        ariaLabel="Outcome of this call"
-                        value={nextOutcome}
-                        onChange={setNextOutcome}
-                        placeholder="Outcome..."
-                        searchPlaceholder="Type part of an outcome"
-                        emptyLabel="No outcome matches that"
-                        options={callOutcomes.map((o) => ({ value: o.id, label: o.label }))}
-                      />
-                    </div>
-                    <button
-                      type="button"
-                      disabled={saving || !canLog}
-                      onClick={async () => {
-                        // Cleared only once the attempt is on the record; a
-                        // refused attempt keeps what was typed.
-                        const ok = await logAttempt(nextOutcome, nextNote);
-                        if (ok) {
-                          setNextOutcome("");
-                          setNextNote("");
-                        }
-                      }}
-                      className="inline-flex shrink-0 items-center gap-1 whitespace-nowrap rounded-md bg-(--dc-accent) px-2.5 py-1.5 text-xs font-medium text-white transition hover:bg-(--dc-accent-strong) disabled:opacity-50"
-                    >
-                      <PhoneCall className="h-3 w-3" /> Log call
-                    </button>
-                  </div>
-                )}
-              </div>
-
-              {canEdit && callbackIsPicked && (
-                <div className="mb-3 flex flex-wrap items-center gap-2 rounded-lg border border-(--dc-brief-place) bg-(--dc-brief-place-soft)/40 p-3" data-callback-time>
-                  <label htmlFor="dc-callback-at" className="text-xs font-semibold uppercase tracking-wide text-(--dc-brief-place)">Call back at</label>
-                  <input
-                    id="dc-callback-at"
-                    type="datetime-local"
-                    value={callbackAt}
-                    onChange={(e) => setCallbackAt(e.target.value)}
-                    className="rounded-md border border-gray-300 px-2 py-1 text-sm focus:border-(--dc-accent) focus:outline-none"
-                  />
-                  {[["hour", "in 1 hour"], ["evening", "after 17:00"], ["tomorrow", "tomorrow 09:00"]].map(([k, label]) => (
-                    <button key={k} type="button" onClick={() => quickCallback(k)} className="rounded-full border border-(--dc-brief-place) bg-white px-2.5 py-0.5 text-xs font-semibold text-(--dc-brief-place)">
-                      {label}
-                    </button>
-                  ))}
-                  <span className="text-xs text-gray-600">Goes on the call, so your queue puts it first when the time comes.</span>
-                </div>
-              )}
-              {canEdit && otherIsPicked && (
-                <div className="mb-3 rounded-lg border border-(--dc-accent)/25 bg-(--dc-accent-soft)/30 p-3">
-                  <label
-                    htmlFor="dc-next-note"
-                    className="mb-1 block text-xs font-medium uppercase tracking-wide text-(--dc-accent-strong)"
-                  >
-                    What happened on this call?
-                  </label>
-                  <textarea
-                    id="dc-next-note"
-                    rows={2}
-                    value={nextNote}
-                    onChange={(e) => setNextNote(e.target.value)}
-                    placeholder="Say what the outcome was, since it is not one of the listed ones"
-                    className="w-full rounded-md border border-gray-300 px-3 py-1.5 text-sm focus:border-(--dc-accent) focus:outline-none"
-                  />
-                </div>
-              )}
-
-              {attempts.length === 0 ? (
-                <p className="text-sm text-gray-500">No calls logged yet.</p>
-              ) : (
-                <ul className="space-y-1">
-                  {attempts.map((a) => (
-                    <li key={a.id} className="flex items-baseline gap-2 text-sm text-gray-700">
-                      <span className="w-6 shrink-0 text-xs font-semibold text-gray-400">
-                        #{a.attempt_no}
-                      </span>
-                      <span className="shrink-0 text-xs text-gray-500">
-                        {whenOf(a.attempted_at)}
-                      </span>
-                      <span className="min-w-0 flex-1 truncate">{a.outcome ?? "no outcome recorded"}</span>
-                      {a.answered_by && (
-                        <span className="shrink-0 text-xs text-gray-500">{a.answered_by}</span>
-                      )}
-                    </li>
-                  ))}
-                </ul>
-              )}
-            </div>
+            {/* The calls, and the next one being logged: its own component,
+                keyed on the sale so a new record starts clean. */}
+            <CallLog
+              key={saleId}
+              attempts={attempts}
+              outcomes={schema?.options?.call_outcome ?? []}
+              canEdit={canEdit}
+              saving={saving}
+              onLog={logAttempt}
+            />
 
             {/* Corrections. Real columns, because reporting groups by them. */}
             <div>
@@ -756,79 +630,20 @@ export default function CallRecordEditor({ saleId, canEdit, onClose, onSaved, ne
           </div>
         )}
 
-        {/* Phase 26, C4: after Save, the way on. The next record in the agent's
-            own calling order, named; See all assigned; or Back to re-read. When
-            nothing is left it says so, and the manager hands out more. */}
-        {handoff && (
-          <div className="flex shrink-0 flex-wrap items-center gap-3 border-t border-(--dc-brief-who) bg-white px-5 py-3 shadow-[inset_0_0_0_3px_var(--dc-brief-who-soft)]" data-handoff role="status">
-            <p className="min-w-0 flex-1 text-sm text-gray-800">
-              <span className="font-semibold">Saved</span>{" · "}
-              {handoff.next
-                ? <>Next for you: <span className="font-medium">{handoff.next.label}</span>.{handoff.next.remaining > 0 ? ` ${handoff.next.remaining} more after that.` : ""}</>
-                : "That was the last record assigned to you. Your manager hands out more from the control centre."}
-            </p>
-            <div className="flex flex-wrap items-center gap-2">
-              <button type="button" onClick={() => setHandoff(null)} className="rounded-md border border-gray-300 px-3 py-1.5 text-sm font-medium text-gray-700 transition hover:bg-gray-50">Back</button>
-              <Link href={allHref} onClick={() => onClose?.()} className="rounded-md border border-(--dc-brief-stove) px-3 py-1.5 text-sm font-semibold text-(--dc-brief-stove) transition hover:bg-(--dc-brief-stove-soft)">See all assigned</Link>
-              {handoff.next && onNext && (
-                <button type="button" onClick={() => { const id = handoff.next.saleId; setHandoff(null); onNext(id); }} className="rounded-md bg-(image:--dc-fig-sold) px-4 py-1.5 text-sm font-semibold text-white shadow-sm transition hover:brightness-110">
-                  Next record
-                </button>
-              )}
-            </div>
-          </div>
-        )}
-        <div className="flex shrink-0 flex-wrap items-center justify-between gap-3 border-t border-gray-200 bg-(--dc-surface-muted) px-5 py-3">
-          <p className="flex items-center gap-1.5 text-xs text-gray-500">
-            {canEdit
-              ? "Every change is recorded against your name."
-              : "You have view access, so this record is read only."}
-            {/*
-              The autosave, said quietly.
-
-              An agent needs to know their typing is being kept, or they will
-              not trust the form enough to leave it half-finished - which is
-              the whole point. Quiet, because it must not compete for attention
-              during a live call.
-            */}
-            {canEdit && draftBusy && (
-              <span className="inline-flex items-center gap-1 text-gray-400">
-                <Loader2 className="h-3 w-3 animate-spin" /> keeping...
-              </span>
-            )}
-            {canEdit && !draftBusy && draftSavedAt && (
-              <span className="inline-flex items-center gap-1 text-amber-700">
-                <PenLine className="h-3 w-3" /> kept, not saved
-              </span>
-            )}
-          </p>
-          {canEdit && (
-            <div className="flex flex-wrap items-center gap-2">
-              {/*
-                Closing deliberately writes the draft now rather than in two
-                seconds' time, so "I will come back to this" and "the line just
-                dropped" both end the same way.
-              */}
-              <button
-                type="button"
-                disabled={saving || loading}
-                onClick={keepAndClose}
-                className="inline-flex items-center gap-1.5 rounded-md border border-gray-300 px-3 py-1.5 text-sm font-medium text-gray-700 transition hover:bg-gray-50 disabled:opacity-50"
-              >
-                <PenLine className="h-4 w-4" /> Finish later
-              </button>
-              <button
-                type="button"
-                disabled={saving || loading}
-                onClick={save}
-                className="inline-flex items-center gap-1.5 rounded-md bg-(--dc-accent) px-4 py-1.5 text-sm font-medium text-white transition hover:bg-(--dc-accent-strong) disabled:opacity-50"
-              >
-                {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
-                Save
-              </button>
-            </div>
-          )}
-        </div>
+        <SaveFooter
+          canEdit={canEdit}
+          saving={saving}
+          loading={loading}
+          draftBusy={draftBusy}
+          draftSavedAt={draftSavedAt}
+          handoff={handoff}
+          onBack={() => setHandoff(null)}
+          allHref={allHref}
+          onClose={onClose}
+          onNext={onNext ? (id) => { setHandoff(null); onNext(id); } : null}
+          onKeepAndClose={keepAndClose}
+          onSave={save}
+        />
       </DialogContent>
     </Dialog>
   );
