@@ -206,6 +206,18 @@ test("the pool by partner is paged, totalled, and knows who is on it", async ({ 
   expect(cursor).toBeNull();
   expect(new Set(seen).size).toBe(seen.length);
   expect(seen.length).toBe(oracle.partners);
+  // The oldest-sale sort pages by a date in the cursor (review finding, C2):
+  // the same walk, in that order, visits every partner once.
+  const byOldest: string[] = [];
+  let oc: string | null = null;
+  for (let guard = 0; guard < 200; guard++) {
+    const pg = data<PoolPage>(await assign(admin, { action: "pool_partners", sort: "oldest", limit: 2, cursor: oc }));
+    byOldest.push(...pg.rows.map((r) => r.organization_id));
+    oc = pg.nextCursor;
+    if (!oc) break;
+  }
+  expect(oc).toBeNull();
+  expect(new Set(byOldest).size).toBe(oracle.partners);
   const nobody = data<{ rows: { on_it: string[] }[]; total: number }>(
     await assign(admin, { action: "pool_partners", nobodyOn: true, limit: 50 }),
   );

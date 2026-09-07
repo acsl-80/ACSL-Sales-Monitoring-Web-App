@@ -83,7 +83,8 @@ const POOL_ROWS_SQL = `
     select r.organization_id, r.partner_name,
            count(*)::int as waiting,
            count(*) filter (where r.digitised_at >= now() - make_interval(days => cfg.recent_days))::int as new_recent,
-           min(r.sales_date) as oldest_sale
+           -- Text, not a date: a Date object in the cursor would print as prose.
+           min(r.sales_date)::text as oldest_sale
       from data_center.v_callable_records r, cfg
      group by r.organization_id, r.partner_name
   ),
@@ -282,7 +283,7 @@ export async function handleFeed(ctx: FeedContext): Promise<Response> {
           ? encodeCursor({
             w: Number(last.waiting),
             n: Number(last.new_recent),
-            o: last.oldest_sale == null ? null : String(last.oldest_sale).slice(0, 10),
+            o: last.oldest_sale == null ? null : String(last.oldest_sale),
             p: String(last.partner_name),
             id: String(last.organization_id),
           })
