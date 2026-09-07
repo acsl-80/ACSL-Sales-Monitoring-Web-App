@@ -96,7 +96,11 @@ test("the agent's page shows their day, their work and their calls, and hands ou
   await expect(page.locator(`[data-agent-page="${me.agent_id}"]`)).toContainText(me.full_name || me.email, { timeout: 30_000 });
   await expect(page.locator("[data-track]")).toBeVisible({ timeout: 30_000 });
 
-  // To call carries the record; Called carries the call just logged.
+  // To call carries the record (inside its batch, folded until opened);
+  // Called carries the call just logged.
+  const batchHeader = page.locator('[data-agent-page] button[aria-expanded="false"]').first();
+  await expect(batchHeader).toBeVisible({ timeout: 30_000 });
+  await batchHeader.click();
   await expect(page.getByText(item.stove_serial_no).first()).toBeVisible({ timeout: 30_000 });
   await page.getByRole("tab", { name: /^Called/ }).click();
   await expect(page).toHaveURL(/tab=called/);
