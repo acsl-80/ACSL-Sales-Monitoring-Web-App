@@ -108,12 +108,16 @@ function Bars({ byDay, days, max, weekly }) {
     : days.map((d) => byDay.get(d) ?? 0);
   const top = Math.max(1, max);
   return (
-    <span className="flex h-7 items-end gap-px" aria-hidden data-team-bars>
+    <span
+      className="flex h-7 w-full max-w-full items-end gap-px overflow-hidden"
+      aria-hidden
+      data-team-bars
+    >
       {buckets.map((n, i) => (
         <span
           key={i}
           title={weekly ? `week ${i + 1}: ${n}` : `${days[i]}: ${n}`}
-          className={`block w-1.5 rounded-t-[2px] ${n > 0 ? "bg-(image:--dc-fig-sold)" : "bg-gray-200"}`}
+          className={`block min-w-px max-w-1.5 flex-1 rounded-t-[2px] ${n > 0 ? "bg-(image:--dc-fig-sold)" : "bg-gray-200"}`}
           style={{ height: n > 0 ? `${Math.max(3, Math.round((n / top) * 28))}px` : "2px" }}
         />
       ))}
@@ -277,9 +281,9 @@ export default function DigitisationTeam() {
                 {p.needs_person > 0 ? ` · ${fmt(p.needs_person)} need a look` : ""}
                 {p.drafting > 0 ? ` · ${fmt(p.drafting)} still drafting` : ""}
               </p>
-              <div className="mt-2 flex items-center justify-between gap-3">
+              <div className="mt-2 space-y-1">
                 <Bars byDay={p.byDay} days={days} max={maxDay} weekly={weekly} />
-                <span className="text-xs text-gray-500">
+                <span className="block text-xs text-gray-500">
                   {plural(p.active_days, "day", "days")} · last {p.last_active}
                 </span>
               </div>
@@ -336,7 +340,7 @@ export default function DigitisationTeam() {
                   <td className="sticky left-0 z-10 bg-white px-3 py-2 font-medium text-gray-900 group-hover:bg-(--dc-accent-soft)/40">
                     {p.name}
                   </td>
-                  <td className="px-3 py-2">
+                  <td className="min-w-[12rem] px-3 py-2">
                     <Bars byDay={p.byDay} days={days} max={maxDay} weekly={weekly} />
                   </td>
                   <td className="px-3 py-2 text-right tabular-nums text-gray-700">
