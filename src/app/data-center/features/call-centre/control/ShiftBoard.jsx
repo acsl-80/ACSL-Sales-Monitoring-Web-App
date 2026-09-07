@@ -1,4 +1,5 @@
 import { Fragment, useMemo, useState } from "react";
+import Link from "@/compat/Link";
 import {
   ChevronDown, ChevronRight, Loader2, Pause, Play, RotateCcw, UserPlus,
 } from "lucide-react";
@@ -272,7 +273,7 @@ export default function ShiftBoard({ board, agentsMeta, canManage, reload, dayLa
                 ? { text: "Resume", cls: "border-(--dc-brief-who) text-(--dc-brief-who) hover:bg-(--dc-brief-who-soft)", onClick: () => togglePause(agent), icon: Play }
                 : agent.to_call === 0
                 ? { text: "Hand out", cls: "bg-(--dc-fig-sold) text-white border-transparent hover:brightness-110", onClick: () => setAssigning(agent), icon: UserPlus }
-                : { text: expanded === agent.agent_id ? "Close" : "Open", cls: "border-(--dc-brief-stove) text-(--dc-brief-stove) hover:bg-(--dc-brief-stove-soft)", onClick: () => setExpanded(expanded === agent.agent_id ? null : agent.agent_id), icon: null };
+                : { text: "Open", cls: "border-(--dc-brief-stove) text-(--dc-brief-stove) hover:bg-(--dc-brief-stove-soft)", href: `/data-center/call-centre/agents/${agent.agent_id}`, icon: null };
               return (
                 <Fragment key={agent.agent_id}>
                   <tr className={agent.is_enabled ? "" : "bg-gray-50 text-gray-500"} data-agent-row={agent.agent_id}>
@@ -347,22 +348,32 @@ export default function ShiftBoard({ board, agentsMeta, canManage, reload, dayLa
                             <Pause className="h-3.5 w-3.5" /> Pause
                           </button>
                         )}
-                        <button
-                          type="button"
-                          onClick={primary.onClick}
-                          aria-label={`${primary.text} ${agent.full_name || agent.email}`}
-                          className={`inline-flex items-center gap-1 whitespace-nowrap rounded-md border px-2.5 py-1 text-xs font-semibold transition ${primary.cls}`}
-                        >
-                          {primary.icon ? <primary.icon className="h-3.5 w-3.5" /> : null}
-                          {primary.text}
-                        </button>
+                        {primary.href ? (
+                          <Link
+                            href={primary.href}
+                            aria-label={`${primary.text} ${agent.full_name || agent.email}`}
+                            className={`inline-flex items-center gap-1 whitespace-nowrap rounded-md border px-2.5 py-1 text-xs font-semibold transition ${primary.cls}`}
+                          >
+                            {primary.text}
+                          </Link>
+                        ) : (
+                          <button
+                            type="button"
+                            onClick={primary.onClick}
+                            aria-label={`${primary.text} ${agent.full_name || agent.email}`}
+                            className={`inline-flex items-center gap-1 whitespace-nowrap rounded-md border px-2.5 py-1 text-xs font-semibold transition ${primary.cls}`}
+                          >
+                            {primary.icon ? <primary.icon className="h-3.5 w-3.5" /> : null}
+                            {primary.text}
+                          </button>
+                        )}
                       </td>
                     )}
                   </tr>
                   {expanded === agent.agent_id && (
                     <tr>
                       <td colSpan={canManage ? 9 : 8} className="bg-(--dc-surface-muted) p-0">
-                        <AgentDetail agent={{ ...agent, records_held: agent.to_call }} onChanged={reload} onOpenRecord={setOpenSale} />
+                        <AgentDetail agent={{ ...agent, records_held: agent.to_call }} agents={agentsMeta?.agents ?? []} onChanged={reload} onOpenRecord={setOpenSale} />
                       </td>
                     </tr>
                   )}

@@ -78,6 +78,8 @@ import { Route as AdminAgreementImagesIndexRouteImport } from './routes/admin/ag
 import { Route as AdminAgentsIndexRouteImport } from './routes/admin/agents/index'
 import { Route as DataCenterStoveStoveIdRouteImport } from './routes/data-center/stove.$stoveId'
 import { Route as DataCenterCorrectionsSaleIdRouteImport } from './routes/data-center/corrections_.$saleId'
+import { Route as DataCenterCallCentreSharedPhonesRouteImport } from './routes/data-center/call-centre_.shared-phones'
+import { Route as DataCenterCallCentreRecordsRouteImport } from './routes/data-center/call-centre_.records'
 import { Route as DataCenterCallCentrePartnersRouteImport } from './routes/data-center/call-centre_.partners'
 import { Route as DataCenterCallCentreActivityRouteImport } from './routes/data-center/call-centre_.activity'
 import { Route as SuperAdminAgentSalesCreateIndexRouteImport } from './routes/super-admin-agent/sales/create/index'
@@ -85,6 +87,7 @@ import { Route as DocsSuperadminSalesIndexRouteImport } from './routes/docs/supe
 import { Route as DocsAdminSalesIndexRouteImport } from './routes/docs/admin/sales/index'
 import { Route as AdminSalesFinancialReportsIndexRouteImport } from './routes/admin/sales/financial-reports/index'
 import { Route as AdminSalesCreateIndexRouteImport } from './routes/admin/sales/create/index'
+import { Route as DataCenterCallCentreAgentsAgentIdRouteImport } from './routes/data-center/call-centre_.agents.$agentId'
 
 const IndexRoute = IndexRouteImport.update({
   id: '/',
@@ -448,6 +451,18 @@ const DataCenterCorrectionsSaleIdRoute =
     path: '/data-center/corrections/$saleId',
     getParentRoute: () => rootRouteImport,
   } as any)
+const DataCenterCallCentreSharedPhonesRoute =
+  DataCenterCallCentreSharedPhonesRouteImport.update({
+    id: '/data-center/call-centre_/shared-phones',
+    path: '/data-center/call-centre/shared-phones',
+    getParentRoute: () => rootRouteImport,
+  } as any)
+const DataCenterCallCentreRecordsRoute =
+  DataCenterCallCentreRecordsRouteImport.update({
+    id: '/data-center/call-centre_/records',
+    path: '/data-center/call-centre/records',
+    getParentRoute: () => rootRouteImport,
+  } as any)
 const DataCenterCallCentrePartnersRoute =
   DataCenterCallCentrePartnersRouteImport.update({
     id: '/data-center/call-centre_/partners',
@@ -488,6 +503,12 @@ const AdminSalesCreateIndexRoute = AdminSalesCreateIndexRouteImport.update({
   path: '/admin/sales/create/',
   getParentRoute: () => rootRouteImport,
 } as any)
+const DataCenterCallCentreAgentsAgentIdRoute =
+  DataCenterCallCentreAgentsAgentIdRouteImport.update({
+    id: '/data-center/call-centre_/agents/$agentId',
+    path: '/data-center/call-centre/agents/$agentId',
+    getParentRoute: () => rootRouteImport,
+  } as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
@@ -532,6 +553,8 @@ export interface FileRoutesByFullPath {
   '/user-management/': typeof UserManagementIndexRoute
   '/data-center/call-centre/activity': typeof DataCenterCallCentreActivityRoute
   '/data-center/call-centre/partners': typeof DataCenterCallCentrePartnersRoute
+  '/data-center/call-centre/records': typeof DataCenterCallCentreRecordsRoute
+  '/data-center/call-centre/shared-phones': typeof DataCenterCallCentreSharedPhonesRoute
   '/data-center/corrections/$saleId': typeof DataCenterCorrectionsSaleIdRoute
   '/data-center/stove/$stoveId': typeof DataCenterStoveStoveIdRoute
   '/admin/agents/': typeof AdminAgentsIndexRoute
@@ -561,6 +584,7 @@ export interface FileRoutesByFullPath {
   '/super-admin-agent/stove-ids/': typeof SuperAdminAgentStoveIdsIndexRoute
   '/user-management/user-groups/': typeof UserManagementUserGroupsIndexRoute
   '/user-management/users/': typeof UserManagementUsersIndexRoute
+  '/data-center/call-centre/agents/$agentId': typeof DataCenterCallCentreAgentsAgentIdRoute
   '/admin/sales/create/': typeof AdminSalesCreateIndexRoute
   '/admin/sales/financial-reports/': typeof AdminSalesFinancialReportsIndexRoute
   '/docs/admin/sales/': typeof DocsAdminSalesIndexRoute
@@ -610,6 +634,8 @@ export interface FileRoutesByTo {
   '/user-management': typeof UserManagementIndexRoute
   '/data-center/call-centre/activity': typeof DataCenterCallCentreActivityRoute
   '/data-center/call-centre/partners': typeof DataCenterCallCentrePartnersRoute
+  '/data-center/call-centre/records': typeof DataCenterCallCentreRecordsRoute
+  '/data-center/call-centre/shared-phones': typeof DataCenterCallCentreSharedPhonesRoute
   '/data-center/corrections/$saleId': typeof DataCenterCorrectionsSaleIdRoute
   '/data-center/stove/$stoveId': typeof DataCenterStoveStoveIdRoute
   '/admin/agents': typeof AdminAgentsIndexRoute
@@ -639,6 +665,7 @@ export interface FileRoutesByTo {
   '/super-admin-agent/stove-ids': typeof SuperAdminAgentStoveIdsIndexRoute
   '/user-management/user-groups': typeof UserManagementUserGroupsIndexRoute
   '/user-management/users': typeof UserManagementUsersIndexRoute
+  '/data-center/call-centre/agents/$agentId': typeof DataCenterCallCentreAgentsAgentIdRoute
   '/admin/sales/create': typeof AdminSalesCreateIndexRoute
   '/admin/sales/financial-reports': typeof AdminSalesFinancialReportsIndexRoute
   '/docs/admin/sales': typeof DocsAdminSalesIndexRoute
@@ -689,6 +716,8 @@ export interface FileRoutesById {
   '/user-management/': typeof UserManagementIndexRoute
   '/data-center/call-centre_/activity': typeof DataCenterCallCentreActivityRoute
   '/data-center/call-centre_/partners': typeof DataCenterCallCentrePartnersRoute
+  '/data-center/call-centre_/records': typeof DataCenterCallCentreRecordsRoute
+  '/data-center/call-centre_/shared-phones': typeof DataCenterCallCentreSharedPhonesRoute
   '/data-center/corrections_/$saleId': typeof DataCenterCorrectionsSaleIdRoute
   '/data-center/stove/$stoveId': typeof DataCenterStoveStoveIdRoute
   '/admin/agents/': typeof AdminAgentsIndexRoute
@@ -718,6 +747,7 @@ export interface FileRoutesById {
   '/super-admin-agent/stove-ids/': typeof SuperAdminAgentStoveIdsIndexRoute
   '/user-management/user-groups/': typeof UserManagementUserGroupsIndexRoute
   '/user-management/users/': typeof UserManagementUsersIndexRoute
+  '/data-center/call-centre_/agents/$agentId': typeof DataCenterCallCentreAgentsAgentIdRoute
   '/admin/sales/create/': typeof AdminSalesCreateIndexRoute
   '/admin/sales/financial-reports/': typeof AdminSalesFinancialReportsIndexRoute
   '/docs/admin/sales/': typeof DocsAdminSalesIndexRoute
@@ -769,6 +799,8 @@ export interface FileRouteTypes {
     | '/user-management/'
     | '/data-center/call-centre/activity'
     | '/data-center/call-centre/partners'
+    | '/data-center/call-centre/records'
+    | '/data-center/call-centre/shared-phones'
     | '/data-center/corrections/$saleId'
     | '/data-center/stove/$stoveId'
     | '/admin/agents/'
@@ -798,6 +830,7 @@ export interface FileRouteTypes {
     | '/super-admin-agent/stove-ids/'
     | '/user-management/user-groups/'
     | '/user-management/users/'
+    | '/data-center/call-centre/agents/$agentId'
     | '/admin/sales/create/'
     | '/admin/sales/financial-reports/'
     | '/docs/admin/sales/'
@@ -847,6 +880,8 @@ export interface FileRouteTypes {
     | '/user-management'
     | '/data-center/call-centre/activity'
     | '/data-center/call-centre/partners'
+    | '/data-center/call-centre/records'
+    | '/data-center/call-centre/shared-phones'
     | '/data-center/corrections/$saleId'
     | '/data-center/stove/$stoveId'
     | '/admin/agents'
@@ -876,6 +911,7 @@ export interface FileRouteTypes {
     | '/super-admin-agent/stove-ids'
     | '/user-management/user-groups'
     | '/user-management/users'
+    | '/data-center/call-centre/agents/$agentId'
     | '/admin/sales/create'
     | '/admin/sales/financial-reports'
     | '/docs/admin/sales'
@@ -925,6 +961,8 @@ export interface FileRouteTypes {
     | '/user-management/'
     | '/data-center/call-centre_/activity'
     | '/data-center/call-centre_/partners'
+    | '/data-center/call-centre_/records'
+    | '/data-center/call-centre_/shared-phones'
     | '/data-center/corrections_/$saleId'
     | '/data-center/stove/$stoveId'
     | '/admin/agents/'
@@ -954,6 +992,7 @@ export interface FileRouteTypes {
     | '/super-admin-agent/stove-ids/'
     | '/user-management/user-groups/'
     | '/user-management/users/'
+    | '/data-center/call-centre_/agents/$agentId'
     | '/admin/sales/create/'
     | '/admin/sales/financial-reports/'
     | '/docs/admin/sales/'
@@ -1004,6 +1043,8 @@ export interface RootRouteChildren {
   UserManagementIndexRoute: typeof UserManagementIndexRoute
   DataCenterCallCentreActivityRoute: typeof DataCenterCallCentreActivityRoute
   DataCenterCallCentrePartnersRoute: typeof DataCenterCallCentrePartnersRoute
+  DataCenterCallCentreRecordsRoute: typeof DataCenterCallCentreRecordsRoute
+  DataCenterCallCentreSharedPhonesRoute: typeof DataCenterCallCentreSharedPhonesRoute
   DataCenterCorrectionsSaleIdRoute: typeof DataCenterCorrectionsSaleIdRoute
   DataCenterStoveStoveIdRoute: typeof DataCenterStoveStoveIdRoute
   AdminAgentsIndexRoute: typeof AdminAgentsIndexRoute
@@ -1033,6 +1074,7 @@ export interface RootRouteChildren {
   SuperAdminAgentStoveIdsIndexRoute: typeof SuperAdminAgentStoveIdsIndexRoute
   UserManagementUserGroupsIndexRoute: typeof UserManagementUserGroupsIndexRoute
   UserManagementUsersIndexRoute: typeof UserManagementUsersIndexRoute
+  DataCenterCallCentreAgentsAgentIdRoute: typeof DataCenterCallCentreAgentsAgentIdRoute
   AdminSalesCreateIndexRoute: typeof AdminSalesCreateIndexRoute
   AdminSalesFinancialReportsIndexRoute: typeof AdminSalesFinancialReportsIndexRoute
   DocsAdminSalesIndexRoute: typeof DocsAdminSalesIndexRoute
@@ -1525,6 +1567,20 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof DataCenterCorrectionsSaleIdRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/data-center/call-centre_/shared-phones': {
+      id: '/data-center/call-centre_/shared-phones'
+      path: '/data-center/call-centre/shared-phones'
+      fullPath: '/data-center/call-centre/shared-phones'
+      preLoaderRoute: typeof DataCenterCallCentreSharedPhonesRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/data-center/call-centre_/records': {
+      id: '/data-center/call-centre_/records'
+      path: '/data-center/call-centre/records'
+      fullPath: '/data-center/call-centre/records'
+      preLoaderRoute: typeof DataCenterCallCentreRecordsRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/data-center/call-centre_/partners': {
       id: '/data-center/call-centre_/partners'
       path: '/data-center/call-centre/partners'
@@ -1574,6 +1630,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AdminSalesCreateIndexRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/data-center/call-centre_/agents/$agentId': {
+      id: '/data-center/call-centre_/agents/$agentId'
+      path: '/data-center/call-centre/agents/$agentId'
+      fullPath: '/data-center/call-centre/agents/$agentId'
+      preLoaderRoute: typeof DataCenterCallCentreAgentsAgentIdRouteImport
+      parentRoute: typeof rootRouteImport
+    }
   }
 }
 
@@ -1620,6 +1683,8 @@ const rootRouteChildren: RootRouteChildren = {
   UserManagementIndexRoute: UserManagementIndexRoute,
   DataCenterCallCentreActivityRoute: DataCenterCallCentreActivityRoute,
   DataCenterCallCentrePartnersRoute: DataCenterCallCentrePartnersRoute,
+  DataCenterCallCentreRecordsRoute: DataCenterCallCentreRecordsRoute,
+  DataCenterCallCentreSharedPhonesRoute: DataCenterCallCentreSharedPhonesRoute,
   DataCenterCorrectionsSaleIdRoute: DataCenterCorrectionsSaleIdRoute,
   DataCenterStoveStoveIdRoute: DataCenterStoveStoveIdRoute,
   AdminAgentsIndexRoute: AdminAgentsIndexRoute,
@@ -1649,6 +1714,8 @@ const rootRouteChildren: RootRouteChildren = {
   SuperAdminAgentStoveIdsIndexRoute: SuperAdminAgentStoveIdsIndexRoute,
   UserManagementUserGroupsIndexRoute: UserManagementUserGroupsIndexRoute,
   UserManagementUsersIndexRoute: UserManagementUsersIndexRoute,
+  DataCenterCallCentreAgentsAgentIdRoute:
+    DataCenterCallCentreAgentsAgentIdRoute,
   AdminSalesCreateIndexRoute: AdminSalesCreateIndexRoute,
   AdminSalesFinancialReportsIndexRoute: AdminSalesFinancialReportsIndexRoute,
   DocsAdminSalesIndexRoute: DocsAdminSalesIndexRoute,

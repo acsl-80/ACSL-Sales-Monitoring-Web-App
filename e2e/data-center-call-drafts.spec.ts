@@ -216,7 +216,7 @@ test.describe("the editor restores it", () => {
       values: { ward: "Restored on open", landmark: "e2e" },
     });
 
-    await page.goto("/data-center/call-centre");
+    await page.goto("/data-center/call-centre/records");
     await expect(page.getByRole("heading", { name: "Call Centre" })).toBeVisible({
       timeout: 30_000,
     });

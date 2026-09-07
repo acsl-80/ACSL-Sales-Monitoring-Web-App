@@ -1,9 +1,7 @@
-import { useMemo } from "react";
-import { useNavigate, useSearch } from "@tanstack/react-router";
+import { useSearch } from "@tanstack/react-router";
 import DataCentreShell from "../components/DataCentreShell";
-import CallQueue from "../features/call-centre/CallQueue";
+import Link from "@/compat/Link";
 import MyWork from "../features/call-centre/MyWork";
-import SharedPhones from "../features/call-centre/SharedPhones";
 import DayChips from "../features/call-centre/control/DayChips";
 import Figures from "../features/call-centre/control/Figures";
 import ShiftBoard from "../features/call-centre/control/ShiftBoard";
@@ -14,28 +12,7 @@ import { useControlCentre } from "../features/call-centre/control/useControlCent
 import { useAgentsMeta } from "../features/call-centre/control/useAgentsMeta";
 import { useFeature } from "../lib/access";
 import { DATA_CENTER_FEATURES } from "../lib/features";
-import { wordsFor } from "../lib/outcome";
 import { callCentreLayout } from "../lib/callCentreLayout";
-
-/** The queue's own presets, named so a drill banner can say which one it took. */
-const PRESET_LABELS = {
-  todo: "never called",
-  unresolved: "yet to be resolved",
-  exhausted: "chased three times and still not verified",
-  correction: "waiting on Sales",
-  review: "fixed by Sales, awaiting review",
-  recall_due: "due a call again after a fix",
-  completed: "finished by the call centre",
-  unconfirmed: "a serial number another caller took",
-};
-
-/** The scorecard columns, said the way the dashboard says them. */
-const STATUS_LABELS = {
-  verified: "verified",
-  unverified: "partly verified",
-  unreachable: "unreachable",
-  unresolved: "yet to be resolved",
-};
 
 function dayWords(board) {
   if (!board) return "today";
@@ -51,47 +28,6 @@ function dayWords(board) {
 function Inner() {
   const { can } = useFeature();
   const search = useSearch({ from: "/data-center/call-centre" });
-  const navigate = useNavigate();
-
-  // A drill-through arrives as URL params, gets translated to server filters
-  // here, and is cleared by navigating to the bare URL. Nothing is held in
-  // state, which is what lets back restore the dashboard and lets a filtered
-  // queue be sent to someone as a link.
-  const drill = useMemo(() => {
-    const filters = {};
-    for (const key of [
-      "organizationId", "partnerState", "transferSalesRep", "assignedAgent", "agentManager",
-    ]) {
-      if (search[key]) filters[key] = search[key];
-    }
-    if (search.status && STATUS_LABELS[search.status]) {
-      filters.outcomeGroup = search.status;
-    }
-    if (search.verificationOutcome) {
-      filters.verificationOutcome = search.verificationOutcome;
-    }
-    const preset = PRESET_LABELS[search.preset] ? search.preset : null;
-    if (Object.keys(filters).length === 0 && !preset) return null;
-    const subject = search.label
-      ?? (preset ? PRESET_LABELS[preset] : null)
-      ?? (search.verificationOutcome ? wordsFor(search.verificationOutcome) : "the filters set on the queue");
-    return {
-      preset,
-      filters,
-      description: filters.outcomeGroup ? `${subject}: ${STATUS_LABELS[search.status]}` : subject,
-      // Everything that narrows goes; the periods and the board's day are how
-      // far back the reader is looking, not a narrowing, and stay.
-      clear: () =>
-        navigate({
-          to: "/data-center/call-centre",
-          search: (prev) => ({
-            ...(prev.period ? { period: prev.period } : {}),
-            ...(prev.day ? { day: prev.day } : {}),
-            ...(prev.range ? { range: prev.range } : {}),
-          }),
-        }),
-    };
-  }, [search, navigate]);
 
   /**
    * Who meets what first. An ordering, not a permission: the server decides
@@ -132,18 +68,19 @@ function Inner() {
         </>
       )}
 
-      {/* The queue and the register stay here until the Records page (C3)
-          takes them; the drill-through contract from the dashboard lands on
-          the queue and must keep working meanwhile. */}
-      <CallQueue key={drill?.preset ?? "all"} canEdit={canEdit} drill={drill} agents={canManage ? agentsMeta?.agents ?? null : null} />
+      {/* The queue lives on the Records page (C3); a narrowing arriving here
+          is sent on by the route. Whoever has no control centre gets the door
+          to the records here, and a manager gets it at the end. */}
+      <Link
+        href="/data-center/call-centre/records"
+        className="inline-flex items-center gap-1 rounded-md border border-(--dc-brief-stove) px-3 py-1.5 text-xs font-semibold text-(--dc-brief-stove) transition hover:bg-(--dc-brief-stove-soft)"
+        data-records-door
+      >
+        All call centre records
+      </Link>
 
       {canEdit && !agentFirst && <MyWork canEdit={canEdit} hideWhenEmpty />}
 
-      {can(DATA_CENTER_FEATURES.RECORDS_VIEW) && (
-        <div id="shared-phones">
-          <SharedPhones />
-        </div>
-      )}
     </div>
   );
 }

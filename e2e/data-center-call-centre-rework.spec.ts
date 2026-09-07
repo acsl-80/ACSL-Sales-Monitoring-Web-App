@@ -23,7 +23,7 @@ async function anySale(page: Page): Promise<{ saleId: string; serial: string }> 
 test.describe("the brief an agent reads while the phone rings", () => {
   test("the card carries the whole record, not four fields", async ({ page }) => {
     await signIn(page, USERS.admin);
-    await page.goto("/data-center/call-centre");
+    await page.goto("/data-center/call-centre/records");
     await expect(page.getByRole("heading", { name: "Call Centre" })).toBeVisible({
       timeout: 30_000,
     });
@@ -93,7 +93,7 @@ test.describe("the brief an agent reads while the phone rings", () => {
 test.describe("finished work has somewhere to live", () => {
   test("Completed and Serial number unconfirmed are presets on the queue", async ({ page }) => {
     await signIn(page, USERS.admin);
-    await page.goto("/data-center/call-centre");
+    await page.goto("/data-center/call-centre/records");
     await expect(page.getByRole("heading", { name: "Call Centre" })).toBeVisible({
       timeout: 30_000,
     });
@@ -176,7 +176,7 @@ test.describe("the activity page is worked, not just read", () => {
 test.describe("one number, several stoves", () => {
   test("the register is on the page and says what it is for", async ({ page }) => {
     await signIn(page, USERS.admin);
-    await page.goto("/data-center/call-centre");
+    await page.goto("/data-center/call-centre/shared-phones");
     await expect(
       page.getByRole("heading", { name: "Numbers with more than one stove" }),
     ).toBeVisible({ timeout: 30_000 });

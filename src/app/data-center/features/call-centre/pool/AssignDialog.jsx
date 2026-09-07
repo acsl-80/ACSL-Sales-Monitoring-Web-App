@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { dataCenterAssign, DataCenterError } from "../../../lib/client";
 import { plural } from "../../../lib/plural";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
@@ -46,6 +46,41 @@ export default function AssignDialog({ agent = null, agents = [], initialOrgId =
 
   const partner = pool.find((p) => p.organization_id === orgId);
   const cap = partner ? Math.min(Number(size) || 0, partner.callable) : Number(size) || 0;
+  /**
+   * The preview (Phase 26, C3): the rows the picker would hand out, read live
+   * through the same picker the engine uses, so what is shown is what lands.
+   * Debounced, because the size box is typed into; superseded answers are
+   * dropped by sequence so a slow earlier read never overwrites a later one.
+   */
+  const [preview, setPreview] = useState(null);
+  const [previewBusy, setPreviewBusy] = useState(false);
+  const [showAll, setShowAll] = useState(false);
+  useEffect(() => {
+    if (!agentId || !orgId || cap < 1) {
+      setPreview(null);
+      return undefined;
+    }
+    let alive = true;
+    setPreviewBusy(true);
+    const order = orderTouched && orderFirst ? [orderFirst, ...defaultOrder.filter((tk) => tk !== orderFirst)] : null;
+    const timer = setTimeout(() => {
+      dataCenterAssign
+        .assignPreview({ agentId, organizationId: orgId, size: cap, order })
+        .then((d) => {
+          if (!alive) return;
+          setPreview(d);
+          setShowAll(false);
+          if (d.agent?.over_capacity) setNeedsReason(true);
+        })
+        .catch((err) => alive && setError(err instanceof DataCenterError ? err.message : "Could not preview that hand-out."))
+        .finally(() => alive && setPreviewBusy(false));
+    }, 250);
+    return () => {
+      alive = false;
+      clearTimeout(timer);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [agentId, orgId, cap, orderFirst, orderTouched]);
 
   const assign = async () => {
     setBusy(true);
@@ -219,14 +254,16 @@ export default function AssignDialog({ agent = null, agents = [], initialOrgId =
                     </select>
                   </div>
                 )}
-                <p className="pb-2 text-sm text-gray-600">
-                  {partner
-                    ? `${plural(cap, "record")} from ${partner.partner_name}`
-                    : "Pick a partner above"}
+                <p className="pb-2 text-sm text-gray-600" data-preview-summary>
+                  {!partner
+                    ? "Pick a partner above"
+                    : preview
+                    ? `${plural(preview.size, "record")} from ${partner.partner_name}, leaving ${preview.waitingAfter} waiting`
+                    : `${plural(cap, "record")} from ${partner.partner_name}`}
                 </p>
                 <button
                   type="button"
-                  disabled={busy || !orgId || !agentId || cap < 1}
+                  disabled={busy || !orgId || !agentId || cap < 1 || (preview != null && preview.size === 0)}
                   onClick={assign}
                   className="ml-auto inline-flex items-center gap-1.5 rounded-md bg-(--dc-accent) px-4 py-2 text-sm font-medium text-white transition hover:bg-(--dc-accent-strong) disabled:opacity-40"
                 >
@@ -235,9 +272,80 @@ export default function AssignDialog({ agent = null, agents = [], initialOrgId =
                   ) : (
                     <UserPlus className="h-4 w-4" />
                   )}
-                  Assign
+                  {preview && preview.size > 0 && chosenAgent
+                    ? `${needsReason ? "Hand out anyway" : "Hand out"} ${preview.size} to ${chosenAgent.full_name || chosenAgent.email}`
+                    : "Assign"}
                 </button>
               </div>
+              {/* What will land, before it does. The first five rows, the rest
+                  on request; nothing here is written until the button above. */}
+              {partner && agentId && (
+                <section className="mt-4 rounded-lg border border-gray-200" data-assign-preview aria-live="polite">
+                  <header className="flex flex-wrap items-center gap-2 border-b border-gray-100 bg-(--dc-accent-soft)/40 px-3 py-2 text-sm">
+                    <span className="font-semibold text-gray-900">
+                      {previewBusy && !preview
+                        ? "Reading what would be handed out..."
+                        : preview
+                        ? preview.size > 0
+                          ? `These ${plural(preview.size, "record")} will be handed out`
+                          : "Nothing to hand out"
+                        : ""}
+                    </span>
+                    {preview && (
+                      <span className="text-xs text-gray-600">
+                        {preview.recentCount > 0 ? `${preview.recentCount} digitised in the last ${plural(preview.recentDays, "day")} · ` : ""}
+                        {chosenAgent ? `${chosenAgent.full_name || chosenAgent.email} holds ${preview.agent.open_batches} of ${preview.agent.cap} ${preview.agent.cap === 1 ? "batch" : "batches"}` : ""}
+                        {preview.agent?.over_capacity ? " · over capacity, a reason is needed" : ""}
+                      </span>
+                    )}
+                    {previewBusy && preview && <Loader2 className="ml-auto h-3.5 w-3.5 animate-spin text-gray-500" />}
+                  </header>
+                  {preview && preview.size === 0 && (
+                    <p className="px-3 py-3 text-sm text-gray-600">
+                      Nothing waiting at {partner.partner_name} right now: every record is concluded, with Sales, half-typed or already in someone&apos;s hands.
+                    </p>
+                  )}
+                  {preview && preview.size > 0 && (
+                    <>
+                      <table className="w-full text-sm">
+                        <thead>
+                          <tr className="bg-(--dc-accent-soft) text-left text-xs uppercase tracking-wide text-(--dc-accent-strong)">
+                            <th className="px-3 py-1.5 font-semibold">#</th>
+                            <th className="px-3 py-1.5 font-semibold">Buyer</th>
+                            <th className="px-3 py-1.5 font-semibold">Stove</th>
+                            <th className="px-3 py-1.5 font-semibold">Phone</th>
+                            <th className="px-3 py-1.5 font-semibold">Sold</th>
+                            <th className="px-3 py-1.5 text-right font-semibold">Tries</th>
+                          </tr>
+                        </thead>
+                        <tbody className="divide-y divide-gray-100">
+                          {(showAll ? preview.rows : preview.rows.slice(0, 5)).map((r) => (
+                            <tr key={r.sale_id}>
+                              <td className="px-3 py-1.5 tabular-nums text-gray-500">{r.pos}</td>
+                              <td className="px-3 py-1.5 text-gray-900">{r.end_user_name ?? "-"}</td>
+                              <td className="px-3 py-1.5 font-mono text-xs text-gray-700">{r.stove_serial_no}</td>
+                              <td className="px-3 py-1.5 font-mono text-xs text-gray-700">{r.phone ?? "-"}</td>
+                              <td className="px-3 py-1.5 text-xs text-gray-600">{dateOf(r.sales_date)}</td>
+                              <td className="px-3 py-1.5 text-right tabular-nums text-gray-700">
+                                {r.attempt_count}{r.recall_due ? " · ring again" : ""}
+                              </td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                      {preview.rows.length > 5 && (
+                        <button
+                          type="button"
+                          onClick={() => setShowAll((v) => !v)}
+                          className="w-full border-t border-gray-100 px-3 py-1.5 text-left text-xs font-medium text-(--dc-accent) hover:bg-(--dc-accent-soft)/40"
+                        >
+                          {showAll ? "Show the first five" : `and ${preview.rows.length - 5} more · show all ${preview.rows.length}`}
+                        </button>
+                      )}
+                    </>
+                  )}
+                </section>
+              )}
             </>
           )}
         </div>

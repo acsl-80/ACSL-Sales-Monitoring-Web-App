@@ -75,7 +75,7 @@ export default function WorkWaitingBanner() {
   const everyone = [];
   if (w.canReview && (w.review ?? 0) > 0) everyone.push({ href: "/data-center/corrections?tab=fixed", tone: personal.length === 0 ? "hot" : "cool", label: "Review now", count: w.review });
   if (w.seesEverything && (w.openAll ?? 0) > 0) everyone.push({ href: "/data-center/corrections?tab=open", tone: "cool", label: "Waiting on Sales, everyone", count: w.openAll });
-  if (w.canReview && (w.unconfirmed ?? 0) > 0) everyone.push({ href: "/data-center/call-centre?preset=unconfirmed", tone: "cool", label: "Serial numbers unconfirmed", count: w.unconfirmed });
+  if (w.canReview && (w.unconfirmed ?? 0) > 0) everyone.push({ href: "/data-center/call-centre/records?preset=unconfirmed", tone: "cool", label: "Serial numbers unconfirmed", count: w.unconfirmed });
 
   if (personal.length === 0 && everyone.length === 0) return null;
 

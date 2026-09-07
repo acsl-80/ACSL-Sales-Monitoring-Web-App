@@ -108,7 +108,7 @@ export default function NeedsDecision({ board, agentsMeta, metrics, waiting, can
           label="Shared phone numbers, unconfirmed"
           sub={phones ? `${plural(phones.numbers, "number")} on ${plural(phones.stoves, "stove")}, nobody has rung them yet` : "reading the register"}
           count={phones?.numbers}
-          action={{ tone: "review", text: "Review", href: "#shared-phones" }}
+          action={{ tone: "review", text: "Review", href: "/data-center/call-centre/shared-phones" }}
         />
         <Row
           label="Fixed by Sales, awaiting review"
@@ -120,7 +120,7 @@ export default function NeedsDecision({ board, agentsMeta, metrics, waiting, can
           label="Stuck at the call limit"
           sub="every allowed call made, still not verified"
           count={metricValue(m, "calls.exhausted")}
-          action={{ tone: "open", text: "Open", href: "/data-center/call-centre?preset=exhausted" }}
+          action={{ tone: "open", text: "Open", href: "/data-center/call-centre/records?preset=exhausted" }}
         />
         <Row
           label={`Batches idle past ${plural(staleDays, "day")}`}

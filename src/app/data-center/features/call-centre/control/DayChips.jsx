@@ -23,11 +23,12 @@ function labelFor(iso) {
   return d.toLocaleDateString("en-GB", { weekday: "short", day: "numeric", month: "short", timeZone: "UTC" });
 }
 
-export default function DayChips({ today, day, range }) {
+export default function DayChips({ today, day, range, to = "/data-center/call-centre", params }) {
   const navigate = useNavigate();
   const go = (next) =>
     navigate({
-      to: "/data-center/call-centre",
+      to,
+      params,
       search: (prev) => {
         const out = { ...prev };
         delete out.day;

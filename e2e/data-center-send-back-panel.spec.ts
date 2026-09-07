@@ -52,7 +52,7 @@ async function activeReasons(): Promise<{ value: string; label: string }[]> {
 }
 
 async function openRecord(page: Page, serial: string) {
-  await page.goto("/data-center/call-centre");
+  await page.goto("/data-center/call-centre/records");
   await expect(page.getByRole("heading", { name: "Call Centre" })).toBeVisible({ timeout: 20_000 });
   const row = page.getByRole("button", { name: /^Open call record for/ }).filter({ hasText: serial }).first();
   await expect(row, `the queue should list ${serial}`).toBeVisible({ timeout: 20_000 });

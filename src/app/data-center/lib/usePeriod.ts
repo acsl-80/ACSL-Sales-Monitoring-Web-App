@@ -19,8 +19,11 @@ type PeriodRoute =
   | "/data-center/dashboard"
   | "/data-center/stove-records"
   | "/data-center/call-centre"
+  | "/data-center/call-centre_/records"
   | "/data-center/partner-records"
   | "/data-center/import";
+/** The path a route navigates to; a flat route's id carries an underscore its path does not. */
+type PeriodPath = Exclude<PeriodRoute, "/data-center/call-centre_/records"> | "/data-center/call-centre/records";
 
 /**
  * The period a surface is showing, held in the URL.
@@ -42,7 +45,13 @@ type PeriodRoute =
  * to last week silently re-narrowed the queue as well, which is the surprise
  * this control exists to remove rather than to introduce.
  */
-export function usePeriod(routeId: PeriodRoute, param: string = "period"): {
+/**
+ * `routeId` is the route the hook reads from; `to` is the path it navigates
+ * to, which differs from the id for a flat route (an underscore in the id,
+ * none in the path). It defaults to the id, which is also the path for the
+ * plain pages.
+ */
+export function usePeriod(routeId: PeriodRoute, param: string = "period", to: PeriodPath = routeId as unknown as PeriodPath): {
   period: Period;
   setPeriod: (next: Period) => void;
   resolved: ResolvedPeriod;
@@ -70,7 +79,7 @@ export function usePeriod(routeId: PeriodRoute, param: string = "period"): {
   const setPeriod = useCallback(
     (next: Period) => {
       navigate({
-        to: routeId,
+        to,
         search: (prev: Record<string, unknown>) => ({
           ...prev,
           [param]: encodePeriod(next),

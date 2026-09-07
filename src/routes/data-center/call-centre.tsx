@@ -1,5 +1,15 @@
-import { createFileRoute } from "@tanstack/react-router";
+import { createFileRoute, redirect } from "@tanstack/react-router";
 import { lazy } from "react";
+
+/**
+ * A narrowing belongs to the Records page (Phase 26, C3). Every link that
+ * used to land a filtered queue on this page keeps working: it is sent on
+ * with its parameters intact. The bare page is the control centre.
+ */
+const NARROWING = [
+  "organizationId", "partnerState", "transferSalesRep", "assignedAgent", "agentManager",
+  "status", "preset", "verificationOutcome",
+] as const;
 
 const Page = lazy(() => import("@/app/data-center/pages/CallCentrePage"));
 
@@ -61,5 +71,11 @@ export const Route = createFileRoute("/data-center/call-centre")({
     day: typeof search.day === "string" && DAY.test(search.day) ? search.day : undefined,
     range: search.range === "week" ? "week" : undefined,
   }),
+  beforeLoad: ({ search }) => {
+    if (NARROWING.some((k) => search[k])) {
+      const { day: _day, range: _range, logPeriod: _log, ...rest } = search;
+      throw redirect({ to: "/data-center/call-centre/records", search: rest });
+    }
+  },
   component: Page,
 });

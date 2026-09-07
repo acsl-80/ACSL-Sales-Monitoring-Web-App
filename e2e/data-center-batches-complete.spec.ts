@@ -80,7 +80,7 @@ async function batchState(batchId: string) {
 }
 
 async function conclude(page: Page, name: string, outcomeLabel: string) {
-  await page.goto("/data-center/call-centre");
+  await page.goto("/data-center/call-centre/records");
   await expect(page.getByRole("heading", { name: "Call Centre" })).toBeVisible({ timeout: 20_000 });
   const first = name.trim().split(/\s+/)[0];
   await page

@@ -104,7 +104,7 @@ export default function Figures({ board, metrics, waiting, canManage, onRecomput
           label={`Verified ${dayWord}`}
           value={board?.totals?.verified}
           sub="fully verified and saved"
-          href="/data-center/call-centre?verificationOutcome=fully_verified"
+          href="/data-center/call-centre/records?verificationOutcome=fully_verified"
           tone="verified"
           big
         />
@@ -133,7 +133,7 @@ export default function Figures({ board, metrics, waiting, canManage, onRecomput
           label="Unreachable"
           value={metricValue(m, "verification.by_outcome", { outcome: "unreachable" })}
           sub="nobody answered on any call"
-          href="/data-center/call-centre?verificationOutcome=unreachable"
+          href="/data-center/call-centre/records?verificationOutcome=unreachable"
           tone="crit"
         />
       </div>

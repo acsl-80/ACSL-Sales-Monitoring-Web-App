@@ -65,7 +65,7 @@ export function funnelDrill(stage, organizationId, partnerLabel) {
   const filter = FUNNEL_FILTER[stage.key];
   if (!filter) return null;
   return {
-    to: "/data-center/call-centre",
+    to: "/data-center/call-centre/records",
     search: {
       ...(organizationId ? { organizationId } : {}),
       ...filter,
@@ -85,7 +85,7 @@ export function leakDrill({ row, col }) {
   if (!col) return null;
   const filter = LEAK_FILTER[col.key];
   return {
-    to: "/data-center/call-centre",
+    to: "/data-center/call-centre/records",
     search: {
       organizationId: row.key,
       ...(filter ?? {}),

@@ -58,7 +58,7 @@ export default function WaitingByPartner({ partners, agentsMeta, canManage, relo
               <tr key={r.organization_id} className="hover:bg-(--dc-brief-stove-soft)/40">
                 <td className="px-3 py-2">
                   <Link
-                    href={`/data-center/call-centre?organizationId=${encodeURIComponent(r.organization_id)}&preset=todo&label=${encodeURIComponent(r.partner_name)}`}
+                    href={`/data-center/call-centre/records?organizationId=${encodeURIComponent(r.organization_id)}&preset=todo&label=${encodeURIComponent(r.partner_name)}`}
                     className="font-medium text-gray-900 underline decoration-(--dc-brief-stove)/40 underline-offset-2 hover:decoration-(--dc-brief-stove)"
                   >
                     {r.partner_name}

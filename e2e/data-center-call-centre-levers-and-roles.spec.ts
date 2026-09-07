@@ -60,6 +60,12 @@ async function dropRecordUnless(saleId: string, existed: boolean) {
 }
 
 async function openQueue(page: Page) {
+  await page.goto("/data-center/call-centre/records");
+  await expect(page.getByRole("heading", { name: "Call centre records" })).toBeVisible({ timeout: 20_000 });
+}
+
+/** The control centre, where the board and its levers live (Phase 26). */
+async function openBoard(page: Page) {
   await page.goto("/data-center/call-centre");
   await expect(page.getByRole("heading", { name: "Call Centre" })).toBeVisible({ timeout: 20_000 });
 }
@@ -143,7 +149,7 @@ test.describe("slice 7b: the levers ask first, and No does nothing", () => {
 
   test("Unassign still asks, through the same dialog", async ({ page }) => {
     await signIn(page, USERS.admin);
-    await openQueue(page);
+    await openBoard(page);
     await expect(page.getByRole("heading", { name: "Agents and their work" })).toBeVisible({ timeout: 40_000 });
     const opener = page.getByRole("button", { name: /^What .* is holding$/ }).first();
     await expect(opener).toBeVisible({ timeout: 20_000 });
@@ -162,7 +168,7 @@ test.describe("slice 7b: the levers ask first, and No does nothing", () => {
       if (r.url().includes("/functions/v1/data-center-assign")) calls.push(r.postData() ?? "");
     });
     await signIn(page, USERS.admin);
-    await openQueue(page);
+    await openBoard(page);
     await expect(page.getByRole("heading", { name: "Agents and their work" })).toBeVisible({ timeout: 40_000 });
 
     await page.getByRole("button", { name: "Assign now" }).click();

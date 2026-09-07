@@ -151,7 +151,7 @@ export default function Scorecard({ title, by, metrics, hint, defaultOpen = fals
                     <tr key={row.key} className="group border-b border-gray-100">
                       <td className="sticky left-0 z-10 max-w-[220px] truncate bg-white px-3 py-2 font-medium text-gray-900 group-hover:bg-(--dc-accent-soft)">
                         <Link
-                          to="/data-center/call-centre"
+                          to="/data-center/call-centre/records"
                           search={drillSearch(row, null)}
                           className="underline-offset-2 hover:underline"
                         >
@@ -172,7 +172,7 @@ export default function Scorecard({ title, by, metrics, hint, defaultOpen = fals
                           className="px-3 py-2 text-right tabular-nums transition group-hover:bg-(--dc-accent-soft)/40"
                         >
                           <Link
-                            to="/data-center/call-centre"
+                            to="/data-center/call-centre/records"
                             search={drillSearch(row, c.metric)}
                             className={`rounded px-1.5 py-0.5 font-medium underline-offset-2 transition hover:bg-white hover:underline focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-(--dc-accent) ${c.tone}`}
                             aria-label={`${row.label}: ${NUMBER.format(row[c.metric] ?? 0)} ${c.label.toLowerCase()}`}

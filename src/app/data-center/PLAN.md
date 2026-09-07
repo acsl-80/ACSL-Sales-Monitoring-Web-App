@@ -332,3 +332,29 @@ structured properly; the phone app follows. The proposal of 2026-09-05 was
 accepted with three answers recorded as D27 to D29. Slices F1 to F5 in
 `TASKS.md` and `ROADMAP.md`; the phone app guide is handed to brain-codes.
 
+## Phase 26: the call centre in two surfaces (approved 2026-09-07)
+
+His brief, 2026-09-06: the call centre canvas was still busy with no clear
+call to action. Redesigned as two surfaces, proposal approved 2026-09-07
+(https://claude.ai/code/artifact/df3f05d2-9661-403e-8b8a-9f05bd5fbddc).
+Decisions D35 (a call counts against the login that logged it) and D36
+(numbers copy, nothing dials; the call app's name is a setting; Save offers
+the next record).
+
+- C1, live: the reads. `board`, `agent_day`, `assign_preview` (board.ts) and
+  `pool_partners`, `activity` (feed.ts) on data-center-assign, keyset paged.
+- C2, live: the control centre as a shift board. Six linked figures, one row
+  per agent with the day by hour, waiting by partner with the Partners page,
+  needs a decision, what happened with the Activity page. The tiles, the
+  agents panel, the pool table, the lanes and the assignment log retired.
+  Config `call_centre.daily_target`.
+- C3: the pages behind it. The agent's page (`/call-centre/agents/:id`), the
+  hand-out dialog's live preview through `assign_preview`, the Records page
+  (`/call-centre/records`, the queue with an outcome strip; the call-centre
+  route sends any narrowing there so every drill link keeps working), the
+  shared-phone register on its own page.
+- C4: My calls for agents on the call form that exists: copy fields, the
+  after-save hand-off, the callback time beside the outcome (one column),
+  the dialler name setting.
+
+Tracker: TASKS.md, Phase 26.

@@ -125,12 +125,12 @@ test.describe("the five scorecards", () => {
     await cell.click();
 
     // The filter travelled as a URL, not as state.
-    await expect(page).toHaveURL(/\/data-center\/call-centre\?/);
+    await expect(page).toHaveURL(/\/data-center\/call-centre\/records\?/);
     await expect(page).toHaveURL(/organizationId=/);
     await expect(page).toHaveURL(/status=unresolved/);
 
     // The queue says what narrowed it and offers the way out.
-    await expect(page.getByText(/Narrowed from the dashboard/)).toBeVisible({
+    await expect(page.getByText(/Narrowed to/)).toBeVisible({
       timeout: 20_000,
     });
     await expect(page.getByRole("button", { name: "Show everything" })).toBeVisible();
@@ -153,9 +153,9 @@ test.describe("the five scorecards", () => {
 
     await signIn(page, USERS.admin);
     await page.goto(
-      "/data-center/call-centre?partnerState=Gombe&status=verified&label=Gombe",
+      "/data-center/call-centre/records?partnerState=Gombe&status=verified&label=Gombe",
     );
-    await expect(page.getByText(/Narrowed from the dashboard/)).toBeVisible({
+    await expect(page.getByText(/Narrowed to/)).toBeVisible({
       timeout: 20_000,
     });
 
@@ -381,7 +381,7 @@ test.describe("the headline figures", () => {
     // scorecard compute and the queue filter all read it off one list, which
     // is why removing an outcome from that list moved all three together.
     await expect(page).toHaveURL(/status=unverified/);
-    await expect(page.getByText(/Narrowed from the dashboard/)).toBeVisible({
+    await expect(page.getByText(/Narrowed to/)).toBeVisible({
       timeout: 20_000,
     });
   });

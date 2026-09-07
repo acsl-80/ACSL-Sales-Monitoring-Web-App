@@ -352,9 +352,9 @@ export default function Dashboard({ canRun }) {
    */
   const linkVerification = (d) =>
     d.label === "never_called"
-      ? { to: "/data-center/call-centre", search: { preset: "todo" } }
+      ? { to: "/data-center/call-centre/records", search: { preset: "todo" } }
       : {
-        to: "/data-center/call-centre",
+        to: "/data-center/call-centre/records",
         search: { verificationOutcome: d.label, label: wordsFor(d.label) },
       };
 
@@ -500,7 +500,7 @@ export default function Dashboard({ canRun }) {
               value={verified}
               hint={total ? `${Math.round((verified / total) * 100)}% of sales` : undefined}
               skin="verified"
-              to="/data-center/call-centre"
+              to="/data-center/call-centre/records"
               search={{ status: "verified", label: MEASURES.verified.label }}
             />
             <Card
@@ -508,7 +508,7 @@ export default function Dashboard({ canRun }) {
               value={unverified}
               hint={MEASURES.unverified.definition}
               skin="unverified"
-              to="/data-center/call-centre"
+              to="/data-center/call-centre/records"
               search={{ status: "unverified", label: "Partly verified" }}
             />
           </div>
@@ -616,21 +616,21 @@ export default function Dashboard({ canRun }) {
               label={scopedLabel("Calls logged", "calls.attempts_total")}
               value={value(m, "calls.attempts_total")}
               skin="info"
-              to="/data-center/call-centre"
+              to="/data-center/call-centre/records"
             />
             <Card
               label={scopedLabel("Average calls", "calls.avg_attempts")}
               value={value(m, "calls.avg_attempts")}
               hint="per record worked"
               skin="info"
-              to="/data-center/call-centre"
+              to="/data-center/call-centre/records"
             />
             <Card
               label={scopedLabel("Chased 3 times", "calls.exhausted")}
               value={value(m, "calls.exhausted")}
               hint="still not verified"
               skin={value(m, "calls.exhausted") > 0 ? "warn" : "neutral"}
-              to="/data-center/call-centre"
+              to="/data-center/call-centre/records"
               search={{ preset: "exhausted" }}
             />
             <Card

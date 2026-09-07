@@ -29,7 +29,7 @@ const ITEM_COLUMNS = [
  * which serials, then the record itself, because that is the order the question
  * is actually asked in.
  */
-export default function AgentDetail({ agent, onChanged, onOpenRecord }) {
+export default function AgentDetail({ agent, onChanged, onOpenRecord, agents = [] }) {
   const [items, setItems] = useState(null);
   const [error, setError] = useState(null);
   const [openBatch, setOpenBatch] = useState(null);
@@ -69,6 +69,25 @@ export default function AgentDetail({ agent, onChanged, onOpenRecord }) {
     return [...byId.values()];
   }, [items]);
 
+  /**
+   * Move a whole batch to another agent (Phase 26, C3), through the reassign
+   * action the server already had and nothing on screen offered. The batch
+   * keeps its records and its order; only the name on it changes.
+   */
+  const moveBatch = async (batchId, toAgentId) => {
+    if (!toAgentId) return;
+    setBusy(true);
+    setError(null);
+    try {
+      await dataCenterAssign.reassign(toAgentId, { batchId });
+      await load();
+      await onChanged();
+    } catch (err) {
+      setError(err instanceof DataCenterError ? err.message : "Could not move that batch.");
+    } finally {
+      setBusy(false);
+    }
+  };
   const act = async () => {
     setBusy(true);
     try {
@@ -135,6 +154,24 @@ export default function AgentDetail({ agent, onChanged, onOpenRecord }) {
                   {plural(batch.items.length, "record")} · assigned {dateOf(batch.assigned_at)}
                 </span>
               </button>
+              {agents.filter((x) => x.agent_id !== agent.agent_id && x.is_enabled).length > 0 && (
+                <>
+                  <label htmlFor={`move-${batch.batch_id}`} className="sr-only">Move this batch to</label>
+                  <select
+                    id={`move-${batch.batch_id}`}
+                    value=""
+                    disabled={busy}
+                    onChange={(e) => moveBatch(batch.batch_id, e.target.value)}
+                    className="rounded-md border border-(--dc-brief-history) bg-white px-2 py-1 text-xs font-medium text-(--dc-brief-history)"
+                    data-move-batch={batch.batch_id}
+                  >
+                    <option value="">Move to...</option>
+                    {agents.filter((x) => x.agent_id !== agent.agent_id && x.is_enabled).map((x) => (
+                      <option key={x.agent_id} value={x.agent_id}>{x.full_name || x.email}</option>
+                    ))}
+                  </select>
+                </>
+              )}
               <button
                 type="button"
                 onClick={() =>

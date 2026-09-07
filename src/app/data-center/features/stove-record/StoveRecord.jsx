@@ -844,7 +844,7 @@ export default function StoveRecord({ stoveId }) {
                 value={s.sales_rep}
                 href={
                   s.sales_rep
-                    ? `/data-center/call-centre?transferSalesRep=${encodeURIComponent(s.sales_rep)}&label=${encodeURIComponent(s.sales_rep)}`
+                    ? `/data-center/call-centre/records?transferSalesRep=${encodeURIComponent(s.sales_rep)}&label=${encodeURIComponent(s.sales_rep)}`
                     : null
                 }
                 title="Everything this rep transferred"
@@ -1131,7 +1131,7 @@ export default function StoveRecord({ stoveId }) {
                 value={s.agent_name ?? "nobody yet"}
                 href={
                   s.agent_id
-                    ? `/data-center/call-centre?assignedAgent=${encodeURIComponent(s.agent_id)}&label=${encodeURIComponent(s.agent_name ?? "that agent")}`
+                    ? `/data-center/call-centre/records?assignedAgent=${encodeURIComponent(s.agent_id)}&label=${encodeURIComponent(s.agent_name ?? "that agent")}`
                     : null
                 }
                 title="Open this agent's queue"

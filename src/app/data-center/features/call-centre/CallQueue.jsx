@@ -217,7 +217,7 @@ function Cell({ row, column }) {
   return <span className="truncate">{value}</span>;
 }
 
-export default function CallQueue({ canEdit, drill = null, agents = null }) {
+export default function CallQueue({ canEdit, drill = null, agents = null, route = { id: "/data-center/call-centre", to: "/data-center/call-centre" } }) {
   // The URL seeds which preset is showing; the chips are the user's after that.
   // Seeding rather than controlling, so clicking a chip is not fighting the
   // address bar on every render.
@@ -231,7 +231,7 @@ export default function CallQueue({ canEdit, drill = null, agents = null }) {
     return () => clearTimeout(timer);
   }, [search]);
 
-  const { period, setPeriod, resolved, earliest } = usePeriod("/data-center/call-centre");
+  const { period, setPeriod, resolved, earliest } = usePeriod(route.id, "period", route.to);
 
   /**
    * A drill that names its own dates outranks the period, the same way it does
@@ -381,7 +381,7 @@ export default function CallQueue({ canEdit, drill = null, agents = null }) {
 
       {/* The facets, held in the URL: partner, rep, verification, and who
           holds the record when the reader may see the agents. */}
-      <CallQueueFilters agents={agents} />
+      <CallQueueFilters agents={agents} route={route} />
 
       {error && (
         <div className="flex items-start gap-2 border-b border-amber-200 bg-amber-50 px-4 py-3">

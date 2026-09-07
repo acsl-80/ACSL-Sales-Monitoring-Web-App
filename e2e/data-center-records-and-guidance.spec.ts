@@ -381,7 +381,7 @@ test.describe("bulk import leads with where the file comes from", () => {
 test.describe("the call brief reads as five blocks, not one sheet", () => {
   test("each block is titled, and the chase count is in the heading", async ({ page }) => {
     await signIn(page, USERS.admin);
-    await page.goto("/data-center/call-centre");
+    await page.goto("/data-center/call-centre/records");
     await expect(page.getByRole("heading", { name: "Call Centre" })).toBeVisible({
       timeout: 30_000,
     });

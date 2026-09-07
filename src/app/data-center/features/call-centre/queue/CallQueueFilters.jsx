@@ -26,14 +26,14 @@ const OUTCOMES = ["not_verified", "partially_verified", "fully_verified", "unrea
   label: OUTCOME_WORDS[value] ?? value,
 }));
 
-export default function CallQueueFilters({ agents = null }) {
-  const search = useSearch({ from: "/data-center/call-centre" });
+export default function CallQueueFilters({ agents = null, route = { id: "/data-center/call-centre", to: "/data-center/call-centre" } }) {
+  const search = useSearch({ from: route.id });
   const navigate = useNavigate();
   const { facets, loading } = useRecordFacets();
 
   const set = (key, value) =>
     navigate({
-      to: "/data-center/call-centre",
+      to: route.to,
       // A facet the reader sets replaces a dashboard drill's narrowing rather
       // than adding to it: the drill's label goes, and so does its status,
       // which is a second predicate on the same verification column and
