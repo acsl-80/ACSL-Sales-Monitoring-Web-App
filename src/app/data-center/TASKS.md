@@ -8,7 +8,8 @@ lives on each PR.
 
 Display and layout only: figures as doors, the mode in the URL, one row per file with a state strip and one action, the fix beside the row it fixes, pinned first columns and cards on a phone. Every action keeps its client call. Proposal: https://claude.ai/code/artifact/a952e1ef-2202-49a9-a656-48625e45bbb4. Decisions D37 to D39.
 
-- [ ] I1 The whole page in one PR: route `mode`, `ImportFigures`, `StateStrip`, `ImportPanel` split into `UploadStrip`, `FilesTable`, `FileDetail`, `ExceptionsTable`; `CallSheet` as three steps side by side with `CallSheetsTable`; `ConfirmationQueue` with its strip and filter row; `GetTheSheet` with the action out of the fold. in progress
+- [x] I1 The whole page in one PR: route `mode`, `ImportFigures`, `StateStrip`, `ImportPanel` split into `UploadStrip`, `FilesTable`, `FileDetail`, `ExceptionsTable`; `CallSheet` as three steps side by side with `CallSheetsTable`; `ConfirmationQueue` with its strip and filter row; `GetTheSheet` with the action out of the fold. in progress
+- [ ] I2 Who is digitising: a fifth mode on the import page, one read per person per day (D40), the shared period control (today, week, month, custom), figures, a table with the days drawn and an export; the mode row redrawn as a segmented control on its own card. in progress
 
 ## Phase 26, the call centre in two surfaces (opened 2026-09-06, approved 2026-09-07)
 

@@ -250,6 +250,25 @@ export type SendBackRow = {
 };
 
 /** The lists the filter panel offers. Small tables only - never a DISTINCT. */
+export type DigitisationDay = {
+  user_id: string;
+  day: string;
+  full_name: string | null;
+  email: string | null;
+  /** Bench rows finished (not drafts) that day. */
+  typed: number;
+  /** Rows of theirs that reached the sales app. */
+  landed: number;
+  drafting: number;
+  needs_person: number;
+  files: number;
+  /** Rows in files they uploaded that day. */
+  uploaded: number;
+  unreadable: number;
+  /** Rows they released to the sales app that day. */
+  released: number;
+};
+
 export type RecordFacets = {
   /**
    * Branch and state travel with the name because the name alone does not
@@ -444,6 +463,18 @@ export const dataCenterClient = {
    * one request, not one per control.
    */
   recordFacets: () => call<RecordFacets>("data-center-read", "record_facets"),
+
+  /**
+   * Who is digitising and how much, one row per person per day (D40): bench
+   * rows by who last edited them, bulk rows by the file's uploader, releases
+   * by who confirmed. The window is the period's; unbounded means thirty days.
+   */
+  digitisationTeam: (params: { dateFrom?: string | null; dateTo?: string | null }) =>
+    call<{ days: DigitisationDay[]; from: string; to: string; tz: string }>(
+      "data-center-read",
+      "digitisation_team",
+      params,
+    ),
 
   /**
    * A partner's stoves, rather than one consignment's.

@@ -12,7 +12,7 @@ const Page = lazy(() => import("@/app/data-center/pages/ImportPage"));
  * a shared link land on the surface the person was on. Unknown values are
  * dropped and the page falls back to the first surface the person may use.
  */
-export const IMPORT_MODES = ["bulk", "bench", "calls", "confirm"] as const;
+export const IMPORT_MODES = ["bulk", "bench", "calls", "confirm", "team"] as const;
 export type ImportMode = (typeof IMPORT_MODES)[number];
 type ImportSearch = { period?: string; mode?: ImportMode };
 

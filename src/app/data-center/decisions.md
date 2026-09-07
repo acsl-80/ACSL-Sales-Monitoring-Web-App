@@ -369,3 +369,14 @@ sum the `batches` and `awaiting_confirmation` reads the modes make, and each
 opens the mode behind it. No new endpoint and no compute row for a page
 whose lists are small. A figure whose read the person may not make, or
 that failed, shows a dash, never a zero.
+
+## D40. Digitising is measured by who did the work, on the day they did it (2026-09-07)
+
+Two roads in, one measure. A receipt typed at the bench counts for the
+person who last edited it, on the day they did; a row uploaded in a file
+counts for the person who uploaded the file, on the day it came in; a
+release counts for whoever confirmed the row into the sales app. Every row
+also says whether it landed. Days are the module's analysis timezone, so a
+receipt typed at 23:30 in Lagos is that day's work. The read answers one row
+per person per day and the page sums whatever period the shared control
+names, so daily, weekly, monthly and a custom range are one mechanism.

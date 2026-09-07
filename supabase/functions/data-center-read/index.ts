@@ -2252,6 +2252,111 @@ serve(async (req) => {
        * the list and nobody else's, because the predicate that limits the rows
        * limits the choices too.
        */
+      case "digitisation_team": {
+        /*
+         * Who is digitising, and how much, per day (Phase 27, I2; D40).
+         *
+         * Two roads in, one measure. A bench row counts for the person who
+         * last edited it, on the day they did; a bulk row counts for the file's
+         * uploader, on the day the file came in; a release counts for whoever
+         * confirmed the row. Every row also says whether it landed. Days are
+         * the module's analysis timezone, so a receipt typed at 23:30 in Lagos
+         * is that day's work and not tomorrow's.
+         *
+         * One aggregate per person per day; the page sums it for the period and
+         * draws the days. The window is the shared period control's; with no
+         * bounds it is the last thirty days, said back in the response.
+         */
+        const superAdmin = isSuperAdmin(profile.role);
+        const resolved = superAdmin
+          ? { accessRole: null, features: [] as string[] }
+          : await resolveAccess(userId);
+        if (!superAdmin && resolved.accessRole === null) {
+          return json({ error: "No Data Center access", code: "no_access" }, 403, cors);
+        }
+        if (!superAdmin && !resolved.features.includes("records.view")) {
+          return json({ error: "Not permitted", code: "no_feature" }, 403, cors);
+        }
+        const dateFrom = typeof b.dateFrom === "string" && b.dateFrom ? b.dateFrom : null;
+        const dateTo = typeof b.dateTo === "string" && b.dateTo ? b.dateTo : null;
+        const WINDOW = `with cfg as (
+                          select coalesce((select value #>> '{}' from data_center.workflow_config
+                                            where key = 'analysis.timezone'), 'Africa/Lagos') as tz),
+                        win as (
+                          select coalesce($2::date, timezone(cfg.tz, now())::date) as d_to,
+                                 coalesce($1::date, coalesce($2::date, timezone(cfg.tz, now())::date) - 30) as d_from,
+                                 cfg.tz
+                            from cfg)`;
+        return await withReadConnection(async (connection) => {
+          const [days, win] = await Promise.all([
+            connection.queryObject({
+              text: `${WINDOW},
+                     bench as (
+                       select r.last_edited_by as user_id,
+                              timezone(win.tz, r.last_edited_at)::date as day,
+                              count(*) filter (where r.status <> 'draft')::int as typed,
+                              count(r.sale_id)::int as landed,
+                              count(*) filter (where r.status = 'draft')::int as drafting,
+                              count(*) filter (where r.status = 'exception')::int as needs_person,
+                              0::int as files, 0::int as uploaded, 0::int as unreadable, 0::int as released
+                         from data_center.import_rows r
+                         join data_center.import_batches b on b.id = r.batch_id
+                         cross join win
+                        where b.source = 'workbench' and r.last_edited_by is not null
+                          and timezone(win.tz, r.last_edited_at)::date between win.d_from and win.d_to
+                        group by 1, 2),
+                     bulk as (
+                       select b.uploaded_by as user_id,
+                              timezone(win.tz, b.uploaded_at)::date as day,
+                              0::int as typed,
+                              count(r.sale_id)::int as landed,
+                              0::int as drafting,
+                              count(*) filter (where r.status = 'exception')::int as needs_person,
+                              count(distinct b.id)::int as files,
+                              count(r.id)::int as uploaded,
+                              count(*) filter (where r.status = 'rejected')::int as unreadable,
+                              0::int as released
+                         from data_center.import_batches b
+                         join data_center.import_rows r on r.batch_id = b.id
+                         cross join win
+                        where b.source in ('receipt', 'manual', 'field')
+                          and b.state <> 'rolled_back' and b.uploaded_by is not null
+                          and timezone(win.tz, b.uploaded_at)::date between win.d_from and win.d_to
+                        group by 1, 2),
+                     rel as (
+                       select r.confirmed_by as user_id,
+                              timezone(win.tz, r.confirmed_at)::date as day,
+                              0::int, 0::int, 0::int, 0::int, 0::int, 0::int, 0::int,
+                              count(*)::int as released
+                         from data_center.import_rows r
+                         cross join win
+                        where r.confirmed_by is not null
+                          and timezone(win.tz, r.confirmed_at)::date between win.d_from and win.d_to
+                        group by 1, 2),
+                     u as (select * from bench union all select * from bulk union all select * from rel)
+                     select u.user_id::text as user_id, u.day::text as day,
+                            p.full_name, p.email,
+                            sum(u.typed)::int as typed, sum(u.landed)::int as landed,
+                            sum(u.drafting)::int as drafting, sum(u.needs_person)::int as needs_person,
+                            sum(u.files)::int as files, sum(u.uploaded)::int as uploaded,
+                            sum(u.unreadable)::int as unreadable, sum(u.released)::int as released
+                       from u
+                       left join public.profiles p on p.id = u.user_id
+                      group by 1, 2, 3, 4
+                      order by 2, 3
+                      limit 5000`,
+              args: [dateFrom, dateTo],
+            }),
+            connection.queryObject({
+              text: `${WINDOW} select d_from::text as d_from, d_to::text as d_to, tz from win`,
+              args: [dateFrom, dateTo],
+            }),
+          ]);
+          const w = win.rows[0] as { d_from: string; d_to: string; tz: string };
+          return json({ data: { days: days.rows, from: w.d_from, to: w.d_to, tz: w.tz } }, 200, cors);
+        });
+      }
+
       case "record_facets": {
         const superAdmin = isSuperAdmin(profile.role);
         const resolved = superAdmin

@@ -8,10 +8,11 @@ import CallSheet from "../features/import/CallSheet";
 import Workbench from "../features/workbench/Workbench";
 import ImportFigures from "../features/import/parts/ImportFigures";
 import { useImportFigures } from "../features/import/parts/useImportFigures";
+import DigitisationTeam from "../features/import/DigitisationTeam";
 import { useFeature } from "../lib/access";
 import { DATA_CENTER_FEATURES } from "../lib/features";
 import { usePeriod } from "../lib/usePeriod";
-import { Upload, PenLine, ShieldCheck, PhoneCall } from "lucide-react";
+import { Upload, PenLine, ShieldCheck, PhoneCall, Users } from "lucide-react";
 
 /**
  * Getting paper into the system, four ways of looking at one job.
@@ -62,6 +63,14 @@ const MODES = [
     label: "Waiting to confirm",
     icon: ShieldCheck,
     blurb: "What has been entered and not yet sent to the sales app.",
+    needs: DATA_CENTER_FEATURES.RECORDS_VIEW,
+  },
+  {
+    key: "team",
+    label: "Who is digitising",
+    icon: Users,
+    blurb:
+      "Who entered what, by day: receipts typed at the bench and rows uploaded in files, and how many of them landed.",
     needs: DATA_CENTER_FEATURES.RECORDS_VIEW,
   },
 ];
@@ -147,9 +156,17 @@ function Inner() {
     <div className="space-y-4">
       <ImportFigures figures={figures} />
 
-      <div>
+      {/*
+        The modes as a segmented control on a card of their own, so the row
+        reads as the page's steering wheel rather than a line of grey text: the
+        chosen mode is a solid fill in the area's accent with white type, the
+        others are outlined buttons with dark type, and each count is a pill.
+        The card shares the module's radius, border and top rail, so it sits
+        with the cards below it instead of floating between them.
+      */}
+      <div className="rounded-xl border border-gray-200 border-t-[3px] border-t-(--dc-accent) bg-white shadow-sm">
         <div
-          className="flex gap-0.5 overflow-x-auto border-b-2 border-gray-200"
+          className="flex gap-2 overflow-x-auto px-3 pt-3 pb-2"
           role="group"
           aria-label="What to do"
         >
@@ -170,20 +187,37 @@ function Inner() {
                 aria-pressed={selected}
                 onClick={() => setMode(m.key)}
                 data-import-mode={m.key}
-                className={`-mb-0.5 inline-flex shrink-0 items-center gap-1.5 whitespace-nowrap border-b-[3px] px-3.5 py-2 text-sm font-semibold transition ${
+                className={`inline-flex shrink-0 items-center gap-2 whitespace-nowrap rounded-lg border px-3.5 py-2 text-sm font-semibold transition ${
                   selected
-                    ? "border-(--dc-accent) text-(--dc-accent-strong)"
-                    : "border-transparent text-gray-500 hover:border-gray-300 hover:text-gray-800"
+                    ? "border-(--dc-accent) bg-(--dc-accent) text-white shadow-sm"
+                    : "border-gray-300 bg-white text-gray-800 hover:border-(--dc-accent) hover:bg-(--dc-accent-soft)/50"
                 }`}
               >
-                <m.icon className="h-4 w-4" aria-hidden />
+                <m.icon
+                  className={`h-4 w-4 ${selected ? "text-white" : "text-(--dc-accent)"}`}
+                  aria-hidden
+                />
                 {m.label}
-                {small && <span className="text-xs font-medium text-gray-500">{small}</span>}
+                {small && (
+                  <span
+                    className={`rounded-full px-2 py-0.5 text-[11px] font-bold tabular-nums ${
+                      selected
+                        ? "bg-white/20 text-white"
+                        : "bg-(--dc-accent-soft) text-(--dc-accent-strong)"
+                    }`}
+                  >
+                    {small}
+                  </span>
+                )}
               </button>
             );
           })}
         </div>
-        {current?.blurb && <p className="mt-2 text-sm text-gray-600">{current.blurb}</p>}
+        {current?.blurb && (
+          <p className="border-t border-gray-100 px-4 py-2 text-sm text-gray-700">
+            {current.blurb}
+          </p>
+        )}
       </div>
 
       {current?.key === "bulk" && (
@@ -218,6 +252,7 @@ function Inner() {
           <Workbench />
         </div>
       )}
+      {current?.key === "team" && <DigitisationTeam />}
       {current?.key === "confirm" && (
         <ConfirmationQueue
           canConfirm={can(DATA_CENTER_FEATURES.IMPORT_COMMIT)}
