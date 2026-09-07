@@ -49,6 +49,7 @@ decisions D27 to D29.
 
 ## Deferred
 
+- `features/call-centre/CallRecordEditor.jsx` is 833 lines after C4 (it was 755 before Phase 26), past the module's ~600 split rule. The call log section (outcome, callback time, attempts) and the footer with its after-save hand-off are each a component of their own; split them in the next slice that touches the form, with the drafts and completes specs as the proof.
 - Host, seen while fixing the render loop (PR #79): the sidebar declares two entries with the same `route` key ("agents"), which React warns about on every render; and a username-based login falls through to the direct email path on any non-ok answer from `login-with-credentials`, reporting a transient server fault as wrong credentials. Two small host fixes.
 - Done in F3b: `sales.incomplete_by_missing` (the Complete card's breakdown and the Missing facet's options) still enumerates only `completeness_required_fields`; a sale incomplete only for a dated field (city, surname, agent from go-live) counts in `sales.incomplete` but has no bucket. `missing_predicate` already accepts the dated fields. F3b extends the compute loop over the dated rules so the breakdown sums again.
 - Host, seen in the F1 review: the Sell Stove form's previous-stove value rendering ("Charcoal Stove", "Wood Stove (3 stone)") on the detail views differs from the form's option labels; F3's option pass should carry it.
