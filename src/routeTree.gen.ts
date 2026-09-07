@@ -42,6 +42,7 @@ import { Route as DataCenterStoveRecordsRouteImport } from './routes/data-center
 import { Route as DataCenterStockRouteImport } from './routes/data-center/stock'
 import { Route as DataCenterSettingsRouteImport } from './routes/data-center/settings'
 import { Route as DataCenterPartnerRecordsRouteImport } from './routes/data-center/partner-records'
+import { Route as DataCenterMyCallsRouteImport } from './routes/data-center/my-calls'
 import { Route as DataCenterImportRouteImport } from './routes/data-center/import'
 import { Route as DataCenterDashboardRouteImport } from './routes/data-center/dashboard'
 import { Route as DataCenterCorrectionsRouteImport } from './routes/data-center/corrections'
@@ -257,6 +258,11 @@ const DataCenterPartnerRecordsRoute =
     path: '/data-center/partner-records',
     getParentRoute: () => rootRouteImport,
   } as any)
+const DataCenterMyCallsRoute = DataCenterMyCallsRouteImport.update({
+  id: '/data-center/my-calls',
+  path: '/data-center/my-calls',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const DataCenterImportRoute = DataCenterImportRouteImport.update({
   id: '/data-center/import',
   path: '/data-center/import',
@@ -519,6 +525,7 @@ export interface FileRoutesByFullPath {
   '/data-center/corrections': typeof DataCenterCorrectionsRoute
   '/data-center/dashboard': typeof DataCenterDashboardRoute
   '/data-center/import': typeof DataCenterImportRoute
+  '/data-center/my-calls': typeof DataCenterMyCallsRoute
   '/data-center/partner-records': typeof DataCenterPartnerRecordsRoute
   '/data-center/settings': typeof DataCenterSettingsRoute
   '/data-center/stock': typeof DataCenterStockRoute
@@ -600,6 +607,7 @@ export interface FileRoutesByTo {
   '/data-center/corrections': typeof DataCenterCorrectionsRoute
   '/data-center/dashboard': typeof DataCenterDashboardRoute
   '/data-center/import': typeof DataCenterImportRoute
+  '/data-center/my-calls': typeof DataCenterMyCallsRoute
   '/data-center/partner-records': typeof DataCenterPartnerRecordsRoute
   '/data-center/settings': typeof DataCenterSettingsRoute
   '/data-center/stock': typeof DataCenterStockRoute
@@ -682,6 +690,7 @@ export interface FileRoutesById {
   '/data-center/corrections': typeof DataCenterCorrectionsRoute
   '/data-center/dashboard': typeof DataCenterDashboardRoute
   '/data-center/import': typeof DataCenterImportRoute
+  '/data-center/my-calls': typeof DataCenterMyCallsRoute
   '/data-center/partner-records': typeof DataCenterPartnerRecordsRoute
   '/data-center/settings': typeof DataCenterSettingsRoute
   '/data-center/stock': typeof DataCenterStockRoute
@@ -765,6 +774,7 @@ export interface FileRouteTypes {
     | '/data-center/corrections'
     | '/data-center/dashboard'
     | '/data-center/import'
+    | '/data-center/my-calls'
     | '/data-center/partner-records'
     | '/data-center/settings'
     | '/data-center/stock'
@@ -846,6 +856,7 @@ export interface FileRouteTypes {
     | '/data-center/corrections'
     | '/data-center/dashboard'
     | '/data-center/import'
+    | '/data-center/my-calls'
     | '/data-center/partner-records'
     | '/data-center/settings'
     | '/data-center/stock'
@@ -927,6 +938,7 @@ export interface FileRouteTypes {
     | '/data-center/corrections'
     | '/data-center/dashboard'
     | '/data-center/import'
+    | '/data-center/my-calls'
     | '/data-center/partner-records'
     | '/data-center/settings'
     | '/data-center/stock'
@@ -1009,6 +1021,7 @@ export interface RootRouteChildren {
   DataCenterCorrectionsRoute: typeof DataCenterCorrectionsRoute
   DataCenterDashboardRoute: typeof DataCenterDashboardRoute
   DataCenterImportRoute: typeof DataCenterImportRoute
+  DataCenterMyCallsRoute: typeof DataCenterMyCallsRoute
   DataCenterPartnerRecordsRoute: typeof DataCenterPartnerRecordsRoute
   DataCenterSettingsRoute: typeof DataCenterSettingsRoute
   DataCenterStockRoute: typeof DataCenterStockRoute
@@ -1313,6 +1326,13 @@ declare module '@tanstack/react-router' {
       path: '/data-center/partner-records'
       fullPath: '/data-center/partner-records'
       preLoaderRoute: typeof DataCenterPartnerRecordsRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/data-center/my-calls': {
+      id: '/data-center/my-calls'
+      path: '/data-center/my-calls'
+      fullPath: '/data-center/my-calls'
+      preLoaderRoute: typeof DataCenterMyCallsRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/data-center/import': {
@@ -1649,6 +1669,7 @@ const rootRouteChildren: RootRouteChildren = {
   DataCenterCorrectionsRoute: DataCenterCorrectionsRoute,
   DataCenterDashboardRoute: DataCenterDashboardRoute,
   DataCenterImportRoute: DataCenterImportRoute,
+  DataCenterMyCallsRoute: DataCenterMyCallsRoute,
   DataCenterPartnerRecordsRoute: DataCenterPartnerRecordsRoute,
   DataCenterSettingsRoute: DataCenterSettingsRoute,
   DataCenterStockRoute: DataCenterStockRoute,

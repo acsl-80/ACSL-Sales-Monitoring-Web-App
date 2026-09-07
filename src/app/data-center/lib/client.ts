@@ -853,6 +853,8 @@ export type FormSchema = {
   fields: FieldDef[];
   /** Keyed by option_list_key. */
   options: Record<string, OptionValue[]>;
+  /** The call app the agents dial in, from `call_centre.dialler_name` (D36). */
+  diallerName?: string;
 };
 
 export type CallAttempt = {
@@ -860,9 +862,12 @@ export type CallAttempt = {
   attempt_no: number;
   attempted_at: string;
   outcome: string | null;
+  outcome_value?: string | null;
   agent: string | null;
   answered_by: string | null;
   note: string | null;
+  /** When the buyer asked to be rung again, if the outcome was a callback (Phase 26, C4). */
+  callback_at?: string | null;
 };
 
 /**
@@ -951,6 +956,8 @@ export const dataCenterWrite = {
       agentId?: string | null;
       answeredById?: string | null;
       note?: string | null;
+      /** ISO time the buyer asked to be rung again; only with a callback outcome. */
+      callbackAt?: string | null;
     },
   ) => call<{ attemptNo: number }>("data-center-write", "log_attempt", { saleId, ...attempt }),
 

@@ -12,7 +12,7 @@ A shift-board control centre for managers and My calls for agents, on the call f
 - [x] C1 The reads (board, agent_day, pool_partners, activity) and assign_preview on data-center-assign; client methods; no migration. PR #90 merged and live 2026-09-07 (main c8f380e to 655e3c2; data-center-assign v8; API build; bundle crawl confirmed; sandbox green four of four, neighbours 23 of 23)
 - [ ] C2 The control centre: figures, the shift board, waiting by partner (with the Partners page behind See all), needs a decision, what happened today (with the Activity page behind All activity); the old board, agents panel, pool table, lanes and log retired; the queue and the register stay on the page until C3 moves them. PR #91 merged and live 2026-09-07 (main d4f3282 to b97e0b1; migration 20260910010000 with ledger row; data-center-assign v9; API build; bundle crawl confirmed; 77 of 77 on the PR's preview)
 - [ ] C3 The pages behind it: agent page (with Move to on a batch), hand-out dialog with the live preview, the Records page with the outcome strip (the queue moves there; the call-centre route sends any narrowing on), shared phones on its own page. in review (PR open)
-- [ ] C4 My calls: copy fields, the after-save hand-off, the callback time beside the outcome (one column), the dialler name setting. todo
+- [ ] C4 My calls (`/data-center/my-calls`, agents land there): copy fields on the queue and in the call form's header, the after-save hand-off (Next record, See all assigned, Back), the callback time beside a callback outcome (`call_attempts.callback_at`), the dialler name setting (`call_centre.dialler_name`, Call Savvy). in review (PR open, stacked on C3)
 
 ## Phase 25, field alignment (opened 2026-09-05)
 

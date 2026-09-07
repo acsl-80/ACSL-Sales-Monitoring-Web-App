@@ -119,7 +119,12 @@ const TO_CALL_SQL = `
            where x.sale_id = i.sale_id and x.review_outcome = 'recall') as recall_closed_at,
          (select o.value from data_center.call_attempts a
             left join data_center.option_values o on o.id = a.outcome_id
-           where a.sale_id = i.sale_id order by a.attempted_at desc limit 1) as last_outcome_value
+           where a.sale_id = i.sale_id order by a.attempted_at desc limit 1) as last_outcome_value,
+         -- Phase 26, C4: the callback the buyer asked for, from the newest attempt.
+         (select a.callback_at from data_center.call_attempts a
+           where a.sale_id = i.sale_id order by a.attempted_at desc limit 1) as callback_at,
+         (select d.saved_at from data_center.call_drafts d
+           where d.sale_id = i.sale_id order by d.saved_at desc limit 1) as draft_saved_at
     from data_center.assignment_batches b
     join data_center.assignment_items i on i.batch_id = b.id and i.is_active
     join data_center.v_call_center_resolved r on r.sale_id = i.sale_id

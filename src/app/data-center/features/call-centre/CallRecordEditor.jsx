@@ -3,6 +3,7 @@ import { SearchableSelect } from "@/components/ui/searchable-select";
 import AgentBrief from "./AgentBrief";
 import SerialRematch from "./SerialRematch";
 import SendBackPanel from "./SendBackPanel";
+import CopyField from "./control/CopyField";
 import Link from "@/compat/Link";
 import { dataCenterWrite, DataCenterError } from "../../lib/client";
 import { OUTCOME_WORDS, OUTCOME_PILL } from "../../lib/outcome";
@@ -72,7 +73,13 @@ function Field({ label, children }) {
   );
 }
 
-export default function CallRecordEditor({ saleId, canEdit, onClose, onSaved }) {
+/**
+ * Phase 26, C4 additions. `nextOf(saleId)` answers what the agent should call
+ * after this record ({ saleId, label, remaining } or null); `onNext(saleId)`
+ * opens it in this same dialog; `allHref` is where "See all assigned" goes.
+ * Without them the footer says "Saved." as it always did.
+ */
+export default function CallRecordEditor({ saleId, canEdit, onClose, onSaved, nextOf = null, onNext = null, allHref = "/data-center/my-calls" }) {
   const [schema, setSchema] = useState(null);
   const [record, setRecord] = useState(null);
   const [attempts, setAttempts] = useState([]);
@@ -81,6 +88,10 @@ export default function CallRecordEditor({ saleId, canEdit, onClose, onSaved }) 
   const [saving, setSaving] = useState(false);
   const [nextOutcome, setNextOutcome] = useState("");
   const [nextNote, setNextNote] = useState("");
+  /** When the buyer asked to be rung again; only sent with a callback outcome. */
+  const [callbackAt, setCallbackAt] = useState("");
+  /** After Save: what comes next for this agent, or "nothing left". */
+  const [handoff, setHandoff] = useState(null);
   const [error, setError] = useState(null);
   const [notice, setNotice] = useState(null);
   /** A Save refused because somebody else saved first; reloading is the way on. */
@@ -96,6 +107,10 @@ export default function CallRecordEditor({ saleId, canEdit, onClose, onSaved }) 
   const [draft, setDraft] = useState(null);
   const [draftSavedAt, setDraftSavedAt] = useState(null);
   const [draftBusy, setDraftBusy] = useState(false);
+  useEffect(() => {
+    setHandoff(null);
+    setCallbackAt("");
+  }, [saleId]);
   /*
    * Whether this agent has typed anything since the record loaded.
    *
@@ -277,6 +292,7 @@ export default function CallRecordEditor({ saleId, canEdit, onClose, onSaved }) 
       setDraftSavedAt(null);
       await load();
       onSaved?.(result);
+      if (nextOf) setHandoff({ next: nextOf(saleId) });
     } catch (err) {
       // A 409 is not a fault in what was typed: somebody else saved first. It
       // is shown in its own tone with the one way on, a reload.
@@ -294,6 +310,7 @@ export default function CallRecordEditor({ saleId, canEdit, onClose, onSaved }) 
       await dataCenterWrite.logAttempt(saleId, {
         outcomeId: outcomeId || null,
         note: note?.trim() || null,
+        callbackAt: callbackIsPicked && callbackAt ? new Date(callbackAt).toISOString() : null,
       });
       await load();
       setNotice("Call logged.");
@@ -321,7 +338,18 @@ export default function CallRecordEditor({ saleId, canEdit, onClose, onSaved }) 
   const otherIsPicked =
     callOutcomes.find((o) => o.id === nextOutcome)?.value === "other";
   // An attempt needs an outcome; "something else" needs the words as well.
+  const callbackIsPicked =
+    callOutcomes.find((o) => o.id === nextOutcome)?.value === "callback_requested";
   const canLog = Boolean(nextOutcome) && (!otherIsPicked || nextNote.trim().length > 0);
+  /** Quick times for a callback, in the browser's local clock. */
+  const quickCallback = (kind) => {
+    const d = new Date();
+    if (kind === "hour") d.setHours(d.getHours() + 1, 0, 0, 0);
+    if (kind === "evening") { d.setHours(17, 0, 0, 0); if (d.getTime() < Date.now()) d.setDate(d.getDate() + 1); }
+    if (kind === "tomorrow") { d.setDate(d.getDate() + 1); d.setHours(9, 0, 0, 0); }
+    const pad = (n) => String(n).padStart(2, "0");
+    setCallbackAt(`${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`);
+  };
   // Every active reason, offered as chips by the send-back panel; the panel
   // holds the choice itself so nothing about a send-back travels in the draft.
   const correctionReasons = schema?.options?.correction_reason ?? [];
@@ -359,6 +387,16 @@ export default function CallRecordEditor({ saleId, canEdit, onClose, onSaved }) 
               "Loading this record"
             )}
           </DialogDescription>
+          {/* Phase 26, C4 (D36): the numbers copy for the call app; nothing dials. */}
+          {record && (
+            <div className="mt-2 flex flex-wrap items-center gap-2" data-copy-numbers>
+              <CopyField value={record.resolved_phone ?? record.primary_phone ?? record.phone} label="phone" diallerName={schema?.diallerName} />
+              {(record.resolved_alt_phone ?? record.alternative_phone) && (
+                <CopyField value={record.resolved_alt_phone ?? record.alternative_phone} label="other phone" diallerName={schema?.diallerName} />
+              )}
+              <CopyField value={record.stove_serial_no} label="stove ID" diallerName={schema?.diallerName} compact />
+            </div>
+          )}
         </DialogHeader>
 
         {/*
@@ -590,6 +628,24 @@ export default function CallRecordEditor({ saleId, canEdit, onClose, onSaved }) 
                 )}
               </div>
 
+              {canEdit && callbackIsPicked && (
+                <div className="mb-3 flex flex-wrap items-center gap-2 rounded-lg border border-(--dc-brief-place) bg-(--dc-brief-place-soft)/40 p-3" data-callback-time>
+                  <label htmlFor="dc-callback-at" className="text-xs font-semibold uppercase tracking-wide text-(--dc-brief-place)">Call back at</label>
+                  <input
+                    id="dc-callback-at"
+                    type="datetime-local"
+                    value={callbackAt}
+                    onChange={(e) => setCallbackAt(e.target.value)}
+                    className="rounded-md border border-gray-300 px-2 py-1 text-sm focus:border-(--dc-accent) focus:outline-none"
+                  />
+                  {[["hour", "in 1 hour"], ["evening", "after 17:00"], ["tomorrow", "tomorrow 09:00"]].map(([k, label]) => (
+                    <button key={k} type="button" onClick={() => quickCallback(k)} className="rounded-full border border-(--dc-brief-place) bg-white px-2.5 py-0.5 text-xs font-semibold text-(--dc-brief-place)">
+                      {label}
+                    </button>
+                  ))}
+                  <span className="text-xs text-gray-600">Goes on the call, so your queue puts it first when the time comes.</span>
+                </div>
+              )}
               {canEdit && otherIsPicked && (
                 <div className="mb-3 rounded-lg border border-(--dc-accent)/25 bg-(--dc-accent-soft)/30 p-3">
                   <label
@@ -698,6 +754,28 @@ export default function CallRecordEditor({ saleId, canEdit, onClose, onSaved }) 
           </div>
         )}
 
+        {/* Phase 26, C4: after Save, the way on. The next record in the agent's
+            own calling order, named; See all assigned; or Back to re-read. When
+            nothing is left it says so, and the manager hands out more. */}
+        {handoff && (
+          <div className="flex shrink-0 flex-wrap items-center gap-3 border-t border-(--dc-brief-who) bg-white px-5 py-3 shadow-[inset_0_0_0_3px_var(--dc-brief-who-soft)]" data-handoff role="status">
+            <p className="min-w-0 flex-1 text-sm text-gray-800">
+              <span className="font-semibold">Saved.</span>{" "}
+              {handoff.next
+                ? <>Next for you: <span className="font-medium">{handoff.next.label}</span>.{handoff.next.remaining > 0 ? ` ${handoff.next.remaining} more after that.` : ""}</>
+                : "That was the last record assigned to you. Your manager hands out more from the control centre."}
+            </p>
+            <div className="flex flex-wrap items-center gap-2">
+              <button type="button" onClick={() => setHandoff(null)} className="rounded-md border border-gray-300 px-3 py-1.5 text-sm font-medium text-gray-700 transition hover:bg-gray-50">Back</button>
+              <Link href={allHref} onClick={() => onClose?.()} className="rounded-md border border-(--dc-brief-stove) px-3 py-1.5 text-sm font-semibold text-(--dc-brief-stove) transition hover:bg-(--dc-brief-stove-soft)">See all assigned</Link>
+              {handoff.next && onNext && (
+                <button type="button" onClick={() => { const id = handoff.next.saleId; setHandoff(null); onNext(id); }} className="rounded-md bg-(--dc-fig-sold) px-4 py-1.5 text-sm font-semibold text-white shadow-sm transition hover:brightness-110">
+                  Next record
+                </button>
+              )}
+            </div>
+          </div>
+        )}
         <div className="flex shrink-0 flex-wrap items-center justify-between gap-3 border-t border-gray-200 bg-(--dc-surface-muted) px-5 py-3">
           <p className="flex items-center gap-1.5 text-xs text-gray-500">
             {canEdit

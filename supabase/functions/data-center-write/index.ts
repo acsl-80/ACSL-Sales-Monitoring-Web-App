@@ -412,7 +412,16 @@ serve(async (req) => {
           const key = String(row.list_key);
           (grouped[key] ??= []).push(row);
         }
-        return json({ data: { fields: fields.rows, options: grouped } }, 200, cors);
+        // The call app's name rides with the form (D36): every copy button's
+        // hint names it, and it is a setting, never a literal.
+        const dialler = await conn.queryObject<{ name: string | null }>(
+          `select value #>> '{}' as name from data_center.workflow_config where key = 'call_centre.dialler_name'`,
+        );
+        return json(
+          { data: { fields: fields.rows, options: grouped, diallerName: dialler.rows[0]?.name ?? "the call app" } },
+          200,
+          cors,
+        );
       }
 
       /** One record, with its attempts, for the editor. */
@@ -575,8 +584,8 @@ serve(async (req) => {
           standing_recipients: Number(route.standing_recipients ?? 0),
         });
         const attempts = await conn.queryObject({
-          text: `select a.id::text, a.attempt_no, a.attempted_at, a.note,
-                        o.label as outcome, g.label as agent, b.label as answered_by
+          text: `select a.id::text, a.attempt_no, a.attempted_at, a.note, a.callback_at,
+                        o.label as outcome, o.value as outcome_value, g.label as agent, b.label as answered_by
                  from data_center.call_attempts a
                  left join data_center.option_values o on o.id = a.outcome_id
                  left join data_center.option_values g on g.id = a.agent_id
@@ -853,11 +862,11 @@ serve(async (req) => {
 
           const inserted = await conn.queryObject<{ attempt_no: number }>({
             text: `insert into data_center.call_attempts
-                     (sale_id, attempt_no, attempted_at, outcome_id, agent_id, answered_by_id, note, created_by)
+                     (sale_id, attempt_no, attempted_at, outcome_id, agent_id, answered_by_id, note, created_by, callback_at)
                    select $1,
                           coalesce(max(attempt_no), 0) + 1,
                           coalesce($2::timestamptz, now()),
-                          $3, $4, $5, $6, $7
+                          $3, $4, $5, $6, $7, $8::timestamptz
                    from data_center.call_attempts where sale_id = $1
                    returning attempt_no`,
             args: [
@@ -868,6 +877,8 @@ serve(async (req) => {
               body.answeredById ?? null,
               body.note ?? null,
               userId,
+              // Phase 26, C4: when the buyer asked to be rung again, and when.
+              typeof body.callbackAt === "string" && body.callbackAt ? body.callbackAt : null,
             ],
           });
 

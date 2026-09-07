@@ -1,4 +1,5 @@
-import { useSearch } from "@tanstack/react-router";
+import { useEffect } from "react";
+import { useNavigate, useSearch } from "@tanstack/react-router";
 import DataCentreShell from "../components/DataCentreShell";
 import Link from "@/compat/Link";
 import MyWork from "../features/call-centre/MyWork";
@@ -38,6 +39,11 @@ function Inner() {
   const canEdit = can(DATA_CENTER_FEATURES.CALL_RECORDS_EDIT);
   const layout = callCentreLayout({ canEdit, canManage });
   const agentFirst = layout === "agent";
+  // An agent who opens the call centre lands on their own day (Phase 26, C4).
+  const navigate = useNavigate();
+  useEffect(() => {
+    if (agentFirst) navigate({ to: "/data-center/my-calls", replace: true });
+  }, [agentFirst, navigate]);
 
   const cc = useControlCentre({ canManage, canReview: canEdit, day: search.day, range: search.range });
   const agentsMeta = useAgentsMeta(canManage, cc.board?.refreshSeconds);
