@@ -321,3 +321,24 @@ by migration on production the same day, and the dictionary's seed and the
 phone app guide say the 11th. The rule and the deadline are the same day, so
 no phone sale reads incomplete for want of a field the app was not yet asked
 to send. The date stays movable in Settings.
+
+## D35. A call is counted against the login that logged it (2026-09-07)
+
+The call form carries an "agent" dropdown from the registry, left over from
+the paper call sheets, and every logged call also carries the account that
+saved it. The shift board, the agent's day and the activity feed count by the
+account (`call_attempts.created_by`). The dropdown stays for imported sheets,
+where no login made the call. His word on 2026-09-07 when asked which to
+trust. The mark's colour family on the board is a display rule over the
+call-outcome value: callback for a requested callback; unreached for
+unreachable, unanswered, wrong number and hung up; spoke for the rest.
+
+## D36. Numbers copy, nothing dials (2026-09-07)
+
+Calls are made in a separate VoIP application (Call Savvy today) and the
+outcome is recorded here in the call form that exists. Every number on the
+agent's surface is a copy field. The application's name is a configuration
+value, `call_centre.dialler_name`, never a literal, so a change of vendor is
+a setting. After Save the form offers the next assigned record, See all
+assigned and Back, and says when nothing is left.
+

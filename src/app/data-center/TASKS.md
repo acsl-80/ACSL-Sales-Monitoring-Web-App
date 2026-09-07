@@ -4,6 +4,16 @@ Flat, one line per slice, newest programme first. States: todo, spec red,
 green, in review, merged, live. The why lives in `decisions.md`; the evidence
 lives on each PR.
 
+## Phase 26, the call centre in two surfaces (opened 2026-09-06, approved 2026-09-07)
+
+A shift-board control centre for managers and My calls for agents, on the call form that exists. Proposal: https://claude.ai/code/artifact/df3f05d2-9661-403e-8b8a-9f05bd5fbddc. Decisions D35 and D36.
+
+- [x] C0 Proposal, content plan and mockups for both surfaces, checked at 375 pixels. approved 2026-09-07
+- [ ] C1 The reads (board, agent_day, pool_partners, activity) and assign_preview on data-center-assign; client methods; no migration. spec red
+- [ ] C2 The control centre: figures, the shift board, waiting by partner, needs a decision, what happened today; the old sections retired. todo
+- [ ] C3 The pages behind it: agent page, partners, hand-out dialog with preview, records with the strip, shared phones, activity. todo
+- [ ] C4 My calls: copy fields, the after-save hand-off, the callback time beside the outcome (one column), the dialler name setting. todo
+
 ## Phase 25, field alignment (opened 2026-09-05)
 
 The paper User Agreement's wording is the name of every sale field on every

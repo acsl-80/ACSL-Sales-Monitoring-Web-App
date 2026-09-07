@@ -20,24 +20,12 @@ export type AgentsContext = {
   json: (body: unknown, status: number, cors: Record<string, string>) => Response;
 };
 
-const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-
-export async function handleAgents(ctx: AgentsContext): Promise<Response> {
-  const { action, body, userId, cors, json } = ctx;
-
-  switch (action) {
-    /**
-     * The console's own read: every call agent with what they are holding,
-     * and every partner with what is still waiting. Two questions that are
-     * always asked together, because assigning is choosing one of each.
-     *
-     * `defaultCap` rides along so the console can say "3 of 1" for an agent
-     * with no profile row, using the same default the engine uses.
-     */
-    case "agents": {
-      return await withReadConnection(async (conn) => {
-        const agents = await conn.queryObject({
-          text: `select m.user_id::text as agent_id,
+/**
+ * Every agent (call_agent or editor) with capacity, load and derived presence.
+ * One text, read by the agents panel and by the shift board, so the two can
+ * never disagree about who is working.
+ */
+export const AGENT_ROSTER_SQL = `select m.user_id::text as agent_id,
                         p.full_name, p.email, p.role as app_role,
                         m.access_role,
                         coalesce(cap.is_enabled, true) as is_enabled,
@@ -79,8 +67,25 @@ export async function handleAgents(ctx: AgentsContext): Promise<Response> {
                                        where key = 'assignment.max_open_batches'), 1) as default_cap
                    ) cfg
                   where m.access_role in ('call_agent', 'editor')
-                  order by p.full_name nulls last`,
-        });
+                  order by p.full_name nulls last`;
+
+const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+export async function handleAgents(ctx: AgentsContext): Promise<Response> {
+  const { action, body, userId, cors, json } = ctx;
+
+  switch (action) {
+    /**
+     * The console's own read: every call agent with what they are holding,
+     * and every partner with what is still waiting. Two questions that are
+     * always asked together, because assigning is choosing one of each.
+     *
+     * `defaultCap` rides along so the console can say "3 of 1" for an agent
+     * with no profile row, using the same default the engine uses.
+     */
+    case "agents": {
+      return await withReadConnection(async (conn) => {
+        const agents = await conn.queryObject({ text: AGENT_ROSTER_SQL });
         const pool = await conn.queryObject({
           text: `select r.organization_id::text, r.partner_name, count(*)::int as callable,
                         min(r.sales_date) as oldest

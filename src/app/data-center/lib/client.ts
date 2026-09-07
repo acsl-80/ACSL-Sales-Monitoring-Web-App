@@ -2013,6 +2013,154 @@ export type AssignmentDetailItem = {
  * my_batches is the one action an agent calls, scoped to their token with no
  * way to ask about anyone else.
  */
+/** Phase 26 read shapes. A call is counted against the login that logged it (D35). */
+export type BoardMark = {
+  at: string;
+  sale_id: string;
+  attempt_no: number;
+  stove_serial_no: string | null;
+  end_user_name: string | null;
+  partner_name: string | null;
+  outcome_value: string | null;
+  outcome_label: string | null;
+  family: "spoke" | "callback" | "unreached";
+  on_day: string;
+};
+export type BoardFlag = {
+  batch_id: string;
+  size: number;
+  partner_name: string | null;
+  kind: "handed_out" | "reclaimed";
+  at: string;
+  reclaim_reason: string | null;
+  on_day: string;
+};
+export type BoardAgent = {
+  agent_id: string;
+  full_name: string | null;
+  email: string | null;
+  access_role: string;
+  presence: "paused" | "working" | "away" | "available" | "at_capacity";
+  is_enabled: boolean;
+  open_batches: number;
+  max_open_batches: number | null;
+  to_call: number;
+  current_serial: string | null;
+  current_sale_id: string | null;
+  last_seen_at: string | null;
+  called: number;
+  verified: number;
+  marks: BoardMark[];
+  flags: BoardFlag[];
+  days?: { date: string; called: number; verified: number }[];
+};
+export type BoardData = {
+  day: string;
+  tz: string;
+  range: "day" | "week";
+  days: string[];
+  agents: BoardAgent[];
+  totals: { called: number; verified: number };
+};
+export type AgentDayItem = {
+  batch_id: string;
+  assigned_at: string;
+  position: number;
+  sale_id: string;
+  stove_serial_no: string;
+  end_user_name: string | null;
+  partner_name: string | null;
+  phone: string | null;
+  alt_phone: string | null;
+  attempt_count: number;
+  last_attempt_at: string | null;
+  verification_outcome: string | null;
+  correction_state: string | null;
+  recall_closed_at: string | null;
+  last_outcome_value: string | null;
+};
+export type AgentDayData = {
+  agent: Partial<BoardAgent> & { agent_id: string };
+  day: string;
+  tz: string;
+  range: "day" | "week";
+  called: number;
+  verified: number;
+  marks: BoardMark[];
+  flags: BoardFlag[];
+  concluded: (Omit<BoardMark, "on_day">)[];
+  to_call: AgentDayItem[];
+  tally: { date: string; called: number; verified: number }[];
+};
+export type AssignPreviewData = {
+  rows: {
+    pos: number;
+    sale_id: string;
+    stove_serial_no: string;
+    end_user_name: string | null;
+    phone: string | null;
+    sales_date: string | null;
+    attempt_count: number;
+    last_attempt_at: string | null;
+    recall_due: boolean;
+    digitised_at: string | null;
+    is_recent: boolean;
+  }[];
+  size: number;
+  requested: number;
+  waiting: number;
+  waitingAfter: number;
+  recentCount: number;
+  recentDays: number;
+  agent: { open_batches: number; cap: number; is_enabled: boolean; over_capacity: boolean };
+};
+export type PoolPartnerRow = {
+  organization_id: string;
+  partner_name: string;
+  state: string | null;
+  waiting: number;
+  new_recent: number;
+  oldest_sale: string | null;
+  on_it: string[];
+  batch_size: number;
+  recent_days: number;
+};
+export type PoolPartnersData = {
+  rows: PoolPartnerRow[];
+  total: number;
+  page: number;
+  pageSize: number;
+  totals: { waiting: number; partners: number; nobody_on: number; new_recent: number; recent_days: number };
+};
+export type ActivityKind = "call" | "handed_out" | "reclaimed" | "sent_back" | "reviewed";
+export type ActivityRow = {
+  at: string;
+  kind: ActivityKind;
+  actor_id: string | null;
+  actor_name: string | null;
+  sale_id: string | null;
+  stove_serial_no: string | null;
+  end_user_name: string | null;
+  partner_name: string | null;
+  organization_id: string | null;
+  batch_id: string | null;
+  detail: Record<string, unknown>;
+  outcome_value: string | null;
+};
+export type ActivityData = {
+  rows: ActivityRow[];
+  total: number;
+  page: number;
+  pageSize: number;
+  histogram: { bucket: string; calls: number; callback: number; unreached: number; other: number; spoke: number }[];
+  totals: {
+    calls: number; handed_out: number; reclaimed: number; sent_back: number; reviewed: number;
+    verified: number; from_at: string; to_at: string;
+  };
+  kinds: readonly ActivityKind[];
+  scope: "all" | "own";
+};
+
 export const dataCenterAssign = {
   run: () =>
     call<{
@@ -2021,6 +2169,40 @@ export const dataCenterAssign = {
     }>("data-center-assign", "run"),
 
   reclaim: () => call<{ reclaimed: number }>("data-center-assign", "reclaim"),
+  /** Phase 26: the shift board, one day (or the week ending on it), every agent. */
+  board: (opts: { day?: string | null; range?: "day" | "week" } = {}) =>
+    call<BoardData>("data-center-assign", "board", opts),
+  /** Phase 26: one agent's day. Self needs no permission; another agent needs assignment.manage. */
+  agentDay: (opts: { agentId?: string | null; day?: string | null; range?: "day" | "week" } = {}) =>
+    call<AgentDayData>("data-center-assign", "agent_day", opts),
+  /** Phase 26: the rows the picker would hand out. Reads only; no batch is made. */
+  assignPreview: (opts: {
+    agentId: string;
+    organizationId: string;
+    size?: number | null;
+    order?: string[] | null;
+  }) => call<AssignPreviewData>("data-center-assign", "assign_preview", opts),
+  /** Phase 26: the pool by partner, filtered, sorted and paged. */
+  poolPartners: (opts: {
+    q?: string | null;
+    state?: string | null;
+    nobodyOn?: boolean;
+    sort?: "waiting" | "new" | "oldest" | "name";
+    page?: number;
+    pageSize?: number;
+  } = {}) => call<PoolPartnersData>("data-center-assign", "pool_partners", opts),
+  /** Phase 26: the activity feed. An agent without assignment.manage reads their own rows. */
+  activity: (opts: {
+    from?: string | null;
+    to?: string | null;
+    agentId?: string | null;
+    kind?: ActivityKind | null;
+    outcome?: string | null;
+    organizationId?: string | null;
+    q?: string | null;
+    page?: number;
+    pageSize?: number;
+  } = {}) => call<ActivityData>("data-center-assign", "activity", opts),
 
   /**
    * The console's read: who can take work, and what work there is.

@@ -6,19 +6,25 @@
 // metrics live in compute_metrics() rather than in TypeScript. "Who got what
 // and why" must have one answer, in one file, and that file is the migration.
 //
-// Four actions:
+// The actions:
 //
 //   run          assign work now. Admin only: it changes who is working what.
 //   reclaim      take back quiet batches. Admin only, and `run` does it first
 //                anyway, so this exists for the "someone left today" case.
 //   status       the queue at a glance: callable per partner, open batches.
 //   my_batches   an agent's own work list. The one action agents call.
+//   agents, agent_detail, agent_profile_set, assign_manual, reassign,
+//   unassign_batch, unassign_item: the manual door (agents.ts and below).
+//   board, agent_day, assign_preview (board.ts) and pool_partners, activity
+//   (feed.ts): the Phase 26 reads behind the shift board and My calls.
 
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.39.3";
 import { withConnection, withReadConnection } from "../_shared/data-center-db.ts";
 import { featuresFor } from "../_shared/data-center-roles.ts";
 import { handleAgents } from "./agents.ts";
+import { handleBoard } from "./board.ts";
+import { handleFeed } from "./feed.ts";
 
 const DEFAULT_ORIGINS = [
   "https://sales.atmosfair.com.ng",
@@ -172,6 +178,19 @@ serve(async (req) => {
       note?: string | null;
       /** Hand-out order tokens for a manual batch; the picker refuses any it does not know. */
       order?: unknown;
+      // Phase 26 reads: the board's day and range, the feed's filters and paging.
+      day?: string | null;
+      range?: string | null;
+      page?: number | null;
+      pageSize?: number | null;
+      q?: string | null;
+      state?: string | null;
+      nobodyOn?: boolean | null;
+      sort?: string | null;
+      from?: string | null;
+      to?: string | null;
+      kind?: string | null;
+      outcome?: string | null;
     } = {};
     try {
       body = await req.json();
@@ -367,6 +386,34 @@ serve(async (req) => {
           if (denied) return denied;
         }
         return await handleAgents({ action: body.action, body, userId, cors, json });
+      }
+      // Phase 26: the shift board, the agent's day and the hand-out preview.
+      // The gate lives inside: an agent may read their own day; the rest is
+      // assignment.manage.
+      case "board":
+      case "agent_day":
+      case "assign_preview": {
+        return await handleBoard({
+          action: body.action,
+          body: body as Parameters<typeof handleBoard>[0]["body"],
+          userId,
+          canManage: can("assignment.manage"),
+          cors,
+          json,
+        });
+      }
+      // Phase 26: the pool by partner and the activity feed. An agent without
+      // the manage permission reads only their own activity.
+      case "pool_partners":
+      case "activity": {
+        return await handleFeed({
+          action: body.action,
+          body: body as Parameters<typeof handleFeed>[0]["body"],
+          userId,
+          canManage: can("assignment.manage"),
+          cors,
+          json,
+        });
       }
 
       /**
