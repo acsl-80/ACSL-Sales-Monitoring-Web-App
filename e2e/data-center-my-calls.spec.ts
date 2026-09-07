@@ -113,9 +113,9 @@ test("the call form copies, takes a callback time, and after Save offers the nex
 
   // Save offers the next record; Next record opens it in the same dialog.
   await dialog.getByRole("button", { name: "Save", exact: true }).click();
-  await expect(dialog.getByText("Saved.", { exact: true })).toBeVisible({ timeout: 15_000 });
   const handoff = dialog.locator("[data-handoff]");
-  await expect(handoff).toBeVisible();
+  await expect(handoff).toBeVisible({ timeout: 15_000 });
+  await expect(handoff).toContainText("Saved");
   if (day.to_call.length > 1) {
     await expect(handoff).toContainText("Next for you");
     await handoff.getByRole("button", { name: "Next record" }).click();

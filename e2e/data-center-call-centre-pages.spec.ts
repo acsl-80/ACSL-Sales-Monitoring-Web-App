@@ -23,8 +23,12 @@ async function agentsAndPool(page: Page) {
 
 async function holderWithWork(page: Page) {
   const { agents } = await agentsAndPool(page);
-  const holder = agents.find((a) => a.open_batches > 0);
+  // Enabled, so the row's action is Open and not Resume.
+  const holder = agents.find((a) => a.open_batches > 0 && a.is_enabled) ?? agents.find((a) => a.open_batches > 0);
   expect(holder, "an agent holding a batch on the branch").toBeTruthy();
+  if (!holder!.is_enabled) {
+    await callEdgeFunction(page, "data-center-assign", { action: "agent_profile_set", agentId: holder!.agent_id, isEnabled: true });
+  }
   const detail = await callEdgeFunction(page, "data-center-assign", { action: "agent_detail", agentId: holder!.agent_id });
   const items = (detail.body as { data: { items: { sale_id: string; stove_serial_no: string }[] } }).data.items;
   expect(items.length).toBeGreaterThan(0);
@@ -70,12 +74,15 @@ test("the agent's page shows their day, their work and their calls, and hands ou
 test("the hand-out dialog previews exactly what the picker would hand out, before anything is written", async ({ page }) => {
   await signIn(page, USERS.admin);
   let { agents, pool } = await agentsAndPool(page);
-  if (!pool.some((p) => p.callable > 0)) {
+  // Global setup hands out everything; a concluded record put back is not
+  // callable, so try a few until the pool has one.
+  for (let i = 0; i < 4 && !pool.some((p) => p.callable > 0); i++) {
     const { items } = await holderWithWork(page);
-    await callEdgeFunction(page, "data-center-assign", { action: "unassign_item", saleId: items[0].sale_id });
+    await callEdgeFunction(page, "data-center-assign", { action: "unassign_item", saleId: items[i % items.length].sale_id });
     ({ agents, pool } = await agentsAndPool(page));
   }
-  const partner = pool.find((p) => p.callable > 0)!;
+  const partner = pool.find((p) => p.callable > 0);
+  expect(partner, "a partner with a callable record").toBeTruthy();
   const agent = agents.find((a) => a.is_enabled)!;
   const bodies: string[] = [];
   page.on("request", (req) => {
@@ -83,7 +90,7 @@ test("the hand-out dialog previews exactly what the picker would hand out, befor
   });
 
   await page.goto("/data-center/call-centre/partners");
-  const partnerRow = page.locator("tbody tr").filter({ hasText: partner.partner_name }).first();
+  const partnerRow = page.locator("tbody tr").filter({ hasText: partner!.partner_name }).first();
   await expect(partnerRow).toBeVisible({ timeout: 30_000 });
   await partnerRow.getByRole("button", { name: "Hand out" }).click();
   const dialog = page.getByRole("dialog");
@@ -94,7 +101,7 @@ test("the hand-out dialog previews exactly what the picker would hand out, befor
   await expect(preview.locator("tbody tr").first()).toBeVisible({ timeout: 30_000 });
 
   const oracle = await callEdgeFunction(page, "data-center-assign", {
-    action: "assign_preview", agentId: agent.agent_id, organizationId: partner.organization_id,
+    action: "assign_preview", agentId: agent.agent_id, organizationId: partner!.organization_id,
   });
   const rows = (oracle.body as { data: { rows: { stove_serial_no: string }[]; size: number } }).data;
   const shown = await preview.locator("tbody tr").allTextContents();

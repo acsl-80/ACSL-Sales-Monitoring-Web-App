@@ -760,7 +760,7 @@ export default function CallRecordEditor({ saleId, canEdit, onClose, onSaved, ne
         {handoff && (
           <div className="flex shrink-0 flex-wrap items-center gap-3 border-t border-(--dc-brief-who) bg-white px-5 py-3 shadow-[inset_0_0_0_3px_var(--dc-brief-who-soft)]" data-handoff role="status">
             <p className="min-w-0 flex-1 text-sm text-gray-800">
-              <span className="font-semibold">Saved.</span>{" "}
+              <span className="font-semibold">Saved</span>{" · "}
               {handoff.next
                 ? <>Next for you: <span className="font-medium">{handoff.next.label}</span>.{handoff.next.remaining > 0 ? ` ${handoff.next.remaining} more after that.` : ""}</>
                 : "That was the last record assigned to you. Your manager hands out more from the control centre."}
