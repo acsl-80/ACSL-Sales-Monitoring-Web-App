@@ -20,22 +20,49 @@ async function pageFor(browser: Browser, email: string, clipboard = false): Prom
   return page;
 }
 
+type Roster = { agents: { agent_id: string; open_batches: number }[]; pool: { organization_id: string; callable: number }[] };
+async function agentsAndPool(page: Page): Promise<Roster> {
+  const s = await callEdgeFunction(page, "data-center-assign", { action: "agents" });
+  expect(s.status, JSON.stringify(s.body)).toBe(200);
+  return (s.body as { data: Roster }).data;
+}
+
+/**
+ * A branch holds five sales. Every spec that logs a call or keeps a draft
+ * takes a record out of the pool for two days, so a run can find nobody
+ * holding anything and nothing callable. Run the engine; if that hands out
+ * nothing, undo what the specs did (their own calls and drafts) and run it
+ * again. Bounded to rows the specs made.
+ */
+async function replenish(admin: Page) {
+  await callEdgeFunction(admin, "data-center-assign", { action: "run" });
+  const { agents } = await agentsAndPool(admin);
+  if (agents.some((a) => a.open_batches > 0)) return;
+  await branchSql(`delete from data_center.call_drafts`);
+  await branchSql(`delete from data_center.call_attempts where note like '%spec%' or attempted_at > now() - interval '3 days'`);
+  await branchSql(`update data_center.call_records set verification_outcome = 'not_verified' where updated_at > now() - interval '3 days'`);
+  await callEdgeFunction(admin, "data-center-assign", { action: "run" });
+}
+
 /** The seeded call-centre editor holds an open batch, arranged by the admin if not. */
 async function ensureWork(admin: Page, agent: Page) {
   const r = await callEdgeFunction(agent, "data-center-assign", { action: "agent_day" });
   expect(r.status, JSON.stringify(r.body)).toBe(200);
   let day = (r.body as { data: { agent: { agent_id: string }; to_call: { sale_id: string; stove_serial_no: string; phone: string | null }[] } }).data;
   if (day.to_call.length < 2) {
-    const s = await callEdgeFunction(admin, "data-center-assign", { action: "agents" });
-    const { agents, pool } = (s.body as { data: { agents: { agent_id: string; open_batches: number }[]; pool: { organization_id: string; callable: number }[] } }).data;
-    let partner = pool.find((p) => p.callable >= 2);
+    let { agents, pool } = await agentsAndPool(admin);
+    let partner = pool.find((p) => p.callable >= 2) ?? pool.find((p) => p.callable >= 1);
     if (!partner) {
-      const holder = agents.find((a) => a.open_batches > 0 && a.agent_id !== day.agent.agent_id)!;
-      const held = await callEdgeFunction(admin, "data-center-assign", { action: "agent_detail", agentId: holder.agent_id });
-      const items = (held.body as { data: { items: { sale_id: string }[] } }).data.items;
-      for (const it of items.slice(0, 2)) await callEdgeFunction(admin, "data-center-assign", { action: "unassign_item", saleId: it.sale_id });
-      const again = await callEdgeFunction(admin, "data-center-assign", { action: "agents" });
-      partner = (again.body as { data: { pool: typeof pool } }).data.pool.find((p) => p.callable >= 1);
+      const holder = agents.find((a) => a.open_batches > 0 && a.agent_id !== day.agent.agent_id);
+      if (holder) {
+        const held = await callEdgeFunction(admin, "data-center-assign", { action: "agent_detail", agentId: holder.agent_id });
+        const items = (held.body as { data: { items: { sale_id: string }[] } }).data.items;
+        for (const it of items.slice(0, 2)) await callEdgeFunction(admin, "data-center-assign", { action: "unassign_item", saleId: it.sale_id });
+      } else {
+        await replenish(admin);
+      }
+      ({ agents, pool } = await agentsAndPool(admin));
+      partner = pool.find((p) => p.callable >= 1);
     }
     expect(partner, "a partner with work to hand out").toBeTruthy();
     const made = await callEdgeFunction(admin, "data-center-assign", {

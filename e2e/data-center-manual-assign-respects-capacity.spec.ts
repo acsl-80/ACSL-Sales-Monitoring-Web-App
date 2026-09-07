@@ -128,15 +128,18 @@ test("a second batch over capacity is refused, and lands with a reason", async (
   }
 });
 
-test("a data manager sees the console and the levers, a call centre editor does not", async ({ page }) => {
+test("a data manager sees the board and the levers, a call centre editor lands on their own day", async ({ page, browser }) => {
   await signIn(page, USERS.dataManager);
   await page.goto("/data-center/call-centre");
   await expect(page.getByRole("heading", { name: "Agents and their work" })).toBeVisible({ timeout: 30_000 });
   await expect(page.getByRole("button", { name: "Assign now" })).toBeVisible();
-
-  await signIn(page, USERS.callCentre);
-  await page.goto("/data-center/call-centre");
-  await expect(page.getByRole("heading", { name: "Call Centre" }).first()).toBeVisible({ timeout: 30_000 });
-  await expect(page.getByRole("heading", { name: "Agents and their work" })).toHaveCount(0);
-  await expect(page.getByRole("button", { name: "Assign now" })).toHaveCount(0);
+  // A second person is a second context: the session lives in localStorage.
+  const other = await (await browser.newContext()).newPage();
+  await signIn(other, USERS.callCentre);
+  await other.goto("/data-center/call-centre");
+  // Phase 26, C4: an agent who opens the call centre lands on My calls.
+  await expect(other).toHaveURL(/\/data-center\/my-calls/, { timeout: 30_000 });
+  await expect(other.locator("[data-my-calls]")).toBeVisible({ timeout: 30_000 });
+  await expect(other.getByRole("heading", { name: "Agents and their work" })).toHaveCount(0);
+  await expect(other.getByRole("button", { name: "Assign now" })).toHaveCount(0);
 });

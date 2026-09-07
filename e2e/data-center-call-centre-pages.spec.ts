@@ -1,5 +1,5 @@
 import { test, expect, type Page } from "@playwright/test";
-import { signIn, USERS, callEdgeFunction } from "./helpers";
+import { signIn, USERS, branchSql, callEdgeFunction } from "./helpers";
 
 /**
  * Phase 26, C3: the pages behind the control centre.
@@ -21,8 +21,30 @@ async function agentsAndPool(page: Page) {
   return (r.body as { data: { agents: Agent[]; pool: { organization_id: string; partner_name: string; callable: number }[] } }).data;
 }
 
+
+/**
+ * A branch holds five sales. Every spec that logs a call or keeps a draft
+ * takes a record out of the pool for two days, so a run can find nobody
+ * holding anything and nothing callable. Run the engine; if that hands out
+ * nothing, undo what the specs did (their own calls and drafts) and run it
+ * again. Bounded to rows the specs made.
+ */
+async function replenish(admin: Page) {
+  await callEdgeFunction(admin, "data-center-assign", { action: "run" });
+  const { agents } = await agentsAndPool(admin);
+  if (agents.some((a) => a.open_batches > 0)) return;
+  await branchSql(`delete from data_center.call_drafts`);
+  await branchSql(`delete from data_center.call_attempts where note like '%spec%' or attempted_at > now() - interval '3 days'`);
+  await branchSql(`update data_center.call_records set verification_outcome = 'not_verified' where updated_at > now() - interval '3 days'`);
+  await callEdgeFunction(admin, "data-center-assign", { action: "run" });
+}
+
 async function holderWithWork(page: Page) {
-  const { agents } = await agentsAndPool(page);
+  let { agents } = await agentsAndPool(page);
+  if (!agents.some((a) => a.open_batches > 0)) {
+    await replenish(page);
+    ({ agents } = await agentsAndPool(page));
+  }
   // Enabled, so the row's action is Open and not Resume.
   const holder = agents.find((a) => a.open_batches > 0 && a.is_enabled) ?? agents.find((a) => a.open_batches > 0);
   expect(holder, "an agent holding a batch on the branch").toBeTruthy();
