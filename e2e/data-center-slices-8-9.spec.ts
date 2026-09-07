@@ -63,6 +63,14 @@ test("a sheet spelling maps to a model picked from the models list, saved by nam
     await page.goto("/data-center/settings");
     const editor = page.locator(`[data-typed-editor="${key}"]`);
     await expect(editor).toBeVisible({ timeout: 30_000 });
+    // A blank row holds Save with a sentence; Discard takes the row away again.
+    const rowsBefore = await editor.getByLabel("Sheet says").count();
+    await editor.getByRole("button", { name: "Add a spelling" }).click();
+    await expect(page.getByText(/Type what the sheet says for every row/)).toBeVisible();
+    await expect(page.getByRole("button", { name: `Save ${key}` })).toBeDisabled();
+    await page.getByRole("button", { name: `Discard changes to ${key}` }).click();
+    await expect(page.getByText(/Type what the sheet says for every row/)).toHaveCount(0);
+    await expect(editor.getByLabel("Sheet says")).toHaveCount(rowsBefore);
     await editor.getByRole("button", { name: "Add a spelling" }).click();
     const spelling = editor.getByLabel("Sheet says").last();
     await spelling.fill("e2e spelling");

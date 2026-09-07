@@ -68,6 +68,17 @@ function Row({ setting, canEdit, onSaved, onError, facets }) {
   const [busy, setBusy] = useState(false);
   /** A typed editor's reason Save must wait (a blank or repeated key); null when the rows make a map. */
   const [typedError, setTypedError] = useState(null);
+  /** Bumped by Discard so a typed editor remounts from the stored value. */
+  const [resetSeq, setResetSeq] = useState(0);
+  const onTyped = (next, error) => {
+    setTypedError(error ?? null);
+    if (!error) setDraft(JSON.stringify(next));
+  };
+  const discard = () => {
+    setDraft(asText);
+    setTypedError(null);
+    setResetSeq((n) => n + 1);
+  };
 
   useEffect(() => setDraft(asText), [asText]);
 
@@ -100,105 +111,121 @@ function Row({ setting, canEdit, onSaved, onError, facets }) {
     }
   };
 
+  /*
+   * The two typed editors take a row of their own under the setting, the
+   * full width of the card: a spelling, a model and their labels do not fit
+   * the value column, and the message that holds Save belongs beside the
+   * editor, not folded into the actions column. Discard remounts the editor
+   * from the stored value (`resetSeq` is its key) and clears the message, so
+   * a blank row added and then discarded actually goes.
+   */
+  const editor =
+    typed === "partners" && facets ? (
+      <PartnerSizeEditor
+        key={resetSeq}
+        id={setting.key}
+        value={safeParse(draft)}
+        partners={facets.partners.filter((p) => p.name).map((p) => ({ id: p.id, name: p.name }))}
+        disabled={!canEdit || busy}
+        onChange={onTyped}
+      />
+    ) : typed === "models" && facets ? (
+      <ModelMapEditor
+        key={resetSeq}
+        id={setting.key}
+        value={safeParse(draft)}
+        models={facets.salesModels}
+        disabled={!canEdit || busy}
+        onChange={onTyped}
+      />
+    ) : null;
+
+  const actions = canEdit && (dirty || typedError) && (
+    <div className="flex justify-end gap-1">
+      <button
+        type="button"
+        disabled={busy || Boolean(typedError)}
+        onClick={save}
+        aria-label={`Save ${setting.key}`}
+        className="rounded p-1 text-(--dc-accent) transition hover:bg-(--dc-accent-soft) disabled:opacity-40"
+      >
+        <Check className="h-4 w-4" />
+      </button>
+      <button
+        type="button"
+        onClick={discard}
+        aria-label={`Discard changes to ${setting.key}`}
+        className="rounded p-1 text-gray-500 transition hover:bg-gray-100"
+      >
+        <RotateCcw className="h-4 w-4" />
+      </button>
+    </div>
+  );
+
   return (
-    <tr className="align-top">
-      <td className="px-3 py-2">
-        <span className="block font-mono text-xs text-gray-700">{setting.key}</span>
-        {setting.description && (
-          <span className="mt-0.5 block text-xs text-gray-500">{setting.description}</span>
+    <>
+      <tr className="align-top">
+        <td className="px-3 py-2" colSpan={editor ? 2 : 1}>
+          <span className="block font-mono text-xs text-gray-700">{setting.key}</span>
+          {setting.description && (
+            <span className="mt-0.5 block text-xs text-gray-500">{setting.description}</span>
+          )}
+        </td>
+        {!editor && (
+          <td className="px-3 py-2">
+            {kind === "boolean" ? (
+              /*
+                Converted for one look across the app, not for the search. Two
+                options is far below the threshold, so this renders as a plain
+                list - which is the point of having a threshold rather than a
+                search box on everything.
+              */
+              <SearchableSelect
+                value={draft}
+                onChange={setDraft}
+                disabled={!canEdit || busy}
+                ariaLabel={setting.key}
+                options={[
+                  { value: "true", label: "Yes" },
+                  { value: "false", label: "No" },
+                ]}
+              />
+            ) : kind === "json" ? (
+              <textarea
+                rows={2}
+                value={draft}
+                disabled={!canEdit || busy}
+                onChange={(e) => setDraft(e.target.value)}
+                aria-label={setting.key}
+                className={`${FIELD_CLASS} font-mono text-xs`}
+              />
+            ) : (
+              <input
+                type={kind === "number" ? "number" : "text"}
+                value={draft}
+                disabled={!canEdit || busy}
+                onChange={(e) => setDraft(e.target.value)}
+                aria-label={setting.key}
+                className={FIELD_CLASS}
+              />
+            )}
+          </td>
         )}
-      </td>
-      <td className="px-3 py-2">
-        {kind === "boolean" ? (
-          /*
-            Converted for one look across the app, not for the search. Two
-            options is far below the threshold, so this renders as a plain
-            list - which is the point of having a threshold rather than a
-            search box on everything.
-          */
-          <SearchableSelect
-            value={draft}
-            onChange={setDraft}
-            disabled={!canEdit || busy}
-            ariaLabel={setting.key}
-            options={[
-              { value: "true", label: "Yes" },
-              { value: "false", label: "No" },
-            ]}
-          />
-        ) : typed === "partners" && facets ? (
-          <PartnerSizeEditor
-            id={setting.key}
-            value={safeParse(draft)}
-            partners={facets.partners
-              .filter((p) => p.name)
-              .map((p) => ({ id: p.id, name: p.name }))}
-            disabled={!canEdit || busy}
-            onChange={(next, error) => {
-              setTypedError(error ?? null);
-              if (!error) setDraft(JSON.stringify(next));
-            }}
-          />
-        ) : typed === "models" && facets ? (
-          <ModelMapEditor
-            id={setting.key}
-            value={safeParse(draft)}
-            models={facets.salesModels}
-            disabled={!canEdit || busy}
-            onChange={(next, error) => {
-              setTypedError(error ?? null);
-              if (!error) setDraft(JSON.stringify(next));
-            }}
-          />
-        ) : kind === "json" ? (
-          <textarea
-            rows={2}
-            value={draft}
-            disabled={!canEdit || busy}
-            onChange={(e) => setDraft(e.target.value)}
-            aria-label={setting.key}
-            className={`${FIELD_CLASS} font-mono text-xs`}
-          />
-        ) : (
-          <input
-            type={kind === "number" ? "number" : "text"}
-            value={draft}
-            disabled={!canEdit || busy}
-            onChange={(e) => setDraft(e.target.value)}
-            aria-label={setting.key}
-            className={FIELD_CLASS}
-          />
-        )}
-      </td>
-      <td className="w-24 px-3 py-2 text-right">
-        {typedError && (
-          <p className="mb-1 text-right text-xs text-(--dc-sev-warning)" role="status">
-            {typedError}
-          </p>
-        )}
-        {canEdit && (dirty || typedError) && (
-          <div className="flex justify-end gap-1">
-            <button
-              type="button"
-              disabled={busy || Boolean(typedError)}
-              onClick={save}
-              aria-label={`Save ${setting.key}`}
-              className="rounded p-1 text-(--dc-accent) transition hover:bg-(--dc-accent-soft) disabled:opacity-40"
-            >
-              <Check className="h-4 w-4" />
-            </button>
-            <button
-              type="button"
-              onClick={() => setDraft(asText)}
-              aria-label={`Discard changes to ${setting.key}`}
-              className="rounded p-1 text-gray-500 transition hover:bg-gray-100"
-            >
-              <RotateCcw className="h-4 w-4" />
-            </button>
-          </div>
-        )}
-      </td>
-    </tr>
+        <td className="w-24 px-3 py-2 text-right">{actions}</td>
+      </tr>
+      {editor && (
+        <tr className="border-t-0">
+          <td colSpan={3} className="px-3 pb-3 pt-0">
+            {editor}
+            {typedError && (
+              <p className="mt-1.5 text-xs text-(--dc-sev-warning)" role="status">
+                {typedError}
+              </p>
+            )}
+          </td>
+        </tr>
+      )}
+    </>
   );
 }
 
