@@ -66,6 +66,8 @@ function Row({ setting, canEdit, onSaved, onError, facets }) {
   const asText = kind === "json" ? JSON.stringify(setting.value) : String(setting.value);
   const [draft, setDraft] = useState(asText);
   const [busy, setBusy] = useState(false);
+  /** A typed editor's reason Save must wait (a blank or repeated key); null when the rows make a map. */
+  const [typedError, setTypedError] = useState(null);
 
   useEffect(() => setDraft(asText), [asText]);
 
@@ -128,9 +130,14 @@ function Row({ setting, canEdit, onSaved, onError, facets }) {
           <PartnerSizeEditor
             id={setting.key}
             value={safeParse(draft)}
-            partners={facets.partners.filter((p) => p.name).map((p) => ({ id: p.id, name: p.name }))}
+            partners={facets.partners
+              .filter((p) => p.name)
+              .map((p) => ({ id: p.id, name: p.name }))}
             disabled={!canEdit || busy}
-            onChange={(next) => setDraft(JSON.stringify(next))}
+            onChange={(next, error) => {
+              setTypedError(error ?? null);
+              if (!error) setDraft(JSON.stringify(next));
+            }}
           />
         ) : typed === "models" && facets ? (
           <ModelMapEditor
@@ -138,7 +145,10 @@ function Row({ setting, canEdit, onSaved, onError, facets }) {
             value={safeParse(draft)}
             models={facets.salesModels}
             disabled={!canEdit || busy}
-            onChange={(next) => setDraft(JSON.stringify(next))}
+            onChange={(next, error) => {
+              setTypedError(error ?? null);
+              if (!error) setDraft(JSON.stringify(next));
+            }}
           />
         ) : kind === "json" ? (
           <textarea
@@ -161,11 +171,16 @@ function Row({ setting, canEdit, onSaved, onError, facets }) {
         )}
       </td>
       <td className="w-24 px-3 py-2 text-right">
-        {canEdit && dirty && (
+        {typedError && (
+          <p className="mb-1 text-right text-xs text-(--dc-sev-warning)" role="status">
+            {typedError}
+          </p>
+        )}
+        {canEdit && (dirty || typedError) && (
           <div className="flex justify-end gap-1">
             <button
               type="button"
-              disabled={busy}
+              disabled={busy || Boolean(typedError)}
               onClick={save}
               aria-label={`Save ${setting.key}`}
               className="rounded p-1 text-(--dc-accent) transition hover:bg-(--dc-accent-soft) disabled:opacity-40"
