@@ -81,7 +81,7 @@ select a.id, a.sale_id, a.attempt_no, a.attempted_at, a.outcome_id, a.agent_id,
        a.answered_by_id, a.note, a.created_at, a.created_by, a.callback_at, a.source,
        coalesce(
          la.user_id,
-         lr.user_id,
+         case when a.source = 'sheet' then lr.user_id end,
          case when a.source = 'sheet' then null else a.created_by end
        ) as agent_user_id,
        oa.label as agent_tag,
@@ -94,7 +94,7 @@ select a.id, a.sale_id, a.attempt_no, a.attempted_at, a.outcome_id, a.agent_id,
   left join data_center.call_agent_links lr on lr.agent_key = ocr.value and lr.user_id is not null;
 
 comment on view data_center.v_call_attempts_resolved is
-  'Every call attempt with agent_user_id, the login it counts for (D47): the attempt''s own sheet tag linked to a login, else the record''s tag (a sheet row named one agent for all its calls), else the login that logged it; a sheet attempt with no tag counts for nobody rather than for the importer.';
+  'Every call attempt with agent_user_id, the login it counts for (D47): the attempt''s own sheet tag linked to a login; for a sheet call with no tag of its own, the record''s tag (a sheet row named one agent for all its calls); for a form call, the login that logged it; a sheet call with no tag anywhere counts for nobody rather than for the importer.';
 
 grant select on data_center.v_call_attempts_resolved to service_role;
 

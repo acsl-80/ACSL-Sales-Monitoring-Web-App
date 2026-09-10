@@ -49,8 +49,8 @@ select cr.verification_outcome, count(*) as records,
  group by 1 order by 1;
 
 -- 5. Attempts per person per month, as the board would count them after the
--- link (own tag, then the record's tag, then the login; untagged sheet calls
--- for nobody). Compare with the same query on created_by to see what moves.
+-- link (own tag; for a sheet call the record's tag; for a form call the
+-- login; untagged sheet calls for nobody). Compare with the same query on created_by to see what moves.
 with aliases(agent_key, spelt) as (values ('kharriyah', 'khairiyyah')),
 links as (
   select o.value as agent_key,
@@ -64,7 +64,8 @@ links as (
 ),
 resolved as (
   select a.attempted_at,
-         coalesce(la.user_id, lr.user_id,
+         coalesce(la.user_id,
+                  case when a.note = 'Imported from the call-centre sheet' then lr.user_id end,
                   case when a.note = 'Imported from the call-centre sheet' then null else a.created_by end) as agent_user_id
     from data_center.call_attempts a
     left join data_center.option_values oa on oa.id = a.agent_id
