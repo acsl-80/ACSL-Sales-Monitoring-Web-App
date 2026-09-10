@@ -34,7 +34,7 @@ create table if not exists data_center.call_agent_links (
 );
 
 comment on table data_center.call_agent_links is
-  'A call sheet''s agent name (the agent_name registry value) to the login it means. The sheets named agents by first name; linked here, their calls count for them on the board, the agent page, My calls and the feed (D47). Edited on Settings; nothing here is code.';
+  'A call sheet''s agent name (the agent_name registry value) to the login it means. The sheets named agents by first name; linked here, their calls count for them on the board, the agent page, My calls and the feed (D47). Edited on Settings. Nothing here is code.';
 
 create index if not exists call_agent_links_user_idx
   on data_center.call_agent_links (user_id) where user_id is not null;
@@ -94,7 +94,7 @@ select a.id, a.sale_id, a.attempt_no, a.attempted_at, a.outcome_id, a.agent_id,
   left join data_center.call_agent_links lr on lr.agent_key = ocr.value and lr.user_id is not null;
 
 comment on view data_center.v_call_attempts_resolved is
-  'Every call attempt with agent_user_id, the login it counts for (D47): the attempt''s own sheet tag linked to a login; for a sheet call with no tag of its own, the record''s tag (a sheet row named one agent for all its calls); for a form call, the login that logged it; a sheet call with no tag anywhere counts for nobody rather than for the importer.';
+  'Every call attempt with agent_user_id, the login it counts for (D47): the attempt''s own sheet tag linked to a login. For a sheet call with no tag of its own, the record''s tag (a sheet row named one agent for all its calls). For a form call, the login that logged it. A sheet call with no tag anywhere counts for nobody rather than for the importer.';
 
 grant select on data_center.v_call_attempts_resolved to service_role;
 
@@ -346,7 +346,7 @@ create table if not exists data_center.call_history_repair_20260911 (
 );
 
 comment on table data_center.call_history_repair_20260911 is
-  'What the 2026-09-11 repair changed (D48). Undo: delete the attempts where inserted; set outcome_id and call_outcome_id back from the old columns where not.';
+  'What the 2026-09-11 repair changed (D48). Undo: delete the attempts where inserted, and set outcome_id and call_outcome_id back from the old columns where not.';
 
 -- Repair one: a concluded record with no call behind it gets the one call
 -- its verdict implies, dated and attributed from the record.
