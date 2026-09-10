@@ -90,7 +90,9 @@ test.describe("slice 4: a call centre save completes", () => {
       await signIn(page, USERS.admin);
       await openRecord(page, r.end_user_name, "partially_verified");
       await page.getByRole("button", { name: "Verified", exact: true }).click();
-      await page.getByRole("button", { name: "Save", exact: true }).click();
+      // A verdict clicked by hand and no call made: the record alone (D44).
+      await page.locator('[data-save-call="footer"]').click();
+      await page.locator("[data-outcome-prompt]").getByRole("button", { name: "No call was made, just save" }).click();
 
       // The whole point. Old code: "why_not_verified does not apply to this record".
       await expect(page.getByText(/does not apply to this record/)).toHaveCount(0);
@@ -131,7 +133,8 @@ test.describe("slice 4: a call centre save completes", () => {
         .locator("xpath=following::input[1]");
       await expect(ward).toHaveValue("Old ward", { timeout: 15_000 });
       await ward.fill("New ward");
-      await page.getByRole("button", { name: "Save", exact: true }).click();
+      await page.locator('[data-save-call="footer"]').click();
+      await page.locator("[data-outcome-prompt]").getByRole("button", { name: "No call was made, just save" }).click();
 
       // Old code: "Unknown field: correction_reason_id".
       await expect(page.getByText(/Unknown field/)).toHaveCount(0);
@@ -167,11 +170,17 @@ test.describe("slice 4: a call centre save completes", () => {
     ).toMatch(/^400 /);
   });
 
-  test("a call cannot be logged without an outcome", async ({ page }) => {
+  test("a save with changes and no outcome asks for one before anything is written", async ({ page }) => {
     const [r] = await twoRecords();
     await signIn(page, USERS.admin);
     await openRecord(page, r.end_user_name, r.verification_outcome);
-    // Old code: enabled, and an attempt with no outcome could be written.
-    await expect(page.getByRole("button", { name: "Log call" })).toBeDisabled();
+    const ward = page.getByText("Ward", { exact: true }).last().locator("xpath=following::input[1]");
+    await ward.fill("prompted");
+    await page.locator('[data-save-call="footer"]').click();
+    // Phase 28, D44: the band asks; the old Log call button is gone.
+    await expect(page.locator("[data-outcome-prompt]")).toBeVisible({ timeout: 15_000 });
+    await expect(page.getByRole("button", { name: "Log call" })).toHaveCount(0);
+    await page.locator("[data-outcome-prompt]").getByRole("button", { name: "Back to the form" }).click();
+    await expect(page.locator("[data-outcome-prompt]")).toHaveCount(0);
   });
 });

@@ -85,7 +85,8 @@ test.describe("the call centre queue", () => {
     await expect(page.getByRole("heading", { name: "Verification outcome" })).toBeVisible({
       timeout: 15_000,
     });
-    await expect(page.getByRole("button", { name: "Save" })).toBeVisible();
+    await expect(page.locator('[data-save-call="footer"]')).toBeVisible();
+    await expect(page.locator('[data-save-call="header"]')).toBeVisible();
     await expect(page.getByText(/Every change is recorded against your name/)).toBeVisible();
   });
 
@@ -106,8 +107,8 @@ test.describe("the call centre queue", () => {
       await expect(page.getByText(/You have view access, so this record is read only/)).toBeVisible({
         timeout: 15_000,
       });
-      await expect(page.getByRole("button", { name: "Save" })).toHaveCount(0);
-      await expect(page.getByRole("button", { name: "Log call" })).toHaveCount(0);
+      await expect(page.locator("[data-save-call]")).toHaveCount(0);
+      await expect(page.getByRole("combobox", { name: "Outcome of this call" })).toHaveCount(0);
     }
   });
 });

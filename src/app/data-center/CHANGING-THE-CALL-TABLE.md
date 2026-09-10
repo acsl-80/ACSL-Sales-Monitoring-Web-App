@@ -176,6 +176,12 @@ It only saves once the agent has actually typed something. Without that guard,
 merely opening a record would leave a draft on it and put it on their
 unfinished list.
 
+Since Phase 28 (D42) the draft also keeps the call being logged: the outcome
+picked, its note and callback time, under `_attempt`. **Save call** is the one
+save: with an outcome picked it writes the call and the record together; with
+changes and no outcome it asks for one first, and "No call was made, just save"
+writes the record alone (D44).
+
 Nothing in a draft is validated. A half-finished form fails validation by
 definition, and refusing to keep it for rules the agent has not reached yet is
 the fastest way to teach people that saving does not work. `save_call_record`

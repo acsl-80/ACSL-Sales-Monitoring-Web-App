@@ -123,7 +123,7 @@ test("the call form copies, takes a callback time, and after Save offers the nex
   await expect(dialog).toBeVisible({ timeout: 30_000 });
   await expect(dialog.locator("[data-copy-numbers] [data-copy-field]").first()).toBeVisible({ timeout: 30_000 });
 
-  // A callback outcome opens the time; the quick chip fills it; Log call stores it.
+  // A callback outcome opens the time; the quick chip fills it; Save call stores it (D42).
   const [cb] = await branchSql<{ id: string; label: string }>(`select id, label from data_center.option_values where list_key = 'call_outcome' and value = 'callback_requested'`);
   const outcome = dialog.getByRole("combobox", { name: "Outcome of this call" });
   await outcome.click();
@@ -133,8 +133,8 @@ test("the call form copies, takes a callback time, and after Save offers the nex
   await timeBox.getByRole("button", { name: "in 1 hour" }).click();
   await expect(dialog.locator("#dc-callback-at")).not.toHaveValue("");
   const saleOnForm = await dialog.locator("[data-copy-numbers] [data-copy-value]").last().textContent();
-  await dialog.getByRole("button", { name: "Log call" }).click();
-  await expect(dialog.getByText("Call logged.")).toBeVisible({ timeout: 15_000 });
+  await dialog.locator('[data-save-call="footer"]').click();
+  await expect(dialog.getByText("Call saved.", { exact: true })).toBeVisible({ timeout: 15_000 });
   const [logged] = await branchSql<{ callback_at: string | null; sale_id: string }>(
     `select a.callback_at::text, a.sale_id::text from data_center.call_attempts a
       join public.sales s on s.id = a.sale_id
@@ -142,8 +142,7 @@ test("the call form copies, takes a callback time, and after Save offers the nex
   );
   expect(logged?.callback_at, "the callback time reached the attempt").toBeTruthy();
 
-  // Save offers the next record; Next record opens it in the same dialog.
-  await dialog.getByRole("button", { name: "Save", exact: true }).click();
+  // The save offered the next record; Next record opens it in the same dialog.
   const handoff = dialog.locator("[data-handoff]");
   await expect(handoff).toBeVisible({ timeout: 15_000 });
   await expect(handoff).toContainText("Saved");

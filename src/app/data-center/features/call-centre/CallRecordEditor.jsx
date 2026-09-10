@@ -4,12 +4,12 @@ import SerialRematch from "./SerialRematch";
 import SendBackPanel from "./SendBackPanel";
 import CopyField from "./control/CopyField";
 import Link from "@/compat/Link";
-import CallLog from "./CallLog";
+import CallOutcome from "./CallOutcome";
+import CorrectionFields, { Field } from "./CorrectionFields";
+import { DraftBanner, KeepFailedBand, ClearDraftDialog } from "./DraftBanner";
+import SaveCallButton from "./SaveCallButton";
 import SaveFooter from "./SaveFooter";
 import { dataCenterWrite, DataCenterError } from "../../lib/client";
-import { OUTCOME_WORDS, OUTCOME_PILL, OUTCOME_ORDER } from "../../lib/outcome";
-import { dateOf, whenOf } from "../../lib/when";
-import ConfirmDialog from "../../components/ConfirmDialog";
 import FieldRenderer, { isFieldVisible } from "./FieldRenderer";
 import {
   Dialog,
@@ -18,9 +18,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
-import {
-  Loader2, Phone, AlertTriangle, Check, RotateCcw, PenLine,
-} from "lucide-react";
+import { Loader2, AlertTriangle, Check, RotateCcw } from "lucide-react";
 
 /**
  * One sale's call record, opened beside the queue.
@@ -29,34 +27,18 @@ import {
  * labels, choices, conditions and validation all arrive from the server, so a
  * question added this afternoon appears here this afternoon.
  *
- * The fixed part is the small set of things the process itself is made of: the
- * verification outcome, the corrections, the attempts and the hand-back to
- * Sales. Those have their own columns and their own endpoints because dashboards
- * group by them, and that is the line this module draws between "structure" and
- * "questions".
+ * The fixed part is the small set of things the process itself is made of:
+ * the call being saved and the verdict it implies, the corrections, the
+ * earlier calls and the hand-back to Sales. Those have their own columns and
+ * their own endpoints because dashboards group by them.
+ *
+ * Phase 28, D42 to D44: one save path. Save call, top and bottom, carries the
+ * call's outcome with the record; the verdict follows the outcome unless a
+ * pill was clicked; a save with changes and no outcome asks for one, with
+ * "No call was made, just save" as the way through. Finish later keeps the
+ * whole form, the picked outcome included, and nothing is lost on a dropped
+ * line: the draft autosaves two seconds after typing stops.
  */
-
-// One vocabulary and one set of tones for the four outcomes, from lib/outcome.
-// Unreachable is a conclusion and not a blank: nobody could reach this buyer.
-const OUTCOMES = OUTCOME_ORDER.map((value) => ({
-  value,
-  label: OUTCOME_WORDS[value],
-  tone: OUTCOME_PILL[value],
-}));
-
-// The record's own fields, as opposed to registry questions. Grouped so the
-// editor reads like the call rather than like the table.
-const CORRECTION_FIELDS = [
-  { key: "corrected_phone", label: "Corrected telephone number", type: "tel" },
-  { key: "corrected_alt_phone", label: "Corrected other telephone number", type: "tel" },
-  { key: "corrected_end_user_name", label: "Corrected customer name", type: "text" },
-  { key: "corrected_address", label: "Corrected address", type: "text" },
-  { key: "corrected_state", label: "Corrected state", type: "text" },
-  { key: "corrected_lga", label: "Corrected LGA", type: "text" },
-  { key: "ward", label: "Ward", type: "text" },
-  { key: "landmark", label: "Landmark", type: "text" },
-  { key: "stated_serial", label: "Serial number as stated by the user", type: "text" },
-];
 
 const SECTION_LABELS = {
   verification: "Verification",
@@ -65,53 +47,50 @@ const SECTION_LABELS = {
   service: "Service and support",
 };
 
-function Field({ label, children }) {
-  return (
-    <div>
-      <label className="mb-1 block text-xs font-medium text-gray-700">{label}</label>
-      {children}
-    </div>
-  );
-}
+const EMPTY_ATTEMPT = { outcomeId: "", note: "", callbackAt: "", clientKey: null };
+
+const mintKey = () =>
+  (globalThis.crypto?.randomUUID?.() ??
+    "xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx".replace(/[xy]/g, (c) => {
+      const r = (Math.random() * 16) | 0;
+      return (c === "x" ? r : (r & 0x3) | 0x8).toString(16);
+    }));
 
 /**
- * Phase 26, C4 additions. `nextOf(saleId)` answers what the agent should call
- * after this record ({ saleId, label, remaining } or null); `onNext(saleId)`
- * opens it in this same dialog; `allHref` is where "See all assigned" goes.
- * Without them the footer says "Saved." as it always did.
+ * Phase 26, C4. `nextOf(saleId)` answers what the agent should call after this
+ * record ({ saleId, label, remaining } or null); `onNext(saleId)` opens it in
+ * this same dialog; `allHref` is where "See all assigned" goes.
  */
 export default function CallRecordEditor({ saleId, canEdit, onClose, onSaved, nextOf = null, onNext = null, allHref = "/data-center/my-calls" }) {
   const [schema, setSchema] = useState(null);
   const [record, setRecord] = useState(null);
   const [attempts, setAttempts] = useState([]);
   const [values, setValues] = useState({});
+  /** The call being saved: outcome, note, callback time, and its client key. */
+  const [attempt, setAttempt] = useState(EMPTY_ATTEMPT);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   /** After Save: what comes next for this agent, or "nothing left". */
   const [handoff, setHandoff] = useState(null);
+  /** Save call pressed with changes and no outcome: the band asks for one. */
+  const [prompt, setPrompt] = useState(false);
   const [error, setError] = useState(null);
   const [notice, setNotice] = useState(null);
-  /** A Save refused because somebody else saved first; reloading is the way on. */
   const [conflict, setConflict] = useState(false);
-  /** Finish later could not keep the typing; closing now would lose it. */
   const [keepFailed, setKeepFailed] = useState(null);
   const [confirmClear, setConfirmClear] = useState(false);
-  /*
-   * The half-finished form somebody left here, and whether it is still on
-   * screen. `draft` is what arrived with the record; `draftState` is what has
-   * happened to it since - restored, cleared, or saved again as they type.
-   */
   const [draft, setDraft] = useState(null);
   const [draftSavedAt, setDraftSavedAt] = useState(null);
   const [draftBusy, setDraftBusy] = useState(false);
   useEffect(() => {
     setHandoff(null);
+    setPrompt(false);
+    setAttempt(EMPTY_ATTEMPT);
   }, [saleId]);
   /*
-   * Whether this agent has typed anything since the record loaded.
-   *
-   * A ref rather than state: the autosave effect reads it, and making it state
-   * would re-run the effect on the very change it is meant to debounce.
+   * Whether this agent has typed anything since the record loaded. A ref: the
+   * autosave effect reads it, and state would re-run the effect on the very
+   * change it is meant to debounce.
    */
   const touched = useRef(false);
 
@@ -126,23 +105,16 @@ export default function CallRecordEditor({ saleId, canEdit, onClose, onSaved, ne
       setRecord(data.record);
       setAttempts(data.attempts);
       /*
-       * Registry answers live in a jsonb blob; record columns live beside it.
-       * The editor flattens both into one map so a promoted question needs no
-       * change here either.
-       *
-       * A draft goes on top. It is what somebody typed and did not finish, so
-       * it is newer than the answers already stored - and it is applied rather
-       * than offered because an agent who saved half a form and comes back
-       * expects to find it, not to be asked whether they meant it. The banner
-       * above the form says whose it is and gives them one click to throw it
-       * away.
+       * Registry answers live in a jsonb blob; record columns live beside it;
+       * a draft goes on top, applied rather than offered. The call the draft
+       * was in the middle of logging (`_attempt`) comes back into its own
+       * state, so Finish later never loses a picked outcome.
        */
       setDraft(data.draft ?? null);
       setDraftSavedAt(data.draft?.saved_at ?? null);
-      setValues({
-        ...(data.record.answers ?? {}),
-        ...(data.draft?.values ?? {}),
-      });
+      const { _attempt, ...draftValues } = data.draft?.values ?? {};
+      setValues({ ...(data.record.answers ?? {}), ...draftValues });
+      if (_attempt && typeof _attempt === "object") setAttempt({ ...EMPTY_ATTEMPT, ..._attempt });
       setError(null);
     } catch (err) {
       setError(err instanceof DataCenterError ? err.message : "Could not load this record.");
@@ -157,60 +129,53 @@ export default function CallRecordEditor({ saleId, canEdit, onClose, onSaved, ne
   }, [load]);
 
   const setValue = (key, value) => {
-    // Marks the form as the agent's rather than the server's, which is what
-    // decides whether the autosave below has anything worth keeping.
     touched.current = true;
     setValues((v) => ({ ...v, [key]: value }));
   };
 
-  /**
-   * Keep what has been typed, without anybody pressing anything.
-   *
-   * The case this is for is a call that cuts off: the line drops, the laptop
-   * closes, the tab crashes. None of those press Save, so a draft that waited
-   * for a button would be a draft that never existed when it was needed.
-   *
-   * Two seconds after typing stops, not per keystroke. And only when the agent
-   * has actually touched the form - without that guard, merely opening a
-   * record would write a draft for it and put it on their unfinished list.
+  /** The call's outcome changed: mint a key for it, and let the verdict follow it again. */
+  const changeAttempt = (next) => {
+    touched.current = true;
+    const outcomeChanged = next.outcomeId !== attempt.outcomeId;
+    if (outcomeChanged) {
+      // A new outcome means the verdict follows it again, unless a pill is clicked after.
+      setValues((v) => {
+        const { verification_outcome: _drop, ...rest } = v;
+        return rest;
+      });
+    }
+    setAttempt({ ...next, clientKey: outcomeChanged ? (next.outcomeId ? mintKey() : null) : attempt.clientKey });
+    if (next.outcomeId) setPrompt(false);
+  };
+
+  /** What a draft keeps: the form, plus the call being logged. */
+  const draftPayload = () => (attempt.outcomeId ? { ...values, _attempt: attempt } : values);
+
+  /*
+   * Keep what has been typed, without anybody pressing anything. Two seconds
+   * after typing stops, and only once the agent has touched the form.
    */
   useEffect(() => {
     if (!canEdit || !touched.current || loading) return;
     const timer = setTimeout(() => {
       setDraftBusy(true);
       dataCenterWrite
-        .saveCallDraft(saleId, values, record?.call_record_version ?? null)
+        .saveCallDraft(saleId, draftPayload(), record?.call_record_version ?? null)
         .then((r) => {
           setDraftSavedAt(r.kept ? (r.savedAt ?? new Date().toISOString()) : null);
-          // Cleared to empty: it is no longer anybody's unfinished work, so
-          // the banner naming who left it should go too.
           if (!r.kept) setDraft(null);
         })
-        // Deliberately silent. A failed autosave is not something to interrupt
-        // a live call with; the marker simply stops saying "saved", and the
-        // real save still reports its own failures loudly.
         .catch(() => setDraftSavedAt(null))
         .finally(() => setDraftBusy(false));
     }, 2000);
     return () => clearTimeout(timer);
-  }, [values, canEdit, loading, saleId, record?.call_record_version]);
+  }, [values, attempt, canEdit, loading, saleId, record?.call_record_version]);
 
-  /**
-   * Keep it now rather than in two seconds, for a deliberate close.
-   *
-   * A draft that could not be written used to be swallowed here and the
-   * editor closed anyway, so the typing was gone and nobody was told. Closing
-   * is still never blocked: the failure is shown, with a way to close
-   * regardless, and the choice is the person's.
-   */
+  /** Keep it now rather than in two seconds, for a deliberate close. */
   const keepAndClose = async () => {
     if (canEdit && touched.current) {
       try {
-        await dataCenterWrite.saveCallDraft(
-          saleId,
-          values,
-          record?.call_record_version ?? null,
-        );
+        await dataCenterWrite.saveCallDraft(saleId, draftPayload(), record?.call_record_version ?? null);
       } catch (err) {
         setKeepFailed(err instanceof DataCenterError ? err.message : "the draft could not be written");
         return;
@@ -226,6 +191,7 @@ export default function CallRecordEditor({ saleId, canEdit, onClose, onSaved, ne
       touched.current = false;
       setDraft(null);
       setDraftSavedAt(null);
+      setAttempt(EMPTY_ATTEMPT);
       await load();
       setNotice("Started again from the saved record.");
     } catch (err) {
@@ -235,8 +201,7 @@ export default function CallRecordEditor({ saleId, canEdit, onClose, onSaved, ne
     }
   };
 
-  // Conditions read the record as it will be after this save, so setting an
-  // outcome and answering the question it reveals works in one pass.
+  // Conditions read the record as it will be after this save.
   const effective = useMemo(() => ({ ...(record ?? {}), ...values }), [record, values]);
 
   const sections = useMemo(() => {
@@ -250,25 +215,46 @@ export default function CallRecordEditor({ saleId, canEdit, onClose, onSaved, ne
     return [...grouped.entries()];
   }, [schema, effective]);
 
+  /*
+   * The verdict the record will read after this save: the pill the agent
+   * clicked, else the one the picked outcome implies (D42), else what the
+   * record already says.
+   */
+  const outcomes = schema?.options?.call_outcome ?? [];
+  const pickedValue = outcomes.find((o) => o.id === attempt.outcomeId)?.value;
+  const derivedVerdict = pickedValue ? schema?.verdictMap?.[pickedValue] ?? null : null;
+  const verdictExplicit = values.verification_outcome !== undefined;
+  const verdict = values.verification_outcome ?? derivedVerdict ?? record?.verification_outcome ?? "not_verified";
+
   /**
    * What travels with a save: every value except a registry question that is
    * not being asked under the record as it will be, and except the send-back
-   * arguments, which belong to the correction action. Sending the whole form
-   * was how an old answer to "why not verified" followed the record into
-   * "Fully verified" and got the save refused.
+   * arguments, which belong to the correction action.
    */
   const payloadFor = (all) => {
     const byKey = new Map((schema?.fields ?? []).map((f) => [f.key, f]));
     const out = {};
     for (const [key, value] of Object.entries(all)) {
-      if (key === "correction_reason_id" || key === "correction_note") continue;
+      if (key === "correction_reason_id" || key === "correction_note" || key === "_attempt") continue;
       const def = byKey.get(key);
       if (def && !isFieldVisible(def, effective)) continue;
       out[key] = value;
     }
     return out;
   };
-  const save = async () => {
+
+  /**
+   * Save call. With an outcome picked, the call and the record land together.
+   * With changes and no outcome, the band below asks for one (D44). `force`
+   * is "No call was made, just save": the record alone.
+   */
+  const save = async ({ force = false } = {}) => {
+    const hasAttempt = Boolean(attempt.outcomeId);
+    if (!hasAttempt && !force && touched.current) {
+      setPrompt(true);
+      return;
+    }
+    setPrompt(false);
     setSaving(true);
     setNotice(null);
     try {
@@ -276,22 +262,26 @@ export default function CallRecordEditor({ saleId, canEdit, onClose, onSaved, ne
         saleId,
         payloadFor(values),
         record?.call_record_version ?? null,
+        hasAttempt
+          ? {
+              outcomeId: attempt.outcomeId,
+              note: attempt.note?.trim() || null,
+              callbackAt: pickedValue === "callback_requested" && attempt.callbackAt ? new Date(attempt.callbackAt).toISOString() : null,
+              clientKey: attempt.clientKey ?? mintKey(),
+            }
+          : null,
       );
-      setNotice("Saved.");
+      setNotice(hasAttempt ? "Call saved." : "Saved.");
       setError(null);
       setConflict(false);
-      // The server clears the draft in the same transaction as the save. This
-      // is the local half of that, so the banner goes without waiting for the
-      // reload to come back.
       touched.current = false;
       setDraft(null);
       setDraftSavedAt(null);
+      setAttempt(EMPTY_ATTEMPT);
       await load();
       onSaved?.(result);
       if (nextOf) setHandoff({ next: nextOf(saleId) });
     } catch (err) {
-      // A 409 is not a fault in what was typed: somebody else saved first. It
-      // is shown in its own tone with the one way on, a reload.
       const isConflict = err instanceof DataCenterError && err.status === 409;
       setConflict(isConflict);
       setError(err instanceof DataCenterError ? err.message : "Could not save this record.");
@@ -300,28 +290,6 @@ export default function CallRecordEditor({ saleId, canEdit, onClose, onSaved, ne
     }
   };
 
-  /** Writes one attempt from the call log section; the callback time only travels with a callback outcome. */
-  const logAttempt = async ({ outcomeId, note, callbackAt }) => {
-    setSaving(true);
-    try {
-      await dataCenterWrite.logAttempt(saleId, {
-        outcomeId: outcomeId || null,
-        note: note?.trim() || null,
-        callbackAt: callbackAt ? new Date(callbackAt).toISOString() : null,
-      });
-      await load();
-      setNotice("Call logged.");
-      return true;
-    } catch (err) {
-      setError(err instanceof DataCenterError ? err.message : "Could not log the call.");
-      return false;
-    } finally {
-      setSaving(false);
-    }
-  };
-
-  // Every active reason, offered as chips by the send-back panel; the panel
-  // holds the choice itself so nothing about a send-back travels in the draft.
   const correctionReasons = schema?.options?.correction_reason ?? [];
 
   return (
@@ -331,32 +299,34 @@ export default function CallRecordEditor({ saleId, canEdit, onClose, onSaved, ne
         data-area="call-centre"
       >
         <DialogHeader className="shrink-0 space-y-0 border-b-2 border-(--dc-accent)/25 bg-(--dc-accent-soft)/40 py-4 pl-5 pr-12 text-left">
-          <DialogTitle className="truncate text-base font-semibold text-gray-900">
-            {record?.end_user_name ?? "Call record"}
-          </DialogTitle>
-          <DialogDescription className="mt-0.5 truncate text-sm text-gray-600">
-            {record ? (
-              <>
-                {/*
-                  The serial leads out to the whole history. An agent on a call
-                  who is told something that does not match the record needs
-                  the transfer, the import and the previous calls, and going
-                  and finding those by hand is what this page exists to end.
-                */}
-                <Link
-                  href={`/data-center/stove/${encodeURIComponent(record.stove_serial_no)}`}
-                  className="text-(--dc-accent) underline decoration-(--dc-accent)/30 underline-offset-2 hover:decoration-(--dc-accent)"
-                >
-                  {record.stove_serial_no}
-                </Link>
-                {[record.partner_name, record.user_state].filter(Boolean).map((v) => (
-                  <span key={v}> · {v}</span>
-                ))}
-              </>
-            ) : (
-              "Loading this record"
+          <div className="flex items-start justify-between gap-3">
+            <div className="min-w-0">
+              <DialogTitle className="truncate text-base font-semibold text-gray-900">
+                {record?.end_user_name ?? "Call record"}
+              </DialogTitle>
+              <DialogDescription className="mt-0.5 truncate text-sm text-gray-600">
+                {record ? (
+                  <>
+                    <Link
+                      href={`/data-center/stove/${encodeURIComponent(record.stove_serial_no)}`}
+                      className="text-(--dc-accent) underline decoration-(--dc-accent)/30 underline-offset-2 hover:decoration-(--dc-accent)"
+                    >
+                      {record.stove_serial_no}
+                    </Link>
+                    {[record.partner_name, record.user_state].filter(Boolean).map((v) => (
+                      <span key={v}> · {v}</span>
+                    ))}
+                  </>
+                ) : (
+                  "Loading this record"
+                )}
+              </DialogDescription>
+            </div>
+            {/* Save call at the top as well as the bottom: same verb, same handler (D42). */}
+            {canEdit && !loading && (
+              <SaveCallButton where="header" saving={saving} disabled={saving || loading} onClick={() => save()} compact />
             )}
-          </DialogDescription>
+          </div>
           {/* Phase 26, C4 (D36): the numbers copy for the call app; nothing dials. */}
           {record && (
             <div className="mt-2 flex flex-wrap items-center gap-2" data-copy-numbers>
@@ -369,61 +339,14 @@ export default function CallRecordEditor({ saleId, canEdit, onClose, onSaved, ne
           )}
         </DialogHeader>
 
-        {/*
-          What somebody left half-finished here.
-
-          Applied to the form already rather than offered, because an agent who
-          typed four answers and lost the call expects to find them, not to be
-          asked whether they meant it. What the banner is for is the two things
-          they cannot see from the fields themselves: whose answers these are,
-          and how to get rid of them.
-
-          Amber rather than green: this is not a saved record. Nothing here has
-          reached the call record, and the scorecards do not count it.
-        */}
-        {draft && !loading && (
-          <div className="flex shrink-0 flex-wrap items-start gap-2 border-b border-amber-300 bg-amber-50 px-5 py-2.5">
-            <PenLine className="mt-0.5 h-4 w-4 shrink-0 text-amber-600" />
-            <p className="min-w-0 flex-1 text-sm text-amber-900">
-              <span className="font-semibold">
-                {draft.saved_by_me
-                  ? "You started this and did not finish."
-                  : `${draft.saved_by_name ?? "Somebody"} started this and did not finish.`}
-              </span>{" "}
-              Their answers are in the form below, from{" "}
-              {whenOf(draft.saved_at)}. Nothing has been saved
-              to the record yet.
-              {/*
-                The version the draft was typed against, checked out loud. A
-                draft written over a record that has since moved on would
-                otherwise quietly reapply older answers over newer ones.
-              */}
-              {draft.base_version != null &&
-                record?.call_record_version != null &&
-                draft.base_version !== record.call_record_version && (
-                  <span className="mt-1 block font-semibold">
-                    The record has been saved by somebody else since this was
-                    typed. Check each answer against what they entered before you
-                    save.
-                  </span>
-                )}
-            </p>
-            {canEdit && (
-              <button
-                type="button"
-                onClick={() => setConfirmClear(true)}
-                disabled={draftBusy}
-                className="inline-flex shrink-0 items-center gap-1 rounded-md border border-amber-400 bg-white px-2.5 py-1 text-xs font-medium text-amber-900 transition hover:bg-amber-100 disabled:opacity-50"
-              >
-                {draftBusy ? (
-                  <Loader2 className="h-3 w-3 animate-spin" />
-                ) : (
-                  <RotateCcw className="h-3 w-3" />
-                )}
-                Clear it and start again
-              </button>
-            )}
-          </div>
+        {!loading && (
+          <DraftBanner
+            draft={draft}
+            recordVersion={record?.call_record_version}
+            canEdit={canEdit}
+            busy={draftBusy}
+            onClear={() => setConfirmClear(true)}
+          />
         )}
 
         {loading ? (
@@ -432,9 +355,6 @@ export default function CallRecordEditor({ saleId, canEdit, onClose, onSaved, ne
           </div>
         ) : (
           <div className="flex-1 overflow-y-auto px-4 py-4 sm:px-5">
-            {/* Capped, because 90% of a wide screen is far wider than a phone
-                number needs, and a field stretched to 550px reads as a mistake
-                rather than as generosity. */}
             <div className="mx-auto max-w-5xl space-y-5">
             {error && (
               <div
@@ -443,20 +363,12 @@ export default function CallRecordEditor({ saleId, canEdit, onClose, onSaved, ne
                   conflict ? "border-red-200 bg-red-50" : "border-amber-200 bg-amber-50"
                 }`}
               >
-                <AlertTriangle
-                  className={`mt-0.5 h-4 w-4 shrink-0 ${conflict ? "text-red-600" : "text-amber-600"}`}
-                />
-                <p className={`min-w-0 flex-1 text-sm ${conflict ? "text-red-900" : "text-amber-900"}`}>
-                  {error}
-                </p>
+                <AlertTriangle className={`mt-0.5 h-4 w-4 shrink-0 ${conflict ? "text-red-600" : "text-amber-600"}`} />
+                <p className={`min-w-0 flex-1 text-sm ${conflict ? "text-red-900" : "text-amber-900"}`}>{error}</p>
                 {conflict && (
                   <button
                     type="button"
-                    onClick={() => {
-                      setConflict(false);
-                      setError(null);
-                      load();
-                    }}
+                    onClick={() => { setConflict(false); setError(null); load(); }}
                     className="inline-flex shrink-0 items-center gap-1 rounded-md border border-red-300 bg-white px-2.5 py-1 text-xs font-medium text-red-800 transition hover:bg-red-100"
                   >
                     <RotateCcw className="h-3 w-3" /> Reload
@@ -464,56 +376,22 @@ export default function CallRecordEditor({ saleId, canEdit, onClose, onSaved, ne
                 )}
               </div>
             )}
-            {keepFailed && (
-              <div
-                role="alert"
-                className="flex flex-wrap items-start gap-2 rounded-lg border border-red-200 bg-red-50 p-3"
-              >
-                <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-red-600" />
-                <p className="min-w-0 flex-1 text-sm text-red-900">
-                  Your answers could not be kept: {keepFailed}. Save the record, or close anyway
-                  and lose what you typed.
-                </p>
-                <button
-                  type="button"
-                  onClick={() => onClose?.()}
-                  className="inline-flex shrink-0 items-center rounded-md border border-red-300 bg-white px-2.5 py-1 text-xs font-medium text-red-800 transition hover:bg-red-100"
-                >
-                  Close anyway
-                </button>
-              </div>
-            )}
-            <ConfirmDialog
+            <KeepFailedBand reason={keepFailed} onCloseAnyway={() => onClose?.()} />
+            <ClearDraftDialog
               open={confirmClear}
-              title="Clear this unfinished form?"
-              description={`${
-                draft?.saved_by_name ? `${draft.saved_by_name}'s` : "The"
-              } unsaved answers go, and the form starts again from the saved record. Nothing already saved changes.`}
-              cancelLabel="Keep the answers"
-              actionLabel="Clear it"
-              destructive
+              draft={draft}
               busy={draftBusy}
               onCancel={() => setConfirmClear(false)}
-              onConfirm={() => {
-                setConfirmClear(false);
-                discardDraft();
-              }}
+              onConfirm={() => { setConfirmClear(false); discardDraft(); }}
             />
             {notice && (
-              <div className="flex items-center gap-2 rounded-lg border border-(--dc-primary)/20 bg-(--dc-primary-soft)/50 p-3">
+              <div className="flex items-center gap-2 rounded-lg border border-(--dc-primary)/20 bg-(--dc-primary-soft)/50 p-3" role="status">
                 <Check className="h-4 w-4 text-(--dc-accent)" />
                 <p className="text-sm text-(--dc-accent)">{notice}</p>
               </div>
             )}
 
-            {/*
-              Everything the record knows, arranged the way a call goes.
-
-              This was four fields - phone, buyer, address, sold - which is
-              enough to dial and not enough to hold the conversation. An agent
-              who cannot say which stove, from which partner, on what terms, is
-              reading from a stub while the customer is talking.
-            */}
+            {/* Everything the record knows, arranged the way a call goes. */}
             <AgentBrief record={record} />
 
             {/* The fix that only works while the buyer is on the line. */}
@@ -524,64 +402,22 @@ export default function CallRecordEditor({ saleId, canEdit, onClose, onSaved, ne
               onDone={() => load()}
             />
 
-            {/* The outcome. Its own control because everything downstream
-                groups by it. */}
-            <div>
-              <h3 className="mb-2 text-xs font-semibold uppercase tracking-wide text-gray-500">
-                Verification outcome
-              </h3>
-              <div className="flex flex-wrap gap-2">
-                {OUTCOMES.map((o) => {
-                  const active =
-                    (values.verification_outcome ?? record?.verification_outcome ?? "not_verified") ===
-                    o.value;
-                  return (
-                    <button
-                      key={o.value}
-                      type="button"
-                      disabled={!canEdit || saving}
-                      onClick={() => setValue("verification_outcome", o.value)}
-                      className={`rounded-full px-3 py-1 text-xs font-medium transition ${
-                        active ? o.tone + " ring-2 ring-offset-1 ring-(--dc-primary)/40" : "bg-gray-100 text-gray-600 hover:bg-gray-200"
-                      } disabled:opacity-50`}
-                    >
-                      {o.label}
-                    </button>
-                  );
-                })}
-              </div>
-            </div>
-
-            {/* The calls, and the next one being logged: its own component,
-                keyed on the sale so a new record starts clean. */}
-            <CallLog
-              key={saleId}
+            {/* This call, its outcome, the verdict it implies, and the earlier calls. */}
+            <CallOutcome
               attempts={attempts}
-              outcomes={schema?.options?.call_outcome ?? []}
+              outcomes={outcomes}
               canEdit={canEdit}
               saving={saving}
-              onLog={logAttempt}
+              attempt={attempt}
+              onAttemptChange={changeAttempt}
+              verdict={verdict}
+              verdictExplicit={verdictExplicit}
+              verdictDerived={Boolean(derivedVerdict)}
+              onVerdict={(v) => setValue("verification_outcome", v)}
+              prompt={prompt}
             />
 
-            {/* Corrections. Real columns, because reporting groups by them. */}
-            <div>
-              <h3 className="mb-2 flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wide text-gray-500">
-                <Phone className="h-3.5 w-3.5" /> What the call corrected
-              </h3>
-              <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-3">
-                {CORRECTION_FIELDS.map((f) => (
-                  <Field key={f.key} label={f.label}>
-                    <input
-                      type={f.type}
-                      disabled={!canEdit}
-                      value={values[f.key] ?? record?.[f.key] ?? ""}
-                      onChange={(e) => setValue(f.key, e.target.value)}
-                      className="w-full rounded-md border border-gray-300 px-3 py-1.5 text-sm focus:border-(--dc-accent) focus:outline-none disabled:bg-gray-50"
-                    />
-                  </Field>
-                ))}
-              </div>
-            </div>
+            <CorrectionFields values={values} record={record} canEdit={canEdit} onChange={setValue} />
 
             {/* The questionnaire. Every field below comes from field_defs. */}
             {sections.map(([section, fields]) => (
@@ -621,10 +457,7 @@ export default function CallRecordEditor({ saleId, canEdit, onClose, onSaved, ne
               record={record}
               reasons={correctionReasons}
               canEdit={canEdit}
-              onChanged={async (message) => {
-                await load();
-                setNotice(message);
-              }}
+              onChanged={async (message) => { await load(); setNotice(message); }}
             />
             </div>
           </div>
@@ -636,13 +469,19 @@ export default function CallRecordEditor({ saleId, canEdit, onClose, onSaved, ne
           loading={loading}
           draftBusy={draftBusy}
           draftSavedAt={draftSavedAt}
+          prompt={prompt}
+          outcomes={outcomes}
+          attempt={attempt}
+          onAttemptChange={changeAttempt}
+          onSaveAnyway={() => save({ force: true })}
+          onDismissPrompt={() => setPrompt(false)}
           handoff={handoff}
           onBack={() => setHandoff(null)}
           allHref={allHref}
           onClose={onClose}
           onNext={onNext ? (id) => { setHandoff(null); onNext(id); } : null}
           onKeepAndClose={keepAndClose}
-          onSave={save}
+          onSave={() => save()}
         />
       </DialogContent>
     </Dialog>

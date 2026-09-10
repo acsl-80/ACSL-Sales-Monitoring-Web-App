@@ -222,7 +222,8 @@ test("a save that lost to somebody else is red, and Reload reloads", async ({ pa
     // Somebody else saves while the editor is open.
     await branchSql(`update data_center.call_records set version = version + 1 where sale_id = '${d.sale_id}'`);
     await dialog.getByRole("button", { name: "Partly verified", exact: true }).click();
-    await dialog.getByRole("button", { name: "Save", exact: true }).click();
+    await dialog.locator('[data-save-call="footer"]').click();
+    await dialog.locator("[data-outcome-prompt]").getByRole("button", { name: "No call was made, just save" }).click();
 
     const message = dialog.getByText(/Someone else changed this record/);
     await expect(message).toBeVisible({ timeout: 15_000 });
@@ -233,7 +234,8 @@ test("a save that lost to somebody else is red, and Reload reloads", async ({ pa
     await expect(message).toHaveCount(0, { timeout: 15_000 });
 
     await dialog.getByRole("button", { name: "Partly verified", exact: true }).click();
-    await dialog.getByRole("button", { name: "Save", exact: true }).click();
+    await dialog.locator('[data-save-call="footer"]').click();
+    await dialog.locator("[data-outcome-prompt]").getByRole("button", { name: "No call was made, just save" }).click();
     await expect(dialog.getByText("Saved.", { exact: true })).toBeVisible({ timeout: 15_000 });
   } finally {
     await branchSql(

@@ -901,12 +901,16 @@ export type FormSchema = {
   options: Record<string, OptionValue[]>;
   /** The call app the agents dial in, from `call_centre.dialler_name` (D36). */
   diallerName?: string;
+  /** Call outcome value to the verdict it implies, from `call_centre.outcome_verdict` (D42). */
+  verdictMap?: Record<string, string>;
 };
 
 export type CallAttempt = {
   id: string;
   attempt_no: number;
   attempted_at: string;
+  /** form, sheet or reconciled (D48). */
+  source?: string | null;
   outcome: string | null;
   outcome_value?: string | null;
   agent: string | null;
@@ -986,12 +990,22 @@ export const dataCenterWrite = {
    * stale one rather than merging, because merging two people's answers to the
    * same question is a guess.
    */
-  saveCallRecord: (saleId: string, values: Record<string, unknown>, version: number | null) =>
-    call<{ saleId: string; version: number }>("data-center-write", "save_call_record", {
-      saleId,
-      values,
-      version,
-    }),
+  saveCallRecord: (
+    saleId: string,
+    values: Record<string, unknown>,
+    version: number | null,
+    /**
+     * The call being saved (D42): outcome, an optional note and callback
+     * time, and a client key minted when the outcome was picked so a second
+     * send writes nothing twice. Absent for a record-only save.
+     */
+    attempt?: { outcomeId: string; answeredById?: string | null; note?: string | null; callbackAt?: string | null; clientKey: string } | null,
+  ) =>
+    call<{ saleId: string; version: number; attemptNo: number | null; verificationOutcome: string | null }>(
+      "data-center-write",
+      "save_call_record",
+      { saleId, values, version, ...(attempt ? { attempt } : {}) },
+    ),
 
   /** The attempt number is assigned server-side, never sent. */
   logAttempt: (

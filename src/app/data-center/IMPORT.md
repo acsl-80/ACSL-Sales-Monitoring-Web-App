@@ -232,8 +232,10 @@ is why the two imports have an order and this one is second.
 Four things it shares with the receipt import and one it does not. Same
 `import_batches` and `import_rows`, same staged/validated/committed lifecycle,
 same exceptions queue, same slicing. What differs is the write: commit posts to
-`data-center-write`, the same `save_call_record` and `log_attempt` the call form
-uses, so field visibility, the answers-versus-column routing in `splitPayload`,
+`data-center-write`, `save_call_record` for the record and `log_attempt` for each
+dated call (the form itself sends its call inside `save_call_record` since Phase
+28, D42; `log_attempt` stays for the sheets, whose earlier dates carry no
+outcome), so field visibility, the answers-versus-column routing in `splitPayload`,
 the writable-column allowlist and the audit trigger all stay in one place. A
 question promoted from jsonb to a real column later needs no change in the
 importer.

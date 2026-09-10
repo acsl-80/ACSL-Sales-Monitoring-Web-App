@@ -417,8 +417,20 @@ serve(async (req) => {
         const dialler = await conn.queryObject<{ name: string | null }>(
           `select value #>> '{}' as name from data_center.workflow_config where key = 'call_centre.dialler_name'`,
         );
+        // Phase 28, D42: which call outcomes conclude a record on their own,
+        // so the form can show the verdict an outcome implies before the save.
+        const verdictMap = await conn.queryObject<{ value: Record<string, string> | null }>(
+          `select value from data_center.workflow_config where key = 'call_centre.outcome_verdict'`,
+        );
         return json(
-          { data: { fields: fields.rows, options: grouped, diallerName: dialler.rows[0]?.name ?? "the call app" } },
+          {
+            data: {
+              fields: fields.rows,
+              options: grouped,
+              diallerName: dialler.rows[0]?.name ?? "the call app",
+              verdictMap: verdictMap.rows[0]?.value ?? {},
+            },
+          },
           200,
           cors,
         );
@@ -584,7 +596,7 @@ serve(async (req) => {
           standing_recipients: Number(route.standing_recipients ?? 0),
         });
         const attempts = await conn.queryObject({
-          text: `select a.id::text, a.attempt_no, a.attempted_at, a.note, a.callback_at,
+          text: `select a.id::text, a.attempt_no, a.source, a.attempted_at, a.note, a.callback_at,
                         o.label as outcome, o.value as outcome_value, g.label as agent, b.label as answered_by
                  from data_center.call_attempts a
                  left join data_center.option_values o on o.id = a.outcome_id
@@ -619,7 +631,34 @@ serve(async (req) => {
       case "save_call_record": {
         const saleId = String(body.saleId ?? "");
         if (!saleId) throw new BadRequest("saleId is required");
-        const submitted = (body.values ?? {}) as Record<string, unknown>;
+        const submitted = { ...((body.values ?? {}) as Record<string, unknown>) };
+        /*
+         * Phase 28, D42: one save path. When the form carries an attempt, the
+         * call, the record and the verdict land in one transaction. The
+         * outcome must be an active call_outcome row; "other" needs the words;
+         * a callback time travels only with a callback outcome; the client key
+         * makes a second send of the same save write nothing twice. The
+         * verdict the outcome implies (call_centre.outcome_verdict) is applied
+         * only when the agent picked no verdict themselves.
+         */
+        type Attempt = { outcomeId: string; answeredById: string | null; note: string | null; callbackAt: string | null; clientKey: string | null };
+        let attempt: Attempt | null = null;
+        if (body.attempt && typeof body.attempt === "object") {
+          const a = body.attempt as Record<string, unknown>;
+          const outcomeId = typeof a.outcomeId === "string" ? a.outcomeId : "";
+          if (!outcomeId) throw new BadRequest("Pick an outcome for this call");
+          const clientKey = typeof a.clientKey === "string" && a.clientKey ? a.clientKey : null;
+          if (clientKey && !/^[0-9a-f-]{36}$/i.test(clientKey)) throw new BadRequest("Malformed client key");
+          const callbackAt = typeof a.callbackAt === "string" && a.callbackAt ? a.callbackAt : null;
+          if (callbackAt && Number.isNaN(Date.parse(callbackAt))) throw new BadRequest("The callback time is not a time");
+          attempt = {
+            outcomeId,
+            answeredById: typeof a.answeredById === "string" && a.answeredById ? a.answeredById : null,
+            note: typeof a.note === "string" && a.note.trim() ? a.note.trim() : null,
+            callbackAt,
+            clientKey,
+          };
+        }
         // null means "no lock", the same as absent. It used to become Number(null),
         // which is 0, so any caller sending null for an existing record was told
         // somebody else had changed it. save_call_draft already reads baseVersion
@@ -637,17 +676,75 @@ serve(async (req) => {
 
         await begin();
         try {
+          let outcomeValue: string | null = null;
+          if (attempt) {
+            const oc = await conn.queryObject<{ value: string; is_active: boolean }>({
+              text: `select value, is_active from data_center.option_values where id = $1 and list_key = 'call_outcome'`,
+              args: [attempt.outcomeId],
+            });
+            const o = oc.rows[0];
+            if (!o || !o.is_active) throw new BadRequest("Pick an outcome for this call");
+            outcomeValue = o.value;
+            if (outcomeValue === "other" && !attempt.note) throw new BadRequest("Say what happened on this call");
+            if (attempt.callbackAt && outcomeValue !== "callback_requested") {
+              throw new BadRequest("A callback time goes with a callback outcome");
+            }
+            if (submitted.verification_outcome === undefined) {
+              const map = await conn.queryObject<{ verdict: string | null }>({
+                text: `select value ->> $1 as verdict from data_center.workflow_config where key = 'call_centre.outcome_verdict'`,
+                args: [outcomeValue],
+              });
+              const verdict = map.rows[0]?.verdict ?? null;
+              if (verdict && VERIFICATION_OUTCOMES.has(verdict)) submitted.verification_outcome = verdict;
+              else if (verdict) console.warn(`save_call_record: outcome_verdict maps ${outcomeValue} to ${verdict}, which is not a verdict; ignored`);
+            }
+            // The record's headline outcome tracks the call being saved.
+            submitted.call_outcome_id = attempt.outcomeId;
+          }
+
+          // The parent row first, so the lock below always finds one and the
+          // attempt has a record to hang off, whichever came first.
+          const created = await conn.queryObject({
+            text: `insert into data_center.call_records (sale_id, created_by) values ($1, $2) on conflict (sale_id) do nothing`,
+            args: [saleId, userId],
+          });
+          const fresh = Number(created.rowCount ?? 0) > 0;
           const existing = await conn.queryObject<{ version: number; answers: Record<string, unknown>; verification_outcome: string }>({
             text: `select version, answers, verification_outcome
                    from data_center.call_records where sale_id = $1 for update`,
             args: [saleId],
           });
-          const current = existing.rows[0] ?? null;
+          // A row this save just created is "no record" for the version check
+          // and for the conditions below, as it always was.
+          const current = fresh ? null : (existing.rows[0] ?? null);
 
           if (current && expectedVersion !== null && current.version !== expectedVersion) {
             throw new Conflict(
               "Someone else changed this record while you had it open. Reload to see their changes.",
             );
+          }
+
+          let attemptNo: number | null = null;
+          if (attempt) {
+            const inserted = await conn.queryObject<{ attempt_no: number }>({
+              text: `insert into data_center.call_attempts
+                       (sale_id, attempt_no, attempted_at, outcome_id, agent_id, answered_by_id, note, created_by, callback_at, source, client_key)
+                     select $1, coalesce(max(attempt_no), 0) + 1, now(), $2, null, $3, $4, $5, $6::timestamptz, 'form', $7::uuid
+                       from data_center.call_attempts where sale_id = $1
+                     on conflict (sale_id, client_key) where client_key is not null do nothing
+                     returning attempt_no`,
+              args: [saleId, attempt.outcomeId, attempt.answeredById, attempt.note, userId, attempt.callbackAt, attempt.clientKey],
+            });
+            if (inserted.rows[0]) {
+              attemptNo = inserted.rows[0].attempt_no;
+            } else if (attempt.clientKey) {
+              // The same save sent twice: the first one wrote the call.
+              const again = await conn.queryObject<{ attempt_no: number }>({
+                text: `select attempt_no from data_center.call_attempts where sale_id = $1 and client_key = $2::uuid`,
+                args: [saleId, attempt.clientKey],
+              });
+              attemptNo = again.rows[0]?.attempt_no ?? null;
+            }
           }
 
           // Conditions are evaluated against the record as it will be after
@@ -662,13 +759,6 @@ serve(async (req) => {
           const { columns, answers, ignored } = splitPayload(fields, submitted, merged);
           if (ignored.length > 0) {
             console.info(`save_call_record: dropped ${ignored.join(", ")} for ${saleId}: no longer applies`);
-          }
-
-          if (!current) {
-            await conn!.queryObject({
-              text: `insert into data_center.call_records (sale_id, created_by) values ($1, $2)`,
-              args: [saleId, userId],
-            });
           }
 
           const sets: string[] = [];
@@ -709,7 +799,18 @@ serve(async (req) => {
           });
 
           await conn!.queryObject("commit");
-          return json({ data: { saleId, version: updated.rows[0]?.version } }, 200, cors);
+          return json(
+            {
+              data: {
+                saleId,
+                version: updated.rows[0]?.version,
+                attemptNo,
+                verificationOutcome: submitted.verification_outcome ?? current?.verification_outcome ?? null,
+              },
+            },
+            200,
+            cors,
+          );
         } catch (err) {
           await conn!.queryObject("rollback");
           throw err;
@@ -754,7 +855,9 @@ serve(async (req) => {
          * draft is not judged.
          */
         const draftFields = await loadFields(conn);
-        const keepable = new Set<string>([...WRITABLE_COLUMNS, ...draftFields.map((f) => f.key)]);
+        // `_attempt` is the call being logged (outcome, note, callback time,
+        // client key), kept so Finish later does not lose the outcome picked.
+        const keepable = new Set<string>([...WRITABLE_COLUMNS, ...draftFields.map((f) => f.key), "_attempt"]);
         const values = Object.fromEntries(
           Object.entries(submittedDraft).filter(([k]) => keepable.has(k)),
         ) as Record<string, unknown>;
