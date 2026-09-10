@@ -33,6 +33,8 @@ type CallCentreSearch = {
   preset?: string;
   /** One exact outcome, where a scorecard column's four-outcome group is too wide. */
   verificationOutcome?: string;
+  /** One or more of the six standings (D41), sent on to the records page. */
+  standing?: string;
   /**
    * The shared period control, as one parameter. `thisYear` is the default and
    * is left out of the URL entirely, so an unfiltered link stays clean.
@@ -66,6 +68,7 @@ export const Route = createFileRoute("/data-center/call-centre")({
     label: str(search.label),
     preset: str(search.preset),
     verificationOutcome: str(search.verificationOutcome),
+    standing: str(search.standing),
     period: str(search.period),
     logPeriod: str(search.logPeriod),
     day: typeof search.day === "string" && DAY.test(search.day) ? search.day : undefined,

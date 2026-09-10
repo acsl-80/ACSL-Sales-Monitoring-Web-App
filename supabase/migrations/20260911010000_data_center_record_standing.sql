@@ -716,6 +716,9 @@ begin
 end;
 $function$;
 
+comment on function data_center.compute_metrics(uuid, text[]) is
+  'Writes the dashboard metric families for one run. Every family belonging to a consignment carries a period at month grain, dated by when the stove was sold to the partner;
+
 -- 5. Readback ------------------------------------------------------------------
 do $$
 declare

@@ -20,7 +20,8 @@ test.describe("the call centre queue", () => {
     await expect(page.getByRole("heading", { name: "Call Centre" })).toBeVisible({
       timeout: 20_000,
     });
-    for (const preset of ["Never called", "Yet to be resolved", "Chased 3 times", "Waiting on Sales"]) {
+    // "Never called" became New with Phase 28's standing (D41).
+    for (const preset of ["New", "Yet to be resolved", "Chased 3 times", "Waiting on Sales"]) {
       await expect(page.getByRole("button", { name: preset })).toBeVisible();
     }
   });
