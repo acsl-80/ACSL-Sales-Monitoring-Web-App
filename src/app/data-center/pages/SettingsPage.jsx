@@ -5,6 +5,7 @@ import CallFormEditor from "../features/settings/CallFormEditor";
 import Variables from "../features/settings/Variables";
 import FieldRules from "../features/settings/FieldRules";
 import SendBackRouting from "../features/settings/SendBackRouting";
+import SheetNames from "../features/settings/SheetNames";
 import { DATA_CENTER_FEATURES } from "../lib/features";
 
 /**
@@ -30,6 +31,7 @@ export default function SettingsPage() {
     >
       <div className="space-y-4">
         <AccessManager />
+        <SheetNames />
         {/*
           Above the call form on purpose. Who receives a send-back is a
           question somebody asks the day the call centre starts sending them,

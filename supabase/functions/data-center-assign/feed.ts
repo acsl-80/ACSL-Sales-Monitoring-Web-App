@@ -109,12 +109,13 @@ const POOL_ROWS_SQL = `
 
 const ACTIVITY_EVENTS_SQL = `
   events as (
-    select a.attempted_at as at, 'call'::text as kind, a.created_by as actor_id,
+    -- Phase 28, D47: the actor is the person the attempt resolves to.
+    select a.attempted_at as at, 'call'::text as kind, a.agent_user_id as actor_id,
            a.sale_id, null::uuid as batch_id,
            jsonb_build_object('attempt_no', a.attempt_no, 'outcome_value', o.value,
-                              'outcome_label', o.label, 'note', a.note) as detail,
+                              'outcome_label', o.label, 'note', a.note, 'source', a.source) as detail,
            o.value as outcome_value
-      from data_center.call_attempts a
+      from data_center.v_call_attempts_resolved a
       left join data_center.option_values o on o.id = a.outcome_id
     union all
     select b.assigned_at, 'handed_out', b.created_by, null, b.id,
@@ -363,10 +364,10 @@ export async function handleFeed(ctx: FeedContext): Promise<Response> {
                      count(*) filter (where kind = 'reclaimed')::int as reclaimed,
                      count(*) filter (where kind = 'sent_back')::int as sent_back,
                      count(*) filter (where kind = 'reviewed')::int as reviewed,
-                     (select count(*)::int from data_center.call_records cr, window_ w
+                     (select count(*)::int from data_center.v_call_center cr, window_ w
                        where cr.verification_outcome = 'fully_verified'
-                         and cr.updated_at >= w.from_at and cr.updated_at <= w.to_at
-                         and ($3::uuid is null or cr.updated_by = $3::uuid)) as verified,
+                         and cr.call_record_updated_at >= w.from_at and cr.call_record_updated_at <= w.to_at
+                         and ($3::uuid is null or cr.agent_user_id = $3::uuid)) as verified,
                      (select from_at from window_) as from_at,
                      (select to_at from window_) as to_at
                 from filtered`,

@@ -228,6 +228,19 @@ export type RecordsFilters = {
   includeArchived?: boolean;
 };
 
+/** A call sheet's agent name and the login it means (D47). */
+export type AgentLinkRow = {
+  agent_key: string;
+  agent_label: string;
+  is_active: boolean;
+  user_id: string | null;
+  account_name: string | null;
+  no_account: boolean;
+  linked_at: string | null;
+  attempts_tagged: number;
+  records_tagged: number;
+};
+
 /** One record the call centre sent back, with everything needed to act on it. */
 export type SendBackRow = {
   sale_id: string;
@@ -1454,6 +1467,19 @@ export const dataCenterAdmin = {
       "data-center-admin",
       "sales_rep_link",
       { repKey, userId, noAccount },
+    ),
+  /** The call sheets' agent names and the logins they mean (D47). */
+  agentLinks: () =>
+    call<{ links: AgentLinkRow[]; candidates: { id: string; full_name: string }[]; canEdit: boolean }>(
+      "data-center-admin",
+      "agent_links",
+    ),
+  /** Say which login a sheet name means, or that it is not a person. */
+  agentLinkSet: (agentKey: string, userId: string | null, noAccount = false) =>
+    call<{ agent_key: string; user_id: string | null; no_account: boolean }>(
+      "data-center-admin",
+      "agent_link_set",
+      { agentKey, userId, noAccount },
     ),
   searchUsers: (query: string) =>
     call<UserSearchResult[]>("data-center-admin", "user_search", { query }),

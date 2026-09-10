@@ -68,20 +68,27 @@ const FAMILY_SQL = `
        when o.value in ('unreachable', 'phone_unanswered', 'wrong_number', 'customer_hung_up') then 'unreached'
        else 'spoke' end`;
 
-/** $1 day, $2 agent or null, $3 days back (0 for one day). */
+/**
+ * $1 day, $2 agent or null, $3 days back (0 for one day).
+ *
+ * Phase 28, D47: a mark counts for the person the attempt resolves to (the
+ * sheet's agent tag linked to a login, else the login that logged it), read
+ * from v_call_attempts_resolved, so the July and August sheets sit under the
+ * agents who made those calls.
+ */
 const MARKS_SQL = `with ${DAY_CTE}
-  select a.created_by::text as agent_id, a.attempted_at as at, a.sale_id::text as sale_id,
+  select a.agent_user_id::text as agent_id, a.attempted_at as at, a.sale_id::text as sale_id,
          a.attempt_no, s.stove_serial_no, s.end_user_name, s.partner_name,
          o.value as outcome_value, o.label as outcome_label,
          ${FAMILY_SQL} as family,
          timezone(day.tz, a.attempted_at)::date::text as on_day
-    from data_center.call_attempts a
+    from data_center.v_call_attempts_resolved a
     cross join day
     left join data_center.option_values o on o.id = a.outcome_id
     left join data_center.v_sold_stoves s on s.sale_id = a.sale_id
-   where a.created_by is not null
+   where a.agent_user_id is not null
      and timezone(day.tz, a.attempted_at)::date between day.d_from and day.d
-     and ($2::uuid is null or a.created_by = $2::uuid)
+     and ($2::uuid is null or a.agent_user_id = $2::uuid)
    order by a.attempted_at`;
 
 const FLAGS_SQL = `with ${DAY_CTE}
@@ -97,16 +104,21 @@ const FLAGS_SQL = `with ${DAY_CTE}
      and ($2::uuid is null or b.assigned_to = $2::uuid)
    order by x.at`;
 
-/** Fully verified records saved by the agent inside the window, per day. */
+/**
+ * Fully verified records concluded by the agent inside the window, per day.
+ * The person is the record's agent_user_id (D47): the sheet's tag linked to a
+ * login, else the login that saved it. The day is the day the verdict was
+ * saved, which for the imported sheets is the day of the import.
+ */
 const VERIFIED_SQL = `with ${DAY_CTE}
-  select cr.updated_by::text as agent_id, timezone(day.tz, cr.updated_at)::date::text as on_day,
+  select c.agent_user_id::text as agent_id, timezone(day.tz, c.call_record_updated_at)::date::text as on_day,
          count(*)::int as verified
-    from data_center.call_records cr
+    from data_center.v_call_center c
     cross join day
-   where cr.updated_by is not null
-     and cr.verification_outcome = 'fully_verified'
-     and timezone(day.tz, cr.updated_at)::date between day.d_from and day.d
-     and ($2::uuid is null or cr.updated_by = $2::uuid)
+   where c.agent_user_id is not null
+     and c.verification_outcome = 'fully_verified'
+     and timezone(day.tz, c.call_record_updated_at)::date between day.d_from and day.d
+     and ($2::uuid is null or c.agent_user_id = $2::uuid)
    group by 1, 2`;
 
 const TO_CALL_SQL = `

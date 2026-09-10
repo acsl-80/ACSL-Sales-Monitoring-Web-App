@@ -191,9 +191,14 @@ call form; both inherit the system above and add one grammar each.
   page; today is the default and stays out of the URL. Every list pages by
   keyset cursor with the same footer: what is shown of how many, the sort in
   words, page numbers, rows per page.
-- **A call counts against the login that logged it (D35).** Every figure that
-  says "called" or "verified" reads `call_attempts.created_by` or
-  `call_records.updated_by`, never the registry's agent dropdown.
+- **A call counts against the person it resolves to (D35, amended by D47).**
+  The login that logged it is the default. A paper call sheet named its agent
+  as a registry value, and once that name is linked to a login on Settings the
+  link wins, so the July and August calls sit under the agents who made them.
+  Every figure that says "called" or "verified" reads `agent_user_id` from
+  `v_call_attempts_resolved` or `v_call_center`, never `created_by` or the
+  registry dropdown directly. A sheet call whose name nobody has linked counts
+  for nobody rather than for whoever pressed upload.
 
 ## The import page (Phase 27, 2026-09-07)
 

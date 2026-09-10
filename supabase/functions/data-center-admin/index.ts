@@ -830,6 +830,79 @@ serve(async (req) => {
          * that no account will ever correspond to, and marking them is what
          * stops them being re-examined by everybody who opens this screen.
          */
+        /**
+         * Phase 28, D47: a call sheet's agent name, and the login it means.
+         *
+         * Read by Settings, edited by whoever runs the agents
+         * (assignment.manage, or a super admin). Linking rewrites nothing:
+         * every board and feed resolves through the link at read time, so a
+         * link made today gives the July calls back on the next refresh.
+         */
+        case "agent_links": {
+          const canLink = superAdmin || holds("assignment.manage");
+          const rows = await conn.queryObject({
+            text: `select o.value as agent_key, o.label as agent_label, o.is_active,
+                          l.user_id::text, p.full_name as account_name, coalesce(l.no_account, false) as no_account,
+                          l.linked_at,
+                          (select count(*)::int from data_center.call_attempts a where a.agent_id = o.id) as attempts_tagged,
+                          (select count(*)::int from data_center.call_records cr where cr.call_agent_id = o.id) as records_tagged
+                     from data_center.option_values o
+                     left join data_center.call_agent_links l on l.agent_key = o.value
+                     left join public.profiles p on p.id = l.user_id
+                    where o.list_key = 'agent_name'
+                    order by attempts_tagged desc, o.sort_order`,
+          });
+          const candidates = await conn.queryObject({
+            text: `select p.id::text, coalesce(p.full_name, p.email) as full_name
+                     from data_center.module_access m
+                     join public.profiles p on p.id = m.user_id
+                    where m.access_role in ('call_agent', 'editor')
+                    order by 2`,
+          });
+          return json({ data: { links: rows.rows, candidates: candidates.rows, canEdit: canLink } }, 200, cors);
+        }
+
+        case "agent_link_set": {
+          if (!(superAdmin || holds("assignment.manage"))) {
+            return json(
+              { error: "Linking a sheet name to a login needs assignment.manage.", code: "no_feature" },
+              403,
+              cors,
+            );
+          }
+          const agentKey = String(body.agentKey ?? "").trim().toLowerCase();
+          if (!agentKey) return json({ error: "Which sheet name?", code: "bad_input" }, 400, cors);
+          const target = body.userId ? String(body.userId) : null;
+          if (target && !UUID_RE.test(target)) {
+            return json({ error: "That is not a user", code: "bad_input" }, 400, cors);
+          }
+          const noAccount = body.noAccount === true;
+          if (target && noAccount) {
+            return json(
+              { error: "A sheet name is either linked to a login or marked as not a person.", code: "bad_input" },
+              400,
+              cors,
+            );
+          }
+          const saved = await conn.queryObject({
+            text: `insert into data_center.call_agent_links (agent_key, agent_label, user_id, no_account, linked_at, linked_by)
+                   select o.value, o.label, $2, $3, now(), $4
+                     from data_center.option_values o
+                    where o.list_key = 'agent_name' and o.value = $1
+                   on conflict (agent_key) do update
+                      set user_id = excluded.user_id,
+                          no_account = excluded.no_account,
+                          linked_at = now(),
+                          linked_by = excluded.linked_by
+                   returning agent_key, user_id::text, no_account`,
+            args: [agentKey, target, noAccount, callerId],
+          });
+          if (saved.rows.length === 0) {
+            return json({ error: "No such sheet name", code: "not_found" }, 404, cors);
+          }
+          return json({ data: saved.rows[0] }, 200, cors);
+        }
+
         case "sales_rep_link": {
           const refused = requireRouting();
           if (refused) return refused;

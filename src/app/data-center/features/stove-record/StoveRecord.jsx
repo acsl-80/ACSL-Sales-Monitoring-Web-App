@@ -1227,8 +1227,14 @@ export default function StoveRecord({ stoveId }) {
                   <span className="text-xs text-gray-600">answered by {a.answered_by}</span>
                 )}
                 <span className="text-xs text-gray-500">{stamp(a.attempted_at)}</span>
+                {a.source === "sheet" && (
+                  <span className="text-xs text-gray-500">from the call sheet</span>
+                )}
+                {a.source === "reconciled" && (
+                  <span className="text-xs text-gray-500">recorded from the saved verdict</span>
+                )}
                 {a.logged_by && (
-                  <span className="text-xs text-gray-500">logged by {a.logged_by}</span>
+                  <span className="text-xs text-gray-500">{a.source === "sheet" ? "by" : "logged by"} {a.logged_by}</span>
                 )}
                 {a.note && <p className="w-full pl-8 text-xs text-gray-600">{a.note}</p>}
               </li>

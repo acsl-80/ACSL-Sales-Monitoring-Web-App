@@ -757,6 +757,10 @@ export async function commitCallSlice(
         agentId: attempt.agentId ?? null,
         answeredById: attempt.answeredById ?? null,
         note: "Imported from the call-centre sheet",
+        // Phase 28, D48: the attempt says it came off a sheet, so the board
+        // can attribute it through the sheet's agent tag rather than to
+        // whoever pressed upload.
+        source: "sheet",
       });
       // A record that saved but whose attempts did not is still worth having,
       // so this is recorded against the row and does not undo the record.

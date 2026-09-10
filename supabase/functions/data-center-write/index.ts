@@ -860,13 +860,16 @@ serve(async (req) => {
             args: [saleId],
           });
 
+          // Phase 28, D48: where the attempt came from. The import says sheet;
+          // everything else is the form. Nothing else is accepted.
+          const source = body.source === "sheet" ? "sheet" : "form";
           const inserted = await conn.queryObject<{ attempt_no: number }>({
             text: `insert into data_center.call_attempts
-                     (sale_id, attempt_no, attempted_at, outcome_id, agent_id, answered_by_id, note, created_by, callback_at)
+                     (sale_id, attempt_no, attempted_at, outcome_id, agent_id, answered_by_id, note, created_by, callback_at, source)
                    select $1,
                           coalesce(max(attempt_no), 0) + 1,
                           coalesce($2::timestamptz, now()),
-                          $3, $4, $5, $6, $7, $8::timestamptz
+                          $3, $4, $5, $6, $7, $8::timestamptz, $9
                    from data_center.call_attempts where sale_id = $1
                    returning attempt_no`,
             args: [
@@ -879,6 +882,7 @@ serve(async (req) => {
               userId,
               // Phase 26, C4: when the buyer asked to be rung again, and when.
               typeof body.callbackAt === "string" && body.callbackAt ? body.callbackAt : null,
+              source,
             ],
           });
 

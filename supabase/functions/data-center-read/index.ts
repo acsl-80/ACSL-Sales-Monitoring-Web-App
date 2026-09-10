@@ -1845,13 +1845,15 @@ serve(async (req) => {
           // The calls, if it ever became a sale somebody rang about.
           const attempts = stove.sale_id
             ? await connection.queryObject({
-              text: `select a.attempt_no, a.attempted_at, a.note,
+              // Phase 28, D47: logged_by is the person the call counts for,
+              // and source says whether it came off a paper call sheet.
+              text: `select a.attempt_no, a.attempted_at, a.note, a.source,
                             o.label as outcome, ab.label as answered_by,
                             p.full_name as logged_by
-                       from data_center.call_attempts a
+                       from data_center.v_call_attempts_resolved a
                        left join data_center.option_values o on o.id = a.outcome_id
                        left join data_center.option_values ab on ab.id = a.answered_by_id
-                       left join public.profiles p on p.id = a.created_by
+                       left join public.profiles p on p.id = a.agent_user_id
                       where a.sale_id = $1
                       order by a.attempt_no`,
               args: [stove.sale_id],

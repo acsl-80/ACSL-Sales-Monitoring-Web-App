@@ -566,7 +566,7 @@ function StoveLevel({ stoveId }) {
                 )}
                 {a.note && <span className="w-full text-xs text-gray-600">{a.note}</span>}
                 <span className="ml-auto shrink-0 text-xs text-gray-500">
-                  {a.logged_by ?? "system"} · {dateOf(a.attempted_at)}
+                  {a.logged_by ?? (a.source === "sheet" ? "call sheet" : "system")} · {dateOf(a.attempted_at)}
                 </span>
               </li>
             ))}
