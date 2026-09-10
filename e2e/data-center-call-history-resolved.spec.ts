@@ -132,7 +132,7 @@ test("the repair's backup holds what it changed, and the source column is filled
   expect(Number(left.no_outcome)).toBe(0);
 });
 
-test("Settings offers the sheet names, links one and takes it back; a viewer cannot", async ({ page }) => {
+test("Settings offers the sheet names, links one and takes it back; a data manager may, an editor may not", async ({ page, browser }) => {
   await signIn(page, USERS.admin);
   await page.goto("/data-center/settings");
   const card = page.locator("[data-sheet-names]");
@@ -149,10 +149,26 @@ test("Settings offers the sheet names, links one and takes it back; a viewer can
   await row.getByRole("button", { name: "Back in the list" }).click();
   await expect(row.getByRole("combobox", { name: `Login for ${tag.label}` })).toBeVisible({ timeout: 15_000 });
 
-  // The read is open to the module; the write needs assignment.manage.
-  const refused = await callEdgeFunction(page, "data-center-admin", { action: "agent_link_set", agentKey: tag.value, userId: null });
-  expect(refused.status).toBe(200);
-  await signIn(page, USERS.callCentre);
-  const denied = await callEdgeFunction(page, "data-center-admin", { action: "agent_link_set", agentKey: tag.value, noAccount: true });
-  expect(denied.status).toBe(403);
+  // A data manager (registry.manage and assignment.manage by level) reaches
+  // both actions; an editor is refused at Settings' door. Each in its own
+  // browser context: one page cannot be two people.
+  const manager = await browser.newContext();
+  const editor = await browser.newContext();
+  try {
+    const mp = await manager.newPage();
+    await signIn(mp, USERS.dataManager);
+    const read = await callEdgeFunction(mp, "data-center-admin", { action: "agent_links" });
+    expect(read.status, JSON.stringify(read.body).slice(0, 200)).toBe(200);
+    expect((read.body as { data: { canEdit: boolean } }).data.canEdit).toBe(true);
+    const set = await callEdgeFunction(mp, "data-center-admin", { action: "agent_link_set", agentKey: tag.value, userId: null });
+    expect(set.status).toBe(200);
+
+    const ep = await editor.newPage();
+    await signIn(ep, USERS.callCentre);
+    const denied = await callEdgeFunction(ep, "data-center-admin", { action: "agent_link_set", agentKey: tag.value, noAccount: true });
+    expect(denied.status).toBe(403);
+  } finally {
+    await manager.close();
+    await editor.close();
+  }
 });

@@ -40,8 +40,9 @@ test("after Recompute every figure equals its SQL oracle", async ({ page }) => {
     open: await count(`select count(*)::int as n from data_center.v_corrections c where c.state = 'open' and c.is_archived is not true`),
     batches: await count(`select count(*)::int as n from data_center.assignment_batches where state = 'open'`),
     calledToday: await count(
-      `select count(*)::int as n from data_center.call_attempts a
-        where a.created_by is not null and timezone(${TZ}, a.attempted_at)::date = timezone(${TZ}, now())::date`,
+      // Phase 28, D47: a call counts for the person it resolves to.
+      `select count(*)::int as n from data_center.v_call_attempts_resolved a
+        where a.agent_user_id is not null and timezone(${TZ}, a.attempted_at)::date = timezone(${TZ}, now())::date`,
     ),
   };
   await expect.poll(() => tileValue(page, "Waiting to be called"), { timeout: 30_000 }).toBe(oracle.callable);
