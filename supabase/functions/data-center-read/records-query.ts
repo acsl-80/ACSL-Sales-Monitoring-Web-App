@@ -112,6 +112,13 @@ export interface RecordsFilters {
   serialUnconfirmed?: boolean;
   /** true selects records whose newest ring-again close is newer than their last call. */
   recallDue?: boolean;
+  /**
+   * Where the record stands (D41): any of never_called, in_progress, verified,
+   * partially_verified, unreachable, with_sales. One SQL function answers it
+   * for every surface; this filter asks that function over the same columns
+   * the view reads, so the queue and the partner counts agree.
+   */
+  standing?: string[];
 }
 
 /**
@@ -256,6 +263,9 @@ const VERIFICATION_OUTCOMES = new Set([
  * scorecard's remainder does.
  */
 const OUTCOME_GROUPS = new Set(["verified", "unverified", "unreachable", "unresolved"]);
+const STANDINGS = new Set([
+  "never_called", "in_progress", "verified", "partially_verified", "unreachable", "with_sales",
+]);
 const CORRECTION_STATES = new Set(["none", "open", "fixed", "resolved"]);
 const ISO_DATE = /^\d{4}-\d{2}-\d{2}$/;
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -523,6 +533,7 @@ export function buildRecordsQuery(
     f.attemptsAtMost !== undefined ||
     f.completed !== undefined ||
     f.recallDue !== undefined ||
+    f.standing !== undefined ||
     f.serialUnconfirmed !== undefined;
 
   if (table === "records" && callCentreOnly) {
@@ -599,6 +610,23 @@ export function buildRecordsQuery(
           `(cr.verification_outcome is null or cr.verification_outcome = ${p("not_verified")})`,
         );
       }
+    }
+
+    if (f.standing !== undefined) {
+      const wanted = Array.isArray(f.standing) ? f.standing : [f.standing];
+      if (wanted.length === 0 || wanted.some((s) => !STANDINGS.has(String(s)))) {
+        throw new BadRequest("Unknown standing");
+      }
+      // The same three facts the view hands the function, so a row the queue
+      // shows under a standing is a row v_partner_standing counted there.
+      const state = `coalesce(
+        (select cx.state from data_center.corrections cx where cx.sale_id = s.id order by cx.seq desc limit 1),
+        case when cr.correction_requested_at is null then 'none'
+             when cr.correction_resolved_at is null then 'open'
+             else 'resolved' end)`;
+      where.push(
+        `data_center.record_standing(cr.verification_outcome, cr.attempt_count, ${state}) in (${wanted.map((s) => p(String(s))).join(", ")})`,
+      );
     }
 
     if (f.assignedAgent) {

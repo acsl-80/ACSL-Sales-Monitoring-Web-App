@@ -96,7 +96,19 @@ function PhoneRow({ row }) {
  */
 const PRESETS = [
   { key: "all", label: "Everything", filters: {} },
-  { key: "todo", label: "Never called", filters: { hasCallRecord: false } },
+  /*
+   * The six standings (D41), one preset each, in the module's words. They
+   * read `standing`, which the server answers with the same function the
+   * views and the partner counts use, so a preset here and a count on the
+   * hand-out dialog never disagree. "Never called" became New: a record with
+   * a call record and no call yet stands there too.
+   */
+  { key: "todo", label: "New", filters: { standing: ["never_called"] } },
+  { key: "in_progress", label: "In progress", filters: { standing: ["in_progress"] } },
+  { key: "verified", label: "Verified", filters: { standing: ["verified"] } },
+  { key: "partly", label: "Partly verified", filters: { standing: ["partially_verified"] } },
+  { key: "unreachable", label: "Unreachable", filters: { standing: ["unreachable"] } },
+  { key: "with_sales", label: "With Sales", filters: { standing: ["with_sales"] } },
   {
     key: "unresolved",
     label: "Yet to be resolved",
@@ -326,14 +338,14 @@ export default function CallQueue({ canEdit, drill = null, agents = null, route 
             // A verification facet in the URL outranks a preset on the same
             // column; rather than a pressed chip the facet silently overrides,
             // the preset is disabled and says why.
-            const clashes = Boolean(drill?.filters?.verificationOutcome)
-              && (p.filters.verificationOutcome !== undefined || p.filters.hasCallRecord !== undefined);
+            const clashes = (Boolean(drill?.filters?.verificationOutcome) || Boolean(drill?.filters?.standing))
+              && (p.filters.verificationOutcome !== undefined || p.filters.hasCallRecord !== undefined || p.filters.standing !== undefined);
             return (
             <button
               key={p.key}
               type="button"
               disabled={clashes}
-              title={clashes ? "Clear the Verification filter first" : undefined}
+              title={clashes ? "Clear the Standing or Verification filter first" : undefined}
               onClick={() => setPreset(p.key)}
               aria-pressed={preset === p.key}
               className={`rounded-full border px-3 py-1.5 text-xs font-medium transition ${

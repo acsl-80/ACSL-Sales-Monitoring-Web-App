@@ -220,6 +220,8 @@ export type RecordsFilters = {
    * would come back from the import refused rather than merged.
    */
   hasCallRecord?: boolean;
+  /** Call centre table only: where the record stands (D41), one or more of the six values. */
+  standing?: string[];
   platform?: string;
   dateFrom?: string;
   dateTo?: string;

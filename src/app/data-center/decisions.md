@@ -380,3 +380,94 @@ also says whether it landed. Days are the module's analysis timezone, so a
 receipt typed at 23:30 in Lagos is that day's work. The read answers one row
 per person per day and the page sums whatever period the shared control
 names, so daily, weekly, monthly and a custom range are one mechanism.
+
+## D41. A record's standing is one SQL function (2026-09-10)
+
+`data_center.record_standing(verification_outcome, attempt_count,
+correction_state)` returns one of never_called, in_progress, verified,
+partially_verified, unreachable, with_sales. With Sales first (an episode
+open or fixed), then the verdict, then in progress once a call was made,
+else never called. "Others" on any surface is exactly in_progress. It is
+exposed as `standing` on `v_call_center`, on the recreated
+`v_call_center_resolved` and on `v_assignment_log`; the words live in the
+registry list `record_standing`. Before this, five places computed never
+called, verified and unreachable five ways. The dashboard's by-outcome
+metric, the analysis yield leak and `pool.never_called` keep their
+definitions this phase and sit in Deferred: aligning them moves dashboard
+numbers and deserves its own conversation.
+
+## D42. One save path on the call form (2026-09-10)
+
+`save_call_record` accepts an optional attempt and writes the attempt, the
+record and the verdict in one transaction, one version bump. A configured
+map, `call_centre.outcome_verdict`, turns an outcome into a verdict:
+verified to fully_verified, partially_verified to partially_verified, and
+nothing else. Unreachable as a call outcome never sets the verdict on its
+own: unreachable is the agent's judgement after the callback limit and it
+is terminal for the pool, so one unanswered call must not conclude a
+record. The verdict pills stay, derived and still editable; an explicit
+pill beats the map. `log_attempt` stays for the call-sheet import. Each
+attempt carries a client key so a lost response and a second click cannot
+log the same call twice. Built in slice 2.
+
+## D43. The outcome list gains Verified and Partly verified (2026-09-10)
+
+Two registry rows on `call_outcome`, values verified and partially_verified,
+first in the list. The CHECK constraint on the verdict does not change;
+Verified in the dropdown maps to fully_verified in the column. Seeded in
+slice 1 because the history repair in slice 1b writes them. The call-sheet
+import accepts them in its Call Outcome column like any other; the map
+applies only on the form's save path.
+
+## D44. Save call without an outcome prompts, with a way through (2026-09-10)
+
+His answer: prompt, and offer "No call was made, just save". Record-only
+saves (a corrections reviewer, a manager fixing a field) write no attempt.
+
+## D45. The agent's working surface is New (2026-09-10)
+
+His answer, verbatim: separate views for Verified, Partly verified,
+Unreachable, With Sales, New, Others, plus All; New is the default and the
+working surface; daily and weekly counts for every category. The counts
+say what the agent did on the day: attempts by their recorded outcome
+(verified and partly verified outcomes to those views, unreachable to
+unreachable, everything else to Others) plus send-backs the agent opened to
+With Sales; All is the sum. New counts what is left to call. Callbacks with
+a time stay pinned above whatever view is open. Concluded items stay in
+the batch (capacity and closure rules unchanged); they leave New. Built in
+slice 3.
+
+## D46. Partner standing is read live from one view (2026-09-10)
+
+`v_partner_standing`: per partner, one count per standing, the total and
+the callable count. Live rather than compute, following the C1 precedent
+of reading the callable view live: a hand-out decision needs the number as
+of now and the table is a few thousand rows.
+
+## D47. Who made a call is resolved once; D35 is amended (2026-09-10)
+
+`call_agent_links` ties a sheet's "agent" registry value to a login, the
+shape of `sales_rep_accounts`, edited on Settings. An attempt's agent is
+the link through the attempt's own tag, else the link through the record's
+`call_agent_id` (a sheet row named one agent, so the record's tag covers
+the row's earlier calls), else the login that wrote it, except that a
+sheet-sourced attempt with no tag resolves to nobody rather than to the
+importer. One view carries it, `v_call_attempts_resolved`; `v_call_center`
+gains `agent_user_id` for the concluding agent by the same rule. The board,
+the agent page, My calls counts, the activity feed and the call history
+read it. D35's "never the registry agent" becomes: the login is the
+default and a confirmed link overrides it for imported history.
+Scorecards stay keyed on the batch assignee; the sheet months had no
+batches. Built in slice 1b.
+
+## D48. History is repaired, counted first, undone by one statement (2026-09-10)
+
+`call_attempts.source` (form, sheet, reconciled) is added and backfilled
+from the import's fixed note. Concluded records with no attempt get one
+attempt dated and attributed from the record (16 on production);
+concluded records whose attempts carry no outcome get the verdict's
+outcome on the latest attempt and on the record (up to 259). The 604
+outcome-less earlier attempts of multi-call rows are left as they are:
+that is how the import was built. Prior values go in a backup table; the
+dry-run SQL is committed and its output on the sandbox and on production
+is pasted before the merge word. Built in slice 1b.

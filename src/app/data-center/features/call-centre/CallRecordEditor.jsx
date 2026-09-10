@@ -7,7 +7,7 @@ import Link from "@/compat/Link";
 import CallLog from "./CallLog";
 import SaveFooter from "./SaveFooter";
 import { dataCenterWrite, DataCenterError } from "../../lib/client";
-import { OUTCOME_WORDS, OUTCOME_PILL } from "../../lib/outcome";
+import { OUTCOME_WORDS, OUTCOME_PILL, OUTCOME_ORDER } from "../../lib/outcome";
 import { dateOf, whenOf } from "../../lib/when";
 import ConfirmDialog from "../../components/ConfirmDialog";
 import FieldRenderer, { isFieldVisible } from "./FieldRenderer";
@@ -38,7 +38,7 @@ import {
 
 // One vocabulary and one set of tones for the four outcomes, from lib/outcome.
 // Unreachable is a conclusion and not a blank: nobody could reach this buyer.
-const OUTCOMES = ["not_verified", "partially_verified", "fully_verified", "unreachable"].map((value) => ({
+const OUTCOMES = OUTCOME_ORDER.map((value) => ({
   value,
   label: OUTCOME_WORDS[value],
   tone: OUTCOME_PILL[value],

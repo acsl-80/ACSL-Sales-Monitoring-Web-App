@@ -397,3 +397,59 @@ Non-goals: a metric family in compute for this (the lists are small and the
 read is one aggregate over bounded rows; it moves to compute when the row
 count says so); per-agent targets or pace alerts; any change to how a
 receipt is typed, uploaded, checked or released.
+
+## Phase 28: one standing for every call record (approved 2026-09-10)
+
+His asks, verbatim: "we have verification outcome, log call and the below
+finish later and save. Can these be harmonized ... when a record is saved,
+it should automatically log an outcome, if the outcome has not been
+selected it should prompt to select an outcome ... for the dropdown on
+outcomes there should be verified"; "Partially verified should be taken
+out as well as unreachable. modify their view to allow them declutter, so
+they see only new calls"; "for a partner, how many of the records have
+never been called, verified or partially verified, unreachable, with
+sales"; "'agents and their work' it should break done for each partner";
+then "ensuring nothing is lost for all the work that has been done from
+beginning by the call center"; then, on the boards, a day picker, a range,
+month and year for the agents board.
+
+What the code said first: the pool already excluded every concluded
+verdict; the clutter was inside handed-out batches, where My calls hid only
+fully verified. Save wrote the verdict and never an attempt; Log call the
+reverse. The July and August call sheets had been imported under one login
+with the agent named only as a registry tag, so the board showed those
+months as nobody's.
+
+Boards approved 2026-09-10:
+https://claude.ai/code/artifact/7b75aa9c-1b08-492c-9baa-42355fd45208.
+Decisions D41 to D48; plan file in the session's plans folder.
+
+**S1, standing (this PR).** `record_standing()`; `standing` on
+`v_call_center`, the recreated `v_call_center_resolved` and
+`v_assignment_log`; `v_partner_standing`; the registry list
+`record_standing`; the two outcome rows; `calls.exhausted` reads
+`callback_limit`; the records page and its presets narrow by `standing`;
+one verdict order in `lib/outcome`.
+
+**S1b, nothing lost.** `call_attempts.source`, `call_agent_links` with
+its Settings rows, `v_call_attempts_resolved`, the readers rewired, the two
+repairs with a backup table and a committed dry run, D35 amended in
+DESIGN.md.
+
+**S2, Save call.** The one save path (D42 to D44), the verdict map, the
+client key, the editor split under 600 lines, IMPORT.md and
+CHANGING-THE-CALL-TABLE.md corrected.
+
+**S3, My calls on New.** Seven views, day, week and period counts by what
+the agent did, callbacks pinned, five chips plus More on a phone.
+
+**S4, the manager.** Two numbers per partner row and the six-way strip on
+the selected partner and the Partners page; the board's per-partner lines
+inside the row expansion; the board's date control with a day, a month, a
+year and a range in the URL.
+
+Non-goals: changing which records are callable or the hand-out order; a
+new outcome vocabulary beyond the two rows; removing the verdict pills or
+the CHECK constraint; aligning the three dashboard definitions (Deferred);
+scorecard rows for the sheet months; realtime; reworking the corrections
+flow.

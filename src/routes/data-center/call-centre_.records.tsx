@@ -23,6 +23,8 @@ type RecordsSearch = {
   label?: string;
   preset?: string;
   verificationOutcome?: string;
+  /** One or more of the six standings, comma-separated (D41). */
+  standing?: string;
   period?: string;
 };
 
@@ -39,6 +41,7 @@ export const Route = createFileRoute("/data-center/call-centre_/records")({
     label: str(search.label),
     preset: str(search.preset),
     verificationOutcome: str(search.verificationOutcome),
+    standing: str(search.standing),
     period: str(search.period),
   }),
   component: Page,

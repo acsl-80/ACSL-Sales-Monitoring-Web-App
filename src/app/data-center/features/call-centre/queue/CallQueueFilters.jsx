@@ -1,7 +1,7 @@
 import { useNavigate, useSearch } from "@tanstack/react-router";
 import { SearchableSelect } from "@/components/ui/searchable-select";
 import { useRecordFacets } from "../../../lib/useRecordFacets";
-import { OUTCOME_WORDS } from "../../../lib/outcome";
+import { OUTCOME_WORDS, OUTCOME_ORDER, STANDING_ORDER, STANDING_WORDS } from "../../../lib/outcome";
 import Field from "../../../components/Field";
 import { fieldLabel } from "@/lib/saleDictionary";
 import { X } from "lucide-react";
@@ -21,10 +21,12 @@ import { X } from "lucide-react";
 
 // The module's own words for each outcome, so the facet, its chip and the
 // Verification column all say the same thing.
-const OUTCOMES = ["not_verified", "partially_verified", "fully_verified", "unreachable"].map((value) => ({
+const OUTCOMES = OUTCOME_ORDER.map((value) => ({
   value,
   label: OUTCOME_WORDS[value] ?? value,
 }));
+// Where the record stands (D41): the six words the whole module uses.
+const STANDINGS = STANDING_ORDER.map((value) => ({ value, label: STANDING_WORDS[value] }));
 
 export default function CallQueueFilters({ agents = null, route = { id: "/data-center/call-centre", to: "/data-center/call-centre" } }) {
   const search = useSearch({ from: route.id });
@@ -51,6 +53,7 @@ export default function CallQueueFilters({ agents = null, route = { id: "/data-c
     search.partnerState && { key: "partnerState", text: `partners in ${search.partnerState}` },
     search.transferSalesRep && { key: "transferSalesRep", text: `rep ${search.transferSalesRep}` },
     search.verificationOutcome && { key: "verificationOutcome", text: OUTCOMES.find((o) => o.value === search.verificationOutcome)?.label ?? search.verificationOutcome },
+    search.standing && { key: "standing", text: STANDINGS.find((o) => o.value === search.standing)?.label ?? search.standing },
     search.status && { key: "status", text: `scorecard column ${search.status}` },
     search.assignedAgent && { key: "assignedAgent", text: `held by ${agentName(search.assignedAgent)}` },
     search.agentManager && { key: "agentManager", text: `agents under manager ${search.agentManager.slice(0, 8)}` },
@@ -58,7 +61,7 @@ export default function CallQueueFilters({ agents = null, route = { id: "/data-c
 
   return (
     <div className="border-b border-gray-100 bg-(--dc-accent-soft)/25 px-4 py-3">
-      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4">
+      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-5">
         <Field label={fieldLabel("partner_name")}>
           <SearchableSelect
             value={search.organizationId ?? ""}
@@ -77,6 +80,15 @@ export default function CallQueueFilters({ agents = null, route = { id: "/data-c
             searchPlaceholder="Type part of the rep's name"
             pinned={{ value: "", label: "Any rep" }}
             options={facets.salesReps.map((r) => ({ value: r.name, label: r.name }))}
+          />
+        </Field>
+        <Field label="Standing">
+          <SearchableSelect
+            value={search.standing ?? ""}
+            onChange={(next) => set("standing", next)}
+            placeholder="Any standing"
+            pinned={{ value: "", label: "Any standing" }}
+            options={STANDINGS}
           />
         </Field>
         <Field label="Verification">

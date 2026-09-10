@@ -93,11 +93,14 @@ function Inner() {
     }
     if (search.status && STATUS_LABELS[search.status]) filters.outcomeGroup = search.status;
     if (search.verificationOutcome) filters.verificationOutcome = search.verificationOutcome;
+    // One or more standings, comma-separated in the URL (D41).
+    if (search.standing) filters.standing = String(search.standing).split(",").map((s) => s.trim()).filter(Boolean);
     const preset = PRESET_LABELS[search.preset] ? search.preset : null;
     if (Object.keys(filters).length === 0 && !preset) return null;
     const subject = search.label
       ?? (preset ? PRESET_LABELS[preset] : null)
-      ?? (search.verificationOutcome ? wordsFor(search.verificationOutcome) : "the filters set on the queue");
+      ?? (search.verificationOutcome ? wordsFor(search.verificationOutcome) : null)
+      ?? (filters.standing ? filters.standing.map(wordsFor).join(", ") : "the filters set on the queue");
     return {
       preset,
       filters,

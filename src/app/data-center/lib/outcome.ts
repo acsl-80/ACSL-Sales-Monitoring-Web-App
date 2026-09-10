@@ -24,6 +24,9 @@
 
 export type Outcome = "fully_verified" | "partially_verified" | "unreachable" | "not_verified";
 
+/** The four verdicts in the order every picker shows them. */
+export const OUTCOME_ORDER: Outcome[] = ["not_verified", "partially_verified", "fully_verified", "unreachable"];
+
 export const OUTCOME_WORDS: Record<Outcome, string> = {
   fully_verified: "Verified",
   partially_verified: "Partly verified",
@@ -77,6 +80,31 @@ export const GROUP_WORDS: Record<string, string> = {
   unresolved: "Yet to be resolved",
 };
 
+/**
+ * Where a record stands (D41), the six values record_standing() answers and
+ * the module's word for each. The list lives in the registry as
+ * `record_standing` too; this mirror is what the presets and chips read
+ * before the registry has loaded, and the two are kept the same by the
+ * standing spec.
+ */
+export type Standing =
+  | "never_called" | "in_progress" | "verified" | "partially_verified" | "unreachable" | "with_sales";
+export const STANDING_ORDER: Standing[] = [
+  "never_called", "in_progress", "verified", "partially_verified", "unreachable", "with_sales",
+];
+export const STANDING_WORDS: Record<Standing, string> = {
+  never_called: "New",
+  in_progress: "In progress",
+  verified: "Verified",
+  partially_verified: "Partly verified",
+  unreachable: "Unreachable",
+  with_sales: "With Sales",
+};
+export const standingLabel = (value: unknown): string =>
+  value && Object.prototype.hasOwnProperty.call(STANDING_WORDS, String(value))
+    ? STANDING_WORDS[String(value) as Standing]
+    : String(value ?? "");
+
 /** A send-back's state, as a flag beside the outcome. */
 export const CORRECTION_WORDS: Record<string, string> = {
   open: "Sent back",
@@ -103,6 +131,6 @@ export function wordsFor(value: unknown): string {
   if (Object.prototype.hasOwnProperty.call(OUTCOME_WORDS, key)) return OUTCOME_WORDS[key as Outcome];
   if (Object.prototype.hasOwnProperty.call(GROUP_WORDS, key)) return GROUP_WORDS[key];
   if (Object.prototype.hasOwnProperty.call(BATCH_STATE_WORDS, key)) return BATCH_STATE_WORDS[key];
-  if (key === "never_called") return "Never called";
+  if (Object.prototype.hasOwnProperty.call(STANDING_WORDS, key)) return STANDING_WORDS[key as Standing];
   return key.replace(/_/g, " ");
 }

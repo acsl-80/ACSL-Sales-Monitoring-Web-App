@@ -8,7 +8,7 @@ import { lazy } from "react";
  */
 const NARROWING = [
   "organizationId", "partnerState", "transferSalesRep", "assignedAgent", "agentManager",
-  "status", "preset", "verificationOutcome",
+  "status", "preset", "verificationOutcome", "standing",
 ] as const;
 
 const Page = lazy(() => import("@/app/data-center/pages/CallCentrePage"));
