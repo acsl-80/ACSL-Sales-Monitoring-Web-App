@@ -54,7 +54,7 @@ select cr.verification_outcome, count(*) as records,
 with aliases(agent_key, spelt) as (values ('kharriyah', 'khairiyyah')),
 links as (
   select o.value as agent_key,
-         (select min(p.id) from data_center.module_access m join public.profiles p on p.id = m.user_id
+         (select (array_agg(p.id))[1] from data_center.module_access m join public.profiles p on p.id = m.user_id
            where m.access_role in ('call_agent', 'editor')
              and lower(p.full_name) like '%' || lower(coalesce(al.spelt, o.value)) || '%'
           having count(*) = 1) as user_id

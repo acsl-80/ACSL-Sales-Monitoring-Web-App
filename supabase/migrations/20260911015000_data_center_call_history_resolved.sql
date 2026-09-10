@@ -57,7 +57,7 @@ names as (
 ),
 matches as (
   select n.agent_key, n.agent_label,
-         (select min(p.id)
+         (select (array_agg(p.id))[1]
             from data_center.module_access m
             join public.profiles p on p.id = m.user_id
            where m.access_role in ('call_agent', 'editor')
