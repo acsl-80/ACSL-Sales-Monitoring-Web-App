@@ -717,7 +717,7 @@ end;
 $function$;
 
 comment on function data_center.compute_metrics(uuid, text[]) is
-  'Writes the dashboard metric families for one run. Every family belonging to a consignment carries a period at month grain, dated by when the stove was sold to the partner;
+  'Writes the dashboard metric families for one run. Every family belonging to a consignment carries a period at month grain, dated by when the stove was sold to the partner; the two averages, the three import counters and the pool family carry none. sales.incomplete_by_missing is undated and carries a field dimension: one row per required field and one for the evidence, over every live sale. sales.status_disagreement counts sales the sales app calls incomplete that this module calls complete. With p_families = array[''pool''] only the pool family is written and the run returns; the read takes the newest row per key, so the other families keep their last full run.';
 
 -- 5. Readback ------------------------------------------------------------------
 do $$
