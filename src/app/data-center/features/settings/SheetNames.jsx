@@ -122,6 +122,9 @@ export default function SheetNames() {
                   <span className="text-xs tabular-nums text-gray-600">{r.attempts_tagged.toLocaleString()} calls on sheets</span>
                 </div>
                 <LoginControl r={r} canEdit={canEdit} busy={busy} act={act} candidates={data.candidates} />
+                {canEdit && !r.user_id && (
+                  <NotAPerson r={r} busy={busy} act={act} />
+                )}
               </li>
             ))}
           </ul>
@@ -141,24 +144,28 @@ function Row({ r, canEdit, busy, act, candidates }) {
         <LoginControl r={r} canEdit={canEdit} busy={busy} act={act} candidates={candidates} />
       </td>
       <td className="px-3 py-2">
-        {canEdit && !r.user_id && (
-          <button
-            type="button"
-            disabled={busy === r.agent_key}
-            onClick={() =>
-              act(
-                r.agent_key,
-                () => dataCenterAdmin.agentLinkSet(r.agent_key, null, !r.no_account),
-                r.no_account ? `${r.agent_label} is back in the list to link.` : `${r.agent_label} is marked as not a person.`,
-              )
-            }
-            className="rounded-md border border-gray-300 px-2.5 py-1 text-xs font-medium text-gray-700 hover:bg-gray-50 disabled:opacity-50"
-          >
-            {r.no_account ? "Back in the list" : "Not a person"}
-          </button>
-        )}
+        {canEdit && !r.user_id && <NotAPerson r={r} busy={busy} act={act} />}
       </td>
     </tr>
+  );
+}
+
+function NotAPerson({ r, busy, act }) {
+  return (
+    <button
+      type="button"
+      disabled={busy === r.agent_key}
+      onClick={() =>
+        act(
+          r.agent_key,
+          () => dataCenterAdmin.agentLinkSet(r.agent_key, null, !r.no_account),
+          r.no_account ? `${r.agent_label} is back in the list to link.` : `${r.agent_label} is marked as not a person.`,
+        )
+      }
+      className="self-start rounded-md border border-gray-300 px-2.5 py-1 text-xs font-medium text-gray-700 hover:bg-gray-50 disabled:opacity-50"
+    >
+      {r.no_account ? "Back in the list" : "Not a person"}
+    </button>
   );
 }
 
