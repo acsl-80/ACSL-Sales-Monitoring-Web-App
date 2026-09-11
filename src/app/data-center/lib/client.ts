@@ -1102,6 +1102,8 @@ export type BatchStove = {
   user_state: string | null;
   verification_outcome: string | null;
   attempt_count: number | null;
+  /** Phase 28, D41: where the record stands, or null for an unsold stove. */
+  standing: string | null;
   agent_id: string | null;
   agent_name: string | null;
   batch_state: string | null;
@@ -2121,7 +2123,20 @@ export type BoardAgent = {
   marks: BoardMark[];
   flags: BoardFlag[];
   days?: { date: string; called: number; verified: number }[];
+  /** Phase 28, slice 4: what the agent holds, per partner, by standing. */
+  by_partner?: BoardPartnerLine[];
 };
+export type BoardPartnerLine = {
+  organization_id: string;
+  partner_name: string | null;
+  new: number;
+  verified_partial: number;
+  unreachable: number;
+  with_sales: number;
+  others: number;
+  held: number;
+};
+export type BoardRange = "day" | "week" | "month" | "year" | "span";
 export type BoardData = {
   day: string;
   tz: string;
@@ -2129,7 +2144,11 @@ export type BoardData = {
   dailyTarget: number;
   refreshSeconds: number;
   staleAfterDays: number;
-  range: "day" | "week";
+  range: BoardRange;
+  /** "month" when a year is drawn as twelve cells, else "day". */
+  grain: "day" | "month";
+  /** The first day of the window. */
+  from: string;
   days: string[];
   agents: BoardAgent[];
   totals: { called: number; verified: number };
@@ -2164,7 +2183,9 @@ export type AgentDayData = {
   tz: string;
   today: string;
   dailyTarget: number;
-  range: "day" | "week" | "span";
+  range: BoardRange;
+  grain: "day" | "month";
+  from: string;
   called: number;
   verified: number;
   counts: { today: AgentDayCounts; week: AgentDayCounts; selected: AgentDayCounts };
@@ -2196,7 +2217,22 @@ export type AssignPreviewData = {
   recentDays: number;
   agent: { open_batches: number; cap: number; is_enabled: boolean; over_capacity: boolean };
 };
-export type PoolPartnerRow = {
+/** Phase 28, D46: one partner's records by standing, from v_partner_standing. */
+export type PartnerStandingCounts = {
+  never_called: number;
+  in_progress: number;
+  verified: number;
+  partially_verified: number;
+  unreachable: number;
+  with_sales: number;
+  total: number;
+};
+export type PartnerStandingRow = PartnerStandingCounts & {
+  organization_id: string;
+  partner_name: string | null;
+  callable: number;
+};
+export type PoolPartnerRow = PartnerStandingCounts & {
   organization_id: string;
   partner_name: string;
   state: string | null;
@@ -2255,7 +2291,7 @@ export const dataCenterAssign = {
 
   reclaim: () => call<{ reclaimed: number }>("data-center-assign", "reclaim"),
   /** Phase 26: the shift board, one day (or the week ending on it), every agent. */
-  board: (opts: { day?: string | null; range?: "day" | "week" } = {}) =>
+  board: (opts: { day?: string | null; range?: string | null } = {}) =>
     call<BoardData>("data-center-assign", "board", opts),
   /** Phase 26: one agent's day. Self needs no permission; another agent needs assignment.manage. */
   agentDay: (opts: { agentId?: string | null; day?: string | null; range?: string | null } = {}) =>
@@ -2276,6 +2312,9 @@ export const dataCenterAssign = {
     limit?: number;
     cursor?: string | null;
   } = {}) => call<PoolPartnersData>("data-center-assign", "pool_partners", opts),
+  /** Phase 28, D46: every partner's standing, or one partner's. Needs assignment.manage. */
+  partnerStanding: (organizationId?: string | null) =>
+    call<{ rows: PartnerStandingRow[] }>("data-center-assign", "partner_standing", { organizationId: organizationId ?? null }),
   /** Phase 26: the activity feed. An agent without assignment.manage reads their own rows. */
   activity: (opts: {
     from?: string | null;

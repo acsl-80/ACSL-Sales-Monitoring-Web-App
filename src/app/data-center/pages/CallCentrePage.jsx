@@ -18,6 +18,9 @@ import { callCentreLayout } from "../lib/callCentreLayout";
 function dayWords(board) {
   if (!board) return "today";
   if (board.range === "week") return "this week";
+  if (board.range === "month") return `in ${new Date(`${board.day}T00:00:00Z`).toLocaleDateString("en-GB", { month: "long", year: "numeric", timeZone: "UTC" })}`;
+  if (board.range === "year") return `in ${board.day.slice(0, 4)}`;
+  if (board.range === "span") return `from ${board.from} to ${board.day}`;
   if (board.day === board.today) return "today";
   const d = new Date(`${board.day}T00:00:00Z`);
   const yesterday = new Date(`${board.today}T00:00:00Z`);

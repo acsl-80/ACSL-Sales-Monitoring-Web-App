@@ -10,6 +10,7 @@ import CallRecordEditor from "../CallRecordEditor";
 import AgentDetail from "../agents/AgentDetail";
 import AssignDialog from "../pool/AssignDialog";
 import Track from "./Track";
+import PeriodCells, { trackHeading } from "./PeriodCells";
 import { plural } from "../../../lib/plural";
 import { whenOf } from "../../../lib/when";
 
@@ -84,7 +85,7 @@ export default function ShiftBoard({ board, agentsMeta, canManage, reload, dayLa
   const defaultCap = agentsMeta?.defaultCap ?? 1;
   const ceiling = agentsMeta?.capacityCeiling ?? 10;
   const target = board?.dailyTarget ?? 0;
-  const isToday = board?.day === board?.today && board?.range !== "week";
+  const isToday = board?.day === board?.today && (board?.range ?? "day") === "day";
   const staleDays = board?.staleAfterDays ?? 3;
 
   const rows = useMemo(() => {
@@ -251,7 +252,7 @@ export default function ShiftBoard({ board, agentsMeta, canManage, reload, dayLa
               <th className="w-10 px-3 py-2" />
               {sortHead("name", "Agent", "left")}
               <th className="px-3 py-2 font-semibold">State</th>
-              <th className="px-3 py-2 font-semibold">{board.range === "week" ? "The week, by day" : "The day, by hour"}</th>
+              <th className="px-3 py-2 font-semibold">{trackHeading(board.range, board.day)}</th>
               {sortHead("called", "Called")}
               {sortHead("verified", "Verified")}
               {sortHead("to_call", "To call")}
@@ -298,8 +299,8 @@ export default function ShiftBoard({ board, agentsMeta, canManage, reload, dayLa
                     </td>
                     <td className="px-3 py-2"><Presence state={agent.presence} /></td>
                     <td className="px-3 py-2">
-                      {board.range === "week" ? (
-                        <WeekCells days={agent.days ?? []} />
+                      {board.range !== "day" ? (
+                        <PeriodCells cells={agent.days ?? []} grain={board.grain ?? "day"} today={board.today} />
                       ) : (
                         <Track
                           marks={agent.marks}
@@ -373,6 +374,7 @@ export default function ShiftBoard({ board, agentsMeta, canManage, reload, dayLa
                   {expanded === agent.agent_id && (
                     <tr>
                       <td colSpan={canManage ? 9 : 8} className="bg-(--dc-surface-muted) p-0">
+                        <HeldByPartner agent={agent} />
                         <AgentDetail agent={{ ...agent, records_held: agent.to_call }} agents={agentsMeta?.agents ?? []} onChanged={reload} onOpenRecord={setOpenSale} />
                       </td>
                     </tr>
@@ -410,17 +412,56 @@ export default function ShiftBoard({ board, agentsMeta, canManage, reload, dayLa
   );
 }
 
-/** The week view: seven cells, called and verified per day. */
-function WeekCells({ days }) {
+/**
+ * Phase 28, slice 4: what the agent holds, per partner, by standing. Each
+ * count is a door to the records page narrowed to the agent, the partner
+ * and that standing, so the board never grows a second records list. The
+ * partner column is pinned so the row still reads on a phone.
+ */
+const HELD_COLS = [
+  ["new", "New", "never_called"],
+  ["verified_partial", "Verified and partly", "verified,partially_verified"],
+  ["unreachable", "Unreachable", "unreachable"],
+  ["with_sales", "With Sales", "with_sales"],
+  ["others", "Others", "in_progress"],
+];
+function HeldByPartner({ agent }) {
+  const lines = agent.by_partner ?? [];
+  const who = (agent.full_name || agent.email || "").split(" ")[0] || "They";
+  const held = lines.reduce((n, l) => n + l.held, 0);
+  if (lines.length === 0) return null;
+  const href = (l, standing) =>
+    `/data-center/call-centre/records?assignedAgent=${encodeURIComponent(agent.agent_id)}&organizationId=${encodeURIComponent(l.organization_id)}&standing=${encodeURIComponent(standing)}&label=${encodeURIComponent(`${agent.full_name || agent.email}, ${l.partner_name ?? "partner"}`)}`;
   return (
-    <div className="grid grid-cols-7 gap-1" data-week>
-      {days.map((d) => (
-        <div key={d.date} className="rounded-md border border-gray-200 bg-(--dc-surface-muted) px-1 py-1 text-center" title={d.date}>
-          <span className="block text-[10px] text-gray-500">{new Date(`${d.date}T00:00:00Z`).toLocaleDateString("en-GB", { weekday: "short", timeZone: "UTC" })}</span>
-          <span className="block text-sm font-semibold tabular-nums text-gray-900">{d.called}</span>
-          <span className="block text-[10px] tabular-nums text-(--dc-brief-who)">{d.verified} ok</span>
-        </div>
-      ))}
+    <div className="border-b border-gray-200 bg-white px-4 py-3" data-held-by-partner={agent.agent_id}>
+      <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-gray-600">
+        {agent.full_name || agent.email} holds {plural(held, "record")} from {plural(lines.length, "partner")}
+      </p>
+      <div className="overflow-x-auto rounded-lg border border-gray-200">
+        <table className="w-full min-w-[36rem] text-sm">
+          <thead>
+            <tr className="bg-(--dc-accent-soft) text-left text-xs uppercase tracking-wide text-(--dc-accent-strong)">
+              <th className="sticky left-0 z-10 bg-(--dc-accent-soft) px-3 py-1.5 font-semibold">Partner</th>
+              {HELD_COLS.map(([k, label]) => <th key={k} className="px-3 py-1.5 text-right font-semibold">{label}</th>)}
+            </tr>
+          </thead>
+          <tbody className="divide-y divide-gray-100">
+            {lines.map((l) => (
+              <tr key={l.organization_id} data-held-partner={l.organization_id}>
+                <td className="sticky left-0 z-10 bg-white px-3 py-1.5 font-medium text-gray-900">{l.partner_name ?? "No partner"}</td>
+                {HELD_COLS.map(([k, , standing]) => (
+                  <td key={k} className="px-3 py-1.5 text-right tabular-nums" data-held-count={k}>
+                    {l[k] > 0
+                      ? <Link href={href(l, standing)} className="font-semibold text-(--dc-accent) underline underline-offset-2 hover:text-(--dc-accent-strong)">{l[k]}</Link>
+                      : <span className="text-gray-400">0</span>}
+                  </td>
+                ))}
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+      <p className="mt-1.5 text-xs text-gray-500">Each count opens the records page narrowed to {who}, the partner and that standing.</p>
     </div>
   );
 }

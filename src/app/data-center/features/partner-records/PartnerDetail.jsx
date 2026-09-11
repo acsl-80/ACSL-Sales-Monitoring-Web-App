@@ -287,7 +287,8 @@ function BatchLevel({ batch, onStove }) {
     if (filter === "sold") return all.filter((x) => x.sale_id);
     if (filter === "unsold") return all.filter((x) => !x.sale_id);
     if (filter === "unassigned") return all.filter((x) => x.sale_id && !x.agent_id);
-    if (filter === "verified") return all.filter((x) => x.verification_outcome === "fully_verified");
+    // Phase 28, D41: verified by the one standing definition, from the server.
+    if (filter === "verified") return all.filter((x) => x.standing === "verified");
     return all;
   }, [stoves, filter]);
 
@@ -300,7 +301,7 @@ function BatchLevel({ batch, onStove }) {
       sold: all.filter((x) => x.sale_id).length,
       unsold: all.filter((x) => !x.sale_id).length,
       unassigned: all.filter((x) => x.sale_id && !x.agent_id).length,
-      verified: all.filter((x) => x.verification_outcome === "fully_verified").length,
+      verified: all.filter((x) => x.standing === "verified").length,
     };
   }, [stoves]);
 

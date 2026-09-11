@@ -9,13 +9,14 @@ const Page = lazy(() => import("@/app/data-center/pages/CallCentreAgentPage"));
  * the board can be handed to somebody as a link; the day lives in the search
  * like the board's.
  */
-type AgentSearch = { day?: string; range?: "week"; tab?: "to_call" | "called" };
+type AgentSearch = { day?: string; range?: string; tab?: "to_call" | "called" };
 const DAY = /^\d{4}-\d{2}-\d{2}$/;
+const RANGE = /^(week|\d{4}|\d{4}-\d{2}|\d{4}-\d{2}-\d{2}\.\.\d{4}-\d{2}-\d{2})$/;
 
 export const Route = createFileRoute("/data-center/call-centre_/agents/$agentId")({
   validateSearch: (search: Record<string, unknown>): AgentSearch => ({
     day: typeof search.day === "string" && DAY.test(search.day) ? search.day : undefined,
-    range: search.range === "week" ? "week" : undefined,
+    range: typeof search.range === "string" && RANGE.test(search.range) ? search.range : undefined,
     tab: search.tab === "called" ? "called" : search.tab === "to_call" ? "to_call" : undefined,
   }),
   component: Page,

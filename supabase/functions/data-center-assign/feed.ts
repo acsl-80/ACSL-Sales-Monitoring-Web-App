@@ -95,17 +95,49 @@ const POOL_ROWS_SQL = `
      where b.state = 'open'
      group by b.organization_id
   ),
+  -- Phase 28, D46: where the partner's records stand, read live from the
+  -- one view, summed per partner (the view is per partner and name).
+  standing as (
+    select organization_id,
+           sum(never_called)::int as never_called, sum(in_progress)::int as in_progress,
+           sum(verified)::int as verified, sum(partially_verified)::int as partially_verified,
+           sum(unreachable)::int as unreachable, sum(with_sales)::int as with_sales,
+           sum(total)::int as total
+      from data_center.v_partner_standing
+     group by organization_id
+  ),
   rows as (
     select p.organization_id::text as organization_id, p.partner_name, o.state,
            p.waiting, p.new_recent, p.oldest_sale,
            coalesce(x.names, '{}'::text[]) as on_it,
            coalesce((cfg.by_partner ->> p.organization_id::text)::int, cfg.batch_size) as batch_size,
-           cfg.recent_days
+           cfg.recent_days,
+           coalesce(st.never_called, 0) as never_called, coalesce(st.in_progress, 0) as in_progress,
+           coalesce(st.verified, 0) as verified, coalesce(st.partially_verified, 0) as partially_verified,
+           coalesce(st.unreachable, 0) as unreachable, coalesce(st.with_sales, 0) as with_sales,
+           coalesce(st.total, 0) as total
       from pool p
       cross join cfg
       left join public.organizations o on o.id = p.organization_id
       left join on_it x on x.organization_id = p.organization_id
+      left join standing st on st.organization_id = p.organization_id
   )`;
+
+/**
+ * Phase 28, D46: every partner's standing, or one partner's, for the
+ * hand-out dialog and the partner pages. Read live from
+ * `v_partner_standing`; the callable count is per partner already.
+ */
+const PARTNER_STANDING_SQL = `
+  select organization_id::text as organization_id, min(partner_name) as partner_name,
+         sum(never_called)::int as never_called, sum(in_progress)::int as in_progress,
+         sum(verified)::int as verified, sum(partially_verified)::int as partially_verified,
+         sum(unreachable)::int as unreachable, sum(with_sales)::int as with_sales,
+         sum(total)::int as total, max(callable)::int as callable
+    from data_center.v_partner_standing
+   where ($1::uuid is null or organization_id = $1::uuid)
+   group by organization_id
+   order by 2`;
 
 const ACTIVITY_EVENTS_SQL = `
   events as (
@@ -197,6 +229,15 @@ export async function handleFeed(ctx: FeedContext): Promise<Response> {
     );
 
   switch (action) {
+    case "partner_standing": {
+      if (!canManage) return denied();
+      const orgId = uuidOrNull(body.organizationId);
+      return await withReadConnection(async (conn) => {
+        const rows = await conn.queryObject<Record<string, unknown>>({ text: PARTNER_STANDING_SQL, args: [orgId] });
+        return json({ data: { rows: rows.rows } }, 200, cors);
+      });
+    }
+
     case "pool_partners": {
       if (!canManage) return denied();
       const limit = limitOf(body, 25, 200);

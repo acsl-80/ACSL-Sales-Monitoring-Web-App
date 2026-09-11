@@ -7,8 +7,15 @@ import { lazy } from "react";
  * with its parameters intact. The bare page is the control centre.
  */
 const NARROWING = [
-  "organizationId", "partnerState", "transferSalesRep", "assignedAgent", "agentManager",
-  "status", "preset", "verificationOutcome", "standing",
+  "organizationId",
+  "partnerState",
+  "transferSalesRep",
+  "assignedAgent",
+  "agentManager",
+  "status",
+  "preset",
+  "verificationOutcome",
+  "standing",
 ] as const;
 
 const Page = lazy(() => import("@/app/data-center/pages/CallCentrePage"));
@@ -51,11 +58,13 @@ type CallCentreSearch = {
    * stays out of the URL.
    */
   day?: string;
-  range?: "week";
+  /** Slice 4: week, YYYY-MM, YYYY or from..to. */
+  range?: string;
 };
 
 const str = (v: unknown) => (typeof v === "string" && v !== "" ? v : undefined);
 const DAY = /^\d{4}-\d{2}-\d{2}$/;
+const RANGE = /^(week|\d{4}|\d{4}-\d{2}|\d{4}-\d{2}-\d{2}\.\.\d{4}-\d{2}-\d{2})$/;
 
 export const Route = createFileRoute("/data-center/call-centre")({
   validateSearch: (search: Record<string, unknown>): CallCentreSearch => ({
@@ -72,7 +81,7 @@ export const Route = createFileRoute("/data-center/call-centre")({
     period: str(search.period),
     logPeriod: str(search.logPeriod),
     day: typeof search.day === "string" && DAY.test(search.day) ? search.day : undefined,
-    range: search.range === "week" ? "week" : undefined,
+    range: typeof search.range === "string" && RANGE.test(search.range) ? search.range : undefined,
   }),
   beforeLoad: ({ search }) => {
     if (NARROWING.some((k) => search[k])) {

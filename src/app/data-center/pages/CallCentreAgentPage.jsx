@@ -9,6 +9,7 @@ import AssignDialog from "../features/call-centre/pool/AssignDialog";
 import CallRecordEditor from "../features/call-centre/CallRecordEditor";
 import DayChips from "../features/call-centre/control/DayChips";
 import Track from "../features/call-centre/control/Track";
+import PeriodCells from "../features/call-centre/control/PeriodCells";
 import { OUTCOME_TONE, clockOf } from "../features/call-centre/control/HappenedToday";
 import { dataCenterAssign, DataCenterError } from "../lib/client";
 import { usePolling } from "../lib/usePolling";
@@ -64,7 +65,7 @@ function Inner() {
 
   const load = useCallback(async () => {
     try {
-      const d = await dataCenterAssign.agentDay({ agentId, day: search.day ?? null, range: search.range === "week" ? "week" : "day" });
+      const d = await dataCenterAssign.agentDay({ agentId, day: search.day ?? null, range: search.range ?? null });
       setDay(d);
       setError(null);
       if (canManage) dataCenterAssign.agents().then(setMeta).catch(() => {});
@@ -169,16 +170,8 @@ function Inner() {
         <div className="px-4 py-3">
           {!day ? (
             <div className="flex items-center gap-2 text-sm text-gray-500"><Loader2 className="h-4 w-4 animate-spin" /> Loading the day...</div>
-          ) : day.range === "week" ? (
-            <div className="grid grid-cols-7 gap-1" data-week>
-              {day.tally.map((d) => (
-                <div key={d.date} className="rounded-md border border-gray-200 bg-(--dc-surface-muted) px-1 py-1.5 text-center" title={d.date}>
-                  <span className="block text-[10px] text-gray-500">{new Date(`${d.date}T00:00:00Z`).toLocaleDateString("en-GB", { weekday: "short", day: "numeric", timeZone: "UTC" })}</span>
-                  <span className="block text-base font-semibold tabular-nums text-gray-900">{d.called}</span>
-                  <span className="block text-[10px] tabular-nums text-(--dc-brief-who)">{d.verified} ok</span>
-                </div>
-              ))}
-            </div>
+          ) : day.range !== "day" ? (
+            <PeriodCells cells={day.tally} grain={day.grain ?? "day"} today={day.today} tall />
           ) : (
             <Track marks={day.marks} flags={day.flags} tz={day.tz} isToday={isToday} tall emptyText={day.to_call.length > 0 ? `no calls yet · ${day.to_call.length} in hand` : "no calls"} />
           )}
@@ -228,12 +221,12 @@ function Inner() {
               </thead>
               <tbody className="divide-y divide-gray-100">
                 {day.concluded.length === 0 && (
-                  <tr><td colSpan={7} className="px-3 py-6 text-center text-sm text-gray-500">No calls logged {day.range === "week" ? "this week" : "on this day"}.</td></tr>
+                  <tr><td colSpan={7} className="px-3 py-6 text-center text-sm text-gray-500">No calls logged {day.range === "day" ? "on this day" : "in this window"}.</td></tr>
                 )}
                 {[...day.concluded].reverse().map((c) => (
                   <tr key={`${c.at}-${c.sale_id}`} data-called-row>
                     <td className="whitespace-nowrap px-3 py-2 font-mono text-xs text-gray-600">
-                      {day.range === "week" ? `${new Date(c.at).toLocaleDateString("en-GB", { weekday: "short", timeZone: day.tz })} ` : ""}{clockOf(c.at, day.tz)}
+                      {day.range !== "day" ? `${new Date(c.at).toLocaleDateString("en-GB", { day: "numeric", month: "short", timeZone: day.tz })} ` : ""}{clockOf(c.at, day.tz)}
                     </td>
                     <td className="px-3 py-2 font-mono text-xs text-gray-700">{c.stove_serial_no}</td>
                     <td className="px-3 py-2 text-gray-900">{c.end_user_name ?? "-"}</td>

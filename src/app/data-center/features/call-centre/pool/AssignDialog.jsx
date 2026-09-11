@@ -3,6 +3,7 @@ import { dataCenterAssign, DataCenterError } from "../../../lib/client";
 import { plural } from "../../../lib/plural";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Loader2, UserPlus } from "lucide-react";
+import StandingBar from "../../../components/StandingBar";
 
 const dateOf = (iso) => (iso ? new Date(iso).toLocaleDateString() : "-");
 
@@ -46,6 +47,20 @@ export default function AssignDialog({ agent = null, agents = [], initialOrgId =
 
   const partner = pool.find((p) => p.organization_id === orgId);
   const cap = partner ? Math.min(Number(size) || 0, partner.callable) : Number(size) || 0;
+  /**
+   * Phase 28, D46: where each partner's records stand, read live once when
+   * the dialog opens. The rows show never called and in progress beside the
+   * hand-out count; the chosen partner gets the whole six-way bar.
+   */
+  const [standing, setStanding] = useState(null);
+  useEffect(() => {
+    let alive = true;
+    dataCenterAssign.partnerStanding()
+      .then((d) => alive && setStanding(new Map(d.rows.map((r) => [r.organization_id, r]))))
+      .catch(() => alive && setStanding(new Map()));
+    return () => { alive = false; };
+  }, []);
+  const standingOf = (id) => standing?.get(id) ?? null;
   /**
    * The preview (Phase 26, C3): the rows the picker would hand out, read live
    * through the same picker the engine uses, so what is shown is what lands.
@@ -206,14 +221,18 @@ export default function AssignDialog({ agent = null, agents = [], initialOrgId =
                             : "hover:bg-(--dc-accent-soft)/40"
                         }`}
                       >
-                        <span className="min-w-0 flex-1 truncate font-medium">
-                          {p.partner_name}
+                        <span className="min-w-0 flex-1">
+                          <span className="block truncate font-medium">{p.partner_name}</span>
+                          {standingOf(p.organization_id) && (
+                            <span className="mt-0.5 flex flex-wrap gap-x-3 text-[11px] text-gray-600" data-partner-standing={p.organization_id}>
+                              <span className="inline-flex items-center gap-1"><i aria-hidden className="inline-block h-2 w-2 rounded-[2px] bg-(image:--dc-fig-transferred)" /><b className="tabular-nums" data-never-called>{standingOf(p.organization_id).never_called}</b> never called</span>
+                              <span className="inline-flex items-center gap-1"><i aria-hidden className="inline-block h-2 w-2 rounded-[2px] bg-gray-400" /><b className="tabular-nums" data-in-progress>{standingOf(p.organization_id).in_progress}</b> in progress</span>
+                            </span>
+                          )}
                         </span>
-                        <span className="shrink-0 text-xs text-gray-600">
-                          oldest {dateOf(p.oldest)}
-                        </span>
-                        <span className="shrink-0 tabular-nums font-medium">
-                          {plural(p.callable, "record")}
+                        <span className="shrink-0 text-right">
+                          <span className="block tabular-nums font-medium">{p.callable} to hand out</span>
+                          <span className="block text-xs text-gray-600">oldest {dateOf(p.oldest)}</span>
                         </span>
                       </button>
                     </li>
@@ -278,6 +297,23 @@ export default function AssignDialog({ agent = null, agents = [], initialOrgId =
                     : "Assign"}
                 </button>
               </div>
+              {/* Phase 28, D46: the chosen partner's records by standing. What a
+                  hand-out draws from is never called and in progress; the rest
+                  are out of the pool and this says how many. */}
+              {partner && standingOf(partner.organization_id) && (
+                <section className="mt-4 rounded-lg border border-gray-200 border-t-[3px] border-t-(--dc-accent)" data-partner-standing-panel={partner.organization_id}>
+                  <header className="flex flex-wrap items-center gap-2 border-b border-gray-100 bg-(--dc-accent-soft)/40 px-3 py-2 text-sm">
+                    <span className="font-semibold text-gray-900">{partner.partner_name}, where things stand</span>
+                    <span className="ml-auto text-xs text-gray-600">{plural(standingOf(partner.organization_id).total, "record")}</span>
+                  </header>
+                  <div className="px-3 py-3">
+                    <StandingBar counts={standingOf(partner.organization_id)} legend />
+                    <p className="mt-2 text-xs text-gray-600">
+                      Never called and in progress are what a hand-out draws from. Verified, partly verified, unreachable and with Sales are out of the pool.
+                    </p>
+                  </div>
+                </section>
+              )}
               {/* What will land, before it does. The first five rows, the rest
                   on request; nothing here is written until the button above. */}
               {partner && agentId && (

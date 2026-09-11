@@ -406,6 +406,7 @@ serve(async (req) => {
       // Phase 26: the pool by partner and the activity feed. An agent without
       // the manage permission reads only their own activity.
       case "pool_partners":
+      case "partner_standing":
       case "activity": {
         return await handleFeed({
           action: body.action,

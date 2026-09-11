@@ -33,11 +33,13 @@ export function useControlCentre({ canManage, canReview, day, range }) {
   const load = useCallback(async () => {
     if (!canManage) return;
     try {
-      const b = await dataCenterAssign.board({ day: day ?? null, range: range === "week" ? "week" : "day" });
+      // Slice 4: the range travels as written (week, a month, a year, a span);
+      // the server says what it resolved to.
+      const b = await dataCenterAssign.board({ day: day ?? null, range: range ?? null });
       setBoard(b);
-      // The feed's window is the chosen day (or week), in the call centre's
-      // own time: the board says which day that resolved to.
-      const from = range === "week" ? b.days[0] : b.day;
+      // The feed's window is the chosen window, in the call centre's own
+      // time: the board says which days that resolved to.
+      const from = b.from ?? b.day;
       const to = b.day;
       const jobs = [
         dataCenterAssign.poolPartners({ limit: 5, sort: "waiting" }).then(setPartners),

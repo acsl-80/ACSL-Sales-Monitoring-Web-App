@@ -12,6 +12,7 @@ import { DATA_CENTER_FEATURES } from "../lib/features";
 import { plural } from "../lib/plural";
 import { whenOf } from "../lib/when";
 import { useEffect } from "react";
+import StandingBar, { StandingLegend } from "../components/StandingBar";
 
 /**
  * /data-center/call-centre/partners (Phase 26, C2)
@@ -29,6 +30,13 @@ const COLUMNS = [
   { key: "oldest_sale", label: "Oldest sale" },
   { key: "on_it", label: "On it", get: (r) => (r.on_it ?? []).join("; ") },
   { key: "batch_size", label: "Batch size" },
+  { key: "never_called", label: "Never called" },
+  { key: "in_progress", label: "In progress" },
+  { key: "verified", label: "Verified" },
+  { key: "partially_verified", label: "Partly verified" },
+  { key: "unreachable", label: "Unreachable" },
+  { key: "with_sales", label: "With Sales" },
+  { key: "total", label: "Records" },
   { key: "organization_id", label: "Partner id" },
 ];
 const SORTS = [
@@ -131,13 +139,14 @@ function Inner() {
                 <th className="px-3 py-2 text-right font-semibold">New, {totals?.recent_days ?? 7}d</th>
                 <th className="px-3 py-2 font-semibold">Oldest sale</th>
                 <th className="px-3 py-2 font-semibold">On it</th>
+                <th className="min-w-[14rem] px-3 py-2 font-semibold">Where things stand</th>
                 <th className="px-3 py-2 text-right font-semibold">Batch size</th>
                 {canManage && <th className="w-28 px-3 py-2" />}
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-100">
-              {keyset.loading && rows.length === 0 && <tr><td colSpan={8} className="px-3 py-4 text-center text-xs text-gray-500">Loading...</td></tr>}
-              {!keyset.loading && rows.length === 0 && <tr><td colSpan={8} className="px-3 py-6 text-center text-sm text-gray-500">No partner matches.</td></tr>}
+              {keyset.loading && rows.length === 0 && <tr><td colSpan={9} className="px-3 py-4 text-center text-xs text-gray-500">Loading...</td></tr>}
+              {!keyset.loading && rows.length === 0 && <tr><td colSpan={9} className="px-3 py-6 text-center text-sm text-gray-500">No partner matches.</td></tr>}
               {rows.map((r) => (
                 <tr key={r.organization_id} className="hover:bg-(--dc-brief-stove-soft)/40">
                   <td className="px-3 py-2">
@@ -152,6 +161,9 @@ function Inner() {
                   <td className="px-3 py-2 text-xs">
                     {r.on_it.length > 0 ? r.on_it.join(", ") : <span className="rounded-full bg-(--dc-sev-warning-soft) px-2 py-0.5 font-semibold text-(--dc-sev-warning)">nobody</span>}
                   </td>
+                  <td className="px-3 py-2" data-partner-standing={r.organization_id}>
+                    <StandingBar counts={r} height="h-4" />
+                  </td>
                   <td className="px-3 py-2 text-right tabular-nums text-gray-700">{r.batch_size}</td>
                   {canManage && (
                     <td className="px-3 py-2 text-right">
@@ -164,6 +176,9 @@ function Inner() {
               ))}
             </tbody>
           </table>
+        </div>
+        <div className="border-t border-gray-100 px-4 py-2">
+          <StandingLegend />
         </div>
         <div className="flex flex-wrap items-center justify-between gap-3 border-t border-gray-100 px-4 py-2.5 text-sm">
           <p className="text-gray-600">

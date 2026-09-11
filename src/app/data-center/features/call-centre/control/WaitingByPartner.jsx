@@ -64,6 +64,11 @@ export default function WaitingByPartner({ partners, agentsMeta, canManage, relo
                     {r.partner_name}
                   </Link>
                   <span className="block text-xs text-gray-500">{r.state ?? ""}{r.oldest_sale ? ` · oldest sale ${whenOf(r.oldest_sale)}` : ""}</span>
+                  {/* Phase 28, D46: the two numbers a hand-out draws from. */}
+                  <span className="mt-0.5 flex flex-wrap gap-x-3 text-[11px] text-gray-600" data-partner-standing={r.organization_id}>
+                    <span className="inline-flex items-center gap-1"><i aria-hidden className="inline-block h-2 w-2 rounded-[2px] bg-(image:--dc-fig-transferred)" /><b className="tabular-nums" data-never-called>{r.never_called ?? 0}</b> never called</span>
+                    <span className="inline-flex items-center gap-1"><i aria-hidden className="inline-block h-2 w-2 rounded-[2px] bg-gray-400" /><b className="tabular-nums" data-in-progress>{r.in_progress ?? 0}</b> in progress</span>
+                  </span>
                 </td>
                 <td className="px-3 py-2 text-right tabular-nums font-medium text-gray-900">{r.waiting.toLocaleString()}</td>
                 <td className="px-3 py-2 text-right tabular-nums text-gray-700">{r.new_recent}</td>

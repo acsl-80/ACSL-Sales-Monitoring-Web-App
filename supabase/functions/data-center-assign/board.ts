@@ -194,17 +194,63 @@ const withAll = (c: Counts) => ({
 function spanOf(range: unknown, day: string | null): { back: number; day: string | null; kind: string } {
   if (range === "week") return { back: 6, day, kind: "week" };
   if (typeof range === "string") {
-    const m = range.match(/^(\d{4}-\d{2}-\d{2})\.\.(\d{4}-\d{2}-\d{2})$/);
-    if (m) {
-      const from = Date.parse(`${m[1]}T00:00:00Z`);
-      const to = Date.parse(`${m[2]}T00:00:00Z`);
+    const span = range.match(/^(\d{4}-\d{2}-\d{2})\.\.(\d{4}-\d{2}-\d{2})$/);
+    if (span) {
+      const from = Date.parse(`${span[1]}T00:00:00Z`);
+      const to = Date.parse(`${span[2]}T00:00:00Z`);
       if (!Number.isNaN(from) && !Number.isNaN(to) && to >= from) {
-        return { back: Math.min(91, Math.round((to - from) / 86_400_000)), day: m[2], kind: "span" };
+        return { back: Math.min(91, Math.round((to - from) / 86_400_000)), day: span[2], kind: "span" };
       }
+    }
+    // Slice 4: a month is its days, a year is its months; both may reach
+    // past today, and the days ahead are drawn empty.
+    const month = range.match(/^(\d{4})-(\d{2})$/);
+    if (month && Number(month[2]) >= 1 && Number(month[2]) <= 12) {
+      const last = new Date(Date.UTC(Number(month[1]), Number(month[2]), 0));
+      return { back: last.getUTCDate() - 1, day: last.toISOString().slice(0, 10), kind: "month" };
+    }
+    const year = range.match(/^(\d{4})$/);
+    if (year) {
+      const first = Date.UTC(Number(year[1]), 0, 1);
+      const last = Date.UTC(Number(year[1]), 11, 31);
+      return { back: Math.round((last - first) / 86_400_000), day: `${year[1]}-12-31`, kind: "year" };
     }
   }
   return { back: 0, day, kind: "day" };
 }
+
+/** The twelve months of the year the end day sits in, as YYYY-MM. */
+function monthList(endDay: string): string[] {
+  const y = endDay.slice(0, 4);
+  return Array.from({ length: 12 }, (_, i) => `${y}-${String(i + 1).padStart(2, "0")}`);
+}
+
+/**
+ * Phase 28, slice 4: what each agent holds, per partner, by standing. Open
+ * batches plus those completed in the last week, the same held set the
+ * agent's own page reads, so the two agree. $1 agent or null for everyone.
+ */
+const BY_PARTNER_SQL = `
+  select l.agent_id::text as agent_id, l.organization_id::text as organization_id, l.partner_name,
+         count(*) filter (where l.standing = 'never_called')::int as new,
+         count(*) filter (where l.standing in ('verified', 'partially_verified'))::int as verified_partial,
+         count(*) filter (where l.standing = 'unreachable')::int as unreachable,
+         count(*) filter (where l.standing = 'with_sales')::int as with_sales,
+         count(*) filter (where l.standing = 'in_progress')::int as others,
+         count(*)::int as held
+    from data_center.v_assignment_log l
+    join data_center.assignment_batches b on b.id = l.batch_id
+   where l.is_active
+     and ($1::uuid is null or l.agent_id = $1::uuid)
+     and (l.batch_state = 'open'
+          or (l.batch_state = 'completed' and b.completed_at > now() - interval '7 days'))
+   group by 1, 2, 3
+   order by 1, held desc, 3`;
+type PartnerLine = {
+  agent_id: string; organization_id: string; partner_name: string | null;
+  new: number; verified_partial: number; unreachable: number; with_sales: number; others: number; held: number;
+};
+const stripAgentKey = ({ agent_id: _a, ...rest }: PartnerLine) => rest;
 
 type Mark = {
   agent_id: string; at: Date | string; sale_id: string; attempt_no: number;
@@ -249,27 +295,34 @@ export async function handleBoard(ctx: BoardContext): Promise<Response> {
   switch (action) {
     case "board": {
       if (!canManage) return denied();
-      const back = body.range === "week" ? 6 : 0;
-      const day = dayArg(body.day);
+      // Slice 4: the window is a day, a week, a month, a year or a span.
+      const span = spanOf(body.range, dayArg(body.day));
+      const back = span.back;
+      const day = span.day;
       return await withReadConnection(async (conn) => {
-        const [roster, marks, flags, verified, resolved] = await Promise.all([
+        const [roster, marks, flags, verified, resolved, byPartner] = await Promise.all([
           conn.queryObject<Record<string, unknown>>({ text: AGENT_ROSTER_SQL }),
           conn.queryObject<Mark>({ text: MARKS_SQL, args: [day, null, back] }),
           conn.queryObject<Flag>({ text: FLAGS_SQL, args: [day, null, back] }),
           conn.queryObject<Verified>({ text: VERIFIED_SQL, args: [day, null, back] }),
           conn.queryObject<ResolvedDay>({ text: RESOLVE_DAY_SQL, args: [day] }),
+          conn.queryObject<PartnerLine>({ text: BY_PARTNER_SQL, args: [null] }),
         ]);
         const d = resolved.rows[0];
         const days = dayList(d.d, back);
+        // A year is read as twelve month cells so the row stays one row.
+        const grain = span.kind === "year" ? "month" : "day";
+        const cells = grain === "month" ? monthList(d.d) : days;
+        const cellOf = (onDay: string) => (grain === "month" ? onDay.slice(0, 7) : onDay);
         const agents = roster.rows.map((a) => {
           const id = String(a.agent_id);
           const mine = marks.rows.filter((m) => m.agent_id === id);
           const myFlags = flags.rows.filter((f) => f.agent_id === id);
           const myVerified = verified.rows.filter((v) => v.agent_id === id);
-          const perDay = days.map((on) => ({
+          const perDay = cells.map((on) => ({
             date: on,
-            called: mine.filter((m) => m.on_day === on).length,
-            verified: myVerified.find((v) => v.on_day === on)?.verified ?? 0,
+            called: mine.filter((m) => cellOf(m.on_day) === on).length,
+            verified: myVerified.filter((v) => cellOf(v.on_day) === on).reduce((n, v) => n + v.verified, 0),
           }));
           return {
             agent_id: id,
@@ -289,6 +342,8 @@ export async function handleBoard(ctx: BoardContext): Promise<Response> {
             marks: back === 0 ? mine.map(stripAgent) : [],
             flags: myFlags.map(stripAgent),
             days: back === 0 ? undefined : perDay,
+            // Phase 28, slice 4: what they hold, per partner, by standing.
+            by_partner: byPartner.rows.filter((p) => p.agent_id === id).map(stripAgentKey),
           };
         });
         return json(
@@ -300,8 +355,10 @@ export async function handleBoard(ctx: BoardContext): Promise<Response> {
               dailyTarget: d.daily_target,
               refreshSeconds: d.refresh_seconds,
               staleAfterDays: d.stale_after_days,
-              range: back === 0 ? "day" : "week",
-              days,
+              range: span.kind,
+              grain,
+              from: days[0],
+              days: cells,
               agents,
               totals: {
                 called: marks.rows.length,
@@ -341,6 +398,9 @@ export async function handleBoard(ctx: BoardContext): Promise<Response> {
         }
         const d = resolved.rows[0];
         const days = dayList(d.d, back);
+        const grain = span.kind === "year" ? "month" : "day";
+        const cells = grain === "month" ? monthList(d.d) : days;
+        const cellOf = (onDay: string) => (grain === "month" ? onDay.slice(0, 7) : onDay);
         return json(
           {
             data: {
@@ -350,6 +410,8 @@ export async function handleBoard(ctx: BoardContext): Promise<Response> {
               today: d.today,
               dailyTarget: d.daily_target,
               range: span.kind,
+              grain,
+              from: days[0],
               called: marks.rows.length,
               verified: verified.rows.reduce((n, v) => n + v.verified, 0),
               // Phase 28, D45: per view, what the agent did.
@@ -372,10 +434,10 @@ export async function handleBoard(ctx: BoardContext): Promise<Response> {
                 family: m.family,
               })),
               to_call: toCall.rows,
-              tally: days.map((on) => ({
+              tally: cells.map((on) => ({
                 date: on,
-                called: marks.rows.filter((m) => m.on_day === on).length,
-                verified: verified.rows.find((v) => v.on_day === on)?.verified ?? 0,
+                called: marks.rows.filter((m) => cellOf(m.on_day) === on).length,
+                verified: verified.rows.filter((v) => cellOf(v.on_day) === on).reduce((n, v) => n + v.verified, 0),
               })),
             },
           },

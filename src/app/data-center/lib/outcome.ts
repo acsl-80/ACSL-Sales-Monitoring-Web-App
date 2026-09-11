@@ -100,6 +100,20 @@ export const STANDING_WORDS: Record<Standing, string> = {
   unreachable: "Unreachable",
   with_sales: "With Sales",
 };
+/**
+ * How a standing is painted: the module's figure gradients as background
+ * images, one per standing, the same on the partner bar, the legend and the
+ * board. In progress is the one grey, because it is the one that is neither
+ * done nor untouched.
+ */
+export const STANDING_FILL: Record<Standing, string> = {
+  never_called: "bg-(image:--dc-fig-transferred) text-white",
+  in_progress: "bg-gray-400 text-white",
+  verified: "bg-(image:--dc-fig-verified) text-white",
+  partially_verified: "bg-(image:--dc-fig-unverified) text-white",
+  unreachable: "bg-(image:--dc-fig-crit) text-white",
+  with_sales: "bg-(image:--dc-fig-plum) text-white",
+};
 export const standingLabel = (value: unknown): string =>
   value && Object.prototype.hasOwnProperty.call(STANDING_WORDS, String(value))
     ? STANDING_WORDS[String(value) as Standing]
