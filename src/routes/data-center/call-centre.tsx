@@ -65,6 +65,11 @@ type CallCentreSearch = {
 const str = (v: unknown) => (typeof v === "string" && v !== "" ? v : undefined);
 const DAY = /^\d{4}-\d{2}-\d{2}$/;
 const RANGE = /^(week|\d{4}|\d{4}-\d{2}|\d{4}-\d{2}-\d{2}\.\.\d{4}-\d{2}-\d{2})$/;
+// The router parses a bare year in the URL as a number; it is still the year.
+const rangeOf = (v: unknown): string | undefined => {
+  const s = typeof v === "number" ? String(v) : v;
+  return typeof s === "string" && RANGE.test(s) ? s : undefined;
+};
 
 export const Route = createFileRoute("/data-center/call-centre")({
   validateSearch: (search: Record<string, unknown>): CallCentreSearch => ({
@@ -81,7 +86,7 @@ export const Route = createFileRoute("/data-center/call-centre")({
     period: str(search.period),
     logPeriod: str(search.logPeriod),
     day: typeof search.day === "string" && DAY.test(search.day) ? search.day : undefined,
-    range: typeof search.range === "string" && RANGE.test(search.range) ? search.range : undefined,
+    range: rangeOf(search.range),
   }),
   beforeLoad: ({ search }) => {
     if (NARROWING.some((k) => search[k])) {
