@@ -6,25 +6,34 @@ import DataCentreShell from "../components/DataCentreShell";
 import ExportButton from "../components/ExportButton";
 import CallRecordEditor from "../features/call-centre/CallRecordEditor";
 import CopyField from "../features/call-centre/control/CopyField";
+import DayChips from "../features/call-centre/control/DayChips";
 import { OUTCOME_TONE, clockOf } from "../features/call-centre/control/HappenedToday";
+import ViewChips from "../features/call-centre/my-calls/ViewChips";
+import CountsStrip from "../features/call-centre/my-calls/CountsStrip";
+import { DEFAULT_VIEW, itemsIn, viewFor } from "../features/call-centre/my-calls/views";
 import { dataCenterAssign, dataCenterWrite, DataCenterError } from "../lib/client";
 import { usePolling } from "../lib/usePolling";
 import { useFeature } from "../lib/access";
 import { DATA_CENTER_FEATURES } from "../lib/features";
+import { standingLabel } from "../lib/outcome";
 import { plural } from "../lib/plural";
 import { whenOf } from "../lib/when";
 
 /**
- * /data-center/my-calls (Phase 26, C4)
+ * /data-center/my-calls (Phase 26, C4; Phase 28, D45)
  *
- * The agent's day. Four figures, then the queue in calling order: callbacks
- * that are due first, records Sales fixed next, then the rest as the batch
- * was handed out. Every number is one click to the clipboard for the call
- * app; Open form opens the call form that exists, and Save there offers the
- * next record here. Done today folds under the queue.
+ * The agent's working surface. The window chips say which day or week the
+ * figures and the counts describe; the four figures; the seven views over
+ * the records the agent holds, New open by default; what the agent did per
+ * view for today, this week and the chosen window; callbacks with a time and
+ * records Sales fixed pinned above the list whatever the view; then the open
+ * view's records in calling order. Every number is one click to the
+ * clipboard for the call app; Open form opens the call form that exists, and
+ * Save call there offers the next New record here.
  *
- * Reads `agent_day` for the signed-in agent, which needs no permission
- * beyond editing call records; the server decides.
+ * Where a record stands comes from the server (`standing`, D41); this page
+ * never derives it. Reads `agent_day` for the signed-in agent, which needs
+ * no permission beyond editing call records; the server decides.
  */
 export function rankItem(item, now = Date.now()) {
   const cb = item.callback_at ? new Date(item.callback_at).getTime() : null;
@@ -38,13 +47,25 @@ export function rankItem(item, now = Date.now()) {
   return { rank: 3, label: `${plural(item.attempt_count, "try", "tries")} so far`, tone: "bg-gray-100 text-gray-700" };
 }
 
-/** The queue as the agent should call it. */
+/** A list in calling order: callbacks due, unfinished, fixed by Sales, then the rest as handed out. */
 export function orderQueue(items) {
   const now = Date.now();
   return [...items]
-    .filter((i) => i.verification_outcome !== "fully_verified" && i.correction_state !== "open")
     .map((i, idx) => ({ ...i, _rank: rankItem(i, now), _idx: idx }))
     .sort((a, b) => a._rank.rank - b._rank.rank || a._idx - b._idx);
+}
+
+/**
+ * Pinned above every view: a callback whose time is set, and a record Sales
+ * fixed after the last call. Both need a call whatever their standing, and
+ * an agent working New would otherwise never see them.
+ */
+export function pinned(items) {
+  const now = Date.now();
+  return items
+    .map((i) => ({ ...i, _rank: rankItem(i, now) }))
+    .filter((i) => (i.callback_at && i.standing !== "verified") || i._rank.rank === 2)
+    .sort((a, b) => a._rank.rank - b._rank.rank || (a.callback_at ?? "").localeCompare(b.callback_at ?? ""));
 }
 
 const COLUMNS = [
@@ -53,11 +74,19 @@ const COLUMNS = [
   { key: "partner_name", label: "Partner" },
   { key: "phone", label: "Phone" },
   { key: "alt_phone", label: "Other phone" },
+  { key: "standing_label", label: "Standing" },
   { key: "attempt_count", label: "Tries" },
   { key: "last_attempt_at", label: "Last try" },
   { key: "callback_at", label: "Callback at" },
   { key: "sale_id", label: "Sale id" },
 ];
+
+function windowWord(day) {
+  if (!day) return "today";
+  if (day.range === "week") return day.day === day.today ? "this week" : "that week";
+  if (day.range === "span") return "in those days";
+  return day.day === day.today ? "today" : "that day";
+}
 
 function Inner() {
   const { can } = useFeature();
@@ -72,12 +101,12 @@ function Inner() {
 
   const load = useCallback(async () => {
     try {
-      setDay(await dataCenterAssign.agentDay({ day: search.day ?? null }));
+      setDay(await dataCenterAssign.agentDay({ day: search.day ?? null, range: search.range ?? null }));
       setError(null);
     } catch (err) {
       setError(err instanceof DataCenterError ? err.message : "Could not load your day.");
     }
-  }, [search.day]);
+  }, [search.day, search.range]);
   useEffect(() => {
     load();
   }, [load]);
@@ -86,34 +115,54 @@ function Inner() {
   }, []);
   usePolling(load, 60);
 
-  const queue = useMemo(() => orderQueue(day?.to_call ?? []), [day]);
-  const callbacksDue = queue.filter((i) => i._rank.rank === 0).length;
-  const ringAgain = queue.filter((i) => i._rank.rank === 2).length;
-  const next = queue[0] ?? null;
-  const rest = queue.slice(1);
+  const view = viewFor(search.view);
+  const isNew = view.key === DEFAULT_VIEW;
+  const held = day?.to_call ?? [];
+  const inView = useMemo(() => orderQueue(itemsIn(view, held)), [view, held]);
+  const pins = useMemo(() => pinned(held), [held]);
+  const newCount = useMemo(() => itemsIn(viewFor(DEFAULT_VIEW), held).length, [held]);
+  const callbacksDue = pins.filter((i) => i._rank.rank === 0).length;
+  const next = isNew ? inView[0] ?? null : null;
+  const rest = isNew ? inView.slice(1) : inView;
   const tz = day?.tz ?? "Africa/Lagos";
   const doneOpen = Boolean(search.done);
+  const word = windowWord(day);
 
-  // What follows the saved record in calling order. A record that was last
-  // has no next: the hand-off says so rather than circling to the head.
+  const setView = (key) =>
+    navigate({ to: "/data-center/my-calls", search: (prev) => ({ ...prev, view: key === DEFAULT_VIEW ? undefined : key }) });
+
+  // What follows the saved record in New, in calling order. A record that was
+  // last has no next: the hand-off says so rather than circling to the head.
   const nextAfter = (saleId) => {
+    const queue = orderQueue(itemsIn(viewFor(DEFAULT_VIEW), held));
     const i = queue.findIndex((q) => q.sale_id === saleId);
-    const rest = i === -1 ? queue.filter((q) => q.sale_id !== saleId) : queue.slice(i + 1);
-    const after = rest[0] ?? null;
+    const after = (i === -1 ? queue : queue.slice(i + 1))[0] ?? null;
+    const remaining = i === -1 ? queue.length - 1 : queue.length - i - 2;
     return after
-      ? { saleId: after.sale_id, label: `${after.end_user_name ?? after.stove_serial_no}, ${after.partner_name ?? ""}, ${after.stove_serial_no}`, remaining: Math.max(0, rest.length - 1) }
+      ? { saleId: after.sale_id, label: `${after.end_user_name ?? after.stove_serial_no}, ${after.partner_name ?? ""}, ${after.stove_serial_no}`, remaining: Math.max(0, remaining) }
       : null;
   };
+
+  const exportRows = () => inView.map((i) => ({ ...i, standing_label: standingLabel(i.standing) }));
+  const openButton = (saleId, label = "Open form") =>
+    canEdit && (
+      <button type="button" onClick={() => setOpenSale(saleId)} className="rounded-md border border-(--dc-primary-mid) px-2.5 py-1 text-xs font-semibold text-(--dc-primary-strong) transition hover:bg-(--dc-primary-soft)">
+        {label}
+      </button>
+    );
 
   return (
     <div className="space-y-4" data-my-calls>
       {error && <p className="rounded-md bg-red-50 px-3 py-2 text-xs text-red-700">{error}</p>}
+
+      <DayChips today={day?.today} day={day?.day} range={search.range} to="/data-center/my-calls" />
+
       <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
         {[
-          ["to call", queue.length, "bg-(image:--dc-fig-sold)"],
-          ["called today", day?.called, "bg-(image:--dc-fig-verified)"],
+          ["to call", newCount, "bg-(image:--dc-fig-sold)"],
+          [`called ${word}`, day?.called, "bg-(image:--dc-fig-transferred)"],
+          [`verified ${word}`, day?.verified, "bg-(image:--dc-fig-verified)"],
           ["callbacks due", callbacksDue, "bg-(image:--dc-fig-unverified)"],
-          ["fixed by Sales, ring again", ringAgain, "bg-(image:--dc-fig-plum)"],
         ].map(([label, value, cls]) => (
           <div key={label} className={`rounded-xl p-3 text-white shadow-sm ${cls}`} data-my-figure={label}>
             <span className="block text-2xl font-semibold tabular-nums">{day ? Number(value ?? 0).toLocaleString() : "…"}</span>
@@ -124,10 +173,42 @@ function Inner() {
 
       {!day && <div className="flex items-center gap-2 text-sm text-gray-500"><Loader2 className="h-4 w-4 animate-spin" /> Loading your day...</div>}
 
-      {day && !next && (
+      {day && <ViewChips items={held} view={view} onView={setView} />}
+      <CountsStrip day={day} />
+
+      {pins.length > 0 && (
+        <section className="rounded-xl border border-(--dc-brief-place) bg-white shadow-sm" data-my-pinned>
+          <header className="flex items-center gap-2 border-b border-(--dc-brief-place)/40 bg-(--dc-brief-place-soft)/40 px-4 py-2.5">
+            <h2 className="text-sm font-semibold text-gray-900">Call these first</h2>
+            <span className="text-xs text-gray-600">callbacks with a time, and records Sales fixed</span>
+            <span className="ml-auto rounded-full bg-(--dc-brief-place-soft) px-2 py-0.5 text-[11px] font-bold tabular-nums text-(--dc-brief-place)">{pins.length}</span>
+          </header>
+          <ul className="divide-y divide-gray-100">
+            {pins.map((i) => (
+              <li key={i.sale_id} className="flex flex-wrap items-center gap-x-3 gap-y-1 px-4 py-2 text-sm" data-my-pin={i.sale_id}>
+                <span className="font-mono text-xs font-semibold text-(--dc-brief-place)">{i.callback_at ? clockOf(i.callback_at, tz) : ""}</span>
+                <span className="font-medium text-gray-900">{i.end_user_name ?? "Buyer not named"}</span>
+                <span className="text-xs text-gray-500">{i.partner_name ?? ""}</span>
+                <span className={`rounded-full px-2 py-0.5 text-[11px] font-semibold ${i._rank.tone}`}>{i._rank.label}</span>
+                <span className="ml-auto flex items-center gap-2">
+                  <CopyField value={i.phone} label="phone" diallerName={dialler} compact />
+                  {openButton(i.sale_id, "Open")}
+                </span>
+              </li>
+            ))}
+          </ul>
+        </section>
+      )}
+
+      {day && isNew && !next && (
         <div className="rounded-xl border-2 border-dashed border-(--dc-primary-mid) bg-white px-6 py-10 text-center text-sm text-gray-700" data-my-empty>
-          Nothing to call. Your manager hands out work from the control centre.
+          Nothing new to call. {held.length > 0 ? "The other views hold what you have concluded." : "Your manager hands out work from the control centre."}
           {canManage && <Link href="/data-center/call-centre" className="mt-3 block text-(--dc-brief-stove) underline">Open the control centre</Link>}
+        </div>
+      )}
+      {day && !isNew && inView.length === 0 && (
+        <div className="rounded-xl border-2 border-dashed border-gray-300 bg-white px-6 py-8 text-center text-sm text-gray-600" data-my-empty>
+          Nothing you hold stands as {view.label.toLowerCase()}.
         </div>
       )}
 
@@ -153,11 +234,15 @@ function Inner() {
       )}
 
       {rest.length > 0 && (
-        <section className="rounded-xl border border-gray-200 border-t-[3px] border-t-(--dc-accent) bg-white shadow-sm">
+        <section className="rounded-xl border border-gray-200 border-t-[3px] border-t-(--dc-accent) bg-white shadow-sm" data-my-list={view.key}>
           <header className="flex flex-wrap items-center gap-2 border-b border-gray-100 bg-(--dc-accent-soft)/30 px-4 py-2.5">
-            <h2 className="text-sm font-semibold text-gray-900">Then</h2>
-            <span className="text-xs text-gray-600">{plural(rest.length, "more record")} in calling order · callbacks due first, then what Sales fixed, then the rest</span>
-            <span className="ml-auto"><ExportButton columns={COLUMNS} rows={() => queue} filename="my-calls.csv" label="Export my queue" disabled={queue.length === 0} /></span>
+            <h2 className="text-sm font-semibold text-gray-900">{isNew ? "Then" : view.label}</h2>
+            <span className="text-xs text-gray-600">
+              {isNew
+                ? `${plural(rest.length, "more record")} in calling order · callbacks due first, then what Sales fixed, then the rest`
+                : `${plural(rest.length, "record")} you hold, in calling order`}
+            </span>
+            <span className="ml-auto"><ExportButton columns={COLUMNS} rows={exportRows} filename={`my-calls-${view.key}.csv`} label="Export this view" disabled={inView.length === 0} /></span>
           </header>
           <div className="overflow-x-auto">
             <table className="w-full min-w-[44rem] text-sm">
@@ -167,7 +252,7 @@ function Inner() {
                   <th className="px-3 py-2 font-semibold">Stove</th>
                   <th className="px-3 py-2 font-semibold">Partner</th>
                   <th className="px-3 py-2 font-semibold">Phone</th>
-                  <th className="px-3 py-2 font-semibold">Standing</th>
+                  <th className="px-3 py-2 font-semibold">{isNew ? "Standing" : "Last"}</th>
                   <th className="w-28 px-3 py-2" />
                 </tr>
               </thead>
@@ -178,10 +263,12 @@ function Inner() {
                     <td className="px-3 py-2 font-mono text-xs text-gray-700">{i.stove_serial_no}</td>
                     <td className="px-3 py-2 text-gray-700">{i.partner_name ?? "-"}</td>
                     <td className="px-3 py-2"><CopyField value={i.phone} label="phone" diallerName={dialler} compact /></td>
-                    <td className="px-3 py-2"><span className={`rounded-full px-2 py-0.5 text-[11px] font-semibold ${i._rank.tone}`}>{i._rank.label}</span></td>
-                    <td className="px-3 py-2 text-right">
-                      {canEdit && <button type="button" onClick={() => setOpenSale(i.sale_id)} className="rounded-md border border-(--dc-primary-mid) px-2.5 py-1 text-xs font-semibold text-(--dc-primary-strong) transition hover:bg-(--dc-primary-soft)">Open form</button>}
+                    <td className="px-3 py-2">
+                      {isNew
+                        ? <span className={`rounded-full px-2 py-0.5 text-[11px] font-semibold ${i._rank.tone}`}>{i._rank.label}</span>
+                        : <span className="text-xs text-gray-600">{i.last_attempt_at ? `${whenOf(i.last_attempt_at)} · ${plural(i.attempt_count ?? 0, "try", "tries")}` : "no call logged"}{view.key === "all" ? ` · ${standingLabel(i.standing)}` : ""}</span>}
                     </td>
+                    <td className="px-3 py-2 text-right">{openButton(i.sale_id)}</td>
                   </tr>
                 ))}
               </tbody>
@@ -198,11 +285,11 @@ function Inner() {
             aria-expanded={doneOpen}
             className="flex w-full items-center gap-2 px-4 py-2.5 text-left text-sm font-semibold text-gray-900"
           >
-            <ArrowRight className={`h-4 w-4 transition ${doneOpen ? "rotate-90" : ""}`} /> Done today ({day.concluded.length})
+            <ArrowRight className={`h-4 w-4 transition ${doneOpen ? "rotate-90" : ""}`} /> Called {word} ({day.concluded.length})
           </button>
           {doneOpen && (
             <ul className="divide-y divide-gray-100 border-t border-gray-100" data-my-done>
-              {day.concluded.length === 0 && <li className="px-4 py-3 text-sm text-gray-500">No calls logged yet today.</li>}
+              {day.concluded.length === 0 && <li className="px-4 py-3 text-sm text-gray-500">No calls logged {word}.</li>}
               {[...day.concluded].reverse().map((c) => (
                 <li key={`${c.at}-${c.sale_id}`} className="flex flex-wrap items-center gap-3 px-4 py-2 text-sm">
                   <span className="w-12 font-mono text-xs text-gray-500">{clockOf(c.at, tz)}</span>
@@ -236,7 +323,7 @@ export default function MyCallsPage() {
   return (
     <DataCentreShell
       title="My calls"
-      description="Who to call next, what you called today, and every number one click from the call app."
+      description="Who to call next, what you called and concluded, and every number one click from the call app."
       breadcrumb="My calls"
       area="call-centre"
       feature={DATA_CENTER_FEATURES.CALL_RECORDS_VIEW}

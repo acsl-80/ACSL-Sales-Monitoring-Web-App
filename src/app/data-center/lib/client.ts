@@ -2148,8 +2148,15 @@ export type AgentDayItem = {
   last_attempt_at: string | null;
   verification_outcome: string | null;
   correction_state: string | null;
+  standing: string;
   recall_closed_at: string | null;
   last_outcome_value: string | null;
+  callback_at: string | null;
+  draft_saved_at: string | null;
+};
+/** Phase 28, D45: what the agent did in a window, per view; `all` is the sum. */
+export type AgentDayCounts = {
+  verified: number; partially_verified: number; unreachable: number; others: number; with_sales: number; calls: number; all: number;
 };
 export type AgentDayData = {
   agent: Partial<BoardAgent> & { agent_id: string };
@@ -2157,9 +2164,10 @@ export type AgentDayData = {
   tz: string;
   today: string;
   dailyTarget: number;
-  range: "day" | "week";
+  range: "day" | "week" | "span";
   called: number;
   verified: number;
+  counts: { today: AgentDayCounts; week: AgentDayCounts; selected: AgentDayCounts };
   marks: BoardMark[];
   flags: BoardFlag[];
   concluded: (Omit<BoardMark, "on_day">)[];
@@ -2250,7 +2258,7 @@ export const dataCenterAssign = {
   board: (opts: { day?: string | null; range?: "day" | "week" } = {}) =>
     call<BoardData>("data-center-assign", "board", opts),
   /** Phase 26: one agent's day. Self needs no permission; another agent needs assignment.manage. */
-  agentDay: (opts: { agentId?: string | null; day?: string | null; range?: "day" | "week" } = {}) =>
+  agentDay: (opts: { agentId?: string | null; day?: string | null; range?: string | null } = {}) =>
     call<AgentDayData>("data-center-assign", "agent_day", opts),
   /** Phase 26: the rows the picker would hand out. Reads only; no batch is made. */
   assignPreview: (opts: {

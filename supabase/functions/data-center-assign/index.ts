@@ -316,6 +316,7 @@ serve(async (req) => {
                           l.batch_state, b.completed_at,
                           l.sale_id::text, l.position, l.stove_serial_no, l.sales_date,
                           l.verification_outcome, l.attempt_count, l.last_attempt_at,
+                          l.standing,
                           v.resolved_end_user_name as end_user_name,
                           v.resolved_phone as phone,
                           v.resolved_alt_phone as alternative_phone,

@@ -156,14 +156,11 @@ export default function MyWork({ canEdit, hideWhenEmpty = false }) {
     const list = openItems;
     return {
       all: list.length,
-      todo: list.filter((i) => !i.attempt_count).length,
+      // Phase 28, D41: one definition of where a record stands, from the server.
+      todo: list.filter((i) => i.standing === "never_called").length,
       unfinished: list.filter((i) => i.has_draft).length,
       urgent: list.filter((i) => i.serial_unconfirmed_at).length,
-      // Unreachable is a conclusion, the same as standing() treats it; a
-      // count that left it out could never reach "all done".
-      done: list.filter((i) =>
-        ["fully_verified", "partially_verified", "unreachable"].includes(i.verification_outcome),
-      ).length,
+      done: list.filter((i) => ["verified", "partially_verified", "unreachable"].includes(i.standing)).length,
     };
   }, [openItems]);
 

@@ -10,6 +10,16 @@ import { signIn, USERS, branchSql, callEdgeFunction } from "./helpers";
  *  - the call form carries copy fields in its header, a callback time beside
  *    a callback outcome, and after Save offers the next record
  *  - nothing dials: no tel: link anywhere on the surface
+ *
+ * Phase 28, D45: My calls on New.
+ *
+ *  - New is open on first load and stays out of the URL; another view rides
+ *    in `view`
+ *  - a record saved as partly verified leaves New and appears under Partly
+ *    verified
+ *  - the counts strip equals an SQL oracle over `v_call_attempts_resolved`
+ *    by outcome for the day, plus send-backs the agent opened; All is the sum
+ *  - at 375 the folded views sit under More
  */
 test.describe.configure({ timeout: 240_000 });
 
@@ -48,7 +58,7 @@ async function replenish(admin: Page) {
 async function ensureWork(admin: Page, agent: Page) {
   const r = await callEdgeFunction(agent, "data-center-assign", { action: "agent_day" });
   expect(r.status, JSON.stringify(r.body)).toBe(200);
-  let day = (r.body as { data: { agent: { agent_id: string }; to_call: { sale_id: string; stove_serial_no: string; phone: string | null }[] } }).data;
+  let day = (r.body as { data: { agent: { agent_id: string }; to_call: { sale_id: string; stove_serial_no: string; phone: string | null; standing: string }[] } }).data;
   if (day.to_call.length < 2) {
     let { agents, pool } = await agentsAndPool(admin);
     let partner = pool.find((p) => p.callable >= 2) ?? pool.find((p) => p.callable >= 1);
@@ -93,9 +103,13 @@ test("an agent lands on My calls, sees the next record, and copies the number fo
   await expect(agent.locator("[data-my-calls]")).toBeVisible({ timeout: 30_000 });
   const next = agent.locator("[data-my-next]");
   await expect(next).toBeVisible({ timeout: 30_000 });
-  await expect(agent.locator('[data-my-figure="to call"]')).toContainText(String(day.to_call.length));
-  // Every record in hand is on the page, once.
-  for (const it of day.to_call) {
+  // Phase 28, D45: New is the working surface, so "to call" counts the New
+  // records and the page lists those; the concluded ones sit in other views.
+  const fresh = day.to_call.filter((it) => it.standing === "never_called");
+  await expect(agent.locator('[data-my-figure="to call"]')).toContainText(String(fresh.length));
+  await expect(agent.locator('[data-my-view="new"]')).toHaveAttribute("aria-pressed", "true");
+  await expect(agent).not.toHaveURL(/view=/);
+  for (const it of fresh) {
     await expect(agent.getByText(it.stove_serial_no, { exact: true }).first()).toBeVisible();
   }
   // Nothing dials.
@@ -154,6 +168,96 @@ test("the call form copies, takes a callback time, and after Save offers the nex
   } else {
     await expect(handoff).toContainText("last record assigned to you");
   }
+});
+
+/** The counts the strip should show for today, by the D45 rule, straight from SQL. */
+async function oracleToday(agentId: string) {
+  const [row] = await branchSql<{ verified: number; partially_verified: number; unreachable: number; others: number; with_sales: number }>(`
+    with cfg as (
+      select coalesce((select value #>> '{}' from data_center.workflow_config where key = 'call_centre.timezone'), 'Africa/Lagos') as tz
+    ),
+    calls as (
+      select o.value as outcome
+        from data_center.v_call_attempts_resolved x
+        cross join cfg
+        left join data_center.option_values o on o.id = x.outcome_id
+       where x.agent_user_id = '${agentId}'
+         and timezone(cfg.tz, x.attempted_at)::date = timezone(cfg.tz, now())::date
+    )
+    select count(*) filter (where outcome = 'verified')::int as verified,
+           count(*) filter (where outcome = 'partially_verified')::int as partially_verified,
+           count(*) filter (where outcome = 'unreachable')::int as unreachable,
+           count(*) filter (where outcome is null or outcome not in ('verified', 'partially_verified', 'unreachable'))::int as others,
+           (select count(*)::int from data_center.corrections c cross join cfg
+             where c.opened_by = '${agentId}'
+               and timezone(cfg.tz, c.opened_at)::date = timezone(cfg.tz, now())::date) as with_sales
+      from calls`);
+  return row;
+}
+
+test("a record saved as partly verified leaves New, lands under Partly verified, and the counts match SQL", async ({ browser }) => {
+  const admin = await pageFor(browser, USERS.admin);
+  const agent = await pageFor(browser, USERS.callCentre);
+  const day = await ensureWork(admin, agent);
+  const fresh = day.to_call.filter((it) => it.standing === "never_called");
+  expect(fresh.length, "a New record to conclude").toBeGreaterThan(0);
+
+  await agent.goto("/data-center/my-calls");
+  await expect(agent.locator("[data-my-next]")).toBeVisible({ timeout: 30_000 });
+  const saleId = (await agent.locator("[data-my-next]").getAttribute("data-my-next"))!;
+  expect(fresh.map((f) => f.sale_id)).toContain(saleId);
+
+  // Save call with the Partly verified outcome (D42, D43).
+  await agent.getByRole("button", { name: "Open the call form" }).click();
+  const dialog = agent.getByRole("dialog");
+  await expect(dialog).toBeVisible({ timeout: 30_000 });
+  const [pv] = await branchSql<{ label: string }>(`select label from data_center.option_values where list_key = 'call_outcome' and value = 'partially_verified'`);
+  await dialog.getByRole("combobox", { name: "Outcome of this call" }).click();
+  await agent.getByRole("option", { name: pv.label }).click();
+  await dialog.locator('[data-save-call="footer"]').click();
+  await expect(dialog.getByText("Call saved.", { exact: true })).toBeVisible({ timeout: 15_000 });
+  await agent.keyboard.press("Escape");
+
+  // Gone from New, present under Partly verified, and the URL says so.
+  await agent.goto("/data-center/my-calls");
+  await expect(agent.locator("[data-my-views]")).toBeVisible({ timeout: 30_000 });
+  await expect(agent.locator(`[data-my-next="${saleId}"], [data-my-row="${saleId}"]`)).toHaveCount(0);
+  await agent.locator('[data-my-view="partially_verified"]').first().click();
+  await expect(agent).toHaveURL(/view=partially_verified/);
+  await expect(agent.locator(`[data-my-row="${saleId}"]`)).toBeVisible({ timeout: 15_000 });
+  await agent.locator('[data-my-view="new"]').first().click();
+  await expect(agent).not.toHaveURL(/view=/);
+
+  // The strip equals SQL for today, and All is the sum.
+  const want = await oracleToday(day.agent.agent_id);
+  expect(want.partially_verified).toBeGreaterThan(0);
+  const cell = (k: string) => agent.locator(`[data-my-count="today-${k}"]`);
+  for (const k of ["verified", "partially_verified", "unreachable", "with_sales", "others"] as const) {
+    await expect(cell(k)).toHaveText(String(want[k]), { timeout: 15_000 });
+  }
+  const all = want.verified + want.partially_verified + want.unreachable + want.with_sales + want.others;
+  await expect(cell("all")).toHaveText(String(all));
+});
+
+test("at 375 the folded views sit under More", async ({ browser }) => {
+  const context = await browser.newContext({ viewport: { width: 375, height: 812 }, isMobile: true, hasTouch: true });
+  const page = await context.newPage();
+  await signIn(page, USERS.callCentre);
+  await page.goto("/data-center/my-calls");
+  await expect(page.locator("[data-my-views]")).toBeVisible({ timeout: 30_000 });
+  for (const k of ["new", "verified", "partially_verified", "unreachable", "with_sales"]) {
+    await expect(page.locator(`[data-my-view="${k}"]`).first()).toBeVisible();
+  }
+  await expect(page.locator('[data-my-view="others"]')).toBeHidden();
+  await expect(page.locator('[data-my-view="all"]')).toBeHidden();
+  await page.locator("[data-my-more]").click();
+  const menu = page.locator("[data-my-more-menu]");
+  await expect(menu.locator('[data-my-view="others"]')).toBeVisible();
+  await expect(menu.locator('[data-my-view="all"]')).toBeVisible();
+  await menu.locator('[data-my-view="all"]').click();
+  await expect(page).toHaveURL(/view=all/);
+  await expect(page.locator("[data-my-more]")).toHaveText(/All/);
+  await context.close();
 });
 
 test("nothing crosses the viewport at 375 pixels on My calls", async ({ browser }) => {

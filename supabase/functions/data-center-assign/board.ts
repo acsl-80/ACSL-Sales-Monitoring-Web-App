@@ -127,6 +127,8 @@ const TO_CALL_SQL = `
          r.resolved_phone as phone, r.resolved_alt_phone as alt_phone,
          coalesce(r.attempt_count, 0) as attempt_count, r.last_attempt_at,
          r.verification_outcome, r.correction_state,
+         -- Phase 28, D41: where the record stands, from the one function.
+         r.standing,
          (select max(x.reviewed_at) from data_center.corrections x
            where x.sale_id = i.sale_id and x.review_outcome = 'recall') as recall_closed_at,
          (select o.value from data_center.call_attempts a
@@ -142,6 +144,60 @@ const TO_CALL_SQL = `
     join data_center.v_call_center_resolved r on r.sale_id = i.sale_id
    where b.assigned_to = $1::uuid and b.state = 'open'
    order by b.assigned_at, i.position`;
+
+/**
+ * Phase 28, D45: what the agent did in a window, by the view it lands in. A
+ * call counts by its recorded outcome: verified and partly verified to those
+ * views, unreachable to unreachable, everything else to Others; a send-back
+ * the agent opened counts to With Sales. $1 day, $2 agent, $3 days back.
+ */
+const COUNTS_SQL = `with ${DAY_CTE},
+  calls as (
+    select o.value as outcome
+      from data_center.v_call_attempts_resolved x
+      cross join day
+      left join data_center.option_values o on o.id = x.outcome_id
+     where x.agent_user_id = $2::uuid
+       and timezone(day.tz, x.attempted_at)::date between day.d_from and day.d
+  )
+  select count(*) filter (where outcome = 'verified')::int as verified,
+         count(*) filter (where outcome = 'partially_verified')::int as partially_verified,
+         count(*) filter (where outcome = 'unreachable')::int as unreachable,
+         count(*) filter (where outcome is null or outcome not in ('verified', 'partially_verified', 'unreachable'))::int as others,
+         (select count(*)::int from data_center.corrections c cross join day
+           where c.opened_by = $2::uuid
+             and timezone(day.tz, c.opened_at)::date between day.d_from and day.d) as with_sales,
+         count(*)::int as calls
+    from calls`;
+
+type Counts = {
+  verified: number; partially_verified: number; unreachable: number; others: number; with_sales: number; calls: number;
+};
+const withAll = (c: Counts) => ({
+  ...c,
+  all: c.verified + c.partially_verified + c.unreachable + c.others + c.with_sales,
+});
+
+/**
+ * The window named in the URL: "week" is the seven days ending on the day;
+ * "YYYY-MM-DD..YYYY-MM-DD" is a span, capped at 92 days like the period
+ * control. Returns the days back from the end day, and the end day when the
+ * span named one.
+ */
+function spanOf(range: unknown, day: string | null): { back: number; day: string | null; kind: string } {
+  if (range === "week") return { back: 6, day, kind: "week" };
+  if (typeof range === "string") {
+    const m = range.match(/^(\d{4}-\d{2}-\d{2})\.\.(\d{4}-\d{2}-\d{2})$/);
+    if (m) {
+      const from = Date.parse(`${m[1]}T00:00:00Z`);
+      const to = Date.parse(`${m[2]}T00:00:00Z`);
+      if (!Number.isNaN(from) && !Number.isNaN(to) && to >= from) {
+        return { back: Math.min(91, Math.round((to - from) / 86_400_000)), day: m[2], kind: "span" };
+      }
+    }
+  }
+  return { back: 0, day, kind: "day" };
+}
 
 type Mark = {
   agent_id: string; at: Date | string; sale_id: string; attempt_no: number;
@@ -255,16 +311,22 @@ export async function handleBoard(ctx: BoardContext): Promise<Response> {
     case "agent_day": {
       const target = body.agentId && UUID.test(body.agentId) ? body.agentId : userId;
       if (target !== userId && !canManage) return denied();
-      const back = body.range === "week" ? 6 : 0;
-      const day = dayArg(body.day);
+      // Phase 28, D45: the window is a day, a week or a span; the counts say
+      // what the agent did today, this week and in the chosen window.
+      const span = spanOf(body.range, dayArg(body.day));
+      const back = span.back;
+      const day = span.day;
       return await withReadConnection(async (conn) => {
-        const [roster, marks, flags, verified, toCall, resolved] = await Promise.all([
+        const [roster, marks, flags, verified, toCall, resolved, cToday, cWeek, cSpan] = await Promise.all([
           conn.queryObject<Record<string, unknown>>({ text: AGENT_ROSTER_SQL }),
           conn.queryObject<Mark>({ text: MARKS_SQL, args: [day, target, back] }),
           conn.queryObject<Flag>({ text: FLAGS_SQL, args: [day, target, back] }),
           conn.queryObject<Verified>({ text: VERIFIED_SQL, args: [day, target, back] }),
           conn.queryObject<Record<string, unknown>>({ text: TO_CALL_SQL, args: [target] }),
           conn.queryObject<ResolvedDay>({ text: RESOLVE_DAY_SQL, args: [day] }),
+          conn.queryObject<Counts>({ text: COUNTS_SQL, args: [null, target, 0] }),
+          conn.queryObject<Counts>({ text: COUNTS_SQL, args: [null, target, 6] }),
+          conn.queryObject<Counts>({ text: COUNTS_SQL, args: [day, target, back] }),
         ]);
         const agent = roster.rows.find((a) => String(a.agent_id) === target) ?? null;
         if (!agent && target !== userId) {
@@ -280,9 +342,15 @@ export async function handleBoard(ctx: BoardContext): Promise<Response> {
               tz: d.tz,
               today: d.today,
               dailyTarget: d.daily_target,
-              range: back === 0 ? "day" : "week",
+              range: span.kind,
               called: marks.rows.length,
               verified: verified.rows.reduce((n, v) => n + v.verified, 0),
+              // Phase 28, D45: per view, what the agent did.
+              counts: {
+                today: withAll(cToday.rows[0]),
+                week: withAll(cWeek.rows[0]),
+                selected: withAll(cSpan.rows[0]),
+              },
               marks: marks.rows.map(stripAgent),
               flags: flags.rows.map(stripAgent),
               concluded: marks.rows.map((m) => ({
