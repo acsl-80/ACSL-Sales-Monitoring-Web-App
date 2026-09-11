@@ -38,60 +38,55 @@ async function agentsAndPool(page: Page): Promise<Roster> {
 }
 
 /**
- * A branch holds five sales. Every spec that logs a call or keeps a draft
- * takes a record out of the pool for two days, so a run can find nobody
- * holding anything and nothing callable. Run the engine; if that hands out
- * nothing, undo what the specs did (their own calls and drafts) and run it
- * again. Bounded to rows the specs made.
+ * A branch holds a handful of sales. Every spec that logs a call, keeps a
+ * draft or concludes a record takes it out of the pool, and since D45 a
+ * concluded record stays in the agent's hands, so a run can find the agent
+ * holding plenty and nothing New. Undo what the specs did (their calls,
+ * drafts and verdicts of the last three days, and the items left active in
+ * batches that closed), then run the engine. Bounded to rows the specs made.
  */
 async function replenish(admin: Page) {
-  await callEdgeFunction(admin, "data-center-assign", { action: "run" });
-  const { agents } = await agentsAndPool(admin);
-  if (agents.some((a) => a.open_batches > 0)) return;
   await branchSql(`delete from data_center.call_drafts`);
   await branchSql(`delete from data_center.call_attempts where note like '%spec%' or attempted_at > now() - interval '3 days'`);
   await branchSql(`update data_center.call_records set verification_outcome = 'not_verified' where updated_at > now() - interval '3 days'`);
-  // A record the specs concluded closed its batch; letting go of the items
-  // in closed batches is what puts those records back in the pool.
   await branchSql(`update data_center.assignment_items i set is_active = false from data_center.assignment_batches b
     where b.id = i.batch_id and b.state = 'completed' and i.is_active`);
   await callEdgeFunction(admin, "data-center-assign", { action: "run" });
 }
 
-/** The seeded call-centre editor holds an open batch, arranged by the admin if not. */
-async function ensureWork(admin: Page, agent: Page) {
+type Day = { agent: { agent_id: string }; to_call: { sale_id: string; stove_serial_no: string; phone: string | null; standing: string; batch_id: string }[] };
+const readDay = async (agent: Page) => {
   const r = await callEdgeFunction(agent, "data-center-assign", { action: "agent_day" });
   expect(r.status, JSON.stringify(r.body)).toBe(200);
-  let day = (r.body as { data: { agent: { agent_id: string }; to_call: { sale_id: string; stove_serial_no: string; phone: string | null; standing: string; batch_id: string }[] } }).data;
-  if (day.to_call.length < 2) {
-    let { agents, pool } = await agentsAndPool(admin);
-    let partner = pool.find((p) => p.callable >= 2) ?? pool.find((p) => p.callable >= 1);
-    if (!partner) {
-      const holder = agents.find((a) => a.open_batches > 0 && a.agent_id !== day.agent.agent_id);
-      if (holder) {
-        const held = await callEdgeFunction(admin, "data-center-assign", { action: "agent_detail", agentId: holder.agent_id });
-        const items = (held.body as { data: { items: { sale_id: string }[] } }).data.items;
-        for (const it of items.slice(0, 2)) await callEdgeFunction(admin, "data-center-assign", { action: "unassign_item", saleId: it.sale_id });
-      } else {
-        await replenish(admin);
-      }
-      ({ agents, pool } = await agentsAndPool(admin));
-      partner = pool.find((p) => p.callable >= 1);
-      if (!partner) {
-        await replenish(admin);
-        ({ agents, pool } = await agentsAndPool(admin));
-        partner = pool.find((p) => p.callable >= 1);
-      }
-    }
-    expect(partner, "a partner with work to hand out").toBeTruthy();
-    const made = await callEdgeFunction(admin, "data-center-assign", {
-      action: "assign_manual", agentId: day.agent.agent_id, organizationId: partner!.organization_id, size: 2, overrideReason: "my-calls spec",
-    });
-    expect(made.status, JSON.stringify(made.body)).toBe(200);
-    const r2 = await callEdgeFunction(agent, "data-center-assign", { action: "agent_day" });
-    day = (r2.body as typeof r).data as typeof day;
+  return (r.body as { data: Day }).data;
+};
+// Since D45 a concluded record stays held, so what matters is how many New
+// records the agent holds, not how many records.
+const freshCount = (d: Day) => d.to_call.filter((it) => it.standing === "never_called").length;
+
+/** Hand the agent two New records from a partner with work, if the pool has any. */
+async function handOut(admin: Page, agentId: string): Promise<boolean> {
+  const { pool } = await agentsAndPool(admin);
+  const partner = pool.find((p) => p.callable >= 1);
+  if (!partner) return false;
+  const made = await callEdgeFunction(admin, "data-center-assign", {
+    action: "assign_manual", agentId, organizationId: partner.organization_id, size: 2, overrideReason: "my-calls spec",
+  });
+  expect(made.status, JSON.stringify(made.body)).toBe(200);
+  return true;
+}
+
+/** The seeded call-centre editor holds at least one New record, arranged by the admin if not. */
+async function ensureWork(admin: Page, agent: Page): Promise<Day> {
+  let day = await readDay(agent);
+  if (freshCount(day) >= 2) return day;
+  if (await handOut(admin, day.agent.agent_id)) day = await readDay(agent);
+  if (freshCount(day) < 2) {
+    await replenish(admin);
+    day = await readDay(agent);
+    if (freshCount(day) < 2 && await handOut(admin, day.agent.agent_id)) day = await readDay(agent);
   }
-  expect(day.to_call.length).toBeGreaterThan(0);
+  expect(freshCount(day), "New records in the agent's hands").toBeGreaterThan(0);
   return day;
 }
 

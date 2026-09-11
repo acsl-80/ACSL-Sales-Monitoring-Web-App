@@ -41,6 +41,8 @@ export default function PeriodCells({ cells, grain = "day", today, tall = false 
       style={{ gridTemplateColumns: `repeat(${Math.max(1, n)}, minmax(0, 1fr))` }}
       data-period-cells={n}
       data-grain={grain}
+      // The week keeps the hook the pages spec has pointed at since C3.
+      data-week={n === 7 && grain === "day" ? "" : undefined}
     >
       {cells.map((c) => {
         const future = ahead(c.date);
