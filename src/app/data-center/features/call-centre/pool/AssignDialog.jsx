@@ -350,8 +350,9 @@ export default function AssignDialog({ agent = null, agents = [], initialOrgId =
                           return `New numbers first: ${preview.untriedInBatch} of this partner's ${preview.poolUntried} untried ${preview.poolUntried === 1 ? "number" : "numbers"}` +
                             (tried > 0 ? `, and ${tried} tried ${tried === 1 ? "one rides" : "ones ride"} along because the untried ran out.` : preview.poolTried > 0 ? `; ${preview.poolTried} tried ${preview.poolTried === 1 ? "one waits" : "ones wait"} behind them.` : ".");
                         }
-                        return tried > 0 && preview.poolUntried > 0
-                          ? `${firstLabel} puts ${tried} tried ${tried === 1 ? "number" : "numbers"} ahead of ${preview.poolUntried} new ${preview.poolUntried === 1 ? "one" : "ones"}. New numbers first is the default.`
+                        const behind = preview.poolUntried - preview.untriedInBatch;
+                        return tried > 0 && behind > 0
+                          ? `${firstLabel} puts ${tried} tried ${tried === 1 ? "number" : "numbers"} ahead of ${behind} new ${behind === 1 ? "one" : "ones"}. New numbers first is the default.`
                           : `${firstLabel}: ${preview.untriedInBatch} untried and ${tried} tried in this batch.`;
                       })()}
                     </p>

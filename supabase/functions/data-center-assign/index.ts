@@ -26,6 +26,44 @@ import { handleAgents } from "./agents.ts";
 import { handleBoard } from "./board.ts";
 import { handleFeed } from "./feed.ts";
 
+/**
+ * Slice 5, D50: what Reclaim would do. The same quiet test the function
+ * applies, with the same reading of "untried": no call, no verdict, no open
+ * send-back, and no draft still inside its hold (a half-typed form is work).
+ */
+type ReclaimCounts = { batches: number; agents: number; untried: number; worked: number };
+const RECLAIM_PREVIEW_SQL = `with quiet as (
+    select b.id, b.assigned_to
+      from data_center.assignment_batches b
+      left join data_center.call_agent_profiles p on p.user_id = b.assigned_to
+     where b.state = 'open'
+       and (not coalesce(p.is_enabled, true)
+            or b.last_activity_at < now() - make_interval(days =>
+                 coalesce((select (value #>> '{}')::int from data_center.workflow_config
+                            where key = 'assignment.stale_after_days'), 3)))
+  ),
+  items as (
+    select i.batch_id, q.assigned_to,
+           (coalesce(cr.attempt_count, 0) = 0
+            and coalesce(cr.verification_outcome, 'not_verified') = 'not_verified'
+            and not exists (select 1 from data_center.corrections x
+                             where x.sale_id = i.sale_id and x.state in ('open', 'fixed'))
+            and not exists (select 1 from data_center.call_drafts d
+                             where d.sale_id = i.sale_id
+                               and d.saved_at > now() - make_interval(hours =>
+                                     coalesce((select (value #>> '{}')::int from data_center.workflow_config
+                                                where key = 'assignment.draft_holds_hours'), 48)))) as untried
+      from data_center.assignment_items i
+      join quiet q on q.id = i.batch_id
+      left join data_center.call_records cr on cr.sale_id = i.sale_id
+     where i.is_active
+  )
+  select (select count(*)::int from quiet) as batches,
+         (select count(distinct assigned_to)::int from quiet) as agents,
+         count(*) filter (where untried)::int as untried,
+         count(*) filter (where not untried)::int as worked
+    from items`;
+
 const DEFAULT_ORIGINS = [
   "https://sales.atmosfair.com.ng",
   "http://localhost:5173",
@@ -253,49 +291,40 @@ serve(async (req) => {
           if (denied) return denied;
         }
         return await withReadConnection(async (conn) => {
-          const r = await conn.queryObject<{ batches: number; agents: number; untried: number; worked: number }>({
-            text: `with quiet as (
-                     select b.id, b.assigned_to
-                       from data_center.assignment_batches b
-                       left join data_center.call_agent_profiles p on p.user_id = b.assigned_to
-                      where b.state = 'open'
-                        and (not coalesce(p.is_enabled, true)
-                             or b.last_activity_at < now() - make_interval(days =>
-                                  coalesce((select (value #>> '{}')::int from data_center.workflow_config
-                                             where key = 'assignment.stale_after_days'), 3)))
-                   ),
-                   items as (
-                     select i.batch_id, q.assigned_to,
-                            (coalesce(cr.attempt_count, 0) = 0
-                             and coalesce(cr.verification_outcome, 'not_verified') = 'not_verified'
-                             and not exists (select 1 from data_center.corrections x
-                                              where x.sale_id = i.sale_id and x.state in ('open', 'fixed'))) as untried
-                       from data_center.assignment_items i
-                       join quiet q on q.id = i.batch_id
-                       left join data_center.call_records cr on cr.sale_id = i.sale_id
-                      where i.is_active
-                   )
-                   select (select count(*)::int from quiet) as batches,
-                          (select count(distinct assigned_to)::int from quiet) as agents,
-                          count(*) filter (where untried)::int as untried,
-                          count(*) filter (where not untried)::int as worked
-                     from items`,
-          });
+          const r = await conn.queryObject<ReclaimCounts>({ text: RECLAIM_PREVIEW_SQL });
           return json({ data: r.rows[0] }, 200, cors);
         });
       }
 
-      /** Take back quiet batches without assigning anything new. */
+      /**
+       * Take back quiet batches without assigning anything new. Since slice 5
+       * the function releases untried records and keeps worked ones (D50), so
+       * the answer says what moved: `released` untried records, `kept` worked
+       * records, and `reclaimed` batches closed because nothing was left.
+       */
       case "reclaim": {
         {
           const denied = requireAssignment();
           if (denied) return denied;
         }
         return await withConnection(async (conn) => {
+          const before = await conn.queryObject<ReclaimCounts>({ text: RECLAIM_PREVIEW_SQL });
           const r = await conn.queryObject<{ n: number }>({
             text: "select data_center.reclaim_stale_batches() as n",
           });
-          return json({ data: { reclaimed: Number(r.rows[0]?.n ?? 0) } }, 200, cors);
+          const pv = before.rows[0];
+          return json(
+            {
+              data: {
+                reclaimed: Number(r.rows[0]?.n ?? 0),
+                released: Number(pv?.untried ?? 0),
+                kept: Number(pv?.worked ?? 0),
+                batches: Number(pv?.batches ?? 0),
+              },
+            },
+            200,
+            cors,
+          );
         });
       }
 

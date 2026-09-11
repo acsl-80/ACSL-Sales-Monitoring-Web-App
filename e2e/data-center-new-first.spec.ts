@@ -111,13 +111,14 @@ test("a quiet batch lets go of its untried number and keeps the worked one with 
   );
   expect(items.length).toBe(2);
   let worked = items.find((i) => i.tries > 0)?.sale_id;
-  const untried = items.find((i) => i.tries === 0)!.sale_id;
   if (!worked) {
     // Both untried: the agent logs one call on the first, which makes it worked.
     worked = items[0].sale_id;
     const logged = await callEdgeFunction(agent, "data-center-write", { action: "log_attempt", saleId: worked, note: "new-first spec: worked" });
     expect(logged.status, JSON.stringify(logged.body)).toBe(200);
   }
+  const untried = items.find((i) => i.sale_id !== worked && i.tries === 0)!.sale_id;
+  expect(untried, "an untried record beside the worked one").toBeTruthy();
   await branchSql(`update data_center.assignment_batches set last_activity_at = now() - interval '10 days' where id = '${batchId}'`);
 
   const preview = await callEdgeFunction(admin, "data-center-assign", { action: "reclaim_preview" });

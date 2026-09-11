@@ -2301,7 +2301,8 @@ export const dataCenterAssign = {
       batches: { batch_id: string; agent_id: string; organization_id: string; size: number }[];
     }>("data-center-assign", "run"),
 
-  reclaim: () => call<{ reclaimed: number }>("data-center-assign", "reclaim"),
+  /** Since slice 5: `released` untried records went back, `kept` worked records stayed, `reclaimed` batches closed (D50). */
+  reclaim: () => call<{ reclaimed: number; released: number; kept: number; batches: number }>("data-center-assign", "reclaim"),
   reclaimPreview: () => call<ReclaimPreview>("data-center-assign", "reclaim_preview"),
   /** Phase 26: the shift board, one day (or the week ending on it), every agent. */
   board: (opts: { day?: string | null; range?: string | null } = {}) =>

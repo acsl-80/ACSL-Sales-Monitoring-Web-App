@@ -10,6 +10,7 @@ import CallRecordEditor from "../CallRecordEditor";
 import AgentDetail from "../agents/AgentDetail";
 import AssignDialog from "../pool/AssignDialog";
 import Track from "./Track";
+import { reclaimWords } from "./reclaimWords";
 import PeriodCells, { trackHeading } from "./PeriodCells";
 import { plural } from "../../../lib/plural";
 import { whenOf } from "../../../lib/when";
@@ -135,11 +136,7 @@ export default function ShiftBoard({ board, agentsMeta, canManage, reload, dayLa
   const runReclaim = () =>
     act(async () => {
       const out = await dataCenterAssign.reclaim();
-      setNotice(
-        out.reclaimed
-          ? `${plural(out.reclaimed, "quiet batch", "quiet batches")} reclaimed. Their records are back in the pool.`
-          : "Nothing to reclaim: every open batch has recent activity.",
-      );
+      setNotice(reclaimWords(out));
     }, "Reclaim failed.");
   const togglePause = (agent) =>
     act(() => dataCenterAssign.setAgentProfile(agent.agent_id, { isEnabled: !agent.is_enabled }), "Could not change that.");

@@ -122,7 +122,13 @@ begin
      and coalesce((select cr.attempt_count from data_center.call_records cr where cr.sale_id = i.sale_id), 0) = 0
      and coalesce((select cr.verification_outcome from data_center.call_records cr where cr.sale_id = i.sale_id), 'not_verified') = 'not_verified'
      and not exists (select 1 from data_center.corrections x
-                      where x.sale_id = i.sale_id and x.state in ('open', 'fixed'));
+                      where x.sale_id = i.sale_id and x.state in ('open', 'fixed'))
+     -- A half-typed form is work: a draft inside its hold keeps the record.
+     and not exists (select 1 from data_center.call_drafts d
+                      where d.sale_id = i.sale_id
+                        and d.saved_at > now() - make_interval(hours =>
+                              coalesce((select (value #>> '{}')::int from data_center.workflow_config
+                                         where key = 'assignment.draft_holds_hours'), 48)));
 
   -- A quiet batch with nothing left in it is reclaimed; one with worked
   -- records stays open with its agent.

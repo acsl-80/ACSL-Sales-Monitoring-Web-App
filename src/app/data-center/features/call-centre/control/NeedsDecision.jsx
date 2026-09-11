@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import Door from "./Door";
+import { reclaimWords } from "./reclaimWords";
 import { RotateCcw } from "lucide-react";
 import { dataCenterAssign, dataCenterClient, DataCenterError } from "../../../lib/client";
 import ConfirmDialog from "../../../components/ConfirmDialog";
@@ -76,7 +77,7 @@ export default function NeedsDecision({ board, agentsMeta, metrics, waiting, can
     setError(null);
     try {
       const out = await dataCenterAssign.reclaim();
-      setNotice(out.reclaimed ? `${plural(out.reclaimed, "quiet batch", "quiet batches")} reclaimed.` : "Nothing to reclaim: every open batch has recent activity.");
+      setNotice(reclaimWords(out));
       await reload?.();
     } catch (err) {
       setError(err instanceof DataCenterError ? err.message : "Reclaim failed.");

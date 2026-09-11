@@ -76,6 +76,10 @@ export default function AgentDetail({ agent, onChanged, onOpenRecord, agents = [
    */
   /** Slice 5: the move is confirmed with what it carries (D50). */
   const [pendingMove, setPendingMove] = useState(null);
+  // The select is remounted after each confirm or cancel, so choosing the
+  // same agent twice fires again; a controlled value of "" alone would not
+  // put the native control back to its placeholder.
+  const [moveKey, setMoveKey] = useState(0);
   const moveBatch = async (batchId, toAgentId) => {
     if (!toAgentId) return;
     setPendingMove(null);
@@ -161,8 +165,9 @@ export default function AgentDetail({ agent, onChanged, onOpenRecord, agents = [
                 <>
                   <label htmlFor={`move-${batch.batch_id}`} className="sr-only">Move this batch to</label>
                   <select
+                    key={`${batch.batch_id}-${moveKey}`}
                     id={`move-${batch.batch_id}`}
-                    value=""
+                    defaultValue=""
                     disabled={busy}
                     onChange={(e) => e.target.value && setPendingMove({ batch, toAgentId: e.target.value })}
                     className="rounded-md border border-(--dc-brief-history) bg-white px-2 py-1 text-xs font-medium text-(--dc-brief-history)"
@@ -283,8 +288,8 @@ export default function AgentDetail({ agent, onChanged, onOpenRecord, agents = [
         cancelLabel="Leave it"
         actionLabel="Move"
         busy={busy}
-        onCancel={() => setPendingMove(null)}
-        onConfirm={() => pendingMove && moveBatch(pendingMove.batch.batch_id, pendingMove.toAgentId)}
+        onCancel={() => { setPendingMove(null); setMoveKey((k) => k + 1); }}
+        onConfirm={() => { if (pendingMove) { setMoveKey((k) => k + 1); moveBatch(pendingMove.batch.batch_id, pendingMove.toAgentId); } }}
       />
       <ConfirmDialog
         open={confirm !== null}
