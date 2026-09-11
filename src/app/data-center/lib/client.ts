@@ -2073,6 +2073,10 @@ export type AssignmentDetailItem = {
   verification_outcome: string | null;
   call_outcome: string | null;
   attempt_count: number | null;
+  /** Phase 28, D41 and D50: where the record stands, and whether its batch is still open. */
+  standing: string;
+  batch_state: string;
+  callback_at: string | null;
 };
 
 /**
@@ -2135,6 +2139,8 @@ export type BoardPartnerLine = {
   with_sales: number;
   others: number;
   held: number;
+  pool_untried: number;
+  pool_tried: number;
 };
 export type BoardRange = "day" | "week" | "month" | "year" | "span";
 export type BoardData = {
@@ -2215,8 +2221,14 @@ export type AssignPreviewData = {
   waitingAfter: number;
   recentCount: number;
   recentDays: number;
+  /** Slice 5: the pool's untried and tried counts for the partner, and how many untried the batch draws. */
+  poolUntried: number;
+  poolTried: number;
+  untriedInBatch: number;
   agent: { open_batches: number; cap: number; is_enabled: boolean; over_capacity: boolean };
 };
+/** Slice 5: what Reclaim would do (D50). */
+export type ReclaimPreview = { batches: number; agents: number; untried: number; worked: number };
 /** Phase 28, D46: one partner's records by standing, from v_partner_standing. */
 export type PartnerStandingCounts = {
   never_called: number;
@@ -2290,6 +2302,7 @@ export const dataCenterAssign = {
     }>("data-center-assign", "run"),
 
   reclaim: () => call<{ reclaimed: number }>("data-center-assign", "reclaim"),
+  reclaimPreview: () => call<ReclaimPreview>("data-center-assign", "reclaim_preview"),
   /** Phase 26: the shift board, one day (or the week ending on it), every agent. */
   board: (opts: { day?: string | null; range?: string | null } = {}) =>
     call<BoardData>("data-center-assign", "board", opts),

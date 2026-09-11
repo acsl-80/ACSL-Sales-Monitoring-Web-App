@@ -74,8 +74,11 @@ export default function AgentDetail({ agent, onChanged, onOpenRecord, agents = [
    * action the server already had and nothing on screen offered. The batch
    * keeps its records and its order; only the name on it changes.
    */
+  /** Slice 5: the move is confirmed with what it carries (D50). */
+  const [pendingMove, setPendingMove] = useState(null);
   const moveBatch = async (batchId, toAgentId) => {
     if (!toAgentId) return;
+    setPendingMove(null);
     setBusy(true);
     setError(null);
     try {
@@ -161,7 +164,7 @@ export default function AgentDetail({ agent, onChanged, onOpenRecord, agents = [
                     id={`move-${batch.batch_id}`}
                     value=""
                     disabled={busy}
-                    onChange={(e) => moveBatch(batch.batch_id, e.target.value)}
+                    onChange={(e) => e.target.value && setPendingMove({ batch, toAgentId: e.target.value })}
                     className="rounded-md border border-(--dc-brief-history) bg-white px-2 py-1 text-xs font-medium text-(--dc-brief-history)"
                     data-move-batch={batch.batch_id}
                   >
@@ -264,6 +267,25 @@ export default function AgentDetail({ agent, onChanged, onOpenRecord, agents = [
         );
       })}
 
+      <ConfirmDialog
+        open={pendingMove !== null}
+        title="Move this batch?"
+        description={pendingMove ? (() => {
+          const to = agents.find((x) => x.agent_id === pendingMove.toAgentId);
+          const its = pendingMove.batch.items;
+          const callbacks = its.filter((i) => i.callback_at).length;
+          const worked = its.filter((i) => i.standing && i.standing !== "never_called").length;
+          return `Moves ${plural(its.length, "record")} from ${pendingMove.batch.partner_name} to ${to?.full_name || to?.email || "that agent"}` +
+            (callbacks > 0 ? `, ${callbacks} of them ${callbacks === 1 ? "a callback" : "callbacks"} with a time` : "") +
+            (worked > 0 ? `, ${worked} already worked` : "") +
+            `. The records keep their calls and their order; only the name on them changes.`;
+        })() : ""}
+        cancelLabel="Leave it"
+        actionLabel="Move"
+        busy={busy}
+        onCancel={() => setPendingMove(null)}
+        onConfirm={() => pendingMove && moveBatch(pendingMove.batch.batch_id, pendingMove.toAgentId)}
+      />
       <ConfirmDialog
         open={confirm !== null}
         title="Return this work to the pool?"

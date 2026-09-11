@@ -242,6 +242,49 @@ serve(async (req) => {
         }
       }
 
+      /**
+       * Slice 5: what Reclaim would do, before it does it. The same quiet
+       * test the function applies, counted as untried records that would go
+       * back and worked records that would stay (D50).
+       */
+      case "reclaim_preview": {
+        {
+          const denied = requireAssignment();
+          if (denied) return denied;
+        }
+        return await withReadConnection(async (conn) => {
+          const r = await conn.queryObject<{ batches: number; agents: number; untried: number; worked: number }>({
+            text: `with quiet as (
+                     select b.id, b.assigned_to
+                       from data_center.assignment_batches b
+                       left join data_center.call_agent_profiles p on p.user_id = b.assigned_to
+                      where b.state = 'open'
+                        and (not coalesce(p.is_enabled, true)
+                             or b.last_activity_at < now() - make_interval(days =>
+                                  coalesce((select (value #>> '{}')::int from data_center.workflow_config
+                                             where key = 'assignment.stale_after_days'), 3)))
+                   ),
+                   items as (
+                     select i.batch_id, q.assigned_to,
+                            (coalesce(cr.attempt_count, 0) = 0
+                             and coalesce(cr.verification_outcome, 'not_verified') = 'not_verified'
+                             and not exists (select 1 from data_center.corrections x
+                                              where x.sale_id = i.sale_id and x.state in ('open', 'fixed'))) as untried
+                       from data_center.assignment_items i
+                       join quiet q on q.id = i.batch_id
+                       left join data_center.call_records cr on cr.sale_id = i.sale_id
+                      where i.is_active
+                   )
+                   select (select count(*)::int from quiet) as batches,
+                          (select count(distinct assigned_to)::int from quiet) as agents,
+                          count(*) filter (where untried)::int as untried,
+                          count(*) filter (where not untried)::int as worked
+                     from items`,
+          });
+          return json({ data: r.rows[0] }, 200, cors);
+        });
+      }
+
       /** Take back quiet batches without assigning anything new. */
       case "reclaim": {
         {
@@ -358,10 +401,10 @@ serve(async (req) => {
                      * "finished" is a real state an agent can see rather than
                      * a list that never shrinks.
                      */
+                    -- Slice 5, D50: a worked record stays with its agent until a
+                    -- manager moves it, so completed batches count whatever their age.
                     where l.agent_id = $1 and l.is_active
-                      and (l.batch_state = 'open'
-                           or (l.batch_state = 'completed'
-                               and b.completed_at > now() - interval '7 days'))
+                      and l.batch_state in ('open', 'completed')
                     order by (l.batch_state = 'open') desc, l.assigned_at desc, l.position
                     limit 200`,
             args: [userId],

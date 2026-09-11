@@ -77,6 +77,8 @@ export default function ShiftBoard({ board, agentsMeta, canManage, reload, dayLa
   const [assigning, setAssigning] = useState(null);
   const [openSale, setOpenSale] = useState(null);
   const [confirm, setConfirm] = useState(null);
+  // Slice 5: what Reclaim would do, read when the confirm opens (D50).
+  const [reclaimPreview, setReclaimPreview] = useState(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState(null);
   const [notice, setNotice] = useState(null);
@@ -170,7 +172,9 @@ export default function ShiftBoard({ board, agentsMeta, canManage, reload, dayLa
         description={
           confirm === "run"
             ? "Every agent with room takes a batch from the pool, in the configured order. Their lists change the moment it runs."
-            : `Every open batch with no activity for ${plural(staleDays, "day")} goes back to the pool, and its agent loses it. Calls already logged stay on the records.`
+            : reclaimPreview
+              ? `${plural(reclaimPreview.batches, "batch", "batches")} quiet for ${plural(staleDays, "day")} across ${plural(reclaimPreview.agents, "agent")}. ${plural(reclaimPreview.untried, "untried number")} ${reclaimPreview.untried === 1 ? "goes" : "go"} back to the pool; ${plural(reclaimPreview.worked, "record")} the agents already worked ${reclaimPreview.worked === 1 ? "stays" : "stay"} with them until you move them.`
+              : `Every batch quiet for ${plural(staleDays, "day")} lets go of its untried numbers; records the agents already worked stay with them. Reading the numbers...`
         }
         cancelLabel="Not now"
         actionLabel={confirm === "run" ? "Run" : "Reclaim"}
@@ -210,7 +214,7 @@ export default function ShiftBoard({ board, agentsMeta, canManage, reload, dayLa
             <button
               type="button"
               disabled={busy}
-              onClick={() => setConfirm("reclaim")}
+              onClick={() => { setReclaimPreview(null); setConfirm("reclaim"); dataCenterAssign.reclaimPreview().then(setReclaimPreview).catch(() => {}); }}
               className="inline-flex items-center gap-1.5 rounded-md border border-(--dc-brief-history) px-2.5 py-1.5 text-xs font-semibold text-(--dc-brief-history) transition hover:bg-(--dc-brief-history-soft) disabled:opacity-60"
             >
               <RotateCcw className="h-3.5 w-3.5" /> Reclaim quiet batches
@@ -462,7 +466,15 @@ function HeldByPartner({ agent }) {
           </tbody>
         </table>
       </div>
-      <p className="mt-1.5 text-xs text-gray-500">Each count opens the records page narrowed to {who}, the partner and that standing.</p>
+      <p className="mt-1.5 text-xs text-gray-500">
+        Each count opens the records page narrowed to {who}, the partner and that standing.
+        {/* Slice 5: the nudge, so a manager sees what a hand-out would draw from. */}
+        {lines.map((l) => (
+          <span key={l.organization_id} className="block" data-held-pool={l.organization_id}>
+            {l.partner_name ?? "No partner"}: the pool still has {plural(l.pool_untried, "untried number")}{l.pool_tried > 0 ? ` and ${plural(l.pool_tried, "tried one")}` : ""}.
+          </span>
+        ))}
+      </p>
     </div>
   );
 }

@@ -1,4 +1,4 @@
-import { MY_VIEWS } from "./views";
+import { COUNT_COLUMNS } from "./views";
 
 /**
  * What the agent did, per view, for today, this week and the chosen window
@@ -10,7 +10,7 @@ import { MY_VIEWS } from "./views";
  * The chosen window's row appears only when it is neither today nor the
  * week to today, so the strip is two rows on an ordinary day.
  */
-const COLS = MY_VIEWS.filter((v) => v.count);
+const COLS = COUNT_COLUMNS;
 
 function windowLabel(day) {
   if (day.range === "span") return "Chosen days";

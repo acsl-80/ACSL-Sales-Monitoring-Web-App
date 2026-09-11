@@ -168,9 +168,12 @@ export async function handleAgents(ctx: AgentsContext): Promise<Response> {
                         l.assigned_at, l.batch_size, l.last_activity_at,
                         l.sale_id::text, l.position, l.stove_serial_no, l.sales_date,
                         l.number_on_record, l.verification_outcome, l.call_outcome,
-                        l.attempt_count
+                        l.attempt_count, l.standing, l.batch_state,
+                        -- Slice 5: the Move nudge says how many are callbacks with a time.
+                        (select a.callback_at from data_center.call_attempts a
+                          where a.sale_id = l.sale_id order by a.attempted_at desc limit 1) as callback_at
                    from data_center.v_assignment_log l
-                  where l.agent_id = $1 and l.batch_state = 'open' and l.is_active
+                  where l.agent_id = $1 and l.batch_state in ('open', 'completed') and l.is_active
                   order by l.assigned_at desc, l.position
                   limit 1000`,
           args: [body.agentId],

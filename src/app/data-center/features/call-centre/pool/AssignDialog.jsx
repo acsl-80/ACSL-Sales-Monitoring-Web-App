@@ -337,6 +337,25 @@ export default function AssignDialog({ agent = null, agents = [], initialOrgId =
                     )}
                     {previewBusy && preview && <Loader2 className="ml-auto h-3.5 w-3.5 animate-spin text-gray-500" />}
                   </header>
+                  {/* Slice 5: what this order does, in one line, so the manager can
+                      reorient before the batch lands. New numbers first is the
+                      configured default; another order says what it puts ahead. */}
+                  {preview && preview.size > 0 && (
+                    <p className="border-b border-gray-100 bg-(--dc-surface-muted) px-3 py-2 text-xs text-gray-700" data-handout-nudge>
+                      {(() => {
+                        const tried = preview.size - preview.untriedInBatch;
+                        const firstLabel = orderOptions.find((o) => o.value === orderFirst)?.label ?? "This order";
+                        const leadsNew = (orderTouched ? orderFirst : shownDefault) === "never_called";
+                        if (leadsNew) {
+                          return `New numbers first: ${preview.untriedInBatch} of this partner's ${preview.poolUntried} untried ${preview.poolUntried === 1 ? "number" : "numbers"}` +
+                            (tried > 0 ? `, and ${tried} tried ${tried === 1 ? "one rides" : "ones ride"} along because the untried ran out.` : preview.poolTried > 0 ? `; ${preview.poolTried} tried ${preview.poolTried === 1 ? "one waits" : "ones wait"} behind them.` : ".");
+                        }
+                        return tried > 0 && preview.poolUntried > 0
+                          ? `${firstLabel} puts ${tried} tried ${tried === 1 ? "number" : "numbers"} ahead of ${preview.poolUntried} new ${preview.poolUntried === 1 ? "one" : "ones"}. New numbers first is the default.`
+                          : `${firstLabel}: ${preview.untriedInBatch} untried and ${tried} tried in this batch.`;
+                      })()}
+                    </p>
+                  )}
                   {preview && preview.size === 0 && (
                     <p className="px-3 py-3 text-sm text-gray-600">
                       Nothing waiting at {partner.partner_name} right now: every record is concluded, with Sales, half-typed or already in someone&apos;s hands.
@@ -364,7 +383,7 @@ export default function AssignDialog({ agent = null, agents = [], initialOrgId =
                               <td className="px-3 py-1.5 font-mono text-xs text-gray-700">{r.phone ?? "-"}</td>
                               <td className="px-3 py-1.5 text-xs text-gray-600">{dateOf(r.sales_date)}</td>
                               <td className="px-3 py-1.5 text-right tabular-nums text-gray-700">
-                                {r.attempt_count}{r.recall_due ? " · ring again" : ""}
+                                {Number(r.attempt_count ?? 0) === 0 ? "new" : r.attempt_count}{r.recall_due ? " · ring again" : ""}
                               </td>
                             </tr>
                           ))}

@@ -142,14 +142,12 @@ const TO_CALL_SQL = `
     from data_center.assignment_batches b
     join data_center.assignment_items i on i.batch_id = b.id and i.is_active
     join data_center.v_call_center_resolved r on r.sale_id = i.sale_id
-   -- Phase 28, D45: a batch closes itself when its last record is
-   -- concluded, and the concluded records must still be reachable in the
-   -- agent's Verified, Partly verified, Unreachable and With Sales views. So
-   -- the held set is open work plus work finished in the last week, the
-   -- same allowance my_batches makes. New never holds a completed batch.
+   -- Phase 28, D50: a worked record stays with its agent until a manager
+   -- moves it, whatever its batch's age. So the held set is every active
+   -- item of theirs in an open or a completed batch (a reclaimed batch has
+   -- no active items). New never holds a completed batch.
    where b.assigned_to = $1::uuid
-     and (b.state = 'open'
-          or (b.state = 'completed' and b.completed_at > now() - interval '7 days'))
+     and b.state in ('open', 'completed')
    order by (b.state = 'open') desc, b.assigned_at, i.position`;
 
 /**
@@ -231,24 +229,39 @@ function monthList(endDay: string): string[] {
  * agent's own page reads, so the two agree. $1 agent or null for everyone.
  */
 const BY_PARTNER_SQL = `
-  select l.agent_id::text as agent_id, l.organization_id::text as organization_id, l.partner_name,
-         count(*) filter (where l.standing = 'never_called')::int as new,
-         count(*) filter (where l.standing in ('verified', 'partially_verified'))::int as verified_partial,
-         count(*) filter (where l.standing = 'unreachable')::int as unreachable,
-         count(*) filter (where l.standing = 'with_sales')::int as with_sales,
-         count(*) filter (where l.standing = 'in_progress')::int as others,
-         count(*)::int as held
-    from data_center.v_assignment_log l
-    join data_center.assignment_batches b on b.id = l.batch_id
-   where l.is_active
-     and ($1::uuid is null or l.agent_id = $1::uuid)
-     and (l.batch_state = 'open'
-          or (l.batch_state = 'completed' and b.completed_at > now() - interval '7 days'))
-   group by 1, 2, 3
-   order by 1, held desc, 3`;
+  with held as (
+    select l.agent_id::text as agent_id, l.organization_id, l.partner_name,
+           count(*) filter (where l.standing = 'never_called')::int as new,
+           count(*) filter (where l.standing in ('verified', 'partially_verified'))::int as verified_partial,
+           count(*) filter (where l.standing = 'unreachable')::int as unreachable,
+           count(*) filter (where l.standing = 'with_sales')::int as with_sales,
+           count(*) filter (where l.standing = 'in_progress')::int as others,
+           count(*)::int as held
+      from data_center.v_assignment_log l
+     where l.is_active
+       and ($1::uuid is null or l.agent_id = $1::uuid)
+       and l.batch_state in ('open', 'completed')
+     group by 1, 2, 3
+  ),
+  -- Slice 5: the nudge beside the counts, so a manager sees what the pool
+  -- still holds for that partner before handing out more.
+  pool as (
+    select r.organization_id,
+           count(*) filter (where coalesce(r.attempt_count, 0) = 0)::int as pool_untried,
+           count(*) filter (where coalesce(r.attempt_count, 0) > 0)::int as pool_tried
+      from data_center.v_callable_records r
+     group by 1
+  )
+  select h.agent_id, h.organization_id::text as organization_id, h.partner_name,
+         h.new, h.verified_partial, h.unreachable, h.with_sales, h.others, h.held,
+         coalesce(p.pool_untried, 0) as pool_untried, coalesce(p.pool_tried, 0) as pool_tried
+    from held h
+    left join pool p on p.organization_id = h.organization_id
+   order by 1, h.held desc, 3`;
 type PartnerLine = {
   agent_id: string; organization_id: string; partner_name: string | null;
   new: number; verified_partial: number; unreachable: number; with_sales: number; others: number; held: number;
+  pool_untried: number; pool_tried: number;
 };
 const stripAgentKey = ({ agent_id: _a, ...rest }: PartnerLine) => rest;
 
@@ -458,7 +471,7 @@ export async function handleBoard(ctx: BoardContext): Promise<Response> {
       try {
         return await withReadConnection(async (conn) => {
           const sizing = await conn.queryObject<{
-            size: number; waiting: number; recent_days: number;
+            size: number; waiting: number; pool_untried: number; pool_tried: number; recent_days: number;
             open_batches: number; cap: number; is_enabled: boolean;
           }>({
             text: `select coalesce($3::int,
@@ -468,6 +481,11 @@ export async function handleBoard(ctx: BoardContext): Promise<Response> {
                               where key = 'assignment.batch_size'), 20) as size,
                           (select count(*)::int from data_center.v_callable_records r
                             where r.organization_id = $2::uuid) as waiting,
+                          -- Slice 5: what the pool holds for the nudge under the preview.
+                          (select count(*)::int from data_center.v_callable_records r
+                            where r.organization_id = $2::uuid and coalesce(r.attempt_count, 0) = 0) as pool_untried,
+                          (select count(*)::int from data_center.v_callable_records r
+                            where r.organization_id = $2::uuid and coalesce(r.attempt_count, 0) > 0) as pool_tried,
                           coalesce((select (value #>> '{}')::int from data_center.workflow_config
                                      where key = 'pool.recent_days'), 7) as recent_days,
                           (select count(*)::int from data_center.assignment_batches b
@@ -499,6 +517,9 @@ export async function handleBoard(ctx: BoardContext): Promise<Response> {
                 requested: s.size,
                 waiting: s.waiting,
                 waitingAfter: Math.max(0, s.waiting - picked.rows.length),
+                poolUntried: s.pool_untried,
+                poolTried: s.pool_tried,
+                untriedInBatch: picked.rows.filter((r) => Number(r.attempt_count ?? 0) === 0).length,
                 recentCount: picked.rows.filter((r) => r.is_recent === true).length,
                 recentDays: s.recent_days,
                 agent: {

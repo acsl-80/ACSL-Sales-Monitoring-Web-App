@@ -435,7 +435,9 @@ unreachable, everything else to Others) plus send-backs the agent opened to
 With Sales; All is the sum. New counts what is left to call. Callbacks with
 a time stay pinned above whatever view is open. Concluded items stay in
 the batch (capacity and closure rules unchanged); they leave New. Built in
-slice 3.
+slice 3. Amended by D49 (nothing is pinned above New; the concluded views
+fold into one area) and D50 (a worked record stays with its agent without
+a seven-day window).
 
 ## D46. Partner standing is read live from one view (2026-09-10)
 
@@ -471,3 +473,50 @@ outcome-less earlier attempts of multi-call rows are left as they are:
 that is how the import was built. Prior values go in a backup table; the
 dry-run SQL is committed and its output on the sandbox and on production
 is pasted before the merge word. Built in slice 1b.
+
+## D49. New first, callbacks after, concluded in the background (2026-09-11)
+
+His words: "what is priority is the new calls, then call backs. declutter
+their dashboard and place verified and partially verified calls in the
+background, same with unreachable, they will only need to revisit
+unreachable and in some cases the partially verified calls". The agent's
+page is one list: New in calling order, then a callbacks section (the ones
+whose agreed time has arrived first, then the other numbers to try again),
+then a folded Concluded area holding verified, partly verified, unreachable
+and with Sales, each record openable for a revisit. Nothing is pinned above
+New; his answer on timed callbacks was "after New, at the top of the
+callbacks section", with the callbacks figure keeping count. Amends D45.
+Built in slice 5.
+
+## D50. A worked record stays with its agent until a manager moves it (2026-09-11)
+
+His words: "the manager does not need to reassign call backs or
+unreachables, it stays with the agents it has been assigned to, he can
+reassign to a new agent, but the default is it stays with who has been
+assigned that call until it is reassigned". A quiet batch (no activity past
+`assignment.stale_after_days`, or a paused agent) releases only its
+never-called records to the pool; the records the agent has already called,
+concluded or sent back stay with them, so a batch of worked records stays
+open with its agent. The engine's run and the Reclaim lever both go through
+`reclaim_stale_batches`, so both follow the rule. The manager moves records
+through Move to, which now says what it carries. The agent's held set is
+every active item of theirs, open or completed, with no seven-day window;
+capacity and closure rules are unchanged. Amends D45's retention. Built in
+slice 5.
+
+## D51. Hand-outs draw New first, then the oldest sale (2026-09-11)
+
+His words: "this should also reflect in the managers handoffs. the plan get
+through all numbers, then call backs", then "for handouts, we can work
+around never called and oldest sale", then "never called and oldest sale
+first before any other order, you can still allow manager manually decide".
+A new picker token `never_called` (untried numbers first) heads the
+configured default order, which becomes never_called, oldest_sale; ring-again
+and newest digitised stay as tokens a manager may choose in the dialog or in
+Settings. One picker serves the engine and the manual door, so both change
+together. Nudges, never blockers, say what an action does before it lands:
+the hand-out preview says how many untried numbers the batch draws and what
+another order would put ahead; Reclaim says what goes back and what stays;
+Move to says what it carries; the board's row expansion says what the pool
+still holds for each partner. Every number comes from the reads the surface
+already makes. Built in slice 5.

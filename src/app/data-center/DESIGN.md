@@ -187,6 +187,13 @@ call form; both inherit the system above and add one grammar each.
   is a copy field: the value in mono, a Copy button in the navigate gradient
   that turns to the verified gradient and reads Copied, and a status line that
   names the call app from `call_centre.dialler_name`. No `tel:` link anywhere.
+- **New first, then callbacks, the rest in the background (D49, D50).** The
+  agent's page is one list in that order; the Concluded area is a folded
+  card at the bottom with its four views inside, and a deep link with `view`
+  opens it on that view. A worked record stays on the agent's page until a
+  manager moves it. Manager actions carry a nudge, one plain line under the
+  preview or in the confirm, saying what the action draws from or leaves
+  behind; the line reads the same numbers as the table beside it.
 - **A day lives in the URL.** `day` and `range` on the board and the agent's
   page; today is the default and stays out of the URL. Every list pages by
   keyset cursor with the same footer: what is shown of how many, the sort in

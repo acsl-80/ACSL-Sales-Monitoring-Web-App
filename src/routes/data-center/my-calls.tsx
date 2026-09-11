@@ -13,7 +13,8 @@ const Page = lazy(() => import("@/app/data-center/pages/MyCallsPage"));
 type MyCallsSearch = { day?: string; range?: string; view?: string; done?: boolean };
 const DAY = /^\d{4}-\d{2}-\d{2}$/;
 const SPAN = /^\d{4}-\d{2}-\d{2}\.\.\d{4}-\d{2}-\d{2}$/;
-const VIEWS = ["verified", "partially_verified", "unreachable", "with_sales", "others", "all"];
+// Slice 5, D49: the concluded views; New and the callbacks are always on the page.
+const VIEWS = ["verified", "partially_verified", "unreachable", "with_sales"];
 
 export const Route = createFileRoute("/data-center/my-calls")({
   validateSearch: (search: Record<string, unknown>): MyCallsSearch => ({

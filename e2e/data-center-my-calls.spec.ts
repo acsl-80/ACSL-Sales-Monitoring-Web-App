@@ -13,13 +13,13 @@ import { signIn, USERS, branchSql, callEdgeFunction } from "./helpers";
  *
  * Phase 28, D45: My calls on New.
  *
- *  - New is open on first load and stays out of the URL; another view rides
- *    in `view`
+ *  - New leads the page; the Concluded area is folded and a concluded view
+ *    rides in `view` (D49)
  *  - a record saved as partly verified leaves New and appears under Partly
- *    verified
+ *    verified inside the Concluded area
  *  - the counts strip equals an SQL oracle over `v_call_attempts_resolved`
  *    by outcome for the day, plus send-backs the agent opened; All is the sum
- *  - at 375 the folded views sit under More
+ *  - a deep link with `view` opens the Concluded area on that view
  */
 test.describe.configure({ timeout: 240_000 });
 
@@ -106,7 +106,8 @@ test("an agent lands on My calls, sees the next record, and copies the number fo
   // records and the page lists those; the concluded ones sit in other views.
   const fresh = day.to_call.filter((it) => it.standing === "never_called");
   await expect(agent.locator('[data-my-figure="to call"]')).toContainText(String(fresh.length));
-  await expect(agent.locator('[data-my-view="new"]')).toHaveAttribute("aria-pressed", "true");
+  await expect(agent.locator('[data-my-section="new"]')).toBeVisible();
+  await expect(agent.locator('[data-my-concluded="closed"]')).toBeVisible();
   await expect(agent).not.toHaveURL(/view=/);
   for (const it of fresh) {
     await expect(agent.getByText(it.stove_serial_no, { exact: true }).first()).toBeVisible();
@@ -217,14 +218,17 @@ test("a record saved as partly verified leaves New, lands under Partly verified,
   await expect(dialog.getByText("Call saved.", { exact: true })).toBeVisible({ timeout: 15_000 });
   await agent.keyboard.press("Escape");
 
-  // Gone from New, present under Partly verified, and the URL says so.
+  // Gone from New and from the callbacks, folded away under Concluded, and
+  // the URL names the view once the area is open on it (D49).
   await agent.goto("/data-center/my-calls");
-  await expect(agent.locator("[data-my-views]")).toBeVisible({ timeout: 30_000 });
+  await expect(agent.locator("[data-my-concluded]")).toBeVisible({ timeout: 30_000 });
   await expect(agent.locator(`[data-my-next="${saleId}"], [data-my-row="${saleId}"]`)).toHaveCount(0);
-  await agent.locator('[data-my-view="partially_verified"]').first().click();
+  await agent.locator("[data-my-concluded-toggle]").click();
+  await agent.locator('[data-my-view="partially_verified"]').click();
   await expect(agent).toHaveURL(/view=partially_verified/);
   await expect(agent.locator(`[data-my-row="${saleId}"]`)).toBeVisible({ timeout: 15_000 });
-  await agent.locator('[data-my-view="new"]').first().click();
+  await agent.locator("[data-my-concluded-toggle]").click();
+  await expect(agent.locator('[data-my-concluded="closed"]')).toBeVisible();
   await expect(agent).not.toHaveURL(/view=/);
 
   // The strip equals SQL for today, and All is the sum.
@@ -268,25 +272,21 @@ test("a batch that closes itself keeps its concluded records in the agent's view
   await expect(agent.locator(`[data-my-row="${mates[0].sale_id}"]`)).toBeVisible({ timeout: 30_000 });
 });
 
-test("at 375 the folded views sit under More", async ({ browser }) => {
-  const context = await browser.newContext({ viewport: { width: 375, height: 812 }, isMobile: true, hasTouch: true });
-  const page = await context.newPage();
-  await signIn(page, USERS.callCentre);
-  await page.goto("/data-center/my-calls");
-  await expect(page.locator("[data-my-views]")).toBeVisible({ timeout: 30_000 });
-  for (const k of ["new", "verified", "partially_verified", "unreachable", "with_sales"]) {
-    await expect(page.locator(`[data-my-view="${k}"]`).first()).toBeVisible();
-  }
-  await expect(page.locator('[data-my-view="others"]')).toBeHidden();
-  await expect(page.locator('[data-my-view="all"]')).toBeHidden();
-  await page.locator("[data-my-more]").click();
-  const menu = page.locator("[data-my-more-menu]");
-  await expect(menu.locator('[data-my-view="others"]')).toBeVisible();
-  await expect(menu.locator('[data-my-view="all"]')).toBeVisible();
-  await menu.locator('[data-my-view="all"]').click();
-  await expect(page).toHaveURL(/view=all/);
-  await expect(page.locator("[data-my-more]")).toHaveText(/All/);
-  await context.close();
+test("the Concluded area is folded by default and a deep link opens it on its view", async ({ browser }) => {
+  const agent = await pageFor(browser, USERS.callCentre);
+  await agent.goto("/data-center/my-calls");
+  await expect(agent.locator('[data-my-concluded="closed"]')).toBeVisible({ timeout: 30_000 });
+  await expect(agent.locator('[data-my-section="callbacks"]')).toBeVisible();
+  await agent.goto("/data-center/my-calls?view=unreachable");
+  await expect(agent.locator('[data-my-concluded="open"]')).toBeVisible({ timeout: 30_000 });
+  await expect(agent.locator('[data-my-view="unreachable"]')).toHaveAttribute("aria-pressed", "true");
+  // The page order: New (or the empty New card), then callbacks, then Concluded.
+  const order = await agent.evaluate(() => {
+    const els = [...document.querySelectorAll("[data-my-section], [data-my-empty], [data-my-concluded]")];
+    return els.map((e) => e.getAttribute("data-my-section") ?? (e.hasAttribute("data-my-empty") ? "new" : "concluded"));
+  });
+  expect(order.indexOf("new")).toBeLessThan(order.indexOf("callbacks"));
+  expect(order.indexOf("callbacks")).toBeLessThan(order.indexOf("concluded"));
 });
 
 test("nothing crosses the viewport at 375 pixels on My calls", async ({ browser }) => {
