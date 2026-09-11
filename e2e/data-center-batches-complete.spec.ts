@@ -91,7 +91,9 @@ async function conclude(page: Page, name: string, outcomeLabel: string) {
     timeout: 15_000,
   });
   await page.getByRole("button", { name: outcomeLabel, exact: true }).click();
-  await page.getByRole("button", { name: "Save", exact: true }).click();
+  // Phase 28, D44: a verdict by hand and no call made is the record alone.
+  await page.locator('[data-save-call="footer"]').click();
+  await page.locator("[data-outcome-prompt]").getByRole("button", { name: "No call was made, just save" }).click();
   await expect(page.getByText("Saved.", { exact: true })).toBeVisible({ timeout: 15_000 });
   await page.keyboard.press("Escape");
 }

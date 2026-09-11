@@ -1007,20 +1007,6 @@ export const dataCenterWrite = {
       { saleId, values, version, ...(attempt ? { attempt } : {}) },
     ),
 
-  /** The attempt number is assigned server-side, never sent. */
-  logAttempt: (
-    saleId: string,
-    attempt: {
-      attemptedAt?: string;
-      outcomeId?: string | null;
-      agentId?: string | null;
-      answeredById?: string | null;
-      note?: string | null;
-      /** ISO time the buyer asked to be rung again; only with a callback outcome. */
-      callbackAt?: string | null;
-    },
-  ) => call<{ attemptNo: number }>("data-center-write", "log_attempt", { saleId, ...attempt }),
-
   /** Send back to Sales, or mark the correction done. */
   correction: (saleId: string, open: boolean, reasonId?: string | null, note?: string | null) =>
     call<{ saleId: string; correctionOpen: boolean }>("data-center-write", "correction", {
