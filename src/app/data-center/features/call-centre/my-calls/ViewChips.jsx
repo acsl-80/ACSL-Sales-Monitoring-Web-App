@@ -24,7 +24,10 @@ export default function ViewChips({ items, view, onView }) {
   const folded = new Set(["others", "all"]);
   const foldedActive = MY_VIEWS.find((v) => folded.has(v.key) && v.key === view.key) ?? null;
 
-  const chip = (v, extra = "") => {
+  // `display` replaces inline-flex rather than adding to it: two display
+  // utilities on one element let the later one in the stylesheet win, and
+  // "hidden" lost to "inline-flex" on the first build.
+  const chip = (v, display = "inline-flex", extra = "") => {
     const selected = v.key === view.key;
     const n = itemsIn(v, items).length;
     return (
@@ -34,7 +37,7 @@ export default function ViewChips({ items, view, onView }) {
         aria-pressed={selected}
         onClick={() => { onView(v.key); setMore(false); }}
         data-my-view={v.key}
-        className={`inline-flex shrink-0 items-center gap-2 whitespace-nowrap rounded-lg border px-3.5 py-2 text-sm font-semibold transition ${
+        className={`${display} shrink-0 items-center gap-2 whitespace-nowrap rounded-lg border px-3.5 py-2 text-sm font-semibold transition ${
           selected
             ? "border-(--dc-accent) bg-(--dc-accent) text-white shadow-sm"
             : "border-gray-300 bg-white text-gray-800 hover:border-(--dc-accent) hover:bg-(--dc-accent-soft)/50"
@@ -74,7 +77,7 @@ export default function ViewChips({ items, view, onView }) {
           </button>
           {more && (
             <div role="menu" className="absolute left-0 z-20 mt-1 flex min-w-[10rem] flex-col gap-1 rounded-lg border border-gray-200 bg-white p-1.5 shadow-lg" data-my-more-menu>
-              {MY_VIEWS.filter((v) => folded.has(v.key)).map((v) => chip(v, "w-full justify-between"))}
+              {MY_VIEWS.filter((v) => folded.has(v.key)).map((v) => chip(v, "inline-flex", "w-full justify-between"))}
             </div>
           )}
         </div>
