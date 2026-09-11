@@ -27,13 +27,14 @@ export default function ViewChips({ items, view, onView }) {
   // `display` replaces inline-flex rather than adding to it: two display
   // utilities on one element let the later one in the stylesheet win, and
   // "hidden" lost to "inline-flex" on the first build.
-  const chip = (v, display = "inline-flex", extra = "") => {
+  const chip = (v, display = "inline-flex", extra = "", role) => {
     const selected = v.key === view.key;
     const n = itemsIn(v, items).length;
     return (
       <button
         key={v.key}
         type="button"
+        role={role}
         aria-pressed={selected}
         onClick={() => { onView(v.key); setMore(false); }}
         data-my-view={v.key}
@@ -77,7 +78,7 @@ export default function ViewChips({ items, view, onView }) {
           </button>
           {more && (
             <div role="menu" className="absolute left-0 z-20 mt-1 flex min-w-[10rem] flex-col gap-1 rounded-lg border border-gray-200 bg-white p-1.5 shadow-lg" data-my-more-menu>
-              {MY_VIEWS.filter((v) => folded.has(v.key)).map((v) => chip(v, "inline-flex", "w-full justify-between"))}
+              {MY_VIEWS.filter((v) => folded.has(v.key)).map((v) => chip(v, "inline-flex", "w-full justify-between", "menuitem"))}
             </div>
           )}
         </div>

@@ -142,8 +142,15 @@ const TO_CALL_SQL = `
     from data_center.assignment_batches b
     join data_center.assignment_items i on i.batch_id = b.id and i.is_active
     join data_center.v_call_center_resolved r on r.sale_id = i.sale_id
-   where b.assigned_to = $1::uuid and b.state = 'open'
-   order by b.assigned_at, i.position`;
+   -- Phase 28, D45: a batch closes itself when its last record is
+   -- concluded, and the concluded records must still be reachable in the
+   -- agent's Verified, Partly verified, Unreachable and With Sales views. So
+   -- the held set is open work plus work finished in the last week, the
+   -- same allowance my_batches makes. New never holds a completed batch.
+   where b.assigned_to = $1::uuid
+     and (b.state = 'open'
+          or (b.state = 'completed' and b.completed_at > now() - interval '7 days'))
+   order by (b.state = 'open') desc, b.assigned_at, i.position`;
 
 /**
  * Phase 28, D45: what the agent did in a window, by the view it lands in. A

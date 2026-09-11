@@ -93,7 +93,13 @@ test("presence follows the last save, and the levers live on the shift board", a
 test("the partner card offers a hand-out with the partner chosen and an agent to pick", async ({ page }) => {
   await signIn(page, USERS.admin);
   const [item] = await branchSql<{ sale_id: string }>(
-    `select i.sale_id::text from data_center.assignment_items i join data_center.assignment_batches b on b.id = i.batch_id where i.is_active and b.state = 'open' limit 1`,
+    // Phase 28: a concluded record stays in its batch but is no longer
+    // callable, so pick one that would return to the pool when let go.
+    `select i.sale_id::text from data_center.assignment_items i
+       join data_center.assignment_batches b on b.id = i.batch_id
+       join data_center.v_call_center_resolved r on r.sale_id = i.sale_id
+      where i.is_active and b.state = 'open' and r.standing in ('never_called', 'in_progress')
+      order by case when r.standing = 'never_called' then 0 else 1 end limit 1`,
   );
   expect(item, "a record to put back in the pool").toBeTruthy();
   await callEdgeFunction(page, "data-center-assign", { action: "unassign_item", saleId: item.sale_id });

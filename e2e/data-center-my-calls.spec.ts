@@ -58,7 +58,7 @@ async function replenish(admin: Page) {
 async function ensureWork(admin: Page, agent: Page) {
   const r = await callEdgeFunction(agent, "data-center-assign", { action: "agent_day" });
   expect(r.status, JSON.stringify(r.body)).toBe(200);
-  let day = (r.body as { data: { agent: { agent_id: string }; to_call: { sale_id: string; stove_serial_no: string; phone: string | null; standing: string }[] } }).data;
+  let day = (r.body as { data: { agent: { agent_id: string }; to_call: { sale_id: string; stove_serial_no: string; phone: string | null; standing: string; batch_id: string }[] } }).data;
   if (day.to_call.length < 2) {
     let { agents, pool } = await agentsAndPool(admin);
     let partner = pool.find((p) => p.callable >= 2) ?? pool.find((p) => p.callable >= 1);
@@ -237,6 +237,36 @@ test("a record saved as partly verified leaves New, lands under Partly verified,
   }
   const all = want.verified + want.partially_verified + want.unreachable + want.with_sales + want.others;
   await expect(cell("all")).toHaveText(String(all));
+});
+
+test("a batch that closes itself keeps its concluded records in the agent's views for a week", async ({ browser }) => {
+  const admin = await pageFor(browser, USERS.admin);
+  const agent = await pageFor(browser, USERS.callCentre);
+  const day = await ensureWork(admin, agent);
+  // Conclude every record in one open batch by SQL, which trips the batch's
+  // own closure, then read the agent's day: the batch is completed and its
+  // records are still held, under their standing.
+  const batchId = day.to_call[0].batch_id;
+  const mates = day.to_call.filter((it) => it.batch_id === batchId);
+  const [vRow] = await branchSql<{ id: string }>(`select id from data_center.option_values where list_key = 'call_outcome' and value = 'verified'`);
+  for (const it of mates) {
+    await branchSql(`insert into data_center.call_records (sale_id, verification_outcome, created_by, updated_by)
+      values ('${it.sale_id}', 'fully_verified', '${day.agent.agent_id}', '${day.agent.agent_id}')
+      on conflict (sale_id) do update set verification_outcome = 'fully_verified', updated_by = excluded.updated_by, updated_at = now()`);
+    await branchSql(`insert into data_center.call_attempts (sale_id, attempt_no, attempted_at, outcome_id, created_by, source)
+      values ('${it.sale_id}', (select coalesce(max(attempt_no), 0) + 1 from data_center.call_attempts where sale_id = '${it.sale_id}'), now(), '${vRow.id}', '${day.agent.agent_id}', 'form')`);
+  }
+  // The attempt trigger closes the batch itself (touch_batch_on_attempt).
+  const [b] = await branchSql<{ state: string }>(`select state from data_center.assignment_batches where id = '${batchId}'`);
+  const r = await callEdgeFunction(agent, "data-center-assign", { action: "agent_day" });
+  const after = (r.body as { data: { to_call: { sale_id: string; standing: string; batch_id: string }[] } }).data.to_call;
+  for (const it of mates) {
+    const held = after.find((x) => x.sale_id === it.sale_id);
+    expect(held, `${it.sale_id} still held after the batch ${b?.state}`).toBeTruthy();
+    expect(held!.standing).toBe("verified");
+  }
+  await agent.goto("/data-center/my-calls?view=verified");
+  await expect(agent.locator(`[data-my-row="${mates[0].sale_id}"]`)).toBeVisible({ timeout: 30_000 });
 });
 
 test("at 375 the folded views sit under More", async ({ browser }) => {
