@@ -12,7 +12,7 @@ export default function SaveCallButton({ where, saving, disabled, onClick, compa
       data-save-call={where}
       disabled={disabled}
       onClick={onClick}
-      className={`inline-flex items-center gap-1.5 rounded-lg bg-(image:--dc-fig-sold) font-semibold text-white shadow-sm transition hover:brightness-110 disabled:opacity-50 ${
+      className={`inline-flex shrink-0 items-center gap-1.5 whitespace-nowrap rounded-lg bg-(image:--dc-fig-sold) font-semibold text-white shadow-sm transition hover:brightness-110 disabled:opacity-50 ${
         compact ? "px-3 py-1.5 text-sm" : "px-4 py-1.5 text-sm"
       }`}
     >
