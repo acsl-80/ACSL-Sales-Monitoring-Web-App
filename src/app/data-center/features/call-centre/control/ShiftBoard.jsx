@@ -252,7 +252,8 @@ export default function ShiftBoard({ board, agentsMeta, canManage, reload, dayLa
               <th className="w-10 px-3 py-2" />
               {sortHead("name", "Agent", "left")}
               <th className="px-3 py-2 font-semibold">State</th>
-              <th className="px-3 py-2 font-semibold">{trackHeading(board.range, board.day)}</th>
+              {/* A month or a year needs room for its cells to carry their counts. */}
+              <th className={`px-3 py-2 font-semibold ${board.range === "day" ? "" : "min-w-[24rem]"}`}>{trackHeading(board.range, board.day)}</th>
               {sortHead("called", "Called")}
               {sortHead("verified", "Verified")}
               {sortHead("to_call", "To call")}

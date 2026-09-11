@@ -52,7 +52,12 @@ export default function Figures({ board, metrics, waiting, canManage, onRecomput
   const agents = board?.agents ?? [];
   const openBatches = agents.reduce((n, a) => n + (a.open_batches ?? 0), 0);
   const holding = agents.filter((a) => a.open_batches > 0).length;
-  const dayWord = board?.range === "week" ? "this week" : board?.day === board?.today ? "today" : "that day";
+  const dayWord = !board ? "today"
+    : board.range === "week" ? "this week"
+    : board.range === "month" ? `in ${new Date(`${board.day}T00:00:00Z`).toLocaleDateString("en-GB", { month: "long", year: "numeric", timeZone: "UTC" })}`
+    : board.range === "year" ? `in ${board.day.slice(0, 4)}`
+    : board.range === "span" ? "in those days"
+    : board.day === board.today ? "today" : "that day";
 
   const recompute = async () => {
     setBusy(true);
