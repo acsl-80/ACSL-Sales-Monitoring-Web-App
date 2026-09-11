@@ -45,8 +45,21 @@ async function ensureWaiting(admin: Page) {
       join data_center.v_call_center_resolved r on r.sale_id = i.sale_id
      where i.is_active and b.state = 'open' and r.standing in ('never_called', 'in_progress')
      order by case when r.standing = 'never_called' then 0 else 1 end limit 1`);
-  expect(item, "a callable record to let go").toBeTruthy();
-  await callEdgeFunction(admin, "data-center-assign", { action: "unassign_item", saleId: item.sale_id });
+  if (item) {
+    await callEdgeFunction(admin, "data-center-assign", { action: "unassign_item", saleId: item.sale_id });
+    return;
+  }
+  // Nothing held and nothing callable: the specs concluded everything. Undo
+  // what they did (their calls, drafts and verdicts, bounded to three days)
+  // and let go of the items in the batches that closed.
+  await branchSql(`delete from data_center.call_drafts`);
+  await branchSql(`delete from data_center.call_attempts where attempted_at > now() - interval '3 days'`);
+  await branchSql(`update data_center.call_records set verification_outcome = 'not_verified' where updated_at > now() - interval '3 days'`);
+  await branchSql(`update data_center.assignment_items i set is_active = false from data_center.assignment_batches b
+    where b.id = i.batch_id and b.state = 'completed' and i.is_active`);
+  const again = await callEdgeFunction(admin, "data-center-assign", { action: "agents" });
+  const after = (again.body as { data: { pool: { callable: number }[] } }).data.pool;
+  expect(after.some((p) => p.callable > 0), "a partner with work after the reset").toBeTruthy();
 }
 
 /** The seeded call-centre editor holds at least one record, arranged if not. */
@@ -188,7 +201,8 @@ test("the board takes a span, a month and a year, and the cells add up", async (
   // The URL carries each form and the board draws the cells.
   await admin.goto(`/data-center/call-centre?range=${year}`);
   await expect(admin.locator('[data-period-cells="12"][data-grain="month"]').first()).toBeVisible({ timeout: 30_000 });
-  await expect(admin).toHaveURL(new RegExp(`range=${year}(&|$)`));
+  // The router quotes a bare year so it does not read back as a number; both forms are the year.
+  await expect(admin).toHaveURL(new RegExp(`range=(%22)?${year}(%22)?(&|$)`));
   const month = today.slice(0, 7);
   const daysInMonth = new Date(Date.UTC(Number(year), Number(month.slice(5)), 0)).getUTCDate();
   await admin.goto(`/data-center/call-centre?range=${month}`);

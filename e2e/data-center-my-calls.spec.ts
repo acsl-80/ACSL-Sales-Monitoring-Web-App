@@ -51,6 +51,10 @@ async function replenish(admin: Page) {
   await branchSql(`delete from data_center.call_drafts`);
   await branchSql(`delete from data_center.call_attempts where note like '%spec%' or attempted_at > now() - interval '3 days'`);
   await branchSql(`update data_center.call_records set verification_outcome = 'not_verified' where updated_at > now() - interval '3 days'`);
+  // A record the specs concluded closed its batch; letting go of the items
+  // in closed batches is what puts those records back in the pool.
+  await branchSql(`update data_center.assignment_items i set is_active = false from data_center.assignment_batches b
+    where b.id = i.batch_id and b.state = 'completed' and i.is_active`);
   await callEdgeFunction(admin, "data-center-assign", { action: "run" });
 }
 

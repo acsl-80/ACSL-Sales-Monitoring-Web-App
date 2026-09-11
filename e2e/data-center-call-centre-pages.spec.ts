@@ -98,7 +98,8 @@ test("the agent's page shows their day, their work and their calls, and hands ou
 
   // To call carries the record (inside its batch, folded until opened);
   // Called carries the call just logged.
-  const folded = page.locator('[data-agent-page] button[aria-expanded="false"]');
+  // The batch folds, not the date control's Range disclosure (slice 4).
+  const folded = page.locator('[data-agent-page] button[aria-expanded="false"]:not([data-range-chip])');
   await expect(folded.first()).toBeVisible({ timeout: 30_000 });
   for (let n = await folded.count(); n > 0; n--) await folded.first().click();
   await expect(page.getByText(item.stove_serial_no).first()).toBeVisible({ timeout: 30_000 });
