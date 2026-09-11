@@ -35,13 +35,13 @@ export default function PeriodCells({ cells, grain = "day", today, tall = false 
   const wide = n <= 7;
   const max = Math.max(0, ...cells.map((c) => c.called));
   const ahead = (date) => today && (grain === "month" ? date > today.slice(0, 7) : date > today);
+  // data-week: the week keeps the hook the pages spec has pointed at since C3.
   return (
     <div
       className="grid gap-0.5"
       style={{ gridTemplateColumns: `repeat(${Math.max(1, n)}, minmax(0, 1fr))` }}
       data-period-cells={n}
       data-grain={grain}
-      // The week keeps the hook the pages spec has pointed at since C3.
       data-week={n === 7 && grain === "day" ? "" : undefined}
     >
       {cells.map((c) => {
