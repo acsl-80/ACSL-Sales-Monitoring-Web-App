@@ -69,7 +69,10 @@ function Inner() {
           </div>
           <Figures board={cc.board} metrics={cc.metrics} waiting={cc.waiting} canManage onRecomputed={cc.reload} />
           <ShiftBoard board={cc.board} agentsMeta={agentsMeta} canManage reload={() => { cc.reload(); }} dayLabel={dayLabel} />
-          <div className="grid gap-4 xl:grid-cols-[minmax(0,3fr)_minmax(0,2fr)]">
+          {/* minmax(0, 1fr) below xl too: a grid column defaults to the widest
+              item's min-content, so a partner table that scrolls inside its
+              card would otherwise push both cards past a phone's edge. */}
+          <div className="grid grid-cols-[minmax(0,1fr)] gap-4 xl:grid-cols-[minmax(0,3fr)_minmax(0,2fr)]">
             <WaitingByPartner partners={cc.partners} agentsMeta={agentsMeta} canManage reload={cc.reload} />
             <NeedsDecision board={cc.board} agentsMeta={agentsMeta} metrics={cc.metrics} waiting={cc.waiting} canManage reload={cc.reload} />
           </div>
