@@ -520,3 +520,15 @@ another order would put ahead; Reclaim says what goes back and what stays;
 Move to says what it carries; the board's row expansion says what the pool
 still holds for each partner. Every number comes from the reads the surface
 already makes. Built in slice 5.
+
+## D52. A reopened verdict reopens its batch (2026-09-11)
+
+A batch closes itself when its last active record is concluded. When one of
+those records is edited back to not verified (a manager on the records page,
+an agent revisiting), the record stays with its agent (D50) and its batch
+comes back to open, so the board and the capacity rule count it as work in
+hand and the closure rule can close it again. The touch trigger that already
+runs on every call record change carries the rule, so a verdict-only save
+and a save with a call both do it. Nothing goes back to the pool. Seen first
+on the sandbox when the specs reset verdicts; production had no such batch
+on the day, so the backfill was a no-op there. Built in slice 6.
