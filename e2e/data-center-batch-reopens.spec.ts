@@ -71,7 +71,8 @@ test("a record edited back to not verified reopens its closed batch and stays wi
   const reopened = rows[0].sale_id;
   const rec = await callEdgeFunction(agent, "data-center-write", { action: "call_record", saleId: reopened });
   expect(rec.status, JSON.stringify(rec.body)).toBe(200);
-  const version = (rec.body as { data: { record: { version: number } } }).data.record.version;
+  // The lock version travels with the save, so a stale save would be refused.
+  const version = (rec.body as { data: { record: { call_record_version: number } } }).data.record.call_record_version;
   const saved = await callEdgeFunction(agent, "data-center-write", {
     action: "save_call_record", saleId: reopened, version, values: { verification_outcome: "not_verified" },
   });
@@ -93,7 +94,7 @@ test("a record edited back to not verified reopens its closed batch and stays wi
 
   // Concluded again, by a verdict-only save, and the batch closes again.
   const rec2 = await callEdgeFunction(agent, "data-center-write", { action: "call_record", saleId: reopened });
-  const version2 = (rec2.body as { data: { record: { version: number } } }).data.record.version;
+  const version2 = (rec2.body as { data: { record: { call_record_version: number } } }).data.record.call_record_version;
   const saved2 = await callEdgeFunction(agent, "data-center-write", {
     action: "save_call_record", saleId: reopened, version: version2, values: { verification_outcome: "partially_verified" },
   });
