@@ -106,40 +106,38 @@ declare
       where key = 'assignment.stale_after_days'), 3);
   reclaimed int;
 begin
-  create temp table if not exists quiet_batches (id uuid primary key, reason text) on commit drop;
-  delete from quiet_batches;
-  insert into quiet_batches (id, reason)
-  select b.id,
-         case
-           when not coalesce(p.is_enabled, true) then 'agent is not taking work'
-           else 'no activity for ' || stale_days || ' day(s)'
-         end
-    from data_center.assignment_batches b
-    left join data_center.call_agent_profiles p on p.user_id = b.assigned_to
-   where b.state = 'open'
-     and (not coalesce(p.is_enabled, true)
-          or b.last_activity_at < now() - make_interval(days => stale_days));
-
-  -- The untried records go back to the pool.
+  -- The untried records of every quiet batch go back to the pool. The quiet
+  -- test is written out twice rather than kept in a temp table, because a
+  -- temp table's plan goes stale across the pooled connections the engine
+  -- runs on.
   update data_center.assignment_items i
      set is_active = false
-    from quiet_batches q
-    left join data_center.call_records cr on cr.sale_id = i.sale_id
-   where i.batch_id = q.id
+    from data_center.assignment_batches b
+    left join data_center.call_agent_profiles p on p.user_id = b.assigned_to
+   where b.id = i.batch_id
      and i.is_active
-     and coalesce(cr.attempt_count, 0) = 0
-     and coalesce(cr.verification_outcome, 'not_verified') = 'not_verified'
+     and b.state = 'open'
+     and (not coalesce(p.is_enabled, true)
+          or b.last_activity_at < now() - make_interval(days => stale_days))
+     and coalesce((select cr.attempt_count from data_center.call_records cr where cr.sale_id = i.sale_id), 0) = 0
+     and coalesce((select cr.verification_outcome from data_center.call_records cr where cr.sale_id = i.sale_id), 'not_verified') = 'not_verified'
      and not exists (select 1 from data_center.corrections x
                       where x.sale_id = i.sale_id and x.state in ('open', 'fixed'));
 
-  -- A batch with nothing left in it is reclaimed; one with worked records
-  -- stays open with its agent.
+  -- A quiet batch with nothing left in it is reclaimed; one with worked
+  -- records stays open with its agent.
   update data_center.assignment_batches b
      set state = 'reclaimed',
          reclaimed_at = now(),
-         reclaim_reason = q.reason
-    from quiet_batches q
-   where b.id = q.id
+         reclaim_reason = case
+           when not coalesce(p.is_enabled, true) then 'agent is not taking work'
+           else 'no activity for ' || stale_days || ' day(s)'
+         end
+    from (select b2.id from data_center.assignment_batches b2 where b2.state = 'open') o
+    left join data_center.call_agent_profiles p on p.user_id = (select b3.assigned_to from data_center.assignment_batches b3 where b3.id = o.id)
+   where b.id = o.id
+     and (not coalesce(p.is_enabled, true)
+          or b.last_activity_at < now() - make_interval(days => stale_days))
      and not exists (select 1 from data_center.assignment_items i
                       where i.batch_id = b.id and i.is_active);
 
