@@ -176,8 +176,9 @@ test.describe("the bench and a paper receipt", () => {
       await expect(row, "the bench batch should be in the history").toBeVisible({
         timeout: 30_000,
       });
-      // The step row follows the batch row.
-      const step = row.locator("xpath=following-sibling::tr[1]");
+      // Since the import page was redrawn (Phase 27) the step sits in the
+      // batch's own row, beside the state strip.
+      const step = row;
       await expect(
         step.getByText(/still being typed at the bench/),
         "a draft-only bench batch should say it is being typed, not that it is unchecked",

@@ -8,7 +8,7 @@ lives on each PR.
 
 Prevent a typist retyping a stove that is already digitised, from any channel, and learning it only at save. Decision D53.
 
-- [ ] S1 `v_stove_typed` and `bench.refresh_seconds`; the bench list and rail show typed and called on every row with Still to type, Awaiting confirmation, Typed and All; a typed stove opens read only with a door to its record; the save refuses a live sale and another typist's finished receipt; the list re-reads on the interval and on focus; partner records read the same words. spec red on the sandbox 2026-09-14
+- [ ] S1 `v_stove_typed` and `bench.refresh_seconds`; the bench list and rail show typed and called on every row with Still to type, Awaiting confirmation, Typed and All; a typed stove opens read only with a door to its record; the save refuses a live sale and another typist's finished receipt; the list re-reads on the interval and on focus; partner records read the same words. PR #107, 2026-09-14: red on the sandbox 3 of 3, green on the branch 3 of 3; bench neighbours green bar two stale tests that fail on main's own build too (the signature spec's history locator, repaired here; the keeps-up Done chip, under Deferred); review findings folded in (call-sheet rows excluded from the channel, the older specs count awaiting). Merge, migration and Live note on the merge word
 
 ## Phase 28, one standing for every call record (approved 2026-09-10)
 
@@ -77,6 +77,7 @@ decisions D27 to D29.
 
 ## Deferred
 
+- Stale since Phase 27 (seen 2026-09-14 on main's own build): `e2e/data-center-bench-keeps-up.spec.ts` "the done chip climbs without a reload" finishes a receipt that the server now keeps as a draft, so Done never climbs; the fill helper predates the model door and the terms. Spec only; the keeps-up rule itself is covered by the bench's own arithmetic.
 - The board's year view reads every attempt of the year for every agent in one request and buckets by month in the function (PR #103, review note). Fine at today's volume; at the module's 500k target the year and the month should come from per-month aggregates in SQL.
 - Three dashboard definitions still say never called, verified and unreachable their own way: `verification.by_outcome` in compute_metrics, the analysis yield leak's never-called rule, and `pool.never_called`. Phase 28's `record_standing()` is the one definition; moving these three onto it changes dashboard numbers and needs its own conversation (D41).
 - Stale since F3b (seen 2026-09-07 on main's own build): two tests in `e2e/data-center-import.spec.ts` ("the sheet downloads, and the same file uploads back", "the sheet's columns come from settings") expect the previous-stove column to offer the literal `charcoal, wood_stove, other`; since F3b the column reads the registry's `baseline_stove` list. Update the spec to read the list from the registry. Spec only.
