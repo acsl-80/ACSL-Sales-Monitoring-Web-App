@@ -200,10 +200,11 @@ test.describe("a partner's stoves are one list, narrowed on the server", () => {
     expect(r.status).toBe(200);
     const data = (
       r.body as {
-        data: { total: number; totals: { all: number; todo: number; done: number } };
+        data: { total: number; totals: { all: number; todo: number; awaiting: number; done: number } };
       }
     ).data;
-    expect(data.totals.todo + data.totals.done).toBe(data.totals.all);
+    // Phase 29, D53: three chips beside All, so awaiting counts too.
+    expect(data.totals.todo + data.totals.awaiting + data.totals.done).toBe(data.totals.all);
     // And the paging denominator answers the filter that was asked for.
     expect(data.total).toBe(data.totals.todo);
   });

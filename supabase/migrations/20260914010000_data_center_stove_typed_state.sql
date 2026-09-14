@@ -52,12 +52,17 @@ select sb.stove_id,
        and b.state <> 'rolled_back'
      order by r.last_edited_at desc nulls last
      limit 1) r on true
-  -- The import row the live sale came from, when it came from one.
+  -- The import row the live sale came from, when it came from one. A call
+  -- sheet attaches to a sale that already exists (D25), so its rows say
+  -- nothing about who typed the receipt and are left out; the earliest
+  -- remaining row is the one that made the sale.
   left join lateral (
     select b2.source, r2.last_edited_by
       from data_center.import_rows r2
       join data_center.import_batches b2 on b2.id = r2.batch_id
      where s.id is not null and r2.sale_id = s.id
+       and b2.source <> 'call_center'
+     order by r2.id
      limit 1) rs on true
   left join public.profiles pr on pr.id = r.last_edited_by
   left join public.profiles prs on prs.id = rs.last_edited_by

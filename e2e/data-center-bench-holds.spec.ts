@@ -224,6 +224,8 @@ test.describe("the partner sweep counts the partner", () => {
     expect(todo.data.stoves.every((s) => !s.sale_id)).toBe(true);
     expect(done.data.stoves.every((s) => s.sale_id)).toBe(true);
     // And it reconciles, which is what makes the chip's number worth printing.
-    expect(todo.data.total + done.data.total).toBe(all.data.total);
+    // Phase 29, D53: a finished receipt waiting to be confirmed is neither still to type nor typed.
+    const awaiting = await callEdgeFunction(page, "data-center-read", { action: "partner_stoves", organizationId: PARTNER, recorded: "awaiting", limit: 1 });
+    expect(todo.data.total + (awaiting.body as { data: { total: number } }).data.total + done.data.total).toBe(all.data.total);
   });
 });
