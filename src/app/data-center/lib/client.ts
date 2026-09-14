@@ -505,7 +505,7 @@ export const dataCenterClient = {
     search?: string | null;
     cursor?: string | null;
     limit?: number;
-    /** "no" for still to type, "yes" for already recorded, null for both. */
+    /** "no" for still to type (untyped or part typed), "awaiting" for finished receipts, "yes" for typed, null for all. */
     recorded?: string | null;
     /** One consignment reference, narrowing server-side like everything else. */
     transactionId?: string | null;
@@ -519,7 +519,9 @@ export const dataCenterClient = {
        * All three chips from the same scan. Counted whatever `recorded` asks
        * for, so "done" is a real number even while the page shows only todo.
        */
-      totals: { all: number; todo: number; done: number };
+      totals: { all: number; todo: number; awaiting: number; done: number };
+      /** Phase 29: how often the bench re-reads, from bench.refresh_seconds. */
+      refreshSeconds: number;
       nextCursor: string | null;
       scope: string;
     }>("data-center-read", "partner_stoves", params),
@@ -1102,6 +1104,13 @@ export type BatchStove = {
   user_state: string | null;
   verification_outcome: string | null;
   attempt_count: number | null;
+  /** Phase 29, D53: where the receipt stands, from v_stove_typed. */
+  typed_state: "typed" | "finished" | "draft" | "untyped";
+  typed_at: string | null;
+  typed_via: "sales app" | "bench" | "import" | null;
+  typed_by_name: string | null;
+  typed_last_edited_by_name: string | null;
+  typed_last_edited_at: string | null;
   /** Phase 28, D41: where the record stands, or null for an unsold stove. */
   standing: string | null;
   agent_id: string | null;
@@ -1676,6 +1685,20 @@ export const dataCenterImport = {
         transactionId: string | null;
         stockStatus: string | null;
         alreadySold: boolean;
+        /** Phase 29, D53: where the receipt stands, and the sale's buyer and call when it is typed. */
+        typed: {
+          typed_state: "typed" | "finished" | "draft" | "untyped";
+          typed_at: string | null;
+          typed_via: string | null;
+          typed_by_name: string | null;
+          last_edited_by_name: string | null;
+          last_edited_at: string | null;
+          end_user_name: string | null;
+          phone: string | null;
+          sales_date: string | null;
+          standing: string | null;
+          attempt_count: number;
+        } | null;
         /** What the partner may sell on; every active model when nothing is assigned. */
         models: { id: string; name: string; price: string | null }[];
         /** True when the partner has an explicit list, which is what restricts. */

@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { Search, Check, PenLine, Circle, X, ChevronLeft, ChevronRight, Loader2 } from "lucide-react";
+import { Search, Check, PenLine, Circle, Clock, X, ChevronLeft, ChevronRight, Loader2 } from "lucide-react";
 import { plural } from "../../lib/plural";
 
 /**
@@ -48,10 +48,15 @@ const TONE = {
     dot: "text-amber-500",
     label: "part typed",
   },
+  finished: {
+    icon: Clock,
+    dot: "text-(--dc-brief-place)",
+    label: "finished, awaiting confirmation",
+  },
   done: {
     icon: Check,
     dot: "text-(--dc-accent)",
-    label: "recorded",
+    label: "typed",
   },
 };
 
@@ -59,8 +64,10 @@ const TONE = {
 export function stoveState(stove, draftSerials) {
   // `just_recorded` is set locally the moment a save returns, so the rail goes
   // green under the typist's hand rather than on the next refetch.
-  if (stove.sale_id || stove.just_recorded) return "done";
-  if (draftSerials.has(String(stove.stove_id).toUpperCase())) return "draft";
+  // Phase 29, D53: the server's reading first, then the local marks.
+  if (stove.typed_state === "typed" || stove.sale_id || stove.just_recorded) return "done";
+  if (stove.typed_state === "finished") return "finished";
+  if (stove.typed_state === "draft" || draftSerials.has(String(stove.stove_id).toUpperCase())) return "draft";
   return "todo";
 }
 

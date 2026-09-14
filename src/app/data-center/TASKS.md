@@ -4,6 +4,12 @@ Flat, one line per slice, newest programme first. States: todo, spec red,
 green, in review, merged, live. The why lives in `decisions.md`; the evidence
 lives on each PR.
 
+## Phase 29, the bench knows what is typed (his ask 2026-09-14)
+
+Prevent a typist retyping a stove that is already digitised, from any channel, and learning it only at save. Decision D53.
+
+- [ ] S1 `v_stove_typed` and `bench.refresh_seconds`; the bench list and rail show typed and called on every row with Still to type, Awaiting confirmation, Typed and All; a typed stove opens read only with a door to its record; the save refuses a live sale and another typist's finished receipt; the list re-reads on the interval and on focus; partner records read the same words. spec red on the sandbox 2026-09-14
+
 ## Phase 28, one standing for every call record (approved 2026-09-10)
 
 One SQL definition of where a call record stands, the sheet history given back to the agents who made those calls, Save call as the form's one save path, My calls on New, partner standing for the manager. Boards: https://claude.ai/code/artifact/7b75aa9c-1b08-492c-9baa-42355fd45208. Decisions D41 to D48.
@@ -15,7 +21,7 @@ One SQL definition of where a call record stands, the sheet history given back t
 - [x] S3 My calls on New: seven views with counts for the day, the week and the period, callbacks pinned, five chips plus More on a phone (D45). PR #102 merged and live 2026-09-11 (main 36c33de; no migration; data-center-assign v12; API build; crawl found the new My calls strings; my-calls spec 6 of 6, neighbours 28 of 28 then 19 of 19; review finding folded in: concluded records stay reachable for a week after their batch closes)
 - [x] S5 New first, worked records stay with the agent, nudges for the manager (D49 to D51): picker token never_called and the default order never_called, oldest_sale; reclaim releases only untried numbers; the agent's page as New, callbacks, then a folded Concluded area; the hand-out preview, Reclaim, Move to and the board's expansion say what they do. PR #104, 2026-09-11: red on the sandbox 6 of 6, green on the branch (new-first 4 of 4, my-calls 6 of 6), neighbours 28 of 28 and 20 of 20; review findings folded in (Reclaim reports released and kept, the nudge counts only the new numbers pushed behind, Move to fires on a repeat choice, a draft keeps its record). Merged and live 2026-09-11 (main b1ed62f; migration with ledger row; data-center-assign v14; API build; crawl found the new strings)
 - [x] S4 The manager: two numbers per partner row, the six-way strip on the selected partner and the Partners page, the board's per-partner lines in the row expansion, the board's date control with a day, a month, a year and a range. PR #103 merged and live 2026-09-11 (main f753528; no migration; data-center-assign v13, data-center-read v27; API build; crawl found the dialog and the month cells; partner-standing spec 4 of 4, neighbours 38 of 38 then 19 of 19)
-- [ ] S6 A reopened verdict reopens its batch (D52): the touch trigger reopens a completed batch when one of its records is no longer concluded; backfill of any such batch; spec `e2e/data-center-batch-reopens.spec.ts`. spec red on the sandbox 2026-09-11
+- [x] S6 A reopened verdict reopens its batch (D52): the touch trigger reopens a completed batch when one of its records is no longer concluded; backfill of any such batch; spec `e2e/data-center-batch-reopens.spec.ts`. PR #105 merged and live 2026-09-12 (main 9523f05; migration with ledger row, backfill touched nothing; API build)
 
 ## Phase 27, the import page redrawn (proposed and approved 2026-09-07)
 

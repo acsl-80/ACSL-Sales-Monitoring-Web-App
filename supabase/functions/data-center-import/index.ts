@@ -4320,6 +4320,19 @@ serve(async (req) => {
             args: [stoveId],
           });
 
+          // Phase 29, D53: where the receipt stands and, when it is typed, whose
+          // it is and how the call went, so the bench can say it before anyone
+          // types a character.
+          const typed = await conn.queryObject<Record<string, unknown>>({
+            text: `select t.typed_state, t.typed_at, t.typed_via, t.typed_by_name,
+                          t.last_edited_by_name, t.last_edited_at,
+                          c.resolved_end_user_name as end_user_name, c.resolved_phone as phone,
+                          c.sales_date, c.standing, coalesce(c.attempt_count, 0) as attempt_count
+                     from data_center.v_stove_typed t
+                     left join data_center.v_call_center_resolved c on c.sale_id = t.sale_id::uuid
+                    where t.stove_id = $1`,
+            args: [stoveId],
+          });
           return json(
             {
               data: {
@@ -4334,6 +4347,7 @@ serve(async (req) => {
                   orderModel: stove.order_model ?? null,
                   stockStatus: stove.status,
                   alreadySold: Boolean(stove.sale_id),
+                  typed: typed.rows[0] ?? null,
                   models,
                   modelsRestricted,
                 },
@@ -4493,6 +4507,56 @@ serve(async (req) => {
              * finished: adding a row to either would reopen something the
              * sales app has already been told about.
              */
+            /*
+             * Phase 29, D53: nothing is typed twice. A stove with a live sale,
+             * from any channel, is refused before anything is written; so is a
+             * receipt somebody else finished and left for the queue. A draft
+             * somebody else started may be continued: the bench says whose it
+             * is before the typist begins.
+             */
+            const typedNow = await conn.queryObject<{
+              typed_state: string; typed_at: string | null; typed_via: string | null;
+              typed_by_name: string | null; last_edited_by: string | null;
+              last_edited_by_name: string | null; last_edited_at: string | null;
+            }>({
+              text: `select typed_state, typed_at, typed_via, typed_by_name,
+                            last_edited_by, last_edited_by_name, last_edited_at
+                       from data_center.v_stove_typed where stove_id = $1`,
+              args: [stoveId],
+            });
+            const tn = typedNow.rows[0];
+            const dayOf = (iso: string | null) =>
+              iso ? new Date(iso).toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric" }) : "earlier";
+            if (tn?.typed_state === "typed") {
+              await conn.queryObject("rollback");
+              return json(
+                {
+                  error:
+                    `Stove ${stoveId} was typed on ${dayOf(tn.typed_at)}` +
+                    (tn.typed_by_name ? ` by ${tn.typed_by_name}` : "") +
+                    (tn.typed_via ? ` through the ${tn.typed_via}` : "") +
+                    " and is in the sales app. Nothing here was saved; open the stove to see the receipt.",
+                  code: "already_typed",
+                  data: { typed: tn },
+                },
+                409,
+                cors,
+              );
+            }
+            if (tn?.typed_state === "finished" && tn.last_edited_by && tn.last_edited_by !== userId) {
+              await conn.queryObject("rollback");
+              return json(
+                {
+                  error:
+                    `Stove ${stoveId} was finished by ${tn.last_edited_by_name ?? "somebody else"} on ${dayOf(tn.last_edited_at)} ` +
+                    "and is waiting to be confirmed. Nothing here was saved.",
+                  code: "finished_by_other",
+                  data: { typed: tn },
+                },
+                409,
+                cors,
+              );
+            }
             const open = await conn.queryObject<{ id: string }>({
               text: `select id from data_center.import_batches
                       where source = 'workbench' and uploaded_by = $1

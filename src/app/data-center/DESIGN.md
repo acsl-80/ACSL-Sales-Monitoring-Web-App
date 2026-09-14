@@ -194,6 +194,12 @@ call form; both inherit the system above and add one grammar each.
   manager moves it. Manager actions carry a nudge, one plain line under the
   preview or in the confirm, saying what the action draws from or leaves
   behind; the line reads the same numbers as the table beside it.
+- **A stove says where its receipt stands (D53).** Two pills on every bench
+  row and every partner-records row: typed, finished awaiting confirmation,
+  part typed or not typed, from `v_stove_typed`, and the call standing beside
+  it. The words name the person and the channel ("Typed 3 Sep by Happy,
+  bench"). A typed stove opens read only with a door to its record; nothing on
+  the bench asks anyone to type what exists.
 - **A day lives in the URL.** `day` and `range` on the board and the agent's
   page; today is the default and stays out of the URL. Every list pages by
   keyset cursor with the same footer: what is shown of how many, the sort in

@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
+import { TypedPill } from "../../components/StovePills";
 import Link from "@/compat/Link";
 import { dataCenterClient, DataCenterError } from "../../lib/client";
 import { usePaged } from "../../lib/usePaged";
@@ -387,7 +388,7 @@ function BatchLevel({ batch, onStove }) {
                   </td>
                   <td className="px-3 py-2 text-gray-700">{x.stock_status ?? "-"}</td>
                   <td className="px-3 py-2 text-gray-700">
-                    {x.end_user_name ?? (x.sale_id ? "-" : "not sold")}
+                    {x.end_user_name ?? <TypedPill s={x} />}
                   </td>
                   <td className="px-3 py-2">
                     {x.agent_name ? (

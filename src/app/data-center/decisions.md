@@ -532,3 +532,20 @@ runs on every call record change carries the rule, so a verdict-only save
 and a save with a call both do it. Nothing goes back to the pool. Seen first
 on the sandbox when the specs reset verdicts; production had no such batch
 on the day, so the backfill was a no-op there. Built in slice 6.
+
+## D53. The bench knows what is typed before anyone types (2026-09-14)
+
+His words: "the plan is to prevent a user retyping a stove that has already
+been digitalized only to find out after wasting that time when they are
+trying to save", and "it should also show typed and called. remember this
+also applies to create sale channel". One view, `v_stove_typed`, says where a
+stove's receipt stands: typed (a live sale from any channel, with when, by
+whom and through what), finished (a bench receipt waiting to be confirmed),
+part typed, or not typed. The bench list and rail show it on every row beside
+the call standing (D41); Still to type holds only untyped and part-typed
+stoves, and Awaiting confirmation is its own chip. A typed stove opens read
+only with the buyer and the call, and a door to its record. The save refuses
+a stove with a live sale, and a receipt somebody else finished, before
+writing anything. The list re-reads on `bench.refresh_seconds` and when the
+tab comes back. The partner records read the same words. Built in Phase 29,
+slice 1.

@@ -16,6 +16,9 @@ import SaleForm, {
 import BenchRail from "./BenchRail";
 import { fieldLabel } from "@/lib/saleDictionary";
 import { plural } from "../../lib/plural";
+import { usePolling } from "../../lib/usePolling";
+import { TypedPill, CallPill, typedWords, callWords } from "../../components/StovePills";
+import Link from "@/compat/Link";
 import {
   Loader2, ChevronRight, ArrowLeft, Search, Save, CheckCircle2,
   TriangleAlert, Clock, UserRound, Lightbulb, FileText, WifiOff,
@@ -269,11 +272,15 @@ function StoveList({ stoves, error, onPick, label = "stoves", server = null }) {
     // `just_recorded` is the local mark set when a save returns, so a stove
     // typed in this sitting leaves the "still to type" list immediately
     // instead of on the next refetch.
-    const done = (s) => Boolean(s.sale_id || s.just_recorded);
+    // Phase 29, D53: typed means a live sale from any channel; finished means
+    // a receipt waiting to be confirmed; both are out of "still to type".
+    const done = (s) => Boolean(s.typed_state === "typed" || s.sale_id || s.just_recorded);
+    const awaiting = (s) => s.typed_state === "finished" && !done(s);
     // On the server path the rows already ARE the filtered set, bar the local
     // just-recorded mark, which the server cannot know about yet.
     if (server) return filter === "todo" ? all.filter((x) => !x.just_recorded) : all;
-    if (only === "todo") return all.filter((s) => !done(s));
+    if (only === "todo") return all.filter((s) => !done(s) && !awaiting(s));
+    if (only === "awaiting") return all.filter(awaiting);
     if (only === "done") return all.filter(done);
     return all;
   }, [stoves, only, server, filter]);
@@ -303,8 +310,9 @@ function StoveList({ stoves, error, onPick, label = "stoves", server = null }) {
   const counts = server
     ? server.totals ?? { todo: null, done: null, all: null, [server.filter]: server.total }
     : {
-        todo: stoves.filter((s) => !(s.sale_id || s.just_recorded)).length,
-        done: stoves.filter((s) => s.sale_id || s.just_recorded).length,
+        todo: stoves.filter((s) => !(s.typed_state === "typed" || s.sale_id || s.just_recorded) && s.typed_state !== "finished").length,
+        awaiting: stoves.filter((s) => s.typed_state === "finished" && !(s.sale_id || s.just_recorded)).length,
+        done: stoves.filter((s) => s.typed_state === "typed" || s.sale_id || s.just_recorded).length,
         all: stoves.length,
       };
 
@@ -313,7 +321,8 @@ function StoveList({ stoves, error, onPick, label = "stoves", server = null }) {
       <div className="mb-2 flex flex-wrap items-center gap-1.5">
         {[
           { key: "todo", label: "Still to type" },
-          { key: "done", label: "Already recorded" },
+          { key: "awaiting", label: "Awaiting confirmation" },
+          { key: "done", label: "Typed" },
           { key: "all", label: "All" },
         ].map((f) => (
           <button
@@ -355,7 +364,7 @@ function StoveList({ stoves, error, onPick, label = "stoves", server = null }) {
       ) : (
         <div className="overflow-hidden rounded-lg border border-gray-200">
           <div className="overflow-x-auto">
-            <table className="w-full min-w-[34rem] text-sm">
+            <table className="w-full min-w-[48rem] text-sm">
               <thead>
                 <tr className="bg-(--dc-accent-soft) text-left text-xs uppercase tracking-wide text-(--dc-accent-strong)">
                   <th className="px-3 py-2 font-semibold">{fieldLabel("stove_serial_no")}</th>
@@ -373,6 +382,11 @@ function StoveList({ stoves, error, onPick, label = "stoves", server = null }) {
                   {server && <th className="px-3 py-2 font-semibold">Dated</th>}
                   <th className="px-3 py-2 font-semibold">Stock</th>
                   <th className="px-3 py-2 font-semibold">Buyer</th>
+                  {/* Phase 29, D53: where the receipt stands, and where the call
+                      stands, said on the row so nobody opens a typed stove to
+                      find out. */}
+                  <th className="px-3 py-2 font-semibold">Typed</th>
+                  <th className="px-3 py-2 font-semibold">Called</th>
                   <th className="w-8 px-3 py-2" />
                 </tr>
               </thead>
@@ -398,10 +412,10 @@ function StoveList({ stoves, error, onPick, label = "stoves", server = null }) {
                     )}
                     <td className="px-3 py-2 text-gray-700">{s.stock_status ?? "-"}</td>
                     <td className="px-3 py-2 text-gray-700">
-                      {s.end_user_name ?? (
-                        <span className="text-gray-400">not typed yet</span>
-                      )}
+                      {s.end_user_name ?? <span className="text-gray-400">-</span>}
                     </td>
+                    <td className="px-3 py-2"><TypedPill s={s} /></td>
+                    <td className="px-3 py-2"><CallPill s={s} /></td>
                     <td className="px-3 py-2 text-gray-400">
                       <ChevronRight className="h-4 w-4" />
                     </td>
@@ -965,7 +979,9 @@ function Bench({ stoveId, onSaved, onBack, onNext, nextLabel, api = null }) {
   saveRef.current = save;
   finishRef.current = finish;
   const dirty = JSON.stringify(values) !== lastSaved.current;
-  const locked = Boolean(work?.confirmed_at);
+  // Phase 29, D53: a stove with a live sale, from any channel, is read only.
+  const typedNow = stove?.typed?.typed_state === "typed";
+  const locked = Boolean(work?.confirmed_at) || typedNow;
 
   /**
    * The one sentence about sync, decided in one place.
@@ -1046,11 +1062,29 @@ function Bench({ stoveId, onSaved, onBack, onNext, nextLabel, api = null }) {
         <p className="flex items-start gap-2 rounded-lg border border-blue-200 bg-blue-50 p-3 text-sm text-blue-900">
           <UserRound className="mt-0.5 h-4 w-4 shrink-0 text-blue-600" />
           Last worked on by {work.last_edited_by_name}, {whenOf(work.last_edited_at)}.
-          {work.status === "draft" ? " It is still a draft." : ""}
+          {work.status === "draft"
+            ? " It is still a draft."
+            : work.status === "valid" && !work.confirmed_at
+              ? " It is finished and waiting to be confirmed; a save from anyone else is refused."
+              : ""}
         </p>
       )}
 
-      {locked && (
+      {typedNow && (
+        <p className="flex items-start gap-2 rounded-lg border border-(--dc-accent)/30 bg-(--dc-accent-soft)/40 p-3 text-sm text-gray-800" data-bench-typed>
+          <CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0 text-(--dc-accent)" />
+          <span>
+            {typedWords(stove.typed)}
+            {stove.typed.end_user_name ? `, for ${stove.typed.end_user_name}` : ""}
+            {callWords({ ...stove.typed, sale_id: true }) ? `. ${callWords({ ...stove.typed, sale_id: true })}` : ""}.
+            {" "}Nothing here is retyped.{" "}
+            <Link href={`/data-center/stove/${encodeURIComponent(stove.stoveId)}`} className="font-semibold text-(--dc-accent) underline underline-offset-2">
+              Open the stove record
+            </Link>
+          </span>
+        </p>
+      )}
+      {locked && !typedNow && (
         <p className="flex items-start gap-2 rounded-lg border border-(--dc-accent)/30 bg-(--dc-accent-soft)/40 p-3 text-sm text-gray-800">
           <CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0 text-(--dc-accent)" />
           This one has been confirmed and is in the sales app. Change it there
@@ -1407,6 +1441,14 @@ export default function Workbench() {
   const [sweepTotals, setSweepTotals] = useState(null);
   const [sweepHasMore, setSweepHasMore] = useState(false);
   const [sweepFilter, setSweepFilter] = useState("todo");
+  /*
+   * Phase 29, D53: the list re-reads on the configured interval and when the
+   * tab comes back, so a receipt confirmed or a sale made in the sales app
+   * while somebody works does not sit on their screen as not typed yet.
+   */
+  const [refreshSeconds, setRefreshSeconds] = useState(60);
+  const [tick, setTick] = useState(0);
+  usePolling(() => setTick((n) => n + 1), refreshSeconds);
   const [sweepLoading, setSweepLoading] = useState(false);
   const [stove, setStove] = useState(null);
   const [queue, setQueue] = useState(null);
@@ -1497,7 +1539,7 @@ export default function Workbench() {
         period: sweepMonth || null,
         transactionId: sweepTransaction || null,
         search: sweepSearch || null,
-        recorded: sweepFilter === "todo" ? "no" : sweepFilter === "done" ? "yes" : null,
+        recorded: sweepFilter === "todo" ? "no" : sweepFilter === "done" ? "yes" : sweepFilter === "awaiting" ? "awaiting" : null,
         cursor: sweepCursorsRef.current[sweepPage] ?? null,
         limit: sweepSize,
       })
@@ -1524,6 +1566,7 @@ export default function Workbench() {
         }
         setSweepTotal(r.total ?? r.stoves.length);
         setSweepTotals(r.totals ?? null);
+        if (Number(r.refreshSeconds) > 0) setRefreshSeconds(Number(r.refreshSeconds));
         setSweepHasMore(Boolean(r.hasMore));
         // Remember the cursor that opens the NEXT page, so paging forward is
         // one step and paging back is a lookup rather than a refetch from the
@@ -1569,7 +1612,7 @@ export default function Workbench() {
     return () => {
       live = false;
     };
-  }, [orgId, sweepMonth, sweepTransaction, sweepSearch, sweepFilter, sweepPage, sweepSize, loadQueue]);
+  }, [orgId, sweepMonth, sweepTransaction, sweepSearch, sweepFilter, sweepPage, sweepSize, loadQueue, tick]);
 
   /*
    * Anything that changes WHAT is being paged sends you back to page one and
