@@ -74,8 +74,19 @@ export interface Filters {
 
   // Installment filters
   isInstallment?: boolean;
+  /** paid | partial | unpaid, the words the Sales Records status filter uses. */
   paymentStatus?: string;
   paymentModelId?: string;
+  agentApproved?: boolean;
+
+  /*
+   * Slice 9a. The screen's year, years and month filters become date windows
+   * ({from} inclusive, {to} exclusive); the summary carries totals, counts and
+   * due windows over the same filters; a due chip becomes a server filter.
+   */
+  periods?: Array<{ from: string; to: string }>;
+  withSummary?: boolean;
+  dueBucket?: "overdue" | "dueToday" | "due7" | "due14" | "due30";
 
   // Search
   search?: string;

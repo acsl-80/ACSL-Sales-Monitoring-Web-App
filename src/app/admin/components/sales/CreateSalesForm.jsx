@@ -2,6 +2,7 @@
 import { useState, useEffect, useRef, useMemo } from "react";
 import { supabaseUrl as SUPABASE_URL } from "@/lib/supabaseConfig";
 import { getSupabase } from "@/lib/supabaseClient";
+import { useSaleFieldRules } from "@/lib/saleFieldRules";
 import { useRouter } from "@/compat/navigation";
 import Link from "@/compat/Link";
 import { Button } from "@/components/ui/button";
@@ -50,6 +51,8 @@ import SignatureCanvas from "../../../components/ui/SignatureCanvas";
 import paymentModelService from "../../../services/paymentModelService";
 import superAdminAgentService from "../../../services/superAdminAgentService";
 import { useAuth } from "../../../contexts/useAuth";
+import { formatCurrency as formatCurrencyShared } from "@/app/utils/formatCurrency";
+import { fieldLabel, fieldOptions, groupLabel, payloadLabel, useFieldOptions } from "@/lib/saleDictionary";
 
 const FormField = ({ label, error, children, htmlFor }) => (
   <div>
@@ -79,6 +82,12 @@ const CreateSalesForm = ({
   userRole = null,
   userId = null,
 }) => {
+  // The dated rules (public.sale_field_rules): what a record of this day must carry.
+  const fieldRules = useSaleFieldRules();
+  // The three choices as the registry has them now (slice F3b).
+  const previousStoveOptions = useFieldOptions("previous_stove_type");
+  const fuelSourceOptions = useFieldOptions("cooking_fuel_source");
+  const cookingLocationOptions = useFieldOptions("cooking_location");
   const router = useRouter();
   const { supabase } = useAuth();
   const isSuperAdmin = SAA_ROLES.includes(userRole);
@@ -509,6 +518,13 @@ const CreateSalesForm = ({
           if (!profileService.getStoredProfileData()) {
             await profileService.fetchAndStoreProfile();
           }
+          // A new sale's agent is the signed-in person until somebody says otherwise.
+          const me = profileService.getStoredProfileData();
+          if (me?.full_name) {
+            setFormData((prev) =>
+              prev.salesAgentName ? prev : { ...prev, salesAgentName: me.full_name, salesAgentUserId: me.id ?? null },
+            );
+          }
 
           // Generate transaction ID
           const generateTransactionId = () => {
@@ -798,7 +814,8 @@ const CreateSalesForm = ({
       addressData: {
         fullAddress: addressData.fullAddress || "",
         street: addressData.street || "",
-        city: addressData.city || "",
+        // A place that names no town keeps the one the agent typed.
+        city: addressData.city || prev.addressData?.city || "",
         state: addressData.state || "",
         country: addressData.country || "Nigeria",
         latitude: addressData.latitude || null,
@@ -960,8 +977,7 @@ const CreateSalesForm = ({
     }
   };
 
-  const formatCurrency = (amount) =>
-    `₦${Number(amount).toLocaleString("en-NG")}`;
+  const formatCurrency = (v) => formatCurrencyShared(v);
 
   // Format a raw number string with commas for display in inputs
   const formatAmountInput = (value) => {
@@ -976,7 +992,7 @@ const CreateSalesForm = ({
   };
 
   const validateForm = () => {
-    const newErrors = validateSalesForm(formData);
+    const newErrors = validateSalesForm(formData, { rules: fieldRules });
     setErrors(newErrors);
     return Object.keys(newErrors).length === 0;
   };
@@ -1323,7 +1339,7 @@ const CreateSalesForm = ({
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 md:gap-4 mt-2">
             {/* Transaction ID is auto-generated and hidden from the UI */}
 
-            <FormField label="Sales Date *" error={errors.salesDate} htmlFor="salesDate">
+            <FormField label={`${payloadLabel("salesDate")} *`} error={errors.salesDate} htmlFor="salesDate">
               <Input
                 id="salesDate"
                 type="date"
@@ -1341,7 +1357,7 @@ const CreateSalesForm = ({
             {!isEditMode ? (
               <>
                 <div>
-                  <Label htmlFor="partnerSearch">Partner *</Label>
+                  <Label htmlFor="partnerSearch">{payloadLabel("partnerName")} *</Label>
                   <div className="relative partner-search-container">
                     <Input
                       id="partnerSearch"
@@ -1418,7 +1434,7 @@ const CreateSalesForm = ({
                 </div>
 
                 <div>
-                  <Label htmlFor="partnerBranch">Branch *</Label>
+                  <Label htmlFor="partnerBranch">{payloadLabel("retailerBranch")} *</Label>
                   <Select
                     value={
                       formData.retailerBranch
@@ -1451,8 +1467,8 @@ const CreateSalesForm = ({
               </>
             ) : (
               <>
-                <ReadOnlyTile label="Partner" value={formData.partnerName} />
-                <ReadOnlyTile label="Branch" value={formData.retailerBranch} />
+                <ReadOnlyTile label={payloadLabel("partnerName")} value={formData.partnerName} />
+                <ReadOnlyTile label={payloadLabel("retailerBranch")} value={formData.retailerBranch} />
               </>
             )}
           </div>
@@ -1464,7 +1480,20 @@ const CreateSalesForm = ({
         <div className="bg-[#fafafa] rounded-xl border border-gray-100 p-5">
           <h3 className="text-base font-semibold text-gray-900 mb-4">Buyer &amp; End User</h3>
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 md:gap-4">
-            <FormField label="End User First Name *" error={errors.endUserName} htmlFor="endUserName">
+            <FormField label={fieldLabel("sales_agent_name")} htmlFor="salesAgentName">
+              <Input
+                id="salesAgentName"
+                value={formData.salesAgentName ?? ""}
+                onChange={(e) => {
+                  // A name typed over the default is no longer the signed-in user.
+                  handleInputChange("salesAgentName", e.target.value);
+                  handleInputChange("salesAgentUserId", null);
+                }}
+                placeholder="As written on the agreement"
+              />
+            </FormField>
+            {/* The joined endUserName still travels; the two parts travel beside it. */}
+            <FormField label={`${fieldLabel("end_user_first_name")} *`} error={errors.endUserName} htmlFor="endUserName">
               <Input
                 id="endUserName"
                 value={formData.endUserName}
@@ -1473,7 +1502,7 @@ const CreateSalesForm = ({
                 className={errors.endUserName ? "border-red-500" : ""}
               />
             </FormField>
-            <FormField label="End User Surname *" error={errors.endUserSurname} htmlFor="endUserSurname">
+            <FormField label={`${fieldLabel("end_user_surname")} *`} error={errors.endUserSurname} htmlFor="endUserSurname">
               <Input
                 id="endUserSurname"
                 value={formData.endUserSurname}
@@ -1482,7 +1511,7 @@ const CreateSalesForm = ({
                 className={errors.endUserSurname ? "border-red-500" : ""}
               />
             </FormField>
-            <FormField label="End User Phone *" error={errors.phone} htmlFor="phone">
+            <FormField label={`${payloadLabel("phone")} *`} error={errors.phone} htmlFor="phone">
               <Input
                 id="phone"
                 type="tel"
@@ -1496,7 +1525,7 @@ const CreateSalesForm = ({
                 <p className="mt-1 text-xs text-gray-500">Checking…</p>
               )}
             </FormField>
-            <FormField label="AKA" htmlFor="aka">
+            <FormField label={payloadLabel("aka")} htmlFor="aka">
               <Input
                 id="aka"
                 value={formData.aka}
@@ -1511,10 +1540,10 @@ const CreateSalesForm = ({
                 onCheckedChange={(checked) => setSameAsEndUser(Boolean(checked))}
               />
               <Label htmlFor="sameAsEndUser" className="text-sm font-medium text-gray-700 cursor-pointer">
-                Select if End User is same as Contact Person
+                Tick if the customer is also the contact (Buyer Name)
               </Label>
             </div>
-            <FormField label="Contact Person / Buyer *" error={errors.contactPerson} htmlFor="contactPerson">
+            <FormField label={`${payloadLabel("contactPerson")} *`} error={errors.contactPerson} htmlFor="contactPerson">
               <Input
                 id="contactPerson"
                 value={formData.contactPerson}
@@ -1523,7 +1552,7 @@ const CreateSalesForm = ({
                 className={errors.contactPerson ? "border-red-500" : ""}
               />
             </FormField>
-            <FormField label="Contact Phone *" error={errors.contactPhone} htmlFor="contactPhone">
+            <FormField label={`${payloadLabel("contactPhone")} *`} error={errors.contactPhone} htmlFor="contactPhone">
               <Input
                 id="contactPhone"
                 type="tel"
@@ -1541,7 +1570,7 @@ const CreateSalesForm = ({
           <h3 className="text-base font-semibold text-gray-900 mb-4">Sale &amp; Payment</h3>
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 md:gap-4">
             {/* Stove serial */}
-            <FormField label={`Stove Serial No *${isEditMode ? " (locked)" : ""}`} error={errors.stoveSerialNo} htmlFor="stoveSerialNo">
+            <FormField label={`${fieldLabel("stove_serial_no")} *${isEditMode ? " (locked)" : ""}`} error={errors.stoveSerialNo} htmlFor="stoveSerialNo">
               {isEditMode ? (
                 <Input value={formData.stoveSerialNo || stoveSearchTerm || ""} readOnly className="bg-gray-100" />
               ) : (() => {
@@ -1631,7 +1660,7 @@ const CreateSalesForm = ({
             {/* Payment type */}
             {isEditMode && initialData?.is_installment && initialData?.payment_model ? (
               <div>
-                <Label>Payment Model</Label>
+                <Label>{payloadLabel("paymentModelId")}</Label>
                 <div className="flex items-center gap-2 mt-1">
                   <Input
                     value={`${initialData.payment_model.name} — ₦${Number(initialData.payment_model.fixed_price).toLocaleString("en-NG")} / ${initialData.payment_model.duration_months} mo`}
@@ -1642,22 +1671,49 @@ const CreateSalesForm = ({
                 </div>
               </div>
             ) : isEditMode ? (
-              <ReadOnlyTile label="Payment Type" value="Full Payment" />
+              <ReadOnlyTile label={payloadLabel("isInstallment")} value="Full Payment" />
             ) : paymentModels.length > 0 ? (
-              <FormField label="Payment Type *" htmlFor="paymentType">
-                <Select value={isInstallment ? selectedModelId : "full_payment"} onValueChange={handlePaymentTypeChange}>
-                  <SelectTrigger>
+              <FormField label={`${payloadLabel("isInstallment")} *`} htmlFor="paymentType">
+                {/* Payment type and sales model are two controls (A9): cash or
+                    installment first, then the model for an installment. */}
+                <Select
+                  value={isInstallment ? "installment" : "cash"}
+                  onValueChange={(kind) => {
+                    if (kind === "cash") handlePaymentTypeChange("full_payment");
+                    else if (!isInstallment) {
+                      setIsInstallment(true);
+                      setFormData((prev) => ({ ...prev, amountReceived: "" }));
+                    }
+                  }}
+                >
+                  <SelectTrigger id="paymentType">
                     <SelectValue placeholder="Select type" />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="full_payment">Full Payment</SelectItem>
-                    {visiblePaymentModels.map((model) => (
-                      <SelectItem key={model.id} value={model.id}>
-                        {model.name} — {formatCurrency(model.fixed_price)} / {model.duration_months} mo
+                    {fieldOptions("is_installment").map((o) => (
+                      <SelectItem key={o.value} value={o.value}>
+                        {o.label}
                       </SelectItem>
                     ))}
                   </SelectContent>
                 </Select>
+                {isInstallment && (
+                  <div className="mt-2">
+                    <Label htmlFor="paymentModel">{payloadLabel("paymentModelId")} *</Label>
+                    <Select value={selectedModelId} onValueChange={handlePaymentTypeChange}>
+                      <SelectTrigger id="paymentModel">
+                        <SelectValue placeholder="Pick the sales model" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {visiblePaymentModels.map((model) => (
+                          <SelectItem key={model.id} value={model.id}>
+                            {model.name} ({formatCurrency(model.fixed_price)}, {model.duration_months} months)
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                )}
                 {partnerModelsUnresolved && (
                   <p className="mt-1 text-xs text-amber-600">
                     This partner is assigned {orgPaymentModelIds.length} sales
@@ -1672,7 +1728,11 @@ const CreateSalesForm = ({
             {/* Sale amount — for a full payment this doubles as the amount
                 received, so we only ask for it once. */}
             <FormField
-              label={isSingleAmountField ? "Sale Amount / Amount Received (₦) *" : "Sale Amount (₦) *"}
+              label={
+                isSingleAmountField
+                  ? `${payloadLabel("amount")} / ${fieldLabel("first_payment")} (₦) *`
+                  : `${payloadLabel("amount")} (₦) *`
+              }
               error={errors.amount}
               htmlFor="amount"
             >
@@ -1695,7 +1755,7 @@ const CreateSalesForm = ({
             {/* Amount received — installments only; full payment mirrors the
                 sale amount above. */}
             {!isSingleAmountField && (
-              <FormField label="Amount Received (₦)" error={errors.amountReceived} htmlFor="amountReceived">
+              <FormField label={`${fieldLabel("first_payment")} (₦)`} error={errors.amountReceived} htmlFor="amountReceived">
                 <Input
                   id="amountReceived"
                   type="text"
@@ -1714,7 +1774,7 @@ const CreateSalesForm = ({
         <div className="bg-[#fafafa] rounded-xl border border-gray-100 p-5">
           <h3 className="text-base font-semibold text-gray-900 mb-4">Location</h3>
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 md:gap-4">
-            <FormField label="State *" error={errors.stateBackup} htmlFor="stateBackup">
+            <FormField label={`${payloadLabel("stateBackup")} *`} error={errors.stateBackup} htmlFor="stateBackup">
               <Select
                 key={`state-${selectedStateLabel}-${stateOptions.length}`}
                 value={formData.stateBackup}
@@ -1730,7 +1790,7 @@ const CreateSalesForm = ({
                 </SelectContent>
               </Select>
             </FormField>
-            <FormField label="LGA *" error={errors.lgaBackup} htmlFor="lgaBackup">
+            <FormField label={`${payloadLabel("lgaBackup")} *`} error={errors.lgaBackup} htmlFor="lgaBackup">
               <Select
                 key={`lga-${selectedStateLabel}-${selectedLgaLabel}-${lgaOptionsForSelectedState.length}`}
                 value={formData.lgaBackup}
@@ -1749,8 +1809,18 @@ const CreateSalesForm = ({
                 </SelectContent>
               </Select>
             </FormField>
+            <FormField label={fieldLabel("city")} htmlFor="city" error={errors.city}>
+              <Input
+                id="city"
+                value={formData.addressData?.city ?? ""}
+                onChange={(e) =>
+                  setFormData((prev) => ({ ...prev, addressData: { ...(prev.addressData ?? {}), city: e.target.value } }))
+                }
+                placeholder="Town or village on the agreement"
+              />
+            </FormField>
             <div className="md:col-span-2 lg:col-span-3">
-              <FormField label="Residential Address *" error={errors.address || errors.location} htmlFor="address">
+              <FormField label={`${fieldLabel("full_address")} *`} error={errors.address || errors.location} htmlFor="address">
                 {addressConfirmed && formData.addressData?.fullAddress ? (
                   <div className="flex items-center gap-2 rounded-lg border border-[#4a5d0f] bg-[#4a5d0f]/10 px-3 py-2.5">
                     <CheckCircle2 className="h-4 w-4 shrink-0 text-[#4a5d0f]" />
@@ -1824,20 +1894,20 @@ const CreateSalesForm = ({
         <div className="bg-[#fafafa] rounded-xl border border-gray-100 p-5">
           <h3 className="text-base font-semibold text-gray-900 mb-4">Stove Set</h3>
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 md:gap-4">
-            <FormField label="Pots Quantity" htmlFor="potQuantity">
+            <FormField label={payloadLabel("potQuantity")} htmlFor="potQuantity">
               <Select value={formData.potQuantity.toString()} onValueChange={(v) => handleInputChange("potQuantity", v)}>
                 <SelectTrigger>
                   <SelectValue placeholder="Select" />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="0">0 pots</SelectItem>
-                  <SelectItem value="1">1 pot</SelectItem>
-                  <SelectItem value="2">2 pots</SelectItem>
+                  {fieldOptions("pot_quantity").map((option) => (
+                    <SelectItem key={option.value} value={option.value}>{option.label}</SelectItem>
+                  ))}
                 </SelectContent>
               </Select>
             </FormField>
             <div>
-              <Label>Wonderbox (Heat Retention)</Label>
+              <Label>{payloadLabel("heatRetentionDevice")}</Label>
               <label className="flex items-center gap-2 cursor-pointer mt-2">
                 <input
                   type="checkbox"
@@ -1856,13 +1926,9 @@ const CreateSalesForm = ({
           <h3 className="text-base font-semibold text-gray-900 mb-4">Cooking Habits</h3>
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 md:gap-4">
             <div className="md:col-span-2 lg:col-span-3">
-              <Label>Previous Stove Type</Label>
+              <Label>{payloadLabel("previousStoveType")}</Label>
               <div className="flex flex-wrap gap-4 mt-2">
-                {[
-                  { value: "charcoal", label: "Charcoal" },
-                  { value: "wood_stove", label: "Wood (3 stone)" },
-                  { value: "other", label: "Other" },
-                ].map(({ value, label }) => (
+                {previousStoveOptions.map(({ value, label }) => (
                   <label key={value} className="flex items-center gap-2 cursor-pointer">
                     <input
                       type="radio"
@@ -1885,14 +1951,34 @@ const CreateSalesForm = ({
                 />
               )}
             </div>
-            <FormField label="Meals per day" htmlFor="mealsPerDay">
+            <FormField label={payloadLabel("mealsPerDay")} htmlFor="mealsPerDay">
               <Input id="mealsPerDay" value={formData.mealsPerDay} onChange={(e) => handleInputChange("mealsPerDay", e.target.value)} placeholder="e.g., 2 meals" />
             </FormField>
-            <FormField label="Fuel Source" htmlFor="cookingFuelSource">
-              <Input id="cookingFuelSource" value={formData.cookingFuelSource} onChange={(e) => handleInputChange("cookingFuelSource", e.target.value)} placeholder="e.g., Local market" />
+            <FormField label={payloadLabel("cookingFuelSource")} htmlFor="cookingFuelSource" error={errors.cookingFuelSource}>
+              <select
+                id="cookingFuelSource"
+                className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
+                value={formData.cookingFuelSource ?? ""}
+                onChange={(e) => handleInputChange("cookingFuelSource", e.target.value)}
+              >
+                <option value="">Not answered</option>
+                {fuelSourceOptions.map((o) => (
+                  <option key={o.value} value={o.value}>{o.label}</option>
+                ))}
+              </select>
             </FormField>
-            <FormField label="Cooking Location" htmlFor="cookingLocation">
-              <Input id="cookingLocation" value={formData.cookingLocation} onChange={(e) => handleInputChange("cookingLocation", e.target.value)} placeholder="e.g., Outdoors, kitchen" />
+            <FormField label={payloadLabel("cookingLocation")} htmlFor="cookingLocation" error={errors.cookingLocation}>
+              <select
+                id="cookingLocation"
+                className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
+                value={formData.cookingLocation ?? ""}
+                onChange={(e) => handleInputChange("cookingLocation", e.target.value)}
+              >
+                <option value="">Not answered</option>
+                {cookingLocationOptions.map((o) => (
+                  <option key={o.value} value={o.value}>{o.label}</option>
+                ))}
+              </select>
             </FormField>
           </div>
         </div>
@@ -1912,7 +1998,7 @@ const CreateSalesForm = ({
             return (
               <>
           <div className="flex items-center justify-between mb-4 gap-3">
-            <h3 className="text-base font-semibold text-gray-900">Terms &amp; Conditions *</h3>
+            <h3 className="text-base font-semibold text-gray-900">{groupLabel("agreement")} *</h3>
             <button
               type="button"
               onClick={() =>
@@ -1952,7 +2038,7 @@ const CreateSalesForm = ({
             <Label className="text-base font-semibold">Images &amp; Documents</Label>
             <div className="space-y-4 mt-2">
               <ImageUploadSection
-                label="Stove Photo (optional)"
+                label={`${fieldLabel("stove_image_id")} (optional)`}
                 preview={stoveImagePreview}
                 uploading={uploadingImages.stove}
                 onUpload={(file) => handleImageUpload(file, "stove")}
@@ -1961,7 +2047,7 @@ const CreateSalesForm = ({
                 enableCamera
               />
               <ImageUploadSection
-                label="Agreement Document (optional)"
+                label={`${fieldLabel("agreement_image_id")} (optional)`}
                 preview={agreementImagePreview}
                 uploading={uploadingImages.agreement}
                 onUpload={(file) => handleImageUpload(file, "agreement")}
@@ -1981,7 +2067,7 @@ const CreateSalesForm = ({
                 signature={formData.signature}
                 onSignatureChange={handleSignatureChange}
                 error={errors.signature}
-                label="Customer Signature *"
+                label={`${payloadLabel("signature")} *`}
               />
             </div>
           </div>

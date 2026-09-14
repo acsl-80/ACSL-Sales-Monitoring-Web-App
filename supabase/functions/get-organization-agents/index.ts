@@ -86,11 +86,25 @@ serve(async (req) => {
       return json({ success: false, message: "organization_id is required" }, 400);
     }
 
-    // Agent ids explicitly assigned to the org.
-    const { data: assignRows } = await admin
-      .from("acsl_agent_organizations")
-      .select("agent_id")
-      .eq("organization_id", organizationId);
+    /*
+     * Agents who cover this org, by the one definition of the rule.
+     *
+     * This read acsl_agent_organizations directly, which is only the named
+     * half: an agent covered by state holds no named rows and so never
+     * appeared here, and an agent explicitly excluded from a partner appeared
+     * anyway. Both are answered by acsl_agents_covering_org, which is the same
+     * rule as the forward lookup so the two cannot disagree.
+     */
+    const { data: assignRows, error: assignError } = await admin.rpc(
+      "acsl_agents_covering_org",
+      { p_org_id: organizationId },
+    );
+    if (assignError) {
+      return json(
+        { success: false, message: `Could not resolve agents for this partner: ${assignError.message}` },
+        500,
+      );
+    }
     const assignedIds = (assignRows ?? []).map((r: { agent_id: string }) => r.agent_id);
 
     // Build: profiles in sellable roles where org matches directly OR assigned.

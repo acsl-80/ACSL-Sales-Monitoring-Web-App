@@ -1,0 +1,344 @@
+import { useCallback, useEffect, useMemo, useState } from "react";
+import Link from "@/compat/Link";
+import { dataCenterAssign, DataCenterError } from "../../lib/client";
+import { usePolling } from "../../lib/usePolling";
+import CallRecordEditor from "./CallRecordEditor";
+import { plural } from "../../lib/plural";
+import {
+  Headphones, Loader2, AlertTriangle, PhoneCall, ChevronRight, ShieldAlert,
+  Check, CircleDashed, PenLine, Undo2,
+} from "lucide-react";
+import { dateOf as formatDate } from "../../lib/when";
+
+/**
+ * What a call agent sees when they sit down.
+ *
+ * They were shown the same surface as a supervisor: the whole call queue,
+ * filtered by presets that describe a population, over the assignment log of
+ * everybody's work. Nothing on that page said which of it was theirs, so the
+ * first act of every shift was to work out where to start.
+ *
+ * This is their queue and nothing else, arranged by the only question they
+ * have: what do I ring next. Grouped by partner, because their batches are
+ * per partner by the engine's own rule and a run of one partner's calls is one
+ * conversation repeated rather than eight different ones.
+ *
+ * Ordering says what to do without being told. A serial number somebody else took
+ * comes first - those buyers have a record naming a stove they have never
+ * heard of. Then never called, then part-worked, then done. An agent reading
+ * top to bottom is working in the right order.
+ */
+
+const dateOf = (v) => formatDate(v, null);
+
+/** Where a record sits, and how urgent that makes it. */
+function standing(item) {
+  if (item.serial_unconfirmed_at) {
+    return { rank: 0, label: "Serial number unconfirmed", tone: "bg-red-100 text-red-800", icon: ShieldAlert };
+  }
+  /*
+   * A half-finished form outranks a stove nobody has touched.
+   *
+   * The buyer has already given their time once and answered some of it; the
+   * quickest complete record on the list is the one that is already part
+   * done. It sits below an unconfirmed serial number because that one is a record
+   * naming a stove its owner has never heard of, which is wrong rather than
+   * merely unfinished.
+   */
+  if (item.has_draft) {
+    return {
+      rank: 1,
+      label: item.draft_is_mine ? "You left this unfinished" : "Left unfinished",
+      tone: "bg-amber-100 text-amber-900",
+      icon: PenLine,
+    };
+  }
+  /*
+   * Sales fixed what the caller found wrong and the call centre closed it
+   * with "ring again", and nobody has rung since. The buyer is waiting on a
+   * number that now works, so this comes before a stove nobody has touched.
+   */
+  if (
+    item.recall_closed_at &&
+    (!item.last_attempt_at || new Date(item.recall_closed_at) > new Date(item.last_attempt_at))
+  ) {
+    return { rank: 2, label: "Fixed by Sales, ring again", tone: "bg-emerald-100 text-emerald-800", icon: PhoneCall };
+  }
+  if (!item.attempt_count) {
+    return { rank: 2, label: "Not called yet", tone: "bg-blue-100 text-blue-800", icon: CircleDashed };
+  }
+  /*
+   * Sent back to Sales: the caller found the receipt wrong and the record is
+   * in Sales' queue until it is fixed. Nothing for the agent to do on it, so
+   * it sits with the other waiting work rather than reading as a call to make.
+   */
+  if (item.correction_state === "open") {
+    return { rank: 3, label: "Sent back to Sales", tone: "bg-red-100 text-red-700", icon: Undo2 };
+  }
+  if (item.correction_state === "fixed") {
+    return { rank: 3, label: "Fixed, awaiting review", tone: "bg-amber-100 text-amber-900", icon: Undo2 };
+  }
+  if (item.verification_outcome === "fully_verified") {
+    return { rank: 5, label: "Verified", tone: "bg-(--dc-accent-soft) text-(--dc-accent-strong)", icon: Check };
+  }
+  if (item.verification_outcome === "partially_verified") {
+    return { rank: 4, label: "Partly verified", tone: "bg-amber-100 text-amber-800", icon: Check };
+  }
+  if (item.verification_outcome === "unreachable") {
+    return { rank: 3, label: "Unreachable", tone: "bg-orange-100 text-orange-800", icon: PhoneCall };
+  }
+  return {
+    rank: 3,
+    label: `${plural(item.attempt_count, "call")} made`,
+    tone: "bg-gray-100 text-gray-700",
+    icon: PhoneCall,
+  };
+}
+
+export default function MyWork({ canEdit, hideWhenEmpty = false }) {
+  const [items, setItems] = useState(null);
+  const [error, setError] = useState(null);
+  const [openSale, setOpenSale] = useState(null);
+  const [refresh, setRefresh] = useState(60);
+
+  const load = useCallback(() => {
+    dataCenterAssign
+      .myBatches()
+      .then((r) => {
+        setItems(r.items ?? []);
+        setRefresh(r.refreshSeconds ?? 60);
+        setError(null);
+      })
+      .catch((err) =>
+        setError(err instanceof DataCenterError ? err.message : "Could not load your queue."),
+      );
+  }, []);
+
+  useEffect(load, [load]);
+  // The queue moves under an agent while they work; re-read at the pace
+  // Settings names, while the tab is visible.
+  usePolling(load, refresh);
+
+  // Open work is grouped by partner; finished batches sit under their own
+  // heading below it, so what is done reads as done.
+  const openItems = useMemo(
+    () => (items ?? []).filter((i) => i.batch_state !== "completed"),
+    [items],
+  );
+  const finished = useMemo(() => {
+    const groups = new Map();
+    for (const item of (items ?? []).filter((i) => i.batch_state === "completed")) {
+      const key = item.partner_name ?? "No partner";
+      if (!groups.has(key)) groups.set(key, []);
+      groups.get(key).push(item);
+    }
+    return [...groups.entries()];
+  }, [items]);
+  const partners = useMemo(() => {
+    if (!items) return [];
+    const groups = new Map();
+    for (const item of openItems) {
+      const key = item.partner_name ?? "No partner";
+      if (!groups.has(key)) groups.set(key, []);
+      groups.get(key).push(item);
+    }
+    for (const list of groups.values()) {
+      list.sort((a, b) => standing(a).rank - standing(b).rank);
+    }
+    // The partner with the most urgent record first, so the top of the page is
+    // always the next thing to do.
+    return [...groups.entries()].sort(
+      (a, b) => standing(a[1][0]).rank - standing(b[1][0]).rank,
+    );
+  }, [items, openItems]);
+
+  const totals = useMemo(() => {
+    const list = openItems;
+    return {
+      all: list.length,
+      // Phase 28, D41: one definition of where a record stands, from the server.
+      todo: list.filter((i) => i.standing === "never_called").length,
+      unfinished: list.filter((i) => i.has_draft).length,
+      urgent: list.filter((i) => i.serial_unconfirmed_at).length,
+      done: list.filter((i) => ["verified", "partially_verified", "unreachable"].includes(i.standing)).length,
+    };
+  }, [openItems]);
+
+  if (error) {
+    return (
+      <div className="flex items-start gap-2 rounded-xl border border-amber-200 bg-amber-50 p-4">
+        <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-amber-600" />
+        <p className="text-sm text-amber-900">{error}</p>
+      </div>
+    );
+  }
+
+  if (!items) {
+    return (
+      <p className="flex items-center gap-2 rounded-xl border border-gray-200 bg-white p-6 text-sm text-gray-500">
+        <Loader2 className="h-4 w-4 animate-spin" /> Loading your queue...
+      </p>
+    );
+  }
+
+  /**
+   * A supervisor is not a call agent and is never assigned anything, so for
+   * them this panel is permanently empty - and a panel that always says
+   * nothing is worse than no panel, because it holds a place on the page and
+   * teaches people to skip past it. An agent still sees the empty state,
+   * because for them "nothing is assigned to you" is the answer they came for.
+   */
+  if (hideWhenEmpty && items.length === 0) return null;
+
+  return (
+    <>
+      <section className="overflow-hidden rounded-xl border border-gray-200 border-t-[3px] border-t-(--dc-accent) bg-white shadow-sm">
+        <header className="flex flex-wrap items-center gap-2 border-b border-gray-100 bg-(--dc-accent-soft)/40 px-4 py-3">
+          <Headphones className="h-4 w-4 text-(--dc-accent)" />
+          <h2 className="text-sm font-semibold text-gray-900">My calls</h2>
+          <span className="text-xs text-gray-600">
+            everything assigned to you, most urgent first
+          </span>
+          <div className="ml-auto flex flex-wrap items-center gap-1.5">
+            {totals.urgent > 0 && (
+              <span className="rounded-full bg-red-100 px-2.5 py-0.5 text-xs font-semibold text-red-800">
+                {totals.urgent} need the stove ID confirmed
+              </span>
+            )}
+            {/*
+              Counted separately from "not called", because they are different
+              jobs. One is a conversation to start; the other is a conversation
+              already half had, with a buyer who has given their time once and
+              is owed the shortest possible second call.
+            */}
+            {totals.unfinished > 0 && (
+              <span className="rounded-full bg-amber-100 px-2.5 py-0.5 text-xs font-semibold text-amber-900">
+                {totals.unfinished} left unfinished
+              </span>
+            )}
+            <span className="rounded-full bg-blue-100 px-2.5 py-0.5 text-xs font-medium text-blue-800">
+              {totals.todo} not called
+            </span>
+            <span className="rounded-full bg-(--dc-accent-soft) px-2.5 py-0.5 text-xs font-medium text-(--dc-accent-strong)">
+              {totals.done} of {totals.all} done
+            </span>
+          </div>
+        </header>
+
+        {openItems.length === 0 ? (
+          <div className="m-4 rounded-lg border border-dashed border-(--dc-accent)/40 bg-(--dc-accent-soft)/15 p-6 text-center">
+            <p className="text-sm font-medium text-gray-800">Nothing is assigned to you.</p>
+            <p className="mt-1 text-sm text-gray-600">
+              Work is handed out in batches of one partner at a time. If your queue
+              is empty and you expect work, ask a supervisor to run the assignment
+              or move some to you.
+            </p>
+          </div>
+        ) : (
+          <div className="divide-y divide-gray-100">
+            {partners.map(([partner, list]) => (
+              <div key={partner}>
+                <p className="flex flex-wrap items-baseline gap-2 bg-gray-50/80 px-4 py-2">
+                  <span className="text-sm font-semibold text-gray-900">{partner}</span>
+                  <span className="text-xs text-gray-600">
+                    {plural(list.length, "record")}
+                    {list.length > 1 ? " — one partner, one run of calls" : ""}
+                  </span>
+                </p>
+                <ul className="divide-y divide-gray-50">
+                  {list.map((item) => {
+                    const state = standing(item);
+                    const Icon = state.icon;
+                    return (
+                      <li key={item.sale_id}>
+                        <button
+                          type="button"
+                          onClick={() => canEdit && setOpenSale(item.sale_id)}
+                          disabled={!canEdit}
+                          className="flex w-full flex-wrap items-center gap-x-3 gap-y-1 px-4 py-2.5 text-left transition enabled:hover:bg-(--dc-accent-soft)/40 disabled:cursor-default"
+                        >
+                          <span
+                            className={`inline-flex shrink-0 items-center gap-1 rounded-full px-2 py-0.5 text-xs font-medium ${state.tone}`}
+                          >
+                            <Icon className="h-3 w-3" /> {state.label}
+                          </span>
+                          <span className="font-mono text-sm font-semibold text-gray-900">
+                            {item.stove_serial_no}
+                          </span>
+                          <span className="text-sm text-gray-700">
+                            {item.end_user_name ?? "no name on the record"}
+                          </span>
+                          {/* Whose unfinished work it is, where the agent is
+                              deciding whether to pick it up. */}
+                          {item.has_draft && !item.draft_is_mine && (
+                            <span className="text-xs text-amber-800">
+                              started by {item.draft_saved_by_name ?? "somebody"}
+                            </span>
+                          )}
+                          <span className="text-sm font-medium text-(--dc-accent-strong)">
+                            {item.phone ?? "no number"}
+                          </span>
+                          {item.last_attempt_at && (
+                            <span className="text-xs text-gray-500">
+                              last rang {dateOf(item.last_attempt_at)}
+                            </span>
+                          )}
+                          <span className="ml-auto flex shrink-0 items-center gap-2">
+                            <Link
+                              href={`/data-center/stove/${encodeURIComponent(item.stove_serial_no ?? "")}`}
+                              onClick={(e) => e.stopPropagation()}
+                              className="text-xs font-medium text-(--dc-accent) underline decoration-(--dc-accent)/30 underline-offset-2"
+                            >
+                              Full history
+                            </Link>
+                            {canEdit && <ChevronRight className="h-4 w-4 text-gray-400" />}
+                          </span>
+                        </button>
+                      </li>
+                    );
+                  })}
+                </ul>
+              </div>
+            ))}
+          </div>
+        )}
+        {/* Closed in the last seven days, so what is done reads as done rather
+            than sitting in the list for ever, which is what "pending" meant. */}
+        {finished.length > 0 && (
+          <div className="border-t border-gray-200">
+            <p className="flex flex-wrap items-baseline gap-2 bg-gray-50/80 px-4 py-2">
+              <span className="text-sm font-semibold text-gray-900">Finished</span>
+              <span className="text-xs text-gray-600">
+                batches closed in the last seven days; a batch closes itself when its
+                last record is concluded
+              </span>
+            </p>
+            <ul className="divide-y divide-gray-50">
+              {finished.map(([partner, list]) => (
+                <li
+                  key={partner}
+                  className="flex flex-wrap items-center gap-x-3 gap-y-1 px-4 py-2.5 text-sm"
+                >
+                  <span className="inline-flex shrink-0 items-center gap-1 rounded-full bg-(--dc-accent-soft) px-2 py-0.5 text-xs font-medium text-(--dc-accent-strong)">
+                    <Check className="h-3 w-3" /> Complete
+                  </span>
+                  <span className="font-medium text-gray-900">{partner}</span>
+                  <span className="text-gray-600">{plural(list.length, "record")} concluded</span>
+                </li>
+              ))}
+            </ul>
+          </div>
+        )}
+      </section>
+
+      {openSale && (
+        <CallRecordEditor
+          saleId={openSale}
+          canEdit={canEdit}
+          onClose={() => setOpenSale(null)}
+          onSaved={load}
+        />
+      )}
+    </>
+  );
+}

@@ -7,6 +7,7 @@ const COLORS = ["#4a5d0f", "#7b8b3a", "#c7d16f", "#eef3c4", "#f59e0b", "#1e3a5f"
 const SalesByModelsChart = () => {
   const [data, setData] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [failed, setFailed] = useState(false);
 
   useEffect(() => {
     let mounted = true;
@@ -36,6 +37,7 @@ const SalesByModelsChart = () => {
         if (mounted) setData(arr);
       } catch (e) {
         console.error("Sales by models fetch failed:", e);
+        if (mounted) setFailed(true);
       } finally {
         if (mounted) setLoading(false);
       }
@@ -85,6 +87,10 @@ const SalesByModelsChart = () => {
       <div className="flex-1 p-4">
         {loading ? (
           <div className="flex items-center justify-center h-[260px] text-sm text-gray-500">Loading…</div>
+        ) : failed ? (
+          <div role="alert" className="flex items-center justify-center h-[260px] text-sm text-amber-700">
+            Could not load sales by model. Reload the page to try again.
+          </div>
         ) : data.length === 0 ? (
           <div className="flex items-center justify-center h-[260px] text-sm text-gray-500">No sales data</div>
         ) : (

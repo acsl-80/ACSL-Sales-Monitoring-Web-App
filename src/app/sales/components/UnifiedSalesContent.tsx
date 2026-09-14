@@ -4,7 +4,6 @@ import DashboardLayout from "../../components/DashboardLayout";
 import FinancialReportsView from "../../admin/components/financial-reports/FinancialReportsView";
 import SalesFormModal from "../../admin/components/sales/SalesFormModal";
 import adminSalesService from "../../services/adminSalesService";
-import salesAdvancedService from "../../services/salesAdvancedAPIService";
 import superAdminAgentService from "../../services/superAdminAgentService";
 import { AdminSales } from "@/types/adminSales";
 import { Button } from "@/components/ui/button";
@@ -57,16 +56,6 @@ export default function UnifiedSalesContent() {
       router.replace("/sales");
     }
   }, [searchParams, router]);
-
-  // Single fetch path for every role — get-sales-advanced scopes rows
-  // server-side per the RBAC matrix (all / assigned orgs / own org / own sales).
-  const loadSales = useCallback(async () => {
-    return salesAdvancedService.getSalesData(
-      { limit: 1000, responseFormat: "format2" },
-      "POST",
-      "ManageSales"
-    );
-  }, []);
 
   const handleEditSale = useCallback(async (sale: AdminSales) => {
     try {
@@ -156,7 +145,7 @@ export default function UnifiedSalesContent() {
 
         <FinancialReportsView
           key={reloadKey}
-          loadSales={loadSales}
+          reloadKey={reloadKey}
           onEditSale={handleEditSale}
           onDeleteSale={handleDeleteSale}
           onCancelSale={handleCancelSale}

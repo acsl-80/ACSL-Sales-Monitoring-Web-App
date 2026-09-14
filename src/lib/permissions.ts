@@ -38,6 +38,10 @@ export type RouteKey =
   | "docs"
   | "sales-monitoring-app"
   | "end-user-records"
+  // Tier 1 of the Data Center's two-tier permission model: whether the module
+  // exists for this user at all. What they can do once inside is tier 2, held
+  // per user in data_center.feature_grants. See src/app/data-center/PLAN.md.
+  | "data-center"
   | "performance-report"
   | "sales-cancelled-purchases"
   | "user-guide"
@@ -109,6 +113,10 @@ const ALL_ROUTES: RouteKey[] = [
   "docs",
   "sales-monitoring-app",
   "end-user-records",
+  // Granted to super_admin only, which is what ALL_ROUTES means here. No other
+  // role lists it, so the module is unreachable for everyone else. Widen this
+  // only once the module is proven and the call-centre role exists.
+  "data-center",
   "user-guide",
 ];
 

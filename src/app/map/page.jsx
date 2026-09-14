@@ -42,6 +42,8 @@ import {
 import MapPage from "./MapPage";
 import PageHeader from "../components/PageHeader";
 import salesAdvancedService from "../services/salesAdvancedAPIService";
+import { formatCurrency as formatCurrencyShared } from "@/app/utils/formatCurrency";
+import { debug } from "@/app/utils/log";
 
 export default function HeatmapPage() {
   const [isFullscreen, setIsFullscreen] = useState(false);
@@ -70,7 +72,7 @@ export default function HeatmapPage() {
       setLoading(true);
       setError(null);
 
-      console.log("Fetching sales data with filters:", filters);
+      debug("Fetching sales data with filters:", filters);
 
       // Prepare API filters
       const apiFilters = {
@@ -91,7 +93,7 @@ export default function HeatmapPage() {
       const response = await salesAdvancedService.getSalesData(apiFilters);
 
       if (response.success && response.data) {
-        console.log("API Response:", response);
+        debug("API Response:", response);
 
         // Process the real sales data for map visualization
         const processedData = response.data
@@ -172,7 +174,7 @@ export default function HeatmapPage() {
               }`.trim(),
           }));
 
-        console.log(
+        debug(
           `Processed ${processedData.length} sales records with valid coordinates out of ${response.data.length} total records`
         );
 
@@ -298,14 +300,7 @@ export default function HeatmapPage() {
     };
   }, [filteredData]);
 
-  const formatCurrency = (amount) => {
-    return new Intl.NumberFormat("en-NG", {
-      style: "currency",
-      currency: "NGN",
-      minimumFractionDigits: 0,
-      maximumFractionDigits: 0,
-    }).format(amount);
-  };
+  const formatCurrency = (v) => formatCurrencyShared(v);
 
   const exportData = () => {
     const csvContent = [

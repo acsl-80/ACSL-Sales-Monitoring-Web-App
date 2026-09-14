@@ -15,6 +15,7 @@ import { Loader2 } from "lucide-react";
 import adminSalesService from "../services/adminSalesService";
 import { isValidNgPhone, NG_PHONE_FORMAT_MESSAGE } from "../utils/salesFormValidation";
 import { lgaAndStates } from "../constants";
+import { fieldLabel } from "@/lib/saleDictionary";
 
 /**
  * Edit end-user portion of a sale.
@@ -141,35 +142,35 @@ const EditEndUserModal = ({ open, sale, onClose, onSaved }) => {
 
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
           <div>
-            <Label>End User Name *</Label>
+            <Label>{fieldLabel("end_user_name")} *</Label>
             <Input value={form.endUserName} onChange={(e) => setField("endUserName", e.target.value)} />
             {fieldErrors.endUserName && <p className="text-xs text-red-600 mt-1">{fieldErrors.endUserName}</p>}
           </div>
           <div>
-            <Label>AKA / Alias</Label>
+            <Label>{fieldLabel("aka")}</Label>
             <Input value={form.aka} onChange={(e) => setField("aka", e.target.value)} />
           </div>
           <div>
-            <Label>End User Phone *</Label>
+            <Label>{fieldLabel("phone")} *</Label>
             <Input value={form.phone} onChange={(e) => setField("phone", e.target.value)} />
             {fieldErrors.phone && <p className="text-xs text-red-600 mt-1">{fieldErrors.phone}</p>}
           </div>
           <div>
-            <Label>Other Phone</Label>
+            <Label>{fieldLabel("other_phone")}</Label>
             <Input value={form.otherPhone} onChange={(e) => setField("otherPhone", e.target.value)} />
           </div>
           <div>
-            <Label>Contact Person *</Label>
+            <Label>{fieldLabel("contact_person")} *</Label>
             <Input value={form.contactPerson} onChange={(e) => setField("contactPerson", e.target.value)} />
             {fieldErrors.contactPerson && <p className="text-xs text-red-600 mt-1">{fieldErrors.contactPerson}</p>}
           </div>
           <div>
-            <Label>Contact Phone *</Label>
+            <Label>{fieldLabel("contact_phone")} *</Label>
             <Input value={form.contactPhone} onChange={(e) => setField("contactPhone", e.target.value)} />
             {fieldErrors.contactPhone && <p className="text-xs text-red-600 mt-1">{fieldErrors.contactPhone}</p>}
           </div>
           <div>
-            <Label>State</Label>
+            <Label>{fieldLabel("state_backup")}</Label>
             <Select value={form.stateBackup || undefined} onValueChange={(v) => { setField("stateBackup", v); setField("lgaBackup", ""); }}>
               <SelectTrigger><SelectValue placeholder="Select state" /></SelectTrigger>
               <SelectContent>
@@ -178,7 +179,7 @@ const EditEndUserModal = ({ open, sale, onClose, onSaved }) => {
             </Select>
           </div>
           <div>
-            <Label>LGA</Label>
+            <Label>{fieldLabel("lga_backup")}</Label>
             <Select value={form.lgaBackup || undefined} onValueChange={(v) => setField("lgaBackup", v)} disabled={!lgaList.length}>
               <SelectTrigger><SelectValue placeholder="Select LGA" /></SelectTrigger>
               <SelectContent>
@@ -191,7 +192,7 @@ const EditEndUserModal = ({ open, sale, onClose, onSaved }) => {
             <Input value={form.street} onChange={(e) => setField("street", e.target.value)} />
           </div>
           <div>
-            <Label>City / Town</Label>
+            <Label>{fieldLabel("city")}</Label>
             <Input value={form.city} onChange={(e) => setField("city", e.target.value)} />
           </div>
           <div>
@@ -199,7 +200,7 @@ const EditEndUserModal = ({ open, sale, onClose, onSaved }) => {
             <Input value={form.country} onChange={(e) => setField("country", e.target.value)} />
           </div>
           <div className="md:col-span-2">
-            <Label>Full Address</Label>
+            <Label>{fieldLabel("full_address")}</Label>
             <Textarea value={form.fullAddress} onChange={(e) => setField("fullAddress", e.target.value)} rows={2} />
           </div>
         </div>

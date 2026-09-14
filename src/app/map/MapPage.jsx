@@ -3,6 +3,7 @@ import React from "react";
 import { GoogleMap, Marker, LoadScript } from "@react-google-maps/api";
 import { GoogleMapsOverlay } from "@deck.gl/google-maps";
 import { HeatmapLayer } from "@deck.gl/aggregation-layers";
+import { formatCurrency } from "@/app/utils/formatCurrency";
 
 const MapPage = ({
   apiKey,
@@ -152,7 +153,7 @@ const MapPage = ({
               }}
               title={`${location.customerName} - ${location.city}, ${
                 location.state
-              }\nAmount: ₦${location.amount?.toLocaleString()}\nProduct: ${
+              }\nAmount: ${formatCurrency(location.amount)}\nProduct: ${
                 location.productCategory
               }`}
               icon={{

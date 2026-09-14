@@ -7,18 +7,28 @@
  * Formats sales data into the specified CSV format
  * @param {Array} salesData - Array of SuperAdminSale objects
  * @returns {string} CSV formatted string
+ */import { debug } from "@/app/utils/log";
+import { fieldByKey, fieldLabel } from "@/lib/saleDictionary";
+
+/**
+ * The sheet header for a sale field: the Stove DB name when the field has
+ * one, otherwise the agreement wording. Column order and values are unchanged.
+ * @param {string} key - Dictionary field key
+ * @returns {string} Header text for the column
  */
+const csvHeader = (key) => fieldByKey(key)?.stoveDbName || fieldLabel(key);
+
 export const formatSalesDataToCSV = (salesData) => {
   if (!salesData || !Array.isArray(salesData) || salesData.length === 0) {
     console.warn("CSV Export: No sales data provided or empty array");
     return getCSVHeaders().join(",") + "\n"; // Return headers only if no data
   }
 
-  console.log(`CSV Export: Processing ${salesData.length} sales records`);
+  debug(`CSV Export: Processing ${salesData.length} sales records`);
 
   // Log first record structure for debugging
   if (salesData.length > 0) {
-    console.log("CSV Export: First record structure:", {
+    debug("CSV Export: First record structure:", {
       id: salesData[0].id,
       hasAddresses: !!salesData[0].addresses,
       addressesType: typeof salesData[0].addresses,
@@ -49,33 +59,34 @@ export const formatSalesDataToCSV = (salesData) => {
  */
 const getCSVHeaders = () => {
   return [
-    "Serial Number",
-    "Sales Date",
+    csvHeader("stove_serial_no"),
+    csvHeader("sales_date"),
     "Created",
-    "State",
-    "District/LGA",
-    "Address",
+    csvHeader("state_backup"),
+    csvHeader("lga_backup"),
+    csvHeader("full_address"),
     "Latitude",
     "Longitude",
-    "Phone",
-    "Contact Person",
-    "Other Contact Phone",
-    "Sales Partner/Field Assistant",
-    "User Name",
-    "User Surname",
-    "CPA",
+    csvHeader("phone"),
+    csvHeader("contact_person"),
+    csvHeader("other_phone"),
+    csvHeader("partner_name"),
+    csvHeader("end_user_first_name"),
+    csvHeader("end_user_surname"),
+    // The CPA column is the terms block; its value is unchanged for now.
+    csvHeader("terms_accepted"),
     // Additional details
     "Transaction ID",
-    "AKA",
-    "Retailer/Branch",
-    "Pot Quantity",
-    "Heat Retention Device (Wonderbox)",
-    "Previous Stove Type",
-    "Previous Stove Other",
-    "Meals Per Day",
-    "Cooking Fuel Source",
-    "Cooking Location",
-    "Payment Type",
+    csvHeader("aka"),
+    csvHeader("retailer_branch"),
+    csvHeader("pot_quantity"),
+    csvHeader("heat_retention_device"),
+    csvHeader("previous_stove_type"),
+    csvHeader("previous_stove_other"),
+    csvHeader("meals_per_day"),
+    csvHeader("cooking_fuel_source"),
+    csvHeader("cooking_location"),
+    csvHeader("is_installment"),
     "Payment Status",
   ];
 };
@@ -108,10 +119,12 @@ const formatSaleToCSVRow = (sale) => {
     return fallback;
   };
 
-  // Extract user name parts
-  const { firstName, lastName } = extractUserName(
-    safeExtract(sale.end_user_name) || safeExtract(sale.contact_person)
-  );
+  // The stored parts when the record has them; the old guess only for a row
+  // written before the parts existed.
+  const split = extractUserName(safeExtract(sale.end_user_name) || safeExtract(sale.contact_person));
+  const hasParts = Boolean(sale.end_user_first_name || sale.end_user_surname);
+  const firstName = hasParts ? safeExtract(sale.end_user_first_name) : split.firstName;
+  const lastName = hasParts ? safeExtract(sale.end_user_surname) : split.lastName;
 
   // Handle potential object values in addresses
   const addresses = sale.addresses || sale.address || {};
@@ -134,7 +147,7 @@ const formatSaleToCSVRow = (sale) => {
     formatDateForCSV(sale.sales_date),
     formatDateTimeForCSV(sale.created_at ? new Date(sale.created_at) : new Date()),
     cleanCSVValue(safeExtract(sale.state_backup) || addressState),
-    cleanCSVValue(safeExtract(sale.lga_backup) || addressCity),
+    cleanCSVValue(safeExtract(sale.lga_backup)),
     cleanCSVValue(getFullAddress(addresses)),
     cleanCSVValue(addressLatitude),
     cleanCSVValue(addressLongitude),

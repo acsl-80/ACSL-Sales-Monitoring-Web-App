@@ -1,5 +1,6 @@
 
 import React, { useState, useEffect, useCallback } from "react";
+import { formatPaymentMethod } from "@/app/utils/formatPaymentMethod";
 import {
   Dialog,
   DialogContent,
@@ -18,6 +19,7 @@ import { Badge } from "@/components/ui/badge";
 import { Loader2, CreditCard, CheckCircle2, Eye } from "lucide-react";
 import { AdminSales } from "@/types/adminSales";
 import paymentModelService from "../../../services/paymentModelService";
+import { formatCurrency as formatCurrencyShared } from "@/app/utils/formatCurrency";
 
 interface InstallmentPayment {
   id: string;
@@ -54,16 +56,7 @@ interface PaymentHistoryModalProps {
   sale: AdminSales | null;
 }
 
-const formatCurrency = (amount: number) =>
-  `₦${Number(amount ?? 0).toLocaleString("en-NG")}`;
-
-const formatPaymentMethod = (method: string) => {
-  if (!method) return "-";
-  return method
-    .split("_")
-    .map((w) => w.charAt(0).toUpperCase() + w.slice(1))
-    .join(" ");
-};
+const formatCurrency = (v: unknown) => formatCurrencyShared(v, { empty: "₦0" });
 
 const PaymentHistoryModal: React.FC<PaymentHistoryModalProps> = ({
   open,

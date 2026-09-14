@@ -34,34 +34,17 @@ import {
   downloadAgreementPDF,
 } from "../admin/components/sales/agreement/AgreementPDFGenerator";
 import PdfImagePreview from "./PdfImagePreview";
+import { formatDate as formatDateShared } from "@/app/utils/formatDate";
+import { formatCurrency as formatCurrencyShared } from "@/app/utils/formatCurrency";
+import { fieldLabel } from "@/lib/saleDictionary";
 
 
 const BRAND = "#4a5d0f";
 const BRAND_SOFT = "#eef3c4";
 
-const formatDate = (d) => {
-  if (!d) return "—";
-  try {
-    return new Date(d).toLocaleDateString("en-US", {
-      year: "numeric",
-      month: "long",
-      day: "numeric",
-    });
-  } catch {
-    return String(d);
-  }
-};
+const formatDate = (v) => formatDateShared(v, { empty: "—", style: "long" });
 
-const formatMoney = (v) => {
-  if (v === null || v === undefined || v === "") return "—";
-  const n = Number(v);
-  if (Number.isNaN(n)) return String(v);
-  return new Intl.NumberFormat("en-NG", {
-    style: "currency",
-    currency: "NGN",
-    maximumFractionDigits: 2,
-  }).format(n);
-};
+const formatMoney = (v) => formatCurrencyShared(v, { empty: "—" });
 
 const pick = (obj, keys) => {
   for (const k of keys) {
@@ -484,11 +467,11 @@ const AgreementImagesPage = () => {
                     <div>
                       <SectionTitle>End User</SectionTitle>
                       <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-6">
-                        <Field icon={User} label="Full Name" value={endUserName} />
-                        <Field icon={Phone} label="Phone Number" value={phone} />
+                        <Field icon={User} label={fieldLabel("end_user_name")} value={endUserName} />
+                        <Field icon={Phone} label={fieldLabel("phone")} value={phone} />
                         <Field
                           icon={User}
-                          label="Contact Person"
+                          label={fieldLabel("contact_person")}
                           value={contactPerson}
                         />
                         <Field
@@ -502,7 +485,7 @@ const AgreementImagesPage = () => {
                           <div className="sm:col-span-2">
                             <Field
                               icon={MapPin}
-                              label="Address"
+                              label={fieldLabel("full_address")}
                               value={address}
                             />
                           </div>
@@ -518,23 +501,23 @@ const AgreementImagesPage = () => {
                       <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-6">
                         <Field
                           icon={Hash}
-                          label="Stove Serial No."
+                          label={fieldLabel("stove_serial_no")}
                           value={sale.stove_serial_no}
                           mono
                         />
                         <Field
                           icon={Calendar}
-                          label="Sales Date"
+                          label={fieldLabel("sales_date")}
                           value={formatDate(sale.sales_date)}
                         />
                         <Field
                           icon={Building2}
-                          label="Partner"
+                          label={fieldLabel("partner_name")}
                           value={partner}
                         />
                         <Field
                           icon={Package}
-                          label="Sales Model"
+                          label={fieldLabel("payment_model_id")}
                           value={salesModel}
                         />
                       </div>
@@ -548,7 +531,7 @@ const AgreementImagesPage = () => {
                           <div className="grid grid-cols-1 sm:grid-cols-3 gap-x-6">
                             <Field
                               icon={CreditCard}
-                              label="Total Amount"
+                              label={fieldLabel("amount")}
                               value={formatMoney(totalAmount)}
                             />
                             <Field

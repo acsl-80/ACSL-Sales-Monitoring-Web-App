@@ -17,6 +17,7 @@ import {
   TrendingUp,
   TrendingDown,
 } from "lucide-react";
+import { debug } from "@/app/utils/log";
 
 const OrganizationCSVImportModal = ({
   isOpen,
@@ -76,12 +77,12 @@ const OrganizationCSVImportModal = ({
         csvData
       );
 
-      console.log('Import service result:', result);
-      console.log('Result data structure:', result?.data);
+      debug('Import service result:', result);
+      debug('Result data structure:', result?.data);
 
       // Validate and normalize the response structure
       const importData = result.data || {};
-      console.log('Import data after normalization:', importData);
+      debug('Import data after normalization:', importData);
       
       const summary = importData.summary || {
         total_rows: 0,
@@ -90,7 +91,7 @@ const OrganizationCSVImportModal = ({
         errors_count: 0
       };
       
-      console.log('Summary after normalization:', summary);
+      debug('Summary after normalization:', summary);
       
       const normalizedResult = {
         summary,

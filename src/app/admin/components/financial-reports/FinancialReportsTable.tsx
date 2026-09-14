@@ -11,6 +11,9 @@ import { Badge } from "@/components/ui/badge";
 import { ArrowUpDown, ChevronLeft, ChevronRight, ChevronsLeft, ChevronsRight } from "lucide-react";
 import { AdminSales } from "@/types/adminSales";
 import FinancialReportRowActions from "./FinancialReportRowActions";
+import { formatDate as formatDateShared } from "@/app/utils/formatDate";
+import { formatCurrency as formatCurrencyShared } from "@/app/utils/formatCurrency";
+import { fieldLabel } from "@/lib/saleDictionary";
 
 interface FinancialReportsTableProps {
   data: AdminSales[];
@@ -33,15 +36,9 @@ interface FinancialReportsTableProps {
   viewFrom?: "admin" | "superAdmin" | "agent";
 }
 
-const formatCurrency = (amount: number) =>
-  `₦${(amount ?? 0).toLocaleString("en-NG", { minimumFractionDigits: 0 })}`;
+const formatCurrency = (v: unknown) => formatCurrencyShared(v, { empty: "₦0" });
 
-const formatDate = (dateStr: string) => {
-  if (!dateStr) return "N/A";
-  return new Date(dateStr).toLocaleDateString("en-GB", {
-    day: "2-digit", month: "2-digit", year: "numeric",
-  });
-};
+const formatDate = (v: unknown) => formatDateShared(v, { style: "numeric" });
 
 // total_paid is what was actually collected, for outright sales too. Never
 // substitute `amount` here — that would report an underpaid sale as settled.
@@ -97,14 +94,14 @@ const FinancialReportsTable: React.FC<FinancialReportsTableProps> = ({
                 onClick={onToggleSort}
               >
                 <div className="flex items-center gap-1">
-                  Date <ArrowUpDown className="h-3 w-3" />
+                  {fieldLabel("sales_date")} <ArrowUpDown className="h-3 w-3" />
                 </div>
               </TableHead>
-               <TableHead className="text-white font-semibold py-2 px-2 w-[11%]">End User</TableHead>
-               <TableHead className="text-white font-semibold py-2 px-2 w-[7%]">State</TableHead>
-               <TableHead className="text-white font-semibold py-2 px-2 w-[11%]">Partner</TableHead>
-               <TableHead className="text-white font-semibold py-2 px-2 w-[8%]">Stove ID</TableHead>
-               <TableHead className="text-white font-semibold py-2 px-2 w-[11%] bg-indigo-500">Model</TableHead>
+               <TableHead className="text-white font-semibold py-2 px-2 w-[11%]">{fieldLabel("end_user_name")}</TableHead>
+               <TableHead className="text-white font-semibold py-2 px-2 w-[7%]">{fieldLabel("state_backup")}</TableHead>
+               <TableHead className="text-white font-semibold py-2 px-2 w-[11%]">{fieldLabel("partner_name")}</TableHead>
+               <TableHead className="text-white font-semibold py-2 px-2 w-[8%]">{fieldLabel("stove_serial_no")}</TableHead>
+               <TableHead className="text-white font-semibold py-2 px-2 w-[11%] bg-indigo-500">{fieldLabel("payment_model_id")}</TableHead>
                  <TableHead className="text-white font-semibold py-2 px-2 text-left w-[7%] bg-slate-500">Expected</TableHead>
                 <TableHead className="text-white font-semibold py-2 px-2 text-left w-[7%] bg-green-600">Paid</TableHead>
                 <TableHead className="text-white font-semibold py-2 px-2 text-left w-[7%] bg-red-500">Balance</TableHead>
@@ -228,7 +225,7 @@ const FinancialReportsTable: React.FC<FinancialReportsTableProps> = ({
         <div className="flex items-center gap-3">
           <p className="text-sm text-gray-600">
             Showing <span className="font-medium">{startRecord}–{endRecord}</span> of{" "}
-            <span className="font-medium">{totalRecords}</span> records
+            <span className="font-medium">{totalRecords.toLocaleString("en-NG")}</span> records
           </p>
           <div className="flex items-center gap-2">
             <span className="text-sm text-gray-500">per page:</span>
@@ -237,10 +234,10 @@ const FinancialReportsTable: React.FC<FinancialReportsTableProps> = ({
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="10">10</SelectItem>
                 <SelectItem value="25">25</SelectItem>
                 <SelectItem value="50">50</SelectItem>
                 <SelectItem value="100">100</SelectItem>
+                <SelectItem value="200">200</SelectItem>
               </SelectContent>
             </Select>
           </div>

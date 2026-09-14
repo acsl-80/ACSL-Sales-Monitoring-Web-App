@@ -2,6 +2,8 @@
 import React, { useState, useEffect, useRef, useCallback, useMemo } from "react";
 import { supabaseUrl as SUPABASE_URL } from "@/lib/supabaseConfig";
 import { useRealtimeRefresh, useRefreshListener } from "../../agents/hooks/useRealtimeRefresh";
+import { usePartnerAgents } from "../hooks/usePartnerAgents";
+import { fetchAllRows } from "@/lib/fetchAllRows";
 
 const REALTIME_PARTNER_TABLES = ["organizations", "sales", "stove_ids"];
 import DashboardLayout from "../../components/DashboardLayout";
@@ -76,6 +78,7 @@ import { Calendar as CalendarIcon } from "lucide-react";
 import { format, parseISO } from "date-fns";
 import { Calendar } from "@/components/ui/calendar";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { formatDate as formatDateShared } from "@/app/utils/formatDate";
 
 // ── Stove IDs Modal ──────────────────────────────────────────────────────────
 
@@ -164,11 +167,7 @@ const StoveIdsModal = ({ organization, isOpen, onClose, initialFilter = "all" })
     }
   };
 
-  const formatDate = (d) => {
-    if (!d) return "N/A";
-    try { return new Date(d).toLocaleDateString("en-GB", { day: "2-digit", month: "short", year: "numeric" }); }
-    catch { return "N/A"; }
-  };
+  const formatDate = (v) => formatDateShared(v);
 
   const filtered = stoveIds.filter((s) =>
     !search || s.stove_id?.toLowerCase().includes(search.toLowerCase())
@@ -455,11 +454,7 @@ export const StoveTransferHistoryModal = ({ organization, isOpen, onClose }) => 
     }
   };
 
-  const formatDate = (d) => {
-    if (!d) return "N/A";
-    try { return new Date(d).toLocaleDateString("en-GB", { day: "2-digit", month: "short", year: "numeric" }); }
-    catch { return "N/A"; }
-  };
+  const formatDate = (v) => formatDateShared(v);
 
   const SectionHeader = ({ title }) => (
     <div className="flex items-center justify-between border-b border-primary/20 pb-0.5 mb-2">
@@ -792,11 +787,7 @@ const SectionCard = ({ title, children }) => (
 
 const PartnerDetailModal = ({ organization, isOpen, onClose, onEdit }) => {
   if (!organization) return null;
-  const formatDate = (d) => {
-    if (!d) return "N/A";
-    try { return new Date(d).toLocaleDateString("en-GB", { day: "2-digit", month: "short", year: "numeric" }); }
-    catch { return "N/A"; }
-  };
+  const formatDate = (v) => formatDateShared(v);
   const typeLabel = organization.partner_type
     ? organization.partner_type.charAt(0).toUpperCase() + organization.partner_type.slice(1)
     : "N/A";
@@ -895,24 +886,16 @@ const SystemStovesModal = ({ isOpen, onClose, mode }) => {
       setLoading(true);
       try {
         // 1. Fetch stove_ids across the whole system, matching the KPI filter.
-        const stoveRows = [];
-        const PAGE_FETCH = 1000;
-        const HARD_CAP = 50000;
-        let from = 0;
-        while (from < HARD_CAP) {
+        // The shared walk pages a thousand at a time and stops at fifty thousand.
+        const stoveRows = await fetchAllRows((from, to) => {
           let q = supabase
             .from("stove_ids")
             .select("stove_id,organization_id,status,created_at,sale_id")
             .eq("is_archived", false);
           if (mode === "sold")   q = q.eq("status", "sold");
           if (mode === "unsold") q = q.eq("status", "available");
-          const { data, error: err } = await q.range(from, from + PAGE_FETCH - 1);
-          if (err) throw err;
-          const chunk = data || [];
-          stoveRows.push(...chunk);
-          if (chunk.length < PAGE_FETCH) break;
-          from += PAGE_FETCH;
-        }
+          return q.range(from, to);
+        });
 
         // 2. Resolve organizations (partner name / state / branch) in batches.
         const orgIds = Array.from(new Set(stoveRows.map((s) => s.organization_id).filter(Boolean)));
@@ -1012,11 +995,7 @@ const SystemStovesModal = ({ isOpen, onClose, mode }) => {
   const safePage = Math.min(page, totalPages);
   const paginated = filtered.slice((safePage - 1) * PAGE_SIZE, safePage * PAGE_SIZE);
 
-  const fmtDate = (d) => {
-    if (!d) return "—";
-    try { return new Date(d).toLocaleDateString("en-GB", { day: "2-digit", month: "short", year: "numeric" }); }
-    catch { return "—"; }
-  };
+  const fmtDate = (v) => formatDateShared(v, { empty: "—" });
 
   const exportCsv = () => {
     const esc = (v) => {
@@ -1194,8 +1173,6 @@ export default function PartnersContent() {
   const [loadingOrgId, setLoadingOrgId] = useState(null);
   const [expandedRefKeys, setExpandedRefKeys] = useState({});
 
-  const [orgAgentsData, setOrgAgentsData] = useState({});
-  const loadingAgentOrgIdsRef = useRef(new Set());
 
   const [sortMode, setSortMode] = useState("default");
   const [stoveSort, setStoveSort] = useState({ key: null, direction: null });
@@ -1243,6 +1220,11 @@ export default function PartnersContent() {
     deleteOrganization,
     fetchOrganizations,
   } = useOrganizations();
+  // The agents covering each partner on the page, one request per page; the
+  // assigned/unassigned filter reads it as it always did.
+  const pageOrgIds = useMemo(() => organizationsData.map((o) => o.id), [organizationsData]);
+  const partnerAgents = usePartnerAgents(pageOrgIds);
+  const orgAgentsData = partnerAgents.byOrg;
 
   // Close dropdowns on outside click
   useEffect(() => {
@@ -1323,6 +1305,7 @@ export default function PartnersContent() {
   useRealtimeRefresh("partners", REALTIME_PARTNER_TABLES);
   useRefreshListener("partners", () => {
     try { fetchOrganizations && fetchOrganizations(); } catch {}
+    try { partnerAgents.invalidate(); } catch {}
     try { fetchStats(filters, dateFrom, dateTo); } catch {}
     try { fetchTypeCounts(); } catch {}
   });
@@ -1405,30 +1388,8 @@ export default function PartnersContent() {
     setExpandedRefKeys((prev) => ({ ...prev, [key]: !prev[key] }));
   };
 
-  useEffect(() => {
-    if (organizationsData.length === 0) return;
-    organizationsData.forEach((org) => {
-      if (orgAgentsData[org.id] !== undefined) return;
-      if (loadingAgentOrgIdsRef.current.has(org.id)) return;
-      loadingAgentOrgIdsRef.current.add(org.id);
-      superAdminAgentService.getAgentsByOrganization(org.id)
-        .then((response) => {
-          setOrgAgentsData((prev) => ({ ...prev, [org.id]: response.data || [] }));
-        })
-        .catch(() => {
-          setOrgAgentsData((prev) => ({ ...prev, [org.id]: [] }));
-        })
-        .finally(() => {
-          loadingAgentOrgIdsRef.current.delete(org.id);
-        });
-    });
-  }, [organizationsData]);
 
-  const formatDate = (d) => {
-    if (!d) return "N/A";
-    try { return new Date(d).toLocaleDateString("en-GB", { day: "2-digit", month: "short", year: "numeric" }); }
-    catch { return "N/A"; }
-  };
+  const formatDate = (v) => formatDateShared(v);
 
   const handleViewDetails = (org) => setSelectedOrganization(org);
   const handleViewStoveIds = (org, filter = "all") => { setStoveIdsOrg(org); setStoveIdsFilter(filter); };
@@ -2025,7 +1986,7 @@ export default function PartnersContent() {
           organization={assignAgentOrg}
           isOpen={!!assignAgentOrg}
           onClose={() => setAssignAgentOrg(null)}
-          onSuccess={() => { setAssignAgentOrg(null); setOrgAgentsData({}); }}
+          onSuccess={() => { setAssignAgentOrg(null); partnerAgents.invalidate(); }}
         />
         <ViewCredentialModal isOpen={!!viewingCredential} onClose={() => setViewingCredential(null)} credential={viewingCredential} />
         <AssignedAgentsModal organization={agentsModalOrg} agents={agentsModalOrg ? (orgAgentsData[agentsModalOrg.id] || []) : []} isOpen={!!agentsModalOrg} onClose={() => setAgentsModalOrg(null)} />

@@ -1,4 +1,5 @@
 import React, { useEffect, useMemo, useState } from "react";
+import { lgaAndStates } from "@/app/constants";
 import {
   ResponsiveContainer,
   BarChart,
@@ -22,13 +23,9 @@ import {
 import { Button } from "@/components/ui/button";
 import salesAdvancedService from "../../services/salesAdvancedAPIService";
 
-const NIGERIAN_STATES = [
-  "Abia","Adamawa","Akwa Ibom","Anambra","Bauchi","Bayelsa","Benue","Borno",
-  "Cross River","Delta","Ebonyi","Edo","Ekiti","Enugu","FCT","Gombe","Imo",
-  "Jigawa","Kaduna","Kano","Katsina","Kebbi","Kogi","Kwara","Lagos","Nasarawa",
-  "Niger","Ogun","Ondo","Osun","Oyo","Plateau","Rivers","Sokoto","Taraba",
-  "Yobe","Zamfara",
-];
+// The 37 states, from the one place they are defined. See DashboardContent
+// for why this is the bundled constant and not the async geo service.
+const NIGERIAN_STATES = Object.keys(lgaAndStates).sort();
 
 const STATE_LOOKUP = NIGERIAN_STATES.reduce((acc, s) => {
   acc[s.toLowerCase()] = s;
@@ -60,6 +57,7 @@ const TOP_OPTIONS = [5, 10, 15, 20, 37];
 const SalesByStateChart = () => {
   const [rows, setRows] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [failed, setFailed] = useState(false);
   const [dateRange, setDateRange] = useState({ from: undefined, to: undefined });
   const [month, setMonth] = useState("all");
   const [topN, setTopN] = useState(10);
@@ -78,6 +76,7 @@ const SalesByStateChart = () => {
         if (mounted) setRows(data);
       } catch (e) {
         console.error("Sales by state fetch failed:", e);
+        if (mounted) setFailed(true);
       } finally {
         if (mounted) setLoading(false);
       }
@@ -206,6 +205,10 @@ const SalesByStateChart = () => {
       <div className="px-4 pt-5 pb-4 bg-white">
         {loading ? (
           <p className="text-xs text-gray-400 text-center py-16">Loading sales by state…</p>
+        ) : failed ? (
+          <p role="alert" className="text-xs text-amber-700 text-center py-16">
+            Could not load sales by state. Reload the page to try again.
+          </p>
         ) : (
           <ResponsiveContainer width="100%" height={Math.max(360, chartData.length * 32)}>
             <BarChart

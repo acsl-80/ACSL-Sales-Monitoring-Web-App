@@ -649,7 +649,7 @@ Have ready: the stove serial number, the buyer's and end user's details, the loc
 
 **Buyer & end user**
 
-The fields are in the order you normally collect them: End User First Name, End User Surname, End User Phone, AKA, then the *same as contact person* checkbox, then Contact Person / Buyer and Contact Phone.
+The fields are in the order you normally collect them: Sales agent's name, First name, Surname, Telephone number, Also known as, then the *customer is also the contact* checkbox, then Buyer Name and Contact phone.
 
 - Tick **Select if End User is same as Contact Person** and the platform copies the end user's first name and surname into *Contact Person / Buyer* and the end user's phone into *Contact Phone*, so you do not type them twice.
 - **Phone numbers** must be valid Nigerian numbers in one of these forms: \`08031234567\`, \`+2348031234567\` or \`2348031234567\`. Anything else is rejected with a message under the field.

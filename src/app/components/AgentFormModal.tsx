@@ -142,6 +142,21 @@ export default function AgentFormModal({
   const [originalOrgIds, setOriginalOrgIds] = useState<Set<string>>(new Set());
   const [selectedStates, setSelectedStates] = useState<Set<string>>(new Set());
   const [originalStates, setOriginalStates] = useState<Set<string>>(new Set());
+  /*
+   * Partners carved out of a state the agent otherwise covers.
+   *
+   * Only meaningful in state mode. Kept when the mode is switched away and
+   * back, because the server keeps them too: an agent moved state -> partner
+   * -> state gets exactly what they had.
+   */
+  const [excludedOrgIds, setExcludedOrgIds] = useState<Set<string>>(new Set());
+  /*
+   * null until probed. The atomic scope endpoint ships in an edge function,
+   * and edge functions do not deploy when this file does, so there is a window
+   * where this UI is live and that route is not. Probing rather than assuming
+   * means neither deploy waits for the other.
+   */
+  const [scopeSupported, setScopeSupported] = useState<boolean | null>(null);
 
   // UI for assignment section
   const [assignMode, setAssignMode] = useState<"state" | "partner">("state");
@@ -181,8 +196,28 @@ export default function AgentFormModal({
     Promise.all([
       superAdminAgentService.getAgentOrganizations(agent.id),
       superAdminAgentService.getAgentStates(agent.id),
+      superAdminAgentService.getAgentScope(agent.id),
     ])
-      .then(([orgsRes, statesRes]: any[]) => {
+      .then(([orgsRes, statesRes, scopeRes]: any[]) => {
+        /*
+         * scopeRes is null when the endpoint is not deployed yet. In that case
+         * this stays on the old two-endpoint save path and the mode toggle
+         * goes back to being a view filter, which is what it was before.
+         */
+        const scope = scopeRes?.data ?? null;
+        setScopeSupported(scopeRes !== null);
+        if (scope) {
+          setExcludedOrgIds(new Set<string>(scope.excluded_organization_ids ?? []));
+          /*
+           * A null mode means this agent has no scope row and resolves the way
+           * the pre-change code did: by name if they hold any, otherwise by
+           * state. Showing that derivation is honest; defaulting to one or the
+           * other would tell the admin something the server has not decided.
+           */
+          if (scope.mode === "state_coverage") setAssignMode("state");
+          else if (scope.mode === "explicit_partners") setAssignMode("partner");
+          else setAssignMode((scope.organization_ids ?? []).length > 0 ? "partner" : "state");
+        }
         const directIds = new Set<string>(
           (orgsRes.data || [])
             .filter((o: any) => !o.source || o.source === "direct")
@@ -233,11 +268,20 @@ export default function AgentFormModal({
     (s) => orgs.some((o) => o.state === s)
   );
 
+  /*
+   * What this agent would cover if saved now.
+   *
+   * By state it is everyone in the selected states minus exclusions, and it
+   * grows on its own as partners are created. By partner it is the named list.
+   * It used to be the union of both, which is the arithmetic that made the two
+   * modes look additive when the server treated one as cancelling the other.
+   */
   const totalSelected = useMemo(() => {
-    const stateCovered = new Set<string>();
-    orgs.forEach((o) => { if (o.state && selectedStates.has(o.state)) stateCovered.add(o.id); });
-    return new Set([...selectedDirectOrgIds, ...stateCovered]).size;
-  }, [orgs, selectedStates, selectedDirectOrgIds]);
+    if (assignMode !== "state") return selectedDirectOrgIds.size;
+    return orgs.filter(
+      (o) => o.state && selectedStates.has(o.state) && !excludedOrgIds.has(o.id)
+    ).length;
+  }, [orgs, selectedStates, selectedDirectOrgIds, excludedOrgIds, assignMode]);
 
   const hasBottomContent = selectedStatesWithPartners.length > 0;
 
@@ -248,16 +292,25 @@ export default function AgentFormModal({
 
   // ── Toggle helpers ────────────────────────────────────────────────────────────
 
+  /*
+   * Selecting a state records the state, and nothing else.
+   *
+   * This used to pour every partner then in that state into the named list.
+   * That is what froze coverage: the named list was never empty afterwards,
+   * and the old resolver ignored states entirely once it was not. Partners
+   * created later never arrived, and the agent could not sell for them.
+   *
+   * Deselecting drops the state's exclusions with it, since an exclusion from
+   * a state you no longer hold has nothing to mean.
+   */
   const toggleState = (s: string) => {
     const isSelected = selectedStates.has(s);
     if (isSelected) {
       const otherStates = new Set(Array.from(selectedStates).filter((st) => st !== s));
       setSelectedStates(otherStates);
-      setSelectedDirectOrgIds((prev) => {
+      setExcludedOrgIds((prev) => {
         const next = new Set(prev);
-        orgs.forEach((o) => {
-          if (o.state === s && !otherStates.has(o.state ?? "")) next.delete(o.id);
-        });
+        orgs.forEach((o) => { if (o.state === s) next.delete(o.id); });
         return next;
       });
     } else {
@@ -266,13 +319,31 @@ export default function AgentFormModal({
       while (usedIndices.has(nextIdx)) nextIdx++;
       setStateColorMap((prev) => ({ ...prev, [s]: nextIdx }));
       setSelectedStates((prev) => new Set([...prev, s]));
-      const ids = orgs.filter((o) => o.state === s).map((o) => o.id);
-      setSelectedDirectOrgIds((prev) => {
-        const next = new Set(prev);
-        ids.forEach((id) => next.add(id));
-        return next;
-      });
     }
+  };
+
+  /*
+   * Save the coverage configuration.
+   *
+   * One atomic call where the endpoint exists, the old racing pair where it
+   * does not. The two POSTs it replaces were fired together in a Promise.all,
+   * so states and partners were never written as a pair, and each did
+   * delete-then-insert with no transaction.
+   */
+  const saveScope = async (agentId: string) => {
+    if (scopeSupported) {
+      await superAdminAgentService.setAgentScope(agentId, {
+        mode: assignMode === "state" ? "state_coverage" : "explicit_partners",
+        states: [...selectedStates],
+        organizationIds: [...selectedDirectOrgIds],
+        excludedOrganizationIds: [...excludedOrgIds],
+      });
+      return;
+    }
+    await Promise.all([
+      superAdminAgentService.setAgentOrganizations(agentId, [...selectedDirectOrgIds]),
+      superAdminAgentService.setAgentStates(agentId, [...selectedStates]),
+    ]);
   };
 
   const toggleOrg = (id: string) =>
@@ -281,6 +352,32 @@ export default function AgentFormModal({
       next.has(id) ? next.delete(id) : next.add(id);
       return next;
     });
+
+  /*
+   * Whether this partner is covered, and what a click on it means.
+   *
+   * By state: everyone in a selected state is covered unless excluded, so a
+   * click adds or removes an exclusion. By partner: coverage is the named list
+   * itself, so a click adds or removes a name. Same tick box, two meanings,
+   * which is why both go through here rather than being decided at each of the
+   * three places partners are rendered.
+   */
+  const byState = assignMode === "state";
+
+  const isCovered = (id: string, orgState?: string | null) =>
+    byState
+      ? selectedStates.has(orgState ?? "") && !excludedOrgIds.has(id)
+      : selectedDirectOrgIds.has(id);
+
+  const toggleCoverage = (id: string, orgState?: string | null) => {
+    if (!byState) return toggleOrg(id);
+    if (!selectedStates.has(orgState ?? "")) return;
+    setExcludedOrgIds((prev) => {
+      const next = new Set(prev);
+      next.has(id) ? next.delete(id) : next.add(id);
+      return next;
+    });
+  };
 
   // ── Utilities ─────────────────────────────────────────────────────────────────
 
@@ -344,14 +441,7 @@ export default function AgentFormModal({
         });
         const newAgent: AcslAgent = result.data;
         if (isAcslRole) {
-          await Promise.all([
-            selectedDirectOrgIds.size > 0
-              ? superAdminAgentService.setAgentOrganizations(newAgent.id, [...selectedDirectOrgIds])
-              : Promise.resolve(),
-            selectedStates.size > 0
-              ? superAdminAgentService.setAgentStates(newAgent.id, [...selectedStates])
-              : Promise.resolve(),
-          ]);
+          await saveScope(newAgent.id);
         }
         onSuccess({
           ...newAgent,
@@ -371,20 +461,15 @@ export default function AgentFormModal({
         }
 
         if (isAcslRole) {
-          const orgsChanged =
-            [...selectedDirectOrgIds].some((id) => !originalOrgIds.has(id)) ||
-            [...originalOrgIds].some((id) => !selectedDirectOrgIds.has(id));
-          const statesChanged =
-            [...selectedStates].some((s) => !originalStates.has(s)) ||
-            [...originalStates].some((s) => !selectedStates.has(s));
-          await Promise.all([
-            orgsChanged
-              ? superAdminAgentService.setAgentOrganizations(agent!.id, [...selectedDirectOrgIds])
-              : Promise.resolve(),
-            statesChanged
-              ? superAdminAgentService.setAgentStates(agent!.id, [...selectedStates])
-              : Promise.resolve(),
-          ]);
+          /*
+           * Sent unconditionally rather than diffed.
+           *
+           * The mode is now part of the configuration, and switching it
+           * changes coverage with neither list moving, so the old
+           * "did the ids change" test would have skipped the save that
+           * mattered most.
+           */
+          await saveScope(agent!.id);
         }
 
         onSuccess({
@@ -803,7 +888,7 @@ export default function AgentFormModal({
                     {selectedStatesWithPartners.map((s) => {
                       const c = getStateColor(s);
                       const statePartners = orgs.filter((o) => o.state === s);
-                      const selectedCount = statePartners.filter((o) => selectedDirectOrgIds.has(o.id)).length;
+                      const selectedCount = statePartners.filter((o) => isCovered(o.id, o.state)).length;
                       return (
                         <div key={s} className="flex-1 min-w-[140px]">
                           <div
@@ -817,12 +902,12 @@ export default function AgentFormModal({
                             <span className="text-[9px] shrink-0" style={{ color: c.text, opacity: 0.7 }}>{selectedCount}/{statePartners.length}</span>
                           </div>
                           {statePartners.map((o, idx) => {
-                            const checked = selectedDirectOrgIds.has(o.id);
+                            const checked = isCovered(o.id, o.state);
                             return (
                               <button
                                 key={o.id}
                                 type="button"
-                                onClick={() => toggleOrg(o.id)}
+                                onClick={() => toggleCoverage(o.id, o.state)}
                                 className={[
                                   "w-full flex items-center gap-2 px-2 py-1.5 text-left transition-colors",
                                   idx % 2 === 0 ? "bg-white" : "bg-blue-50/30",

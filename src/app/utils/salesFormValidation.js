@@ -5,6 +5,7 @@
  */
 
 import { isValidSignature } from "./signatureUtils";
+import { missingByRules } from "../../lib/saleFieldRules";
 
 /**
  * Validates a Nigerian mobile phone number. Accepts:
@@ -31,7 +32,13 @@ export const NG_PHONE_FORMAT_MESSAGE =
  * @param {Object} formData - The form data to validate
  * @returns {Object} - Object containing validation errors (empty if valid)
  */
-export const validateSalesForm = (formData) => {
+/**
+ * The sales app's own rule for a record. `options.rules` are the dated rules
+ * from public.sale_field_rules (see lib/saleFieldRules): a field they require
+ * for the record's sales date is reported missing here, by the agreement's
+ * name for it, so the form refuses what the server would mark incomplete.
+ */
+export const validateSalesForm = (formData, options = {}) => {
   const errors = {};
 
   // Transaction ID validation (should be auto-generated)
@@ -45,14 +52,11 @@ export const validateSalesForm = (formData) => {
   }
 
   // Contact person validation
-  if (!formData.contactPerson.trim()) {
-    errors.contactPerson = "Contact person/buyer is required";
-  }
+  // The contact person and contact phone are optional since A4: the
+  // customer is the contact when they are empty. A phone given is still a phone.
 
   // Contact phone validation
-  if (!formData.contactPhone.trim()) {
-    errors.contactPhone = "Contact phone number is required";
-  } else if (!isValidNgPhone(formData.contactPhone)) {
+  if ((formData.contactPhone || "").trim() && !isValidNgPhone(formData.contactPhone)) {
     errors.contactPhone = NG_PHONE_FORMAT_MESSAGE;
   }
 
@@ -138,6 +142,13 @@ export const validateSalesForm = (formData) => {
     errors.termsAccepted = "All terms and conditions must be accepted";
   }
 
+
+  // The dated rules, for this record's day. A field the validator already
+  // reported is not reported twice.
+  for (const missing of missingByRules(options.rules ?? [], formData)) {
+    if (!errors[missing.key]) errors[missing.key] = `${missing.label} is required`;
+  }
+
   return errors;
 };
 
@@ -146,8 +157,8 @@ export const validateSalesForm = (formData) => {
  * @param {Object} formData - The form data to validate
  * @returns {boolean} - True if form is valid, false otherwise
  */
-export const isValidSalesForm = (formData) => {
-  const errors = validateSalesForm(formData);
+export const isValidSalesForm = (formData, options = {}) => {
+  const errors = validateSalesForm(formData, options);
   return Object.keys(errors).length === 0;
 };
 
@@ -169,17 +180,11 @@ export const fieldValidators = {
     return null;
   },
 
-  contactPerson: (value) => {
-    if (!value?.trim()) {
-      return "Contact person/buyer is required";
-    }
-    return null;
-  },
+  // Optional since A4; nothing to say about it field by field.
+  contactPerson: () => null,
 
   contactPhone: (value) => {
-    if (!value?.trim()) {
-      return "Contact phone number is required";
-    }
+    if (!value?.trim()) return null;
     if (!isValidNgPhone(value)) {
       return NG_PHONE_FORMAT_MESSAGE;
     }

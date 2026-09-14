@@ -1,5 +1,6 @@
 import { Navigate } from "@/compat/navigation";
 
 export default function AdminSettingsRedirect() {
-  return <Navigate to="/settings" />;
+  // There is no /settings route; the group's first page is system config.
+  return <Navigate to="/settings/system-config" />;
 }

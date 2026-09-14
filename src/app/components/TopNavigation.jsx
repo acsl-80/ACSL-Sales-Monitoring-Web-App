@@ -124,6 +124,14 @@ const TopNavigation = ({
             alt="Atmosfair Logo" 
             className="h-[50px] sm:h-[65px] w-auto"
           />
+          {title && (
+            <div className="min-w-0 border-l border-gray-200 pl-3">
+              <h1 className="truncate text-base font-semibold text-gray-900 sm:text-lg">{title}</h1>
+              {description && (
+                <p className="hidden truncate text-xs text-gray-500 sm:block">{description}</p>
+              )}
+            </div>
+          )}
         </div>
         
         <div className="flex items-center gap-2 sm:gap-4">

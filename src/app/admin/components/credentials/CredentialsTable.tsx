@@ -18,6 +18,7 @@ import {
 } from "@/components/ui/select";
 import { Eye, EyeOff, Copy, RefreshCw, Info, Loader2, ChevronLeft, ChevronRight, ChevronsLeft, ChevronsRight } from "lucide-react";
 import { Credential } from "@/app/services/adminCredentialsService";
+import { formatDate as formatDateShared } from "@/app/utils/formatDate";
 
 interface CredentialsTableProps {
   credentials: Credential[];
@@ -72,8 +73,7 @@ const CredentialsTable: React.FC<CredentialsTableProps> = ({
 
   const maskPassword = (password: string) => "•".repeat(Math.min(password.length, 12));
 
-  const formatDate = (d: string) =>
-    new Date(d).toLocaleDateString("en-GB", { day: "2-digit", month: "short", year: "numeric" });
+  const formatDate = (v: unknown) => formatDateShared(v);
 
   return (
     <div className="space-y-0">

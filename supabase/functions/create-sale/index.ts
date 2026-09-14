@@ -1,6 +1,6 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { loadSaleOptions, normalizeChoice } from "../_shared/sale-options.ts";
 import { resolveAssignedOrgIds } from "../_shared/resolveAssignedOrgIds.ts";
-import { resolveSaleStatus } from "../_shared/saleStatus.ts";
 
 function withCors(res: Response): Response {
   res.headers.set("Access-Control-Allow-Origin", "*");
@@ -17,6 +17,10 @@ function jsonError(message: string, status = 400): Response {
     new Response(JSON.stringify({ success: false, message }), { status })
   );
 }
+
+/** An account id is a uuid or it is not an account id. */
+const UUID_RE =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 Deno.serve(async (req) => {
   console.log("➡️ Incoming request:", req.method, req.url);
@@ -47,6 +51,13 @@ Deno.serve(async (req) => {
       contactPerson,
       contactPhone,
       endUserName,
+      // The agreement's two name fields, and the agent who sold the stove.
+      // A writer may send either name form; the database keeps the two in
+      // step. See 20260908050000_sale_record_fields_from_agreement.sql.
+      endUserFirstName,
+      endUserSurname,
+      salesAgentName,
+      salesAgentUserId,
       aka,
       stateBackup,
       lgaBackup,
@@ -81,6 +92,25 @@ Deno.serve(async (req) => {
       initialPaymentProofImageId,
     } = body;
 
+    /**
+     * One household, one number, two stoves.
+     *
+     * The rule below is one live sale per phone, and it is right for the Sell
+     * Stove form: an agent standing in front of a customer who types a number
+     * already on file has almost certainly typed the wrong number. It is wrong
+     * for a digitiser working through a stack of receipts, where a man who
+     * bought stoves for two wives wrote the same number on both.
+     *
+     * So the rule stays, and the Data Center's digitalisation path - and only
+     * that path - can say it means it. The Sell Stove form and the mobile app
+     * never send this field, so nothing about them changes.
+     *
+     * `allowSharedPhone` does not skip the check. It turns the refusal into a
+     * report, so the caller learns which sales already hold the number and can
+     * record the sharing rather than discovering it later.
+     */
+    const allowSharedPhone = body.allowSharedPhone === true;
+
     // ── Authenticate ─────────────────────────────────────────────────────────
     const anonClient = createClient(
       Deno.env.get("SUPABASE_URL")!,
@@ -103,7 +133,7 @@ Deno.serve(async (req) => {
     // ── Resolve organization_id ───────────────────────────────────────────────
     const { data: profile, error: profileError } = await supabase
       .from("profiles")
-      .select("organization_id, role")
+      .select("organization_id, role, full_name")
       .eq("id", userId)
       .maybeSingle();
 
@@ -146,6 +176,47 @@ Deno.serve(async (req) => {
 
     console.log("🏢 Resolved organization ID:", organizationId);
 
+    // ── The buyer's name, in whichever form arrived ───────────────────────────
+    //
+    // The paper agreement carries First name and Surname; older callers (the
+    // phone app, anything written before this) carry only the joined name. The
+    // BEFORE trigger on `sales` reconciles the two whichever way round they
+    // come, so both forms are accepted here.
+    //
+    // The join is composed BEFORE the required-field check and the status rule
+    // below, so a caller that sent only the parts satisfies both exactly as a
+    // caller that sent the joined name does. Nothing downstream sees a
+    // difference.
+    const endUserFirstNameClean = String(endUserFirstName ?? "").trim() || null;
+    const endUserSurnameClean = String(endUserSurname ?? "").trim() || null;
+    const endUserNameJoined =
+      String(endUserName ?? "").trim() ||
+      [endUserFirstNameClean, endUserSurnameClean].filter(Boolean).join(" ");
+
+    // The agent who sold the stove, as written on the agreement, and their
+    // account when they have one. Not the typist: `created_by` keeps naming
+    // whoever made the record.
+    // A caller that says nothing about the agent (the phone app until it is
+    // updated) made the sale itself, so the creator is the agent, as the
+    // backfill read history. A caller that sends the key, even as null (the
+    // import, whose sheet may leave it blank), is believed.
+    const creatorName = String((profile as { full_name?: string | null } | null)?.full_name ?? "").trim() || null;
+    const sellingAgentName = salesAgentName === undefined
+      ? creatorName
+      : String(salesAgentName ?? "").trim() || null;
+    let sellingAgentUserId: string | null = null;
+    if (
+      salesAgentUserId !== undefined &&
+      salesAgentUserId !== null &&
+      String(salesAgentUserId).trim() !== ""
+    ) {
+      const candidate = String(salesAgentUserId).trim();
+      if (!UUID_RE.test(candidate)) {
+        return jsonError("Sales agent user ID must be a user id", 400);
+      }
+      sellingAgentUserId = candidate;
+    }
+
     // ── Required-field validation ─────────────────────────────────────────────
     // Reject with a field-specific message rather than silently writing a row.
     const isBlank = (v: unknown) =>
@@ -154,9 +225,7 @@ Deno.serve(async (req) => {
     const requiredFieldChecks: Array<[unknown, string]> = [
       [transactionId, "Transaction ID is required"],
       [salesDate, "Sales date is required"],
-      [contactPerson, "Contact person is required"],
-      [contactPhone, "Contact phone is required"],
-      [endUserName, "End user name is required"],
+      [endUserNameJoined, "End user name is required"],
       [phone, "Phone number is required"],
       [partnerName, "Partner name is required"],
       [stoveSerialNo, "Stove serial number is required"],
@@ -166,6 +235,45 @@ Deno.serve(async (req) => {
         return jsonError(message, 400);
       }
     }
+
+    // ── A sale cannot have happened tomorrow ──────────────────────────────────
+    //
+    // The Sell Stove form already caps its date input at today, but that is a
+    // `max` attribute: it stops the picker, not the request. The mobile app and
+    // every import path reach this function directly, and nothing here checked,
+    // so a future date could be written by anything that was not the web form.
+    //
+    // It matters because dates are what everything downstream ages against.
+    // Three stoves reached production carrying ERP transfer dates in November
+    // and December 2026 and read as brand-new stock while being months old; a
+    // future SALE date would do the same to the call queue and to every
+    // creditable figure computed from it.
+    //
+    // Compared in Africa/Lagos, not UTC. Lagos is an hour ahead, so a sale
+    // entered at half past midnight is already tomorrow locally while the
+    // server still calls it today - and a UTC comparison would refuse a
+    // perfectly ordinary evening sale.
+    //
+    // Historical dates stay welcome. The whole point of digitalisation is
+    // typing in receipts from months ago, and the stock cutoff was removed in
+    // the same change precisely so the past stays visible.
+    {
+      const salesDateText = String(salesDate).trim().slice(0, 10);
+      const todayInLagos = new Date().toLocaleDateString("en-CA", {
+        timeZone: "Africa/Lagos",
+      });
+      if (!/^\d{4}-\d{2}-\d{2}$/.test(salesDateText)) {
+        return jsonError("Sales date must be a date, as YYYY-MM-DD", 400);
+      }
+      if (salesDateText > todayInLagos) {
+        return jsonError(
+          `Sales date ${salesDateText} is in the future. A sale cannot be recorded before it happens; today is ${todayInLagos}.`,
+          400,
+        );
+      }
+    }
+
+    let sharesPhoneWith: { id: string; transaction_id: string; phone: string | null }[] = [];
 
     // ── End-user phone uniqueness ─────────────────────────────────────────────
     // Every sale must be tied to a unique end-user phone. Compare digits-only so
@@ -194,11 +302,20 @@ Deno.serve(async (req) => {
           const rowDigits = String(r.phone ?? "").replace(/\D+/g, "");
           return rowDigits.length >= 10 && rowDigits.slice(-10) === tail;
         });
-        if (clash) {
+        if (clash && !allowSharedPhone) {
           return jsonError(
             `This end user phone is already used on sale ${clash.transaction_id}. Each sale must have a unique end user phone number.`,
             409
           );
+        }
+        // Carried to the end so the response can name every sale already on
+        // this number. A caller that opted in has to be able to record the
+        // sharing, and it cannot do that from a number alone.
+        if (clash) {
+          sharesPhoneWith = (dupes ?? []).filter((r: { phone: string | null }) => {
+            const rowDigits = String(r.phone ?? "").replace(/\D+/g, "");
+            return rowDigits.length >= 10 && rowDigits.slice(-10) === tail;
+          });
         }
       }
     }
@@ -385,7 +502,7 @@ Deno.serve(async (req) => {
     // Amount received is what the customer actually pays. It cannot be negative
     // and cannot exceed the sales amount. For outright (non-installment) sales
     // this is the ONLY record of what was collected — it is persisted below as
-    // `total_paid`, so an outright sale can legitimately be partially paid.
+    // `total_paid`.
     let outrightPaid = 0;
     if (amountReceived !== null && amountReceived !== undefined && String(amountReceived).trim() !== "") {
       const parsedReceived = Number(amountReceived);
@@ -399,6 +516,20 @@ Deno.serve(async (req) => {
         return jsonError("Amount received cannot be greater than the sales amount", 400);
       }
       outrightPaid = parsedReceived;
+    }
+
+    // A non-installment sale IS a full payment by definition — the customer
+    // settles the whole amount up front. The clients collect a single figure
+    // and send it as both `amount` and `amountReceived`, so the two already
+    // agree. We coerce rather than reject so that older app builds, and sales
+    // queued offline before the clients were updated, still sync instead of
+    // failing forever. Anything genuinely part-paid belongs on a payment model.
+    if (!installmentData && outrightPaid !== saleAmount) {
+      console.warn(
+        `⚠️ Outright sale received ${outrightPaid} against amount ${saleAmount} — ` +
+          `coercing to full payment (non-installment sales are paid in full).`,
+      );
+      outrightPaid = saleAmount;
     }
 
     // Stove image is now OPTIONAL (previously rejected when missing). The sale
@@ -439,30 +570,18 @@ Deno.serve(async (req) => {
     }
     console.log("🏡 Address inserted:", address.id);
 
-    // ── Determine sale status ─────────────────────────────────────────────────
-    // Mirrors `validateSalesForm` on the web form — see _shared/saleStatus.ts.
-    // Stove and agreement images are optional on the form, so neither affects
-    // whether a sale counts as completed.
-    const saleStatus = resolveSaleStatus({
-      transactionId,
-      stoveSerialNo,
-      salesDate,
-      contactPerson,
-      contactPhone,
-      endUserName,
-      phone,
-      partnerName,
-      amount: saleAmount, // the final amount being saved
-      stateBackup,
-      lgaBackup,
-      fullAddress: addressData?.fullAddress,
-      signature,
-    });
-
-    console.log("📋 Sale status evaluation:", { saleStatus });
-
     // ── Insert sale ───────────────────────────────────────────────────────────
-    console.log("📝 Inserting main sale with status:", saleStatus);
+    // The three choices come from the registry (slice F3b). A value, a label,
+    // an older value or free text is placed on the list where it can be; what
+    // cannot be placed keeps its words in the note column.
+    const optionLists = await loadSaleOptions(supabase);
+    const stoveChoice = normalizeChoice(optionLists, "baseline_stove", previousStoveType);
+    const fuelChoice = normalizeChoice(optionLists, "fuel_source", cookingFuelSource);
+    const locationChoice = normalizeChoice(optionLists, "cooking_location", cookingLocation);
+
+    // The status is the trigger's to set: update_sale_status() applies
+    // public.calculate_sale_status, which reads public.sale_field_rules.
+    console.log("📝 Inserting main sale");
     const { data: saleInsertData, error: saleError } = await supabase
       .from("sales")
       .insert([
@@ -472,7 +591,18 @@ Deno.serve(async (req) => {
           sales_date: salesDate,
           contact_person: contactPerson,
           contact_phone: contactPhone,
-          end_user_name: endUserName,
+          end_user_name: endUserNameJoined,
+          // Written only when a part actually arrived. A caller sending the
+          // joined name alone leaves these to the trigger, which splits it by
+          // rule and says so in name_split_source.
+          ...(endUserFirstNameClean || endUserSurnameClean
+            ? {
+              end_user_first_name: endUserFirstNameClean,
+              end_user_surname: endUserSurnameClean,
+            }
+            : {}),
+          selling_agent_name: sellingAgentName,
+          selling_agent_user_id: sellingAgentUserId,
           aka,
           state_backup: stateBackup,
           lga_backup: lgaBackup,
@@ -482,7 +612,6 @@ Deno.serve(async (req) => {
           retailer_branch: retailerBranch || null,
           amount: saleAmount,
           signature,
-          status: saleStatus,
           created_by: userId,
           organization_id: organizationId,
           address_id: address.id,
@@ -493,22 +622,24 @@ Deno.serve(async (req) => {
           // total_paid always reflects what was actually collected, for both
           // installment and outright sales — never the sale price.
           total_paid: installmentData ? installmentData.totalPaid : outrightPaid,
-          payment_status: installmentData
-            ? installmentData.paymentStatus
-            : outrightPaid >= saleAmount
-              ? "fully_paid"
-              : "partially_paid",
+          // Outright sales are always fully paid (coerced above); only
+          // installments can land here partially paid.
+          payment_status: installmentData ? installmentData.paymentStatus : "fully_paid",
           pot_quantity: potQuantity ?? null,
           heat_retention_device: heatRetentionDevice ?? false,
-          previous_stove_type: previousStoveType || null,
-          previous_stove_other: previousStoveOther || null,
+          previous_stove_type: stoveChoice.value,
+          // The description as typed, or the words nothing could place; a placed
+          // value carries no note, so nothing is orphaned behind it.
+          previous_stove_other: previousStoveOther || (stoveChoice.value === null ? stoveChoice.note : null) || null,
           meals_per_day: mealsPerDay || null,
-          cooking_fuel_source: cookingFuelSource || null,
-          cooking_location: cookingLocation || null,
+          cooking_fuel_source: fuelChoice.value,
+          cooking_fuel_source_note: fuelChoice.note,
+          cooking_location: locationChoice.value,
+          cooking_location_note: locationChoice.note,
           terms_accepted: termsAccepted ?? null,
         },
       ])
-      .select("id")
+      .select("id, status")
       .maybeSingle();
 
     if (saleError || !saleInsertData?.id) {
@@ -517,18 +648,71 @@ Deno.serve(async (req) => {
     }
 
     const saleId = saleInsertData.id;
+    // The verdict the trigger wrote, returned to the caller as before.
+    const saleStatus = (saleInsertData as { status?: string }).status ?? "incomplete";
     console.log("✅ Sale inserted:", saleId);
 
-    // ── Update stove_ids ──────────────────────────────────────────────────────
-    const { error: stoveUpdateError } = await supabase
+    // ── Claim the stove ───────────────────────────────────────────────────────
+    //
+    // The `status <> sold` filter is what makes this a claim rather than an
+    // announcement, and it is the whole fix.
+    //
+    // Without it the sequence was: read the stove's status, insert the sale,
+    // then mark the stove sold unconditionally. Two people selling the same
+    // stove at the same moment both read `available`, both inserted a sale, and
+    // the second overwrote the first's sale_id. One stove, two sales, and
+    // stock remembering only one of them. Reproduced with two concurrent
+    // requests before this change.
+    //
+    // Now the filter is evaluated by Postgres as part of the UPDATE, so exactly
+    // one of the two can match. The other gets zero rows back and undoes its
+    // own sale below.
+    //
+    // `neq("sold")` rather than `eq("available")` on purpose: it mirrors the
+    // precondition already checked above, so a stove in some future status
+    // that is not `sold` keeps behaving exactly as it does today.
+    const { data: claimedStoves, error: stoveUpdateError } = await supabase
       .from("stove_ids")
       .update({ status: "sold", sale_id: saleId })
       .eq("stove_id", stoveSerialNo)
-      .eq("organization_id", organizationId);
+      .eq("organization_id", organizationId)
+      .neq("status", "sold")
+      .select("stove_id");
 
     if (stoveUpdateError) {
       console.error("❌ Failed to update stove_ids:", stoveUpdateError);
       return jsonError("Failed to update stove_ids", 500);
+    }
+
+    if (!claimedStoves || claimedStoves.length === 0) {
+      // Somebody claimed this stove between the check above and here. The sale
+      // that was just inserted has no stove, so it is removed rather than left
+      // behind as a second sale for a stove that already has one.
+      //
+      // Nothing references it yet: the stove was never linked, and installment
+      // payments are recorded after this point. sales_history records both the
+      // insert and the delete, which is the honest account of what happened.
+      console.warn(
+        `⚠️ Stove ${stoveSerialNo} was claimed by another sale first. Rolling back sale ${saleId}.`
+      );
+      const { error: rollbackError } = await supabase
+        .from("sales")
+        .delete()
+        .eq("id", saleId);
+      if (rollbackError) {
+        // Worth shouting about: a sale with no stove is now sitting in the
+        // table. The caller still gets told their sale did not go through,
+        // which is the true answer.
+        console.error(
+          "❌ Could not roll back the orphaned sale:",
+          saleId,
+          rollbackError.message
+        );
+      }
+      return jsonError(
+        `Stove serial number "${stoveSerialNo}" was sold by someone else moments ago. Please choose another stove.`,
+        409
+      );
     }
 
     console.log("✅ Sales saved and stove_ids updated with sale_id:", saleId);
@@ -563,6 +747,19 @@ Deno.serve(async (req) => {
           status: saleStatus,
           sale_id: saleId,
           data: { id: saleId },
+          /*
+            Named only when there is something to name, so a caller that did
+            not opt in sees exactly the response it saw before. The Data Center
+            reads this to register the sharing; nothing else looks at it.
+          */
+          ...(sharesPhoneWith.length > 0
+            ? {
+              shares_phone_with: sharesPhoneWith.map((r) => ({
+                sale_id: r.id,
+                transaction_id: r.transaction_id,
+              })),
+            }
+            : {}),
         }),
         { status: 200 }
       )

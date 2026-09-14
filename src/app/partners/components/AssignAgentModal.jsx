@@ -77,28 +77,74 @@ export default function AssignAgentModal({ organization, isOpen, onClose, onSucc
       const toAdd = [...selectedIds].filter((id) => !originalIds.has(id));
       const toRemove = [...originalIds].filter((id) => !selectedIds.has(id));
 
-      // Remove via single-remove endpoint
-      await Promise.all(
-        toRemove.map((agentId) =>
-          superAdminAgentService.removeAgentOrganization(agentId, organization.id)
-        )
-      );
+      /*
+       * An agent covered by state does not hold named partners, so writing one
+       * here would change nothing while this screen reported success. For
+       * those agents the equivalent moves are the exclusion list: assigning
+       * means removing an exclusion, unassigning means adding one, and a
+       * partner outside their states cannot be given to them from here at all.
+       *
+       * Agents on named partners keep the original behaviour exactly.
+       */
+      const refusals = [];
 
-      // Add: fetch current direct orgs, append this org, full-replace
-      await Promise.all(
-        toAdd.map(async (agentId) => {
-          const result = await superAdminAgentService.getAgentOrganizations(agentId);
-          const currentDirectIds = (result.data || [])
-            .filter((o) => !o.source || o.source === "direct")
-            .map((o) => o.id);
-          if (!currentDirectIds.includes(organization.id)) {
-            await superAdminAgentService.setAgentOrganizations(agentId, [
-              ...currentDirectIds,
-              organization.id,
-            ]);
+      const applyOne = async (agentId, wantCovered) => {
+        const scopeRes = await superAdminAgentService.getAgentScope(agentId);
+        const scope = scopeRes?.data ?? null;
+
+        if (!scope || scope.mode !== "state_coverage") {
+          if (wantCovered) {
+            const result = await superAdminAgentService.getAgentOrganizations(agentId);
+            const currentDirectIds = (result.data || [])
+              .filter((o) => !o.source || o.source === "direct")
+              .map((o) => o.id);
+            if (!currentDirectIds.includes(organization.id)) {
+              await superAdminAgentService.setAgentOrganizations(agentId, [
+                ...currentDirectIds,
+                organization.id,
+              ]);
+            }
+          } else {
+            await superAdminAgentService.removeAgentOrganization(agentId, organization.id);
           }
-        })
-      );
+          return;
+        }
+
+        const inTheirStates = (scope.states || []).includes(organization.state);
+        if (wantCovered && !inTheirStates) {
+          refusals.push(agentId);
+          return;
+        }
+
+        const excluded = new Set(scope.excluded_organization_ids || []);
+        if (wantCovered) excluded.delete(organization.id);
+        else excluded.add(organization.id);
+
+        await superAdminAgentService.setAgentScope(agentId, {
+          mode: scope.mode,
+          states: scope.states || [],
+          organizationIds: scope.organization_ids || [],
+          excludedOrganizationIds: [...excluded],
+        });
+      };
+
+      await Promise.all([
+        ...toRemove.map((id) => applyOne(id, false)),
+        ...toAdd.map((id) => applyOne(id, true)),
+      ]);
+
+      if (refusals.length > 0) {
+        toast({
+          variant: "destructive",
+          title: `${refusals.length} agent(s) could not be assigned`,
+          description:
+            `They are covered by state, and ${organization.state || "this partner's state"} ` +
+            `is not one of theirs. Add the state to them, or move them to named partners.`,
+        });
+        onSuccess?.();
+        onClose();
+        return;
+      }
 
       toast({ variant: "success", title: "Agent assignments updated successfully" });
       onSuccess?.();

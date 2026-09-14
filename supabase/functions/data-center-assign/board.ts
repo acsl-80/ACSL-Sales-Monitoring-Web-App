@@ -1,0 +1,554 @@
+import { withReadConnection } from "../_shared/data-center-db.ts";
+import { AGENT_ROSTER_SQL } from "./agents.ts";
+
+/**
+ * The shift board and the agent's day (Phase 26, C1).
+ *
+ * One row per agent, one day on the axis: every call the agent logged sits on
+ * the hour it was made, in its outcome family; a flag where a batch was handed
+ * to them or taken back. A call is counted against the login that logged it
+ * (D35), never against the registry's agent dropdown.
+ *
+ * `board`        every agent for one day (or the seven days ending on it)
+ * `agent_day`    one agent, the same, plus To call and Called
+ * `assign_preview` the rows the picker would hand out, and no batch made
+ */
+
+export type BoardContext = {
+  action: string;
+  body: {
+    day?: string | null;
+    range?: string | null;
+    agentId?: string | null;
+    organizationId?: string | null;
+    size?: number | null;
+    order?: unknown;
+  };
+  userId: string;
+  canManage: boolean;
+  cors: Record<string, string>;
+  json: (body: unknown, status: number, cors: Record<string, string>) => Response;
+};
+
+const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+const DAY = /^\d{4}-\d{2}-\d{2}$/;
+
+/** The call centre's day, in its own timezone, ending on $1 (or today). */
+const DAY_CTE = `
+  cfg as (
+    select coalesce((select value #>> '{}' from data_center.workflow_config
+                      where key = 'call_centre.timezone'), 'Africa/Lagos') as tz
+  ),
+  day as (
+    select coalesce($1::date, timezone(cfg.tz, now())::date) as d, cfg.tz,
+           coalesce($1::date, timezone(cfg.tz, now())::date) - $3::int as d_from
+      from cfg
+  )`;
+
+/** The day the window ends on, and the timezone it was read in. $1 day or null. */
+const RESOLVE_DAY_SQL = `
+  select coalesce($1::date, timezone(c.tz, now())::date)::text as d, c.tz,
+         timezone(c.tz, now())::date::text as today,
+         coalesce((select (value #>> '{}')::int from data_center.workflow_config
+                    where key = 'call_centre.daily_target'), 0) as daily_target,
+         coalesce((select (value #>> '{}')::int from data_center.workflow_config
+                    where key = 'call_centre.refresh_seconds'), 60) as refresh_seconds,
+         coalesce((select (value #>> '{}')::int from data_center.workflow_config
+                    where key = 'assignment.stale_after_days'), 3) as stale_after_days
+    from (select coalesce((select value #>> '{}' from data_center.workflow_config
+                            where key = 'call_centre.timezone'), 'Africa/Lagos') as tz) c`;
+
+/**
+ * The colour family of a mark is a display rule over the call-outcome value,
+ * written once here (D35). A callback is amber, an unreached line is red,
+ * everything else means somebody answered.
+ */
+const FAMILY_SQL = `
+  case when o.value = 'callback_requested' then 'callback'
+       when o.value in ('unreachable', 'phone_unanswered', 'wrong_number', 'customer_hung_up') then 'unreached'
+       else 'spoke' end`;
+
+/**
+ * $1 day, $2 agent or null, $3 days back (0 for one day).
+ *
+ * Phase 28, D47: a mark counts for the person the attempt resolves to (the
+ * sheet's agent tag linked to a login, else the login that logged it), read
+ * from v_call_attempts_resolved, so the July and August sheets sit under the
+ * agents who made those calls.
+ */
+const MARKS_SQL = `with ${DAY_CTE}
+  select a.agent_user_id::text as agent_id, a.attempted_at as at, a.sale_id::text as sale_id,
+         a.attempt_no, s.stove_serial_no, s.end_user_name, s.partner_name,
+         o.value as outcome_value, o.label as outcome_label,
+         ${FAMILY_SQL} as family,
+         timezone(day.tz, a.attempted_at)::date::text as on_day
+    from data_center.v_call_attempts_resolved a
+    cross join day
+    left join data_center.option_values o on o.id = a.outcome_id
+    left join data_center.v_sold_stoves s on s.sale_id = a.sale_id
+   where a.agent_user_id is not null
+     and timezone(day.tz, a.attempted_at)::date between day.d_from and day.d
+     and ($2::uuid is null or a.agent_user_id = $2::uuid)
+   order by a.attempted_at`;
+
+const FLAGS_SQL = `with ${DAY_CTE}
+  select b.assigned_to::text as agent_id, b.id::text as batch_id, b.size, o.partner_name,
+         x.kind, x.at, b.reclaim_reason,
+         timezone(day.tz, x.at)::date::text as on_day
+    from data_center.assignment_batches b
+    cross join day
+    join public.organizations o on o.id = b.organization_id
+    cross join lateral (values ('handed_out', b.assigned_at), ('reclaimed', b.reclaimed_at)) as x(kind, at)
+   where x.at is not null
+     and timezone(day.tz, x.at)::date between day.d_from and day.d
+     and ($2::uuid is null or b.assigned_to = $2::uuid)
+   order by x.at`;
+
+/**
+ * Fully verified records concluded by the agent inside the window, per day.
+ * The person is the record's agent_user_id (D47): the sheet's tag linked to a
+ * login, else the login that saved it. The day is the day the verdict was
+ * saved, which for the imported sheets is the day of the import.
+ */
+const VERIFIED_SQL = `with ${DAY_CTE}
+  select c.agent_user_id::text as agent_id, timezone(day.tz, c.call_record_updated_at)::date::text as on_day,
+         count(*)::int as verified
+    from data_center.v_call_center c
+    cross join day
+   where c.agent_user_id is not null
+     and c.verification_outcome = 'fully_verified'
+     and timezone(day.tz, c.call_record_updated_at)::date between day.d_from and day.d
+     and ($2::uuid is null or c.agent_user_id = $2::uuid)
+   group by 1, 2`;
+
+const TO_CALL_SQL = `
+  select b.id::text as batch_id, b.assigned_at, i.position, i.sale_id::text as sale_id,
+         r.stove_serial_no, r.resolved_end_user_name as end_user_name, r.partner_name,
+         r.resolved_phone as phone, r.resolved_alt_phone as alt_phone,
+         coalesce(r.attempt_count, 0) as attempt_count, r.last_attempt_at,
+         r.verification_outcome, r.correction_state,
+         -- Phase 28, D41: where the record stands, from the one function.
+         r.standing,
+         (select max(x.reviewed_at) from data_center.corrections x
+           where x.sale_id = i.sale_id and x.review_outcome = 'recall') as recall_closed_at,
+         (select o.value from data_center.call_attempts a
+            left join data_center.option_values o on o.id = a.outcome_id
+           where a.sale_id = i.sale_id order by a.attempted_at desc limit 1) as last_outcome_value,
+         -- Phase 26, C4: the callback the buyer asked for, from the newest attempt.
+         (select a.callback_at from data_center.call_attempts a
+           where a.sale_id = i.sale_id order by a.attempted_at desc limit 1) as callback_at,
+         (select d.saved_at from data_center.call_drafts d
+           where d.sale_id = i.sale_id order by d.saved_at desc limit 1) as draft_saved_at
+    from data_center.assignment_batches b
+    join data_center.assignment_items i on i.batch_id = b.id and i.is_active
+    join data_center.v_call_center_resolved r on r.sale_id = i.sale_id
+   -- Phase 28, D50: a worked record stays with its agent until a manager
+   -- moves it, whatever its batch's age. So the held set is every active
+   -- item of theirs in an open or a completed batch (a reclaimed batch has
+   -- no active items). New never holds a completed batch.
+   where b.assigned_to = $1::uuid
+     and b.state in ('open', 'completed')
+   order by (b.state = 'open') desc, b.assigned_at, i.position`;
+
+/**
+ * Phase 28, D45: what the agent did in a window, by the view it lands in. A
+ * call counts by its recorded outcome: verified and partly verified to those
+ * views, unreachable to unreachable, everything else to Others; a send-back
+ * the agent opened counts to With Sales. $1 day, $2 agent, $3 days back.
+ */
+const COUNTS_SQL = `with ${DAY_CTE},
+  calls as (
+    select o.value as outcome
+      from data_center.v_call_attempts_resolved x
+      cross join day
+      left join data_center.option_values o on o.id = x.outcome_id
+     where x.agent_user_id = $2::uuid
+       and timezone(day.tz, x.attempted_at)::date between day.d_from and day.d
+  )
+  select count(*) filter (where outcome = 'verified')::int as verified,
+         count(*) filter (where outcome = 'partially_verified')::int as partially_verified,
+         count(*) filter (where outcome = 'unreachable')::int as unreachable,
+         count(*) filter (where outcome is null or outcome not in ('verified', 'partially_verified', 'unreachable'))::int as others,
+         (select count(*)::int from data_center.corrections c cross join day
+           where c.opened_by = $2::uuid
+             and timezone(day.tz, c.opened_at)::date between day.d_from and day.d) as with_sales,
+         count(*)::int as calls
+    from calls`;
+
+type Counts = {
+  verified: number; partially_verified: number; unreachable: number; others: number; with_sales: number; calls: number;
+};
+const withAll = (c: Counts) => ({
+  ...c,
+  all: c.verified + c.partially_verified + c.unreachable + c.others + c.with_sales,
+});
+
+/**
+ * The window named in the URL: "week" is the seven days ending on the day;
+ * "YYYY-MM-DD..YYYY-MM-DD" is a span, capped at 92 days like the period
+ * control. Returns the days back from the end day, and the end day when the
+ * span named one.
+ */
+function spanOf(range: unknown, day: string | null): { back: number; day: string | null; kind: string } {
+  if (range === "week") return { back: 6, day, kind: "week" };
+  if (typeof range === "string") {
+    const span = range.match(/^(\d{4}-\d{2}-\d{2})\.\.(\d{4}-\d{2}-\d{2})$/);
+    if (span) {
+      const from = Date.parse(`${span[1]}T00:00:00Z`);
+      const to = Date.parse(`${span[2]}T00:00:00Z`);
+      if (!Number.isNaN(from) && !Number.isNaN(to) && to >= from) {
+        return { back: Math.min(91, Math.round((to - from) / 86_400_000)), day: span[2], kind: "span" };
+      }
+    }
+    // Slice 4: a month is its days, a year is its months; both may reach
+    // past today, and the days ahead are drawn empty.
+    const month = range.match(/^(\d{4})-(\d{2})$/);
+    if (month && Number(month[2]) >= 1 && Number(month[2]) <= 12) {
+      const last = new Date(Date.UTC(Number(month[1]), Number(month[2]), 0));
+      return { back: last.getUTCDate() - 1, day: last.toISOString().slice(0, 10), kind: "month" };
+    }
+    const year = range.match(/^(\d{4})$/);
+    if (year) {
+      const first = Date.UTC(Number(year[1]), 0, 1);
+      const last = Date.UTC(Number(year[1]), 11, 31);
+      return { back: Math.round((last - first) / 86_400_000), day: `${year[1]}-12-31`, kind: "year" };
+    }
+  }
+  return { back: 0, day, kind: "day" };
+}
+
+/** The twelve months of the year the end day sits in, as YYYY-MM. */
+function monthList(endDay: string): string[] {
+  const y = endDay.slice(0, 4);
+  return Array.from({ length: 12 }, (_, i) => `${y}-${String(i + 1).padStart(2, "0")}`);
+}
+
+/**
+ * Phase 28, slice 4: what each agent holds, per partner, by standing. Open
+ * batches plus those completed in the last week, the same held set the
+ * agent's own page reads, so the two agree. $1 agent or null for everyone.
+ */
+const BY_PARTNER_SQL = `
+  with held as (
+    select l.agent_id::text as agent_id, l.organization_id, l.partner_name,
+           count(*) filter (where l.standing = 'never_called')::int as new,
+           count(*) filter (where l.standing in ('verified', 'partially_verified'))::int as verified_partial,
+           count(*) filter (where l.standing = 'unreachable')::int as unreachable,
+           count(*) filter (where l.standing = 'with_sales')::int as with_sales,
+           count(*) filter (where l.standing = 'in_progress')::int as others,
+           count(*)::int as held
+      from data_center.v_assignment_log l
+     where l.is_active
+       and ($1::uuid is null or l.agent_id = $1::uuid)
+       and l.batch_state in ('open', 'completed')
+     group by 1, 2, 3
+  ),
+  -- Slice 5: the nudge beside the counts, so a manager sees what the pool
+  -- still holds for that partner before handing out more.
+  pool as (
+    select r.organization_id,
+           count(*) filter (where coalesce(r.attempt_count, 0) = 0)::int as pool_untried,
+           count(*) filter (where coalesce(r.attempt_count, 0) > 0)::int as pool_tried
+      from data_center.v_callable_records r
+     group by 1
+  )
+  select h.agent_id, h.organization_id::text as organization_id, h.partner_name,
+         h.new, h.verified_partial, h.unreachable, h.with_sales, h.others, h.held,
+         coalesce(p.pool_untried, 0) as pool_untried, coalesce(p.pool_tried, 0) as pool_tried
+    from held h
+    left join pool p on p.organization_id = h.organization_id
+   order by 1, h.held desc, 3`;
+type PartnerLine = {
+  agent_id: string; organization_id: string; partner_name: string | null;
+  new: number; verified_partial: number; unreachable: number; with_sales: number; others: number; held: number;
+  pool_untried: number; pool_tried: number;
+};
+const stripAgentKey = ({ agent_id: _a, ...rest }: PartnerLine) => rest;
+
+type Mark = {
+  agent_id: string; at: Date | string; sale_id: string; attempt_no: number;
+  stove_serial_no: string | null; end_user_name: string | null; partner_name: string | null;
+  outcome_value: string | null; outcome_label: string | null; family: string; on_day: string;
+};
+type Flag = {
+  agent_id: string; batch_id: string; size: number; partner_name: string | null;
+  kind: string; at: Date | string; reclaim_reason: string | null; on_day: string;
+};
+type Verified = { agent_id: string; on_day: string; verified: number };
+type ResolvedDay = {
+  d: string; tz: string; today: string; daily_target: number; refresh_seconds: number; stale_after_days: number;
+};
+
+function dayArg(raw: unknown): string | null {
+  return typeof raw === "string" && DAY.test(raw) ? raw : null;
+}
+function dayList(endDay: string, back: number): string[] {
+  const end = new Date(`${endDay}T00:00:00Z`);
+  const out: string[] = [];
+  for (let i = back; i >= 0; i--) {
+    const d = new Date(end.getTime() - i * 86_400_000);
+    out.push(d.toISOString().slice(0, 10));
+  }
+  return out;
+}
+
+export async function handleBoard(ctx: BoardContext): Promise<Response> {
+  const { action, body, userId, canManage, cors, json } = ctx;
+  const denied = () =>
+    json(
+      {
+        error: "This needs the assignment.manage permission. A super admin can add it " +
+          "from Settings, or grant the data manager level.",
+        code: "no_feature",
+      },
+      403,
+      cors,
+    );
+
+  switch (action) {
+    case "board": {
+      if (!canManage) return denied();
+      // Slice 4: the window is a day, a week, a month, a year or a span.
+      const span = spanOf(body.range, dayArg(body.day));
+      const back = span.back;
+      const day = span.day;
+      return await withReadConnection(async (conn) => {
+        const [roster, marks, flags, verified, resolved, byPartner] = await Promise.all([
+          conn.queryObject<Record<string, unknown>>({ text: AGENT_ROSTER_SQL }),
+          conn.queryObject<Mark>({ text: MARKS_SQL, args: [day, null, back] }),
+          conn.queryObject<Flag>({ text: FLAGS_SQL, args: [day, null, back] }),
+          conn.queryObject<Verified>({ text: VERIFIED_SQL, args: [day, null, back] }),
+          conn.queryObject<ResolvedDay>({ text: RESOLVE_DAY_SQL, args: [day] }),
+          conn.queryObject<PartnerLine>({ text: BY_PARTNER_SQL, args: [null] }),
+        ]);
+        const d = resolved.rows[0];
+        const days = dayList(d.d, back);
+        // A year is read as twelve month cells so the row stays one row.
+        const grain = span.kind === "year" ? "month" : "day";
+        const cells = grain === "month" ? monthList(d.d) : days;
+        const cellOf = (onDay: string) => (grain === "month" ? onDay.slice(0, 7) : onDay);
+        const agents = roster.rows.map((a) => {
+          const id = String(a.agent_id);
+          const mine = marks.rows.filter((m) => m.agent_id === id);
+          const myFlags = flags.rows.filter((f) => f.agent_id === id);
+          const myVerified = verified.rows.filter((v) => v.agent_id === id);
+          const perDay = cells.map((on) => ({
+            date: on,
+            called: mine.filter((m) => cellOf(m.on_day) === on).length,
+            verified: myVerified.filter((v) => cellOf(v.on_day) === on).reduce((n, v) => n + v.verified, 0),
+          }));
+          return {
+            agent_id: id,
+            full_name: a.full_name,
+            email: a.email,
+            access_role: a.access_role,
+            presence: a.presence,
+            is_enabled: a.is_enabled,
+            open_batches: a.open_batches,
+            max_open_batches: a.max_open_batches,
+            to_call: a.records_held,
+            current_serial: a.current_serial,
+            current_sale_id: a.current_sale_id,
+            last_seen_at: a.last_seen_at,
+            called: mine.length,
+            verified: myVerified.reduce((n, v) => n + v.verified, 0),
+            marks: back === 0 ? mine.map(stripAgent) : [],
+            flags: myFlags.map(stripAgent),
+            days: back === 0 ? undefined : perDay,
+            // Phase 28, slice 4: what they hold, per partner, by standing.
+            by_partner: byPartner.rows.filter((p) => p.agent_id === id).map(stripAgentKey),
+          };
+        });
+        return json(
+          {
+            data: {
+              day: d.d,
+              tz: d.tz,
+              today: d.today,
+              dailyTarget: d.daily_target,
+              refreshSeconds: d.refresh_seconds,
+              staleAfterDays: d.stale_after_days,
+              range: span.kind,
+              grain,
+              from: days[0],
+              days: cells,
+              agents,
+              totals: {
+                called: marks.rows.length,
+                verified: verified.rows.reduce((n, v) => n + v.verified, 0),
+              },
+            },
+          },
+          200,
+          cors,
+        );
+      });
+    }
+
+    case "agent_day": {
+      const target = body.agentId && UUID.test(body.agentId) ? body.agentId : userId;
+      if (target !== userId && !canManage) return denied();
+      // Phase 28, D45: the window is a day, a week or a span; the counts say
+      // what the agent did today, this week and in the chosen window.
+      const span = spanOf(body.range, dayArg(body.day));
+      const back = span.back;
+      const day = span.day;
+      return await withReadConnection(async (conn) => {
+        const [roster, marks, flags, verified, toCall, resolved, cToday, cWeek, cSpan] = await Promise.all([
+          conn.queryObject<Record<string, unknown>>({ text: AGENT_ROSTER_SQL }),
+          conn.queryObject<Mark>({ text: MARKS_SQL, args: [day, target, back] }),
+          conn.queryObject<Flag>({ text: FLAGS_SQL, args: [day, target, back] }),
+          conn.queryObject<Verified>({ text: VERIFIED_SQL, args: [day, target, back] }),
+          conn.queryObject<Record<string, unknown>>({ text: TO_CALL_SQL, args: [target] }),
+          conn.queryObject<ResolvedDay>({ text: RESOLVE_DAY_SQL, args: [day] }),
+          conn.queryObject<Counts>({ text: COUNTS_SQL, args: [null, target, 0] }),
+          conn.queryObject<Counts>({ text: COUNTS_SQL, args: [null, target, 6] }),
+          conn.queryObject<Counts>({ text: COUNTS_SQL, args: [day, target, back] }),
+        ]);
+        const agent = roster.rows.find((a) => String(a.agent_id) === target) ?? null;
+        if (!agent && target !== userId) {
+          return json({ error: "No such agent", code: "not_found" }, 404, cors);
+        }
+        const d = resolved.rows[0];
+        const days = dayList(d.d, back);
+        const grain = span.kind === "year" ? "month" : "day";
+        const cells = grain === "month" ? monthList(d.d) : days;
+        const cellOf = (onDay: string) => (grain === "month" ? onDay.slice(0, 7) : onDay);
+        return json(
+          {
+            data: {
+              agent: agent ?? { agent_id: target },
+              day: d.d,
+              tz: d.tz,
+              today: d.today,
+              dailyTarget: d.daily_target,
+              range: span.kind,
+              grain,
+              from: days[0],
+              called: marks.rows.length,
+              verified: verified.rows.reduce((n, v) => n + v.verified, 0),
+              // Phase 28, D45: per view, what the agent did.
+              counts: {
+                today: withAll(cToday.rows[0]),
+                week: withAll(cWeek.rows[0]),
+                selected: withAll(cSpan.rows[0]),
+              },
+              marks: marks.rows.map(stripAgent),
+              flags: flags.rows.map(stripAgent),
+              concluded: marks.rows.map((m) => ({
+                at: m.at,
+                sale_id: m.sale_id,
+                attempt_no: m.attempt_no,
+                stove_serial_no: m.stove_serial_no,
+                end_user_name: m.end_user_name,
+                partner_name: m.partner_name,
+                outcome_value: m.outcome_value,
+                outcome_label: m.outcome_label,
+                family: m.family,
+              })),
+              to_call: toCall.rows,
+              tally: cells.map((on) => ({
+                date: on,
+                called: marks.rows.filter((m) => cellOf(m.on_day) === on).length,
+                verified: verified.rows.filter((v) => cellOf(v.on_day) === on).reduce((n, v) => n + v.verified, 0),
+              })),
+            },
+          },
+          200,
+          cors,
+        );
+      });
+    }
+
+    case "assign_preview": {
+      if (!canManage) return denied();
+      const agentId = body.agentId && UUID.test(body.agentId) ? body.agentId : null;
+      const orgId = body.organizationId && UUID.test(body.organizationId) ? body.organizationId : null;
+      if (!agentId || !orgId) {
+        return json({ error: "agentId and organizationId are required", code: "bad_input" }, 400, cors);
+      }
+      const order = Array.isArray(body.order) && body.order.length > 0 ? body.order.map(String) : null;
+      try {
+        return await withReadConnection(async (conn) => {
+          const sizing = await conn.queryObject<{
+            size: number; waiting: number; pool_untried: number; pool_tried: number; recent_days: number;
+            open_batches: number; cap: number; is_enabled: boolean;
+          }>({
+            text: `select coalesce($3::int,
+                            (select (value -> $2::text #>> '{}')::int from data_center.workflow_config
+                              where key = 'assignment.batch_size_by_partner'),
+                            (select (value #>> '{}')::int from data_center.workflow_config
+                              where key = 'assignment.batch_size'), 20) as size,
+                          (select count(*)::int from data_center.v_callable_records r
+                            where r.organization_id = $2::uuid) as waiting,
+                          -- Slice 5: what the pool holds for the nudge under the preview.
+                          (select count(*)::int from data_center.v_callable_records r
+                            where r.organization_id = $2::uuid and coalesce(r.attempt_count, 0) = 0) as pool_untried,
+                          (select count(*)::int from data_center.v_callable_records r
+                            where r.organization_id = $2::uuid and coalesce(r.attempt_count, 0) > 0) as pool_tried,
+                          coalesce((select (value #>> '{}')::int from data_center.workflow_config
+                                     where key = 'pool.recent_days'), 7) as recent_days,
+                          (select count(*)::int from data_center.assignment_batches b
+                            where b.assigned_to = $1::uuid and b.state = 'open') as open_batches,
+                          coalesce((select max_open_batches from data_center.call_agent_profiles
+                                     where user_id = $1::uuid),
+                                   (select (value #>> '{}')::int from data_center.workflow_config
+                                     where key = 'assignment.max_open_batches'), 1) as cap,
+                          coalesce((select is_enabled from data_center.call_agent_profiles
+                                     where user_id = $1::uuid), true) as is_enabled`,
+            args: [agentId, orgId, body.size ?? null],
+          });
+          const s = sizing.rows[0];
+          const picked = await conn.queryObject<Record<string, unknown>>({
+            text: `select p.pos, r.sale_id::text as sale_id, r.stove_serial_no, r.end_user_name,
+                          r.primary_phone as phone, r.sales_date, r.attempt_count, r.last_attempt_at,
+                          r.recall_due, r.digitised_at,
+                          (r.digitised_at >= now() - make_interval(days => $4::int)) as is_recent
+                     from data_center.pick_callable($1::uuid, $2::int, $3::text[]) p
+                     join data_center.v_callable_records r on r.sale_id = p.sale_id
+                    order by p.pos`,
+            args: [orgId, s.size, order, s.recent_days],
+          });
+          return json(
+            {
+              data: {
+                rows: picked.rows,
+                size: picked.rows.length,
+                requested: s.size,
+                waiting: s.waiting,
+                waitingAfter: Math.max(0, s.waiting - picked.rows.length),
+                poolUntried: s.pool_untried,
+                poolTried: s.pool_tried,
+                untriedInBatch: picked.rows.filter((r) => Number(r.attempt_count ?? 0) === 0).length,
+                recentCount: picked.rows.filter((r) => r.is_recent === true).length,
+                recentDays: s.recent_days,
+                agent: {
+                  open_batches: s.open_batches,
+                  cap: s.cap,
+                  is_enabled: s.is_enabled,
+                  over_capacity: s.open_batches >= s.cap,
+                },
+              },
+            },
+            200,
+            cors,
+          );
+        });
+      } catch (err) {
+        const message = err instanceof Error ? err.message : String(err);
+        if (/hand-out order names/.test(message)) {
+          return json({ error: message, code: "bad_order" }, 409, cors);
+        }
+        throw err;
+      }
+    }
+
+    default:
+      return json({ error: "Unknown action", code: "bad_action" }, 400, cors);
+  }
+}
+
+function stripAgent<T extends { agent_id: string }>(row: T): Omit<T, "agent_id"> {
+  const { agent_id: _drop, ...rest } = row;
+  return rest;
+}

@@ -6,6 +6,7 @@ import profileService from "../services/profileService";
 import tokenManager from "../../utils/tokenManager";
 import { getCachedUser, getCachedRole, setCachedRole } from "@/lib/authCache";
 import { AuthContext } from "./useAuth";
+import { debug } from "@/app/utils/log";
 
 // useLayoutEffect on the server logs a noisy warning; alias to useEffect there.
 const useIsoLayoutEffect = typeof window !== "undefined" ? useLayoutEffect : useEffect;
@@ -63,7 +64,7 @@ export const AuthProvider = ({ children }) => {
       // Dynamically import debug utilities (client-side only)
       import("../../utils/authDebug")
         .then(() => {
-          console.log(
+          debug(
             "🔧 Enhanced auth debugging loaded. Run debugAuth.getDebugInfo() for help."
           );
         })
@@ -78,7 +79,7 @@ export const AuthProvider = ({ children }) => {
                   key.includes("transaction")
               );
               keys.forEach((key) => localStorage.removeItem(key));
-              console.log("✅ Auth storage cleared");
+              debug("✅ Auth storage cleared");
             },
           };
         });
@@ -91,7 +92,7 @@ export const AuthProvider = ({ children }) => {
       const keys = Object.keys(localStorage).filter(
         (key) => key.includes("supabase") || key.includes("auth")
       );
-      console.log("🔐 [AuthContext] LocalStorage auth keys:", keys);
+      debug("🔐 [AuthContext] LocalStorage auth keys:", keys);
 
       // Check for the specific Supabase auth token
       const authKey = keys.find((key) => key.includes("supabase.auth.token"));
@@ -102,7 +103,7 @@ export const AuthProvider = ({ children }) => {
             ? authData.expires_at * 1000 < Date.now()
             : false;
 
-          console.log("🔐 [AuthContext] Auth token in localStorage:", {
+          debug("🔐 [AuthContext] Auth token in localStorage:", {
             hasAccessToken: !!authData?.access_token,
             hasRefreshToken: !!authData?.refresh_token,
             expiresAt: authData?.expires_at
@@ -124,14 +125,14 @@ export const AuthProvider = ({ children }) => {
             return true; // Indicates cleanup happened
           }
         } catch (e) {
-          console.log(
+          debug(
             "🔐 [AuthContext] Could not parse auth token from localStorage - removing it"
           );
           localStorage.removeItem(authKey);
           return true; // Indicates cleanup happened
         }
       } else {
-        console.log(
+        debug(
           "🔐 [AuthContext] No Supabase auth token found in localStorage"
         );
       }
@@ -183,12 +184,12 @@ export const AuthProvider = ({ children }) => {
   useEffect(() => {
     const getSession = async () => {
       try {
-        console.log("🔐 [AuthContext] Getting initial session...");
+        debug("🔐 [AuthContext] Getting initial session...");
 
         // Check localStorage state as suggested in the debugging guide
         const cleanupHappened = checkLocalStorageAuth();
         if (cleanupHappened) {
-          console.log("🔐 [AuthContext] Corrupted auth data was cleaned up");
+          debug("🔐 [AuthContext] Corrupted auth data was cleaned up");
         }
 
         const {
@@ -197,9 +198,9 @@ export const AuthProvider = ({ children }) => {
         } = await supabase.auth.getSession();
 
         // Debug logging as suggested in the message
-        console.log("🔐 [AuthContext] Session data:", {
+        debug("🔐 [AuthContext] Session data:", {
           session: session ? "Present" : "None",
-          user: session?.user?.email || "No user",
+          hasUser: Boolean(session?.user),
           error: error?.message || "No error",
         });
 
@@ -209,7 +210,7 @@ export const AuthProvider = ({ children }) => {
         if (session?.user) {
           // Store session data in tokenManager
           if (session) {
-            console.log(
+            debug(
               "🔐 [AuthContext] Storing session data in tokenManager"
             );
             tokenManager.setLoginData(session);
@@ -232,7 +233,7 @@ export const AuthProvider = ({ children }) => {
             });
           }
         } else {
-          console.log(
+          debug(
             "🔐 [AuthContext] No session found - user needs to log in"
           );
         }
@@ -240,7 +241,7 @@ export const AuthProvider = ({ children }) => {
         console.error("🔐 [AuthContext] Error getting session:", error);
         setUser(null);
       } finally {
-        console.log("🔐 [AuthContext] Setting loading to false");
+        debug("🔐 [AuthContext] Setting loading to false");
         setLoading(false);
       }
     };
@@ -256,14 +257,14 @@ export const AuthProvider = ({ children }) => {
 
       // Only log significant events, not session validation noise
       if (isNewUser || event === "SIGNED_OUT" || event === "TOKEN_REFRESHED") {
-        console.log("🔐 [AuthContext] Significant auth state change:", {
+        debug("🔐 [AuthContext] Significant auth state change:", {
           event,
           isNewUser,
-          userEmail: session?.user?.email || "No user",
-          wasUser: lastUserRef.current?.email || "None",
+          hasUser: Boolean(session?.user),
+          hadUser: Boolean(lastUserRef.current),
         });
       } else {
-        console.log("🔐 [AuthContext] Session validation:", { event });
+        debug("🔐 [AuthContext] Session validation:", { event });
       }
 
       // Update user state only if actually different OR if this is a significant event
@@ -278,16 +279,15 @@ export const AuthProvider = ({ children }) => {
         isNewUser || event === "SIGNED_OUT" || event === "INITIAL_SESSION";
 
       if (hasUserChanged && isSignificantEvent) {
-        console.log("🔐 [AuthContext] User state actually changed, updating", {
-          oldId: oldUserId,
-          newId: newUserId,
+        debug("🔐 [AuthContext] User state actually changed, updating", {
+          userChanged: oldUserId !== newUserId,
           event,
           isSignificantEvent,
         });
         setUser(newUser);
       } else {
-        console.log("🔐 [AuthContext] Skipping state update", {
-          userId: oldUserId,
+        debug("🔐 [AuthContext] Skipping state update", {
+          hasUser: Boolean(oldUserId),
           event,
           hasUserChanged,
           isSignificantEvent,
@@ -300,7 +300,7 @@ export const AuthProvider = ({ children }) => {
       // Handle auth state changes - only for significant events
       if (event === "SIGNED_IN" && session?.user && isNewUser) {
         // Store session data in tokenManager
-        console.log("🔐 [AuthContext] Storing login session in tokenManager");
+        debug("🔐 [AuthContext] Storing login session in tokenManager");
         tokenManager.setLoginData(session);
 
         // Fetch profile in background — do NOT await so loading clears immediately
@@ -329,7 +329,7 @@ export const AuthProvider = ({ children }) => {
         setUser(null);
       }
 
-      console.log(
+      debug(
         "🔐 [AuthContext] Auth state change complete, setting loading to false"
       );
       setLoading(false);
@@ -348,7 +348,7 @@ export const AuthProvider = ({ children }) => {
     if (data?.user && !error) {
       // Store session data in tokenManager
       if (data.session) {
-        console.log("🔐 [AuthContext] Storing login response in tokenManager");
+        debug("🔐 [AuthContext] Storing login response in tokenManager");
         tokenManager.setLoginData(data.session);
       }
 
@@ -369,7 +369,7 @@ export const AuthProvider = ({ children }) => {
 
   const signInWithCredentials = async (identifier, password) => {
     try {
-      console.log("🔐 [AuthContext] Attempting credentials login...");
+      debug("🔐 [AuthContext] Attempting credentials login...");
 
       void isSupabaseConfigured;
       const trimmedIdentifier = String(identifier || "").trim();
@@ -453,7 +453,7 @@ export const AuthProvider = ({ children }) => {
       }
 
       if (responseData.success && responseData.session) {
-        console.log(
+        debug(
           "🔐 [AuthContext] Credentials login successful, setting session"
         );
 
@@ -476,7 +476,7 @@ export const AuthProvider = ({ children }) => {
 
         // Store profile data if provided
         if (responseData.profile) {
-          console.log(
+          debug(
             "🔐 [AuthContext] Storing profile from credentials response"
           );
           profileService.setProfile(responseData.profile);
@@ -520,7 +520,7 @@ export const AuthProvider = ({ children }) => {
 
   const signOut = async () => {
     try {
-      console.log("🔐 [AuthContext] Starting sign out process...");
+      debug("🔐 [AuthContext] Starting sign out process...");
 
       // Clear stored profile data and token before signing out
       profileService.clearStoredProfileData();
@@ -529,7 +529,7 @@ export const AuthProvider = ({ children }) => {
       // Clear known auth data BEFORE Supabase signOut without touching unrelated app keys.
       if (typeof window !== "undefined") {
         const keys = getKnownAuthStorageKeys();
-        console.log("🔐 [AuthContext] Clearing localStorage keys:", keys);
+        debug("🔐 [AuthContext] Clearing localStorage keys:", keys);
         keys.forEach((key) => {
           try {
             localStorage.removeItem(key);
@@ -550,7 +550,7 @@ export const AuthProvider = ({ children }) => {
         // Don't return error - we've already cleared local state
       }
 
-      console.log("🔐 [AuthContext] Sign out completed successfully");
+      debug("🔐 [AuthContext] Sign out completed successfully");
       return { error: null };
     } catch (error) {
       console.error(

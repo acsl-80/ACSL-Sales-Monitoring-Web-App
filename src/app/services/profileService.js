@@ -1,6 +1,7 @@
 
 // Profile Service for fetching and managing user profile data
 import { createClientComponentClient } from "@/lib/supabaseClient";
+import { debug } from "@/app/utils/log";
 
 class ProfileService {
   constructor() {
@@ -19,7 +20,7 @@ class ProfileService {
   async fetchUserProfileWithOrganization(userId) {
     try {
       if (typeof window !== "undefined") {
-        window.console.log("Fetching profile for user:", userId);
+        debug("Fetching profile");
       }
 
       // Query profiles table with organization join using Supabase client

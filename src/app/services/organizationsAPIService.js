@@ -2,6 +2,7 @@
 import { createClientComponentClient } from "@/lib/supabaseClient";
 import { safeFetchManager } from "../../utils/safeFetch";
 import { supabaseUrl } from "@/lib/supabaseConfig";
+import { debug } from "@/app/utils/log";
 
 class OrganizationsAPIService {
   constructor() {
@@ -50,7 +51,7 @@ class OrganizationsAPIService {
     try {
       const url = this.buildUrl(params);
 
-      console.log(`🔍 [OrgsService] Making request:`, { url, params });
+      debug(`🔍 [OrgsService] Making request:`, { url, params });
 
       // Use safe fetch manager
       const response = await safeFetchManager.safeFetch(
@@ -68,7 +69,7 @@ class OrganizationsAPIService {
         }
       );
 
-      console.log(`🔍 [OrgsService] Response received:`, {
+      debug(`🔍 [OrgsService] Response received:`, {
         success: response?.success || true,
         dataLength: response?.data?.length || 0,
       });

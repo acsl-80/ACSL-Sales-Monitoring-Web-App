@@ -1,4 +1,5 @@
 import { safeFetchManager } from "../../utils/safeFetch";
+import { debug } from "@/app/utils/log";
 
 class OrganizationCSVImportService {
   constructor() {
@@ -67,7 +68,7 @@ class OrganizationCSVImportService {
           (value) => value && value.trim() !== ""
         );
         if (!hasContent) {
-          console.log(`Skipping empty row ${i + 1}`);
+          debug(`Skipping empty row ${i + 1}`);
           continue; // Skip rows with no actual content
         }
 
@@ -227,7 +228,7 @@ class OrganizationCSVImportService {
       );
 
       // Debug logging to help troubleshoot response structure
-      console.log("Raw API Response:", result);
+      debug("Raw API Response:", result);
 
       // Validate and normalize the response structure to ensure consistency
       const normalizedData = {

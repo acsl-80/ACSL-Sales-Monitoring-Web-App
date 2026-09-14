@@ -5,6 +5,7 @@
 
 import { createClientComponentClient } from "@/lib/supabaseClient";
 import tokenManager from "./tokenManager";
+import { debug } from "@/app/utils/log";
 
 class SafeFetchManager {
   constructor() {
@@ -28,7 +29,7 @@ class SafeFetchManager {
    */
   handleVisibilityChange() {
     const isHidden = typeof window !== "undefined" ? document.hidden : false;
-    console.log(`🔍 [SafeFetch] Tab visibility changed:`, {
+    debug(`🔍 [SafeFetch] Tab visibility changed:`, {
       isHidden,
       activeRequests: this.activeRequests.size,
     });
@@ -145,7 +146,7 @@ class SafeFetchManager {
         window.clearTimeout(timeoutId);
       }
 
-      console.log(`🔍 [SafeFetch:${componentName}] Response received:`, {
+      debug(`🔍 [SafeFetch:${componentName}] Response received:`, {
         requestId,
         status: response.status,
         ok: response.ok,
@@ -175,7 +176,7 @@ class SafeFetchManager {
       }
 
       const data = await response.json();
-      console.log(`🔍 [SafeFetch:${componentName}] Success:`, {
+      debug(`🔍 [SafeFetch:${componentName}] Success:`, {
         requestId,
         dataLength: data?.data?.length || 0,
       });
@@ -183,7 +184,7 @@ class SafeFetchManager {
       return data;
     } catch (error) {
       if (error.name === "AbortError") {
-        console.log(
+        debug(
           `🔍 [SafeFetch:${componentName}] Request aborted:`,
           requestId
         );
@@ -202,7 +203,7 @@ class SafeFetchManager {
         !error.message.includes("Authentication") &&
         !error.message.includes("Access denied")
       ) {
-        console.log(
+        debug(
           `🔍 [SafeFetch:${componentName}] Retrying request... (${retryCount} retries left)`
         );
         if (typeof window !== "undefined") {
@@ -219,7 +220,7 @@ class SafeFetchManager {
     } finally {
       // Always clean up
       this.activeRequests.delete(requestId);
-      console.log(
+      debug(
         `🔍 [SafeFetch:${componentName}] Cleaned up request:`,
         requestId
       );
@@ -230,7 +231,7 @@ class SafeFetchManager {
    * Abort all requests for a specific component
    */
   abortComponentRequests(componentName) {
-    console.log(
+    debug(
       `🔍 [SafeFetch] Aborting all requests for component: ${componentName}`
     );
 
@@ -246,7 +247,7 @@ class SafeFetchManager {
    * Clear stuck token refresh promise (emergency method)
    */
   clearTokenRefresh() {
-    console.log("🔍 [SafeFetch] Manually clearing token refresh promise");
+    debug("🔍 [SafeFetch] Manually clearing token refresh promise");
     this.tokenRefreshPromise = null;
   }
 

@@ -1,0 +1,694 @@
+import { useCallback, useEffect, useMemo, useState } from "react";
+import { Link } from "@tanstack/react-router";
+import { dataCenterDashboard, DataCenterError } from "../../lib/client";
+import { metricValue, metricRows } from "../../lib/metricValue";
+import { fieldWords } from "../../lib/completenessWords";
+import Scorecard, { scorecardRows } from "./Scorecard";
+import ExportScorecards from "./ExportScorecards";
+import { MEASURES, SCOPES, withScope, explain } from "../../lib/measures";
+import { wordsFor } from "../../lib/outcome";
+import { usePeriod } from "../../lib/usePeriod";
+import PeriodFilter from "../../components/PeriodFilter";
+import {
+  BarChart3, Loader2, AlertTriangle, RefreshCw, Clock, TriangleAlert, ArrowUpRight,
+} from "lucide-react";
+
+/**
+ * The dashboard.
+ *
+ * Everything here came from a computation run. This component fetches one
+ * payload and reads values out of it: no counting, no summing, nothing derived
+ * from a list of sales, because there is no list of sales to derive it from.
+ *
+ * The charts are CSS rather than a charting library, for the same reason the
+ * table is not using a virtualization library and the import is not using a
+ * CSV library: taking a dependency means editing package.json and bun.lock,
+ * both of which the daily contractor merge touches. Bars whose width is a
+ * percentage do not need a library.
+ */
+
+const NUMBER = new Intl.NumberFormat("en-NG");
+
+const value = metricValue;
+
+function series(metrics, key, dimensionKey) {
+  return metrics
+    .filter((m) => m.metric_key === key)
+    .map((m) => ({
+      label: m.dimension?.[dimensionKey] ?? "Unknown",
+      value: Number(m.value_num ?? 0),
+      // The whole dimension travels with the row, because a link needs what
+      // the label does not carry: sales.by_partner records the organization id
+      // beside the name, and filtering by name would be a guess.
+      dim: m.dimension ?? {},
+    }))
+    .sort((a, b) => b.value - a.value);
+}
+
+/**
+ * A figure, and the way to the rows behind it.
+ *
+ * Every number here used to be a dead end: the dashboard said 34 unreachable
+ * and the only way to see which 34 was to go and rebuild the filter by hand.
+ * A card with a `to` is a link to exactly the rows it counted.
+ */
+/**
+ * The four headline figures, each with a hue that means that figure.
+ *
+ * A deliberate exception to "colour is wayfinding, never decoration": eight
+ * identical white cards read as a wall rather than as answers, and the four
+ * questions this page exists to answer deserve to be told apart at a glance.
+ * The hue is fixed per metric, so it identifies rather than decorates.
+ */
+const FIGURE_SKIN = {
+  transferred: { ground: "bg-[image:var(--dc-fig-transferred)]", ink: "text-white" },
+  sold: { ground: "bg-[image:var(--dc-fig-sold)]", ink: "text-white" },
+  verified: { ground: "bg-[image:var(--dc-fig-verified)]", ink: "text-white" },
+  unverified: { ground: "bg-[image:var(--dc-fig-unverified)]", ink: "text-white" },
+  neutral: { ground: "bg-[image:var(--dc-fig-soft-neutral)]", ink: "text-gray-900" },
+  warn: { ground: "bg-[image:var(--dc-fig-soft-warn)]", ink: "text-amber-900" },
+  info: { ground: "bg-[image:var(--dc-fig-soft-info)]", ink: "text-blue-900" },
+  plum: { ground: "bg-[image:var(--dc-fig-soft-plum)]", ink: "text-purple-900" },
+};
+
+function Card({ label, value: v, hint, skin = "neutral", to, search, arrow }) {
+  const { ground, ink } = FIGURE_SKIN[skin] ?? FIGURE_SKIN.neutral;
+  const solid = ink === "text-white";
+
+  const body = (
+    <>
+      <p
+        className={`text-xs font-medium uppercase tracking-wide ${
+          solid ? "text-white/80" : "text-gray-600"
+        }`}
+      >
+        {label}
+      </p>
+      <p className={`mt-1 text-2xl font-semibold tabular-nums ${ink}`}>
+        {typeof v === "number" ? NUMBER.format(v) : v}
+      </p>
+      {hint && (
+        <p className={`mt-1 text-xs ${solid ? "text-white/75" : "text-gray-600"}`}>{hint}</p>
+      )}
+    </>
+  );
+
+  const shell = `relative block overflow-hidden rounded-xl p-4 shadow-sm ${ground} ${
+    solid ? "" : "border border-gray-200"
+  }`;
+
+  if (!to) return <div className={shell}>{body}</div>;
+
+  return (
+    <Link
+      to={to}
+      search={search ?? {}}
+      aria-label={`${label}: ${typeof v === "number" ? NUMBER.format(v) : v}. ${arrow ?? "See the records"}`}
+      className={`group ${shell} transition duration-200 hover:-translate-y-0.5 hover:shadow-md focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-(--dc-accent)`}
+    >
+      {body}
+      <ArrowUpRight
+        aria-hidden="true"
+        className={`absolute right-3 top-3 h-4 w-4 transition ${
+          solid
+            ? "text-white/70 group-hover:text-white"
+            : "text-(--dc-accent)/60 group-hover:text-(--dc-accent)"
+        }`}
+      />
+    </Link>
+  );
+}
+
+const BAR_TONES = {
+  fully_verified: "bg-(--dc-primary)",
+  partially_verified: "bg-amber-500",
+  unreachable: "bg-orange-500",
+  not_verified: "bg-gray-400",
+  never_called: "bg-gray-300",
+  sold: "bg-(--dc-primary)",
+  available: "bg-blue-400",
+};
+
+/**
+ * A breakdown, every row of which is a door.
+ *
+ * `linkFor(row)` returns the destination for that row, or null where no
+ * surface holds those records. A row with nowhere to go stays plain rather
+ * than pretending: an affordance that leads nowhere is worse than none.
+ */
+function Bars({ title, data, subtitle, emptyText, linkFor }) {
+  const max = Math.max(1, ...data.map((d) => d.value));
+  const total = data.reduce((sum, d) => sum + d.value, 0);
+
+  const rowBody = (d) => (
+    <>
+      <span className="w-32 shrink-0 truncate text-gray-700 sm:w-40" title={d.label}>
+        {wordsFor(d.label)}
+      </span>
+      <span className="h-4 min-w-0 flex-1 overflow-hidden rounded bg-gray-100">
+        <span
+          className={`block h-full rounded ${BAR_TONES[d.label] ?? "bg-(--dc-primary-mid)"}`}
+          style={{ width: `${Math.max(2, (d.value / max) * 100)}%` }}
+        />
+      </span>
+      <span className="w-20 shrink-0 text-right tabular-nums text-gray-700 sm:w-24">
+        {NUMBER.format(d.value)}
+        {total > 0 && (
+          <span className="ml-1 text-xs text-gray-400">
+            {Math.round((d.value / total) * 100)}%
+          </span>
+        )}
+      </span>
+    </>
+  );
+
+  return (
+    <div className="rounded-xl border border-gray-200 border-t-[3px] border-t-(--dc-accent) bg-white p-4 shadow-sm">
+      <h3 className="text-sm font-semibold text-gray-900">{title}</h3>
+      {subtitle && <p className="mt-0.5 text-xs text-gray-500">{subtitle}</p>}
+      {data.length === 0 ? (
+        <p className="mt-3 text-sm text-gray-500">{emptyText ?? "Nothing to show yet."}</p>
+      ) : (
+        <ul className="mt-3 space-y-0.5">
+          {data.map((d) => {
+            const target = linkFor?.(d) ?? null;
+            if (!target) {
+              return (
+                <li key={d.label} className="flex items-center gap-2 px-1.5 py-1 text-sm">
+                  {rowBody(d)}
+                </li>
+              );
+            }
+            return (
+              <li key={d.label}>
+                <Link
+                  to={target.to}
+                  search={target.search ?? {}}
+                  aria-label={`${wordsFor(d.label)}: ${NUMBER.format(d.value)}. See the records`}
+                  className="flex items-center gap-2 rounded-md px-1.5 py-1 text-sm transition hover:bg-(--dc-accent-soft)/60 focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-(--dc-accent)"
+                >
+                  {rowBody(d)}
+                </Link>
+              </li>
+            );
+          })}
+        </ul>
+      )}
+    </div>
+  );
+}
+
+export default function Dashboard({ canRun }) {
+  const [data, setData] = useState(null);
+  const [loading, setLoading] = useState(true);
+  const [running, setRunning] = useState(false);
+  const [error, setError] = useState(null);
+  const { period, setPeriod, resolved, earliest } = usePeriod("/data-center/dashboard");
+
+  /*
+   * The control speaks in dates; these metrics are stored by month, so the
+   * bounds are trimmed to months. That is a real coarsening and worth knowing:
+   * a range starting mid-August asks for all of August, because August is the
+   * smallest thing the numbers are kept in.
+   */
+  const from = resolved.dateFrom ? resolved.dateFrom.slice(0, 7) : null;
+  const to = resolved.dateTo ? resolved.dateTo.slice(0, 7) : null;
+
+  const load = useCallback(async () => {
+    try {
+      setData(await dataCenterDashboard.get({ from, to }));
+      setError(null);
+    } catch (err) {
+      setError(err instanceof DataCenterError ? err.message : "Could not load the dashboard.");
+    } finally {
+      setLoading(false);
+    }
+  }, [from, to]);
+
+  useEffect(() => {
+    load();
+  }, [load]);
+
+  const recompute = async () => {
+    setRunning(true);
+    setError(null);
+    try {
+      const out = await dataCenterDashboard.run();
+      await load();
+      setError(null);
+      // Worth surfacing: it is the number that justifies the whole split.
+      setData((d) => (d ? { ...d, lastDuration: out.durationMs } : d));
+    } catch (err) {
+      setError(err instanceof DataCenterError ? err.message : "The computation failed.");
+    } finally {
+      setRunning(false);
+    }
+  };
+
+  const m = data?.metrics ?? [];
+
+  /*
+   * What population a figure on this page actually describes.
+   *
+   * Not every family can answer for a period, and the ones that cannot are not
+   * broken. calls.avg_attempts is an average, and the read query sums a range,
+   * so a periodised average would be a sum of monthly averages: a number that
+   * is wrong rather than narrow. import.* counts the bench's own batches, and a
+   * batch spans however many consignments the sheet covered.
+   *
+   * So the page holds two kinds of figure at once whenever it is narrowed, and
+   * the honest thing is to say which is which rather than let a reader assume
+   * the whole screen moved. The server names the families that carry a period;
+   * everything else is all-time and is labelled all-time.
+   */
+  const periodAsked = Boolean(from || to);
+  const periodicKeys = data?.periodicKeys ?? [];
+  const canNarrow = (key) => periodicKeys.includes(key);
+  const scopeOf = (key) => (periodAsked && canNarrow(key) ? "period" : "allTime");
+
+  /*
+   * Only the exception is marked. When the page is narrowed, a card that
+   * followed needs no annotation - that is what the reader asked for. A card
+   * that could not follow does, or its number reads as part of the same
+   * narrowed picture when it is not.
+   */
+  const scopedLabel = (label, key) =>
+    periodAsked && !canNarrow(key) ? `${label} \u00b7 ${SCOPES.allTime}` : label;
+
+  const verification = useMemo(
+    () => series(m, "verification.by_outcome", "outcome"),
+    [m],
+  );
+  const byPartner = useMemo(() => series(m, "sales.by_partner", "partner").slice(0, 10), [m]);
+  const byState = useMemo(() => series(m, "sales.by_state", "state").slice(0, 10), [m]);
+  const byMonth = useMemo(
+    () =>
+      m
+        .filter((x) => x.metric_key === "sales.by_month")
+        .map((x) => ({ label: x.dimension?.month ?? "?", value: Number(x.value_num ?? 0) }))
+        .sort((a, b) => a.label.localeCompare(b.label))
+        .slice(-12),
+    [m],
+  );
+  const stock = useMemo(() => series(m, "stock.by_status", "status"), [m]);
+
+  /** The five cuts, named once: the page draws them and the export offers them. */
+  const SCORECARDS = useMemo(
+    () => [
+      { by: "partner", title: "Partner",
+        hint: "What each partner was sent, against what has come back." },
+      { by: "location", title: "Location",
+        hint: "The same funnel, cut by the partner's state." },
+      { by: "sales_rep", title: "Sales Representative",
+        hint: "The rep on the transfer, not the call centre agent." },
+      { by: "call_agent", title: "Call Agent",
+        hint: "Records handed to each agent, and what each became. Reclaimed batches are not counted." },
+      { by: "manager", title: "Manager",
+        hint: "Every agent reporting to them, rolled up. Sparse until reporting lines are set on profiles." },
+    ],
+    [],
+  );
+
+  /**
+   * How many stoves went out to partners.
+   *
+   * Summed from the partner scorecard's own issued figures rather than counted
+   * here: those rows are already the output of a computation run, so this adds
+   * about 278 numbers in the browser and never touches a sale.
+   *
+   * The partner cut specifically. Partner, location and sales rep are three
+   * cuts of one population - the transfer funnel - so each totals the same
+   * stoves and adding two would double-count. Call agent and manager are a
+   * different population entirely, what has been handed out rather than what
+   * was shipped, so they must not be added in at all. Measured on the preview
+   * database: the three funnel cuts each total 430, the two assignment cuts
+   * total 5, and 430 is sum(v_transfer_funnel.issued_count).
+   */
+  const transferred = useMemo(
+    () => scorecardRows(m, "partner").reduce((n, r) => n + (r.issued ?? 0), 0),
+    [m],
+  );
+
+  /**
+   * Everything received that has not been confirmed.
+   *
+   * The scorecard's own definition, summed the same way, so this card and the
+   * Unverified column of the table below it are the same number by
+   * construction. "Unverified" here is the narrow one - received, called, not
+   * confirmed - and is not the same as "not yet reached", which has its own
+   * column and its own card.
+   */
+  const unverified = useMemo(
+    () => scorecardRows(m, "partner").reduce((n, r) => n + (r.unverified ?? 0), 0),
+    [m],
+  );
+
+  /**
+   * Where each breakdown row goes.
+   *
+   * Written together so the whole mapping can be read at once, and so a row
+   * with no home returns null rather than a link that lands somewhere close
+   * enough. Everything here uses filters the server already accepts.
+   */
+  const linkVerification = (d) =>
+    d.label === "never_called"
+      ? { to: "/data-center/call-centre/records", search: { preset: "todo" } }
+      : {
+        to: "/data-center/call-centre/records",
+        search: { verificationOutcome: d.label, label: wordsFor(d.label) },
+      };
+
+  const linkPartner = (d) =>
+    d.dim?.organization_id
+      ? {
+        to: "/data-center/stove-records",
+        search: { organizationId: d.dim.organization_id, label: d.label },
+      }
+      : null;
+
+  const linkState = (d) => ({
+    to: "/data-center/stove-records",
+    search: { userState: d.label, label: d.label },
+  });
+
+  // A month bar covers that calendar month. The end is the last day, computed
+  // rather than assumed, so February and the 30-day months are right.
+  const linkMonth = (d) => {
+    const match = /^(\d{4})-(\d{2})$/.exec(d.label);
+    if (!match) return null;
+    const [, year, month] = match;
+    const last = new Date(Number(year), Number(month), 0).getDate();
+    return {
+      to: "/data-center/stove-records",
+      search: {
+        dateFrom: `${year}-${month}-01`,
+        dateTo: `${year}-${month}-${String(last).padStart(2, "0")}`,
+        label: d.label,
+      },
+    };
+  };
+
+  if (loading) {
+    return (
+      <div className="flex items-center gap-2 rounded-xl border border-gray-200 bg-white p-6 text-sm text-gray-500">
+        <Loader2 className="h-4 w-4 animate-spin" /> Loading the dashboard...
+      </div>
+    );
+  }
+
+  const total = value(m, "sales.total");
+  const complete = value(m, "sales.complete");
+  const appSays = value(m, "sales.app_says_completed");
+  // What is missing, per part of the rule, largest first. Empty until a run
+  // has written the metric; nothing is shown then rather than a false zero.
+  const missing = metricRows(m, "sales.incomplete_by_missing")
+    .filter((r) => r.dimension.field && r.value > 0)
+    .sort((a, b) => b.value - a.value);
+  const verified = value(m, "verification.by_outcome", { outcome: "fully_verified" });
+
+  return (
+    <div className="space-y-4">
+      <div className="flex flex-wrap items-center gap-2 rounded-xl border border-gray-200 border-t-[3px] border-t-(--dc-accent) bg-(--dc-accent-soft)/30 px-4 py-3 shadow-sm">
+        <BarChart3 className="h-4 w-4 text-(--dc-accent)" />
+        <span className="text-sm font-semibold text-gray-900">Dashboards</span>
+        {data?.computedAt ? (
+          <span className="inline-flex items-center gap-1 text-xs text-gray-500">
+            <Clock className="h-3 w-3" />
+            computed {new Date(data.computedAt).toLocaleString()}
+          </span>
+        ) : (
+          <span className="text-xs text-gray-500">never computed</span>
+        )}
+        {data?.isStale && (
+          <span className="inline-flex items-center gap-1 rounded-full bg-amber-100 px-2 py-0.5 text-xs font-medium text-amber-800">
+            <TriangleAlert className="h-3 w-3" />
+            {data.computedAt
+              ? `older than ${data.staleAfterHours}h`
+              : "no figures yet"}
+          </span>
+        )}
+        {canRun && (
+          <button
+            type="button"
+            disabled={running}
+            onClick={recompute}
+            className="ml-auto inline-flex items-center gap-1.5 rounded-md bg-(--dc-accent) px-3 py-1.5 text-xs font-medium text-white transition hover:bg-(--dc-accent-strong) disabled:opacity-50"
+          >
+            {running ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <RefreshCw className="h-3.5 w-3.5" />}
+            {running ? "Computing..." : "Recompute"}
+          </button>
+        )}
+      </div>
+
+      {/*
+        * The same control every other Data Center surface carries, so a period
+        * means the same thing on all of them and a narrowed view is a link.
+        *
+        * Its noun is "consignments" because that is what these figures count
+        * and what the period dates them by: when a stove was sold to the
+        * partner, never when the record reached this app.
+        */}
+      <div className="flex flex-wrap items-center gap-2">
+        <PeriodFilter
+          period={period}
+          onChange={setPeriod}
+          earliest={earliest}
+          area="dashboard"
+          noun="consignments"
+        />
+      </div>
+
+      {error && (
+        <div className="flex items-start gap-2 rounded-lg border border-amber-200 bg-amber-50 p-3">
+          <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-amber-600" />
+          <p className="text-sm text-amber-900">{error}</p>
+        </div>
+      )}
+
+      {!data?.computedAt ? (
+        <div className="rounded-xl border-2 border-dashed border-(--dc-accent)/30 bg-(--dc-accent-soft)/20 p-8 text-center text-sm text-gray-600">
+          Nothing has been computed yet.
+          {canRun ? " Use Recompute above to build the first set of figures." : ""}
+        </div>
+      ) : (
+        <>
+          {/* The four the module exists to answer: how much went out, how
+              much came back as a sale, how much of that is confirmed, and how
+              much is not. Everything else on this page is a cut of these. */}
+          <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
+            <Card
+              label={withScope("issued", scopeOf("scorecard.issued"))}
+              value={transferred}
+              hint={explain("issued", scopeOf("scorecard.issued"))}
+              skin="transferred"
+              to="/data-center/partner-records"
+              arrow="See what went to each partner"
+            />
+            <Card
+              label={withScope("sold", scopeOf("sales.total"))}
+              value={total}
+              hint={
+                transferred
+                  ? `${Math.round((total / transferred) * 100)}% of what was transferred`
+                  : "not archived"
+              }
+              skin="sold"
+              to="/data-center/stove-records"
+            />
+            <Card
+              label={withScope("verified", scopeOf("verification.by_outcome"))}
+              value={verified}
+              hint={total ? `${Math.round((verified / total) * 100)}% of sales` : undefined}
+              skin="verified"
+              to="/data-center/call-centre/records"
+              search={{ status: "verified", label: MEASURES.verified.label }}
+            />
+            <Card
+              label={withScope("unverified", scopeOf("scorecard.unverified"))}
+              value={unverified}
+              hint={MEASURES.unverified.definition}
+              skin="unverified"
+              to="/data-center/call-centre/records"
+              search={{ status: "unverified", label: "Partly verified" }}
+            />
+          </div>
+
+          <div className="grid grid-cols-1 gap-3 lg:grid-cols-2">
+            <Bars
+              title="Verification"
+              subtitle="Never called is its own bucket: it is a different problem from called and not confirmed."
+              data={verification}
+              linkFor={linkVerification}
+            />
+            {/* Stock rows have no surface of their own: nothing lists stoves by
+                status. Partner Records answers the nearest real question, what
+                was sent to whom, so the rows stay plain rather than promising
+                a filter that does not exist. */}
+            <Bars title="Stock" data={stock} />
+          </div>
+
+          <div className="grid grid-cols-1 gap-3 lg:grid-cols-2">
+            <Bars
+              title="Sales by partner"
+              subtitle="Top 10"
+              data={byPartner}
+              linkFor={linkPartner}
+            />
+            <Bars
+              title="Sales by state"
+              subtitle="Top 10"
+              data={byState}
+              linkFor={linkState}
+            />
+          </div>
+
+          <Bars
+            title="Sales by month"
+            subtitle="Last 12 months"
+            data={byMonth}
+            linkFor={linkMonth}
+          />
+
+          {/* The five scorecards: one component, five dimensions, and that is
+              the point. The first three read the transfer funnel (what was
+              shipped), the last two read assignments (what was handed out).
+              Every status cell drills into the queue behind its number.
+
+              Closed by default. Five open tables of 278 partners each is not a
+              dashboard, and the row count on each header answers "how many"
+              without opening anything. Partner opens, because it is the cut
+              everyone reads first. */}
+          <div className="space-y-3">
+            <div className="flex flex-wrap items-center gap-2">
+              <h2 className="text-sm font-semibold text-gray-900">Scorecards</h2>
+              <span className="text-xs text-gray-600">
+                The same six measures, cut five ways. Open one to page through it.
+              </span>
+              <div className="ml-auto">
+                <ExportScorecards cards={SCORECARDS} metrics={m} />
+              </div>
+            </div>
+            {SCORECARDS.map((card, i) => (
+              <Scorecard
+                key={card.by}
+                title={card.title}
+                by={card.by}
+                metrics={m}
+                hint={card.hint}
+                defaultOpen={i === 0}
+              />
+            ))}
+          </div>
+
+          {/* Support, not headline. Complete and Open corrections were on the
+              top row and are not what anyone opens this page to learn: one is
+              an internal completeness rule, the other a queue of six. */}
+          <div className="grid grid-cols-2 gap-3 lg:grid-cols-4 xl:grid-cols-7">
+            <Card
+              label={scopedLabel("Complete", "sales.complete")}
+              value={complete}
+              hint={total ? `${Math.round((complete / total) * 100)}% by this module's rule` : undefined}
+              skin="info"
+              // The table can only filter on the sales app's own status, which
+              // is the very thing this module disagrees with, so the link lands
+              // on that reading and the drill banner says so rather than
+              // presenting a different number as the same one.
+              to="/data-center/stove-records"
+              search={{ saleStatus: "completed", label: "Complete" }}
+            />
+            <Card
+              label={scopedLabel("Waiting on Sales", "corrections.open")}
+              value={value(m, "corrections.open")}
+              hint="sent back, not yet fixed"
+              skin={value(m, "corrections.open") > 0 ? "warn" : "neutral"}
+              to="/data-center/corrections"
+              search={{ tab: "open" }}
+            />
+            <Card
+              label={scopedLabel("Awaiting review", "corrections.fixed")}
+              value={value(m, "corrections.fixed")}
+              hint="fixed by Sales, for the call centre"
+              skin={value(m, "corrections.fixed") > 0 ? "warn" : "neutral"}
+              to="/data-center/corrections"
+              search={{ tab: "fixed" }}
+            />
+            <Card
+              label={scopedLabel("Calls logged", "calls.attempts_total")}
+              value={value(m, "calls.attempts_total")}
+              skin="info"
+              to="/data-center/call-centre/records"
+            />
+            <Card
+              label={scopedLabel("Average calls", "calls.avg_attempts")}
+              value={value(m, "calls.avg_attempts")}
+              hint="per record worked"
+              skin="info"
+              to="/data-center/call-centre/records"
+            />
+            <Card
+              label={scopedLabel("Chased 3 times", "calls.exhausted")}
+              value={value(m, "calls.exhausted")}
+              hint="still not verified"
+              skin={value(m, "calls.exhausted") > 0 ? "warn" : "neutral"}
+              to="/data-center/call-centre/records"
+              search={{ preset: "exhausted" }}
+            />
+            <Card
+              label={scopedLabel("Imported rows", "import.rows_committed")}
+              value={value(m, "import.rows_committed")}
+              hint={`${NUMBER.format(value(m, "import.exceptions_open"))} exceptions open`}
+              skin="plum"
+              to="/data-center/import"
+            />
+          </div>
+
+          {/* The rule, said plainly, and the way to the records that fail it.
+              This replaces an amber notice about the sales app's status rule,
+              which asked the reader to do nothing and could not be dismissed.
+              Each part links to exactly the records missing it. */}
+          {missing.length > 0 && (
+            <section
+              aria-labelledby="what-is-missing"
+              className="rounded-xl border border-gray-200 bg-white p-4 shadow-sm"
+            >
+              <h3 id="what-is-missing" className="text-sm font-semibold text-gray-900">
+                What is missing
+              </h3>
+              <p className="mt-1 text-sm text-gray-600">
+                Complete by this module&apos;s rule means every required field is present and
+                the sale carries evidence the rule accepts. The rule is set in Settings; its
+                parts are below, each with the live records missing it, counted over every
+                live record whatever the period above. A record missing two parts is counted
+                under both.
+                {appSays !== complete && (
+                  <> The sales app marks {NUMBER.format(appSays)} completed; its rule differs.</>
+                )}
+              </p>
+              <ul className="mt-3 flex flex-wrap gap-2">
+                {missing.map((r) => (
+                  <li key={r.dimension.field}>
+                    <Link
+                      to="/data-center/stove-records"
+                      search={{
+                        missingField: r.dimension.field,
+                        label: `Missing ${fieldWords(r.dimension.field)}`,
+                        // The count is over every live record, so the table
+                        // it opens must be too, or the two disagree by design.
+                        period: "all",
+                      }}
+                      className="inline-flex items-center gap-1.5 rounded-full border border-(--dc-accent)/40 bg-(--dc-accent-soft)/40 px-3 py-1 text-xs font-medium text-(--dc-accent-strong) hover:bg-(--dc-accent-soft)"
+                    >
+                      <span>{fieldWords(r.dimension.field)}</span>
+                      <span className="tabular-nums text-gray-700">{NUMBER.format(r.value)}</span>
+                      <ArrowUpRight className="h-3 w-3" aria-hidden="true" />
+                    </Link>
+                  </li>
+                ))}
+              </ul>
+            </section>
+          )}
+        </>
+      )}
+    </div>
+  );
+}

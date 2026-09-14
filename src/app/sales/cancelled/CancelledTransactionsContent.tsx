@@ -12,6 +12,7 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { createClientComponentClient } from "@/lib/supabaseClient";
+import { formatDate as formatDateShared } from "@/app/utils/formatDate";
 
 interface CancelledSale {
   id: string;
@@ -28,16 +29,7 @@ interface CancelledSale {
 }
 
 
-const formatDate = (d?: string | null) => {
-  if (!d) return "N/A";
-  const dt = new Date(d);
-  if (Number.isNaN(dt.getTime())) return "N/A";
-  return dt.toLocaleDateString("en-GB", {
-    day: "2-digit",
-    month: "2-digit",
-    year: "numeric",
-  });
-};
+const formatDate = (v: unknown) => formatDateShared(v, { style: "numeric" });
 
 export default function CancelledTransactionsContent() {
   const supabase = useMemo(() => createClientComponentClient(), []);

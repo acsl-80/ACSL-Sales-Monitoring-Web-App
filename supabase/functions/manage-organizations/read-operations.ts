@@ -147,8 +147,18 @@ export async function getOrganizations(
       // search silently matches the wrong set. Double-quoting makes PostgREST
       // treat the whole thing as a literal.
       const s = search.replace(/\\/g, "\\\\").replace(/"/g, '\\"');
-      // Inside quoted PostgREST values, the ilike wildcard is `*` (converted
-      // to `%` server-side). Using `%` inside quotes matches a literal percent.
+      // `*` and `%` both work as the wildcard here. An earlier version of this
+      // comment claimed `%` inside quotes matches a literal percent sign, and
+      // that is not what PostgREST 14.15 does. Tested against production on
+      // 2026-08-20, searching "Abdu" across 7 matching partners:
+      //
+      //   SQL       ilike '%Abdu%'                 7 rows
+      //   PostgREST partner_name.ilike."%Abdu%"    7 rows
+      //   PostgREST partner_name.ilike."*Abdu*"    7 rows
+      //
+      // If `%` were literal the middle one would return 0. `*` is kept because
+      // it is the documented form and there is no reason to churn a live
+      // function, but nothing was broken by the other one.
       q = q.or(`partner_name.ilike."*${s}*",partner_id.ilike."*${s}*"`);
     }
     if (status) q = q.eq("status", status);

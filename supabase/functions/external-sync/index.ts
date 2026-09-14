@@ -1,5 +1,6 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.7.1";
+import { normalizeModelName, resolveOrderModelId, type PaymentModelCache } from "../_shared/order-model.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -39,6 +40,9 @@ interface ExternalSyncRequest {
     /// string form ("Hakimi Sales Model (6m); Amina Sales Model (12m)") or an
     /// explicit list. Authoritative — omit it to leave assignments untouched.
     partner_sales_models?: string | Array<{ name: string; duration_months?: number | null }>;
+    /// The Order Sales Model named for this consignment (D19), as the ERP sends it.
+    order_sales_model?: string | null;
+    order_sales_model_duration?: number | string | null;
   };
   stove_ids?: Array<{ stove_id: string; factory: string; sales_reference?: string }> | string[];
   sales_date?: string;
@@ -264,10 +268,13 @@ async function writeTransferHistory(
     customer?: string | null;
     downloaded_by?: string | null;
     sales_rep?: string | null;
+    order_sales_model_name?: string | null;
+    order_sales_model_duration?: number | null;
     stove_ids: Array<{ stove_id: string; factory?: string; sales_reference?: string }>;
     source: "external-sync" | "external-csv-sync";
     application_name?: string;
   },
+  modelCache: PaymentModelCache = {},
 ): Promise<void> {
   if (data.stove_ids.length === 0) return;
   try {
@@ -285,6 +292,11 @@ async function writeTransferHistory(
       customer: data.customer || null,
       downloaded_by: data.downloaded_by || null,
       sales_rep: data.sales_rep || null,
+      // The Order Sales Model, as sent and as resolved (D19). Kept per
+      // transfer so the workbench can say which model a stove went out under.
+      order_sales_model_name: data.order_sales_model_name || null,
+      order_sales_model_duration: data.order_sales_model_duration ?? null,
+      order_payment_model_id: await resolveOrderModelId(supabase, data.order_sales_model_name, data.order_sales_model_duration, modelCache),
       stove_count: data.stove_ids.length,
       stove_ids: data.stove_ids,
       source: data.source,
@@ -468,6 +480,8 @@ serve(async (req) => {
         branch: body.organization_data.branch,
         sales_factory: newStoves[0]?.factory || undefined,
         sales_date: body.sales_date || null,
+        order_sales_model_name: typeof body.organization_data?.order_sales_model === "string" && !isBlankValue(body.organization_data.order_sales_model) ? body.organization_data.order_sales_model.trim() : null,
+        order_sales_model_duration: Number.isFinite(Number.parseInt(body.organization_data?.order_sales_model_duration, 10)) ? Number.parseInt(body.organization_data.order_sales_model_duration, 10) : null,
         stove_ids: newStoves.map((s: any) => ({ stove_id: s.stove_id, factory: s.factory, sales_reference: s.sales_reference })),
         source: "external-sync",
         application_name: body.application_name,
@@ -577,11 +591,6 @@ async function validateExternalToken(
 interface ParsedSalesModel {
   name: string;
   duration_months: number | null;
-}
-
-/// Normalized key for matching an incoming model name against `payment_models.name`.
-function normalizeModelName(name: string): string {
-  return name.trim().toLowerCase().replace(/\s+/g, " ");
 }
 
 function isBlankValue(value: string | undefined | null): boolean {

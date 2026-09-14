@@ -1,5 +1,6 @@
 
 import React from "react";
+import { lgaAndStates } from "@/app/constants";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import {
   Select,
@@ -57,6 +58,7 @@ import { Calendar } from "@/components/ui/calendar";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { format, parseISO } from "date-fns";
 import PageHeader from "../../components/PageHeader";
+import { formatCurrency as formatCurrencyShared } from "@/app/utils/formatCurrency";
 
 const CURRENT_YEAR = new Date().getFullYear();
 const YEARS = Array.from({ length: CURRENT_YEAR - 2023 }, (_, i) => 2024 + i);
@@ -64,16 +66,24 @@ const DARK_NAVY = "#4a5d0f";
 const MONTHS = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
 const PIE_COLORS = ["#10b981", "#3b82f6", "#8b5cf6", "#f59e0b", "#ef4444", "#06b6d4"];
 
-const NIGERIAN_STATES = [
-  "Abia", "Adamawa", "Akwa Ibom", "Anambra", "Bauchi", "Bayelsa", "Benue", "Borno",
-  "Cross River", "Delta", "Ebonyi", "Edo", "Ekiti", "Enugu", "FCT", "Gombe", "Imo",
-  "Jigawa", "Kaduna", "Kano", "Katsina", "Kebbi", "Kogi", "Kwara", "Lagos", "Nasarawa",
-  "Niger", "Ogun", "Ondo", "Osun", "Oyo", "Plateau", "Rivers", "Sokoto", "Taraba",
-  "Yobe", "Zamfara",
-];
+/*
+ * The 37 states, from the one place they are defined.
+ *
+ * This file kept its own copy pasted inline, and so did two others. All three
+ * were byte-identical to `lgaAndStates` today, which is exactly the state a
+ * duplicated list is in right up until the morning it is not: the canonical
+ * data lives in `public.nigeria_states` (37) and `public.nigeria_lgas` (774),
+ * is served by the geo-data function and cached by `src/lib/geoDataService`,
+ * and a private array cannot follow any of it.
+ *
+ * Read synchronously from the bundled constant rather than through the async
+ * service, because this is used at module scope. The service is the right call
+ * inside a form, where waiting for a fresher list costs nothing.
+ */
+const NIGERIAN_STATES = Object.keys(lgaAndStates).sort();
 
 // Full comma-formatted amount — no K/M abbreviation
-const formatCurrency = (value) => `₦${Math.round(value ?? 0).toLocaleString()}`;
+const formatCurrency = (v) => formatCurrencyShared(v, { empty: "₦0" });
 
 const KPI_CONFIG = [
   {

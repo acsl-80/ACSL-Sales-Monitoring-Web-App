@@ -1,5 +1,5 @@
 import { useState, useEffect, useMemo, useCallback } from "react";
-import { toast } from "sonner";
+import { useToastNotification } from "@/app/contexts/useToastNotification";
 import DashboardLayout from "../components/DashboardLayout";
 import PageHeader from "../components/PageHeader";
 import { Users, Eye, Pencil } from "lucide-react";
@@ -44,17 +44,15 @@ import EditEndUserModal from "./EditEndUserModal";
 import CancelSaleModal from "../admin/components/sales/CancelSaleModal";
 import { useAuth } from "../contexts/useAuth";
 import { resolveRole } from "@/lib/permissions";
+import { formatDate as formatDateShared } from "@/app/utils/formatDate";
+import { fieldLabel } from "@/lib/saleDictionary";
 
-const formatDate = (dateStr) => {
-  if (!dateStr) return "N/A";
-  return new Date(dateStr).toLocaleDateString("en-GB", {
-    day: "2-digit",
-    month: "2-digit",
-    year: "numeric",
-  });
-};
+const formatDate = (v) => formatDateShared(v, { style: "numeric" });
 
 const EndUserRecordsContent = () => {
+  // sonner's <Toaster /> is mounted nowhere in this app, so its toasts were
+  // silent. The app's own provider is.
+  const { toast } = useToastNotification();
   const [allSales, setAllSales] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
@@ -236,14 +234,14 @@ const EndUserRecordsContent = () => {
 
   const handleExport = () => {
     const headers = [
-      "Sales Date",
-      "End User",
-      "State",
-      "LGA",
-      "Contact Person",
-      "Phone Number",
-      "Partner",
-      "Stove ID",
+      fieldLabel("sales_date"),
+      fieldLabel("end_user_name"),
+      fieldLabel("state_backup"),
+      fieldLabel("lga_backup"),
+      fieldLabel("contact_person"),
+      fieldLabel("phone"),
+      fieldLabel("partner_name"),
+      fieldLabel("stove_serial_no"),
       "Last Modified By",
     ];
     const rows = filteredSales.map((s) => [
@@ -414,16 +412,16 @@ const EndUserRecordsContent = () => {
                       onClick={() => setSortOrder((prev) => (prev === "asc" ? "desc" : "asc"))}
                     >
                       <div className="flex items-center gap-1">
-                        Sales Date
+                        {fieldLabel("sales_date")}
                       </div>
                     </TableHead>
-                    <TableHead className="text-white font-semibold py-2 px-2">End User</TableHead>
-                    <TableHead className="text-white font-semibold py-2 px-2">State</TableHead>
-                    <TableHead className="text-white font-semibold py-2 px-2">LGA</TableHead>
-                    <TableHead className="text-white font-semibold py-2 px-2">Contact Person</TableHead>
-                    <TableHead className="text-white font-semibold py-2 px-2 whitespace-nowrap">Phone Number</TableHead>
-                    <TableHead className="text-white font-semibold py-2 px-2">Partner</TableHead>
-                    <TableHead className="text-white font-semibold py-2 px-2 whitespace-nowrap">Stove ID</TableHead>
+                    <TableHead className="text-white font-semibold py-2 px-2">{fieldLabel("end_user_name")}</TableHead>
+                    <TableHead className="text-white font-semibold py-2 px-2">{fieldLabel("state_backup")}</TableHead>
+                    <TableHead className="text-white font-semibold py-2 px-2">{fieldLabel("lga_backup")}</TableHead>
+                    <TableHead className="text-white font-semibold py-2 px-2">{fieldLabel("contact_person")}</TableHead>
+                    <TableHead className="text-white font-semibold py-2 px-2 whitespace-nowrap">{fieldLabel("phone")}</TableHead>
+                    <TableHead className="text-white font-semibold py-2 px-2">{fieldLabel("partner_name")}</TableHead>
+                    <TableHead className="text-white font-semibold py-2 px-2 whitespace-nowrap">{fieldLabel("stove_serial_no")}</TableHead>
                     <TableHead className="text-white font-semibold py-2 px-2">Last Modified By</TableHead>
                     <TableHead className="text-white font-semibold py-2 px-2 whitespace-nowrap text-right">Actions</TableHead>
                   </TableRow>

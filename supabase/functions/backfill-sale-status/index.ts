@@ -1,10 +1,5 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
-import {
-  missingRequiredFields,
-  resolveSaleStatus,
-  saleStatusInputFromRow,
-  type SaleStatus,
-} from "../_shared/saleStatus.ts";
+import { type SaleStatus } from "../_shared/saleStatus.ts";
 
 /**
  * backfill-sale-status
@@ -52,23 +47,9 @@ function json(body: unknown, status = 200): Response {
   );
 }
 
-const SELECT = `
-  id,
-  status,
-  transaction_id,
-  stove_serial_no,
-  sales_date,
-  contact_person,
-  contact_phone,
-  end_user_name,
-  phone,
-  partner_name,
-  amount,
-  state_backup,
-  lga_backup,
-  signature,
-  address:addresses!left(full_address)
-`;
+// calculate_sale_status(sales) is exposed by PostgREST as a computed column,
+// so a dry run reads the verdict the trigger would write without writing it.
+const SELECT = `id, status, transaction_id, calculate_sale_status`;
 
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return withCors(new Response("ok", { status: 200 }));
@@ -131,14 +112,12 @@ Deno.serve(async (req) => {
       for (const row of rows) {
         scanned++;
         // The left join arrives as an array on some client versions.
-        const address = Array.isArray(row.address) ? row.address[0] : row.address;
-        const input = saleStatusInputFromRow({ ...row, address });
-        const next = resolveSaleStatus(input);
+        const next = (row as { calculate_sale_status?: SaleStatus }).calculate_sale_status ?? "incomplete";
         const current = row.status ?? "(null)";
         if (next === row.status) continue;
 
         changed++;
-        const missing = missingRequiredFields(input);
+        const missing: string[] = [];
         const key = `${current}->${next}`;
         transitions[key] = (transitions[key] || 0) + 1;
         if (samples.length < 25) {
@@ -162,7 +141,8 @@ Deno.serve(async (req) => {
         if (apply) {
           const { error: updErr } = await admin
             .from("sales")
-            .update({ status: next })
+            // Any write re-runs the trigger, which applies the rule of the day.
+            .update({ updated_at: new Date().toISOString() })
             .eq("id", row.id);
           if (updErr) {
             updateErrors++;

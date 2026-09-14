@@ -1,4 +1,14 @@
-import React, { useEffect, useState } from "react";
+/**
+ * The Agents Performance Report's "Records Collected" chart.
+ *
+ * Slice 11c of the 2026-09-02 review (finding F7). The chart paged the agent
+ * roster through three role loops, read the sales table twice per two hundred
+ * agents, and bucketed the rows by month in the browser with no regard to the
+ * year, so every January of every year landed in one bar. It now asks the
+ * database for one year's twelve months in one call and draws them. The year
+ * follows the page's chosen start date, else this year.
+ */
+
 import {
   ResponsiveContainer,
   ComposedChart,
@@ -10,192 +20,38 @@ import {
   Line,
   LabelList,
 } from "recharts";
-import { useAuth } from "../../contexts/useAuth";
-import tokenManager from "@/utils/tokenManager";
-import { supabaseFunctionsUrl } from "@/lib/supabaseConfig";
+import { chartYear, useAgentRecordsByMonth } from "../hooks/useAgentRecordsByMonth";
 
-const MONTHS = [
-  "Jan", "Feb", "Mar", "Apr", "May", "Jun",
-  "Jul", "Aug", "Sep", "Oct", "Nov", "Dec",
-];
-
-const AGENT_ROLES = ["acsl_agent", "acsl_agent_manager", "super_admin_agent"];
-
-function bucketMonthlySales(rows: any[]) {
-  const counts = new Array(12).fill(0);
-  (rows || []).forEach((r) => {
-    const raw = r?.sales_date || r?.sale_date || r?.created_at;
-    if (!raw) return;
-    const d = new Date(raw);
-    if (isNaN(d.getTime())) return;
-    counts[d.getMonth()] += 1;
-  });
-  return MONTHS.map((m, i) => ({ month: m, value: counts[i] }));
+interface AgentRecordsChartProps {
+  title: string;
+  tooltipLabel: string;
+  /** The page's chosen start date; its year is the chart's year. */
+  dateFrom?: string | null;
 }
 
-// Fetch the full ACSL agent roster via the manage-users edge function so we
-// bypass RLS on the profiles table (which was returning an empty/truncated
-// list in the browser and causing the chart to render all zeros).
-async function fetchAgentIdsViaManageUsers(): Promise<string[]> {
-  const token = await tokenManager.getValidToken();
-  if (!supabaseFunctionsUrl || !token) return [];
-  const ids = new Set<string>();
-  for (const role of AGENT_ROLES) {
-    let page = 1;
-    let totalPages = 1;
-    do {
-      const qs = new URLSearchParams({
-        page: String(page),
-        limit: "100",
-        role,
-      });
-      const res = await fetch(
-        `${supabaseFunctionsUrl}/manage-users?${qs.toString()}`,
-        { headers: { Authorization: `Bearer ${token}` } }
-      );
-      if (!res.ok) break;
-      const json = await res.json().catch(() => ({}));
-      (json.data || []).forEach((u: any) => {
-        if (u?.id) ids.add(u.id);
-      });
-      totalPages = json.pagination?.totalPages ?? 1;
-      page += 1;
-    } while (page <= totalPages);
-  }
-  return Array.from(ids);
-}
-
-const AgentRecordsChart = ({
-  title = "Records Collected",
-  tooltipLabel = "Collected",
-}: {
-  title?: string;
-  tooltipLabel?: string;
-}) => {
-  const { supabase } = useAuth();
-  const [monthly, setMonthly] = useState(
-    MONTHS.map((m) => ({ month: m, value: 0 }))
-  );
-  const [loading, setLoading] = useState(true);
-  const [errorMessage, setErrorMessage] = useState("");
-
-  useEffect(() => {
-    let mounted = true;
-    if (!supabase) {
-      setLoading(false);
-      return;
-    }
-
-    (async () => {
-      try {
-        setLoading(true);
-        setErrorMessage("");
-        // 1. Roster of ACSL agent user IDs (via edge function, RLS-safe)
-        let agentIds = await fetchAgentIdsViaManageUsers();
-
-        // Fallback: direct profiles read (may be RLS-restricted)
-        if (agentIds.length === 0) {
-          const { data: profilesData } = await supabase
-            .from("profiles")
-            .select("id")
-            .in("role", AGENT_ROLES);
-          agentIds = (profilesData || [])
-            .map((p: any) => p.id)
-            .filter(Boolean);
-        }
-
-        if (agentIds.length === 0) {
-          if (mounted) {
-            setMonthly(MONTHS.map((m) => ({ month: m, value: 0 })));
-            setLoading(false);
-          }
-          return;
-        }
-
-        // 2. Fetch sales attributed to those agents (batched IN queries).
-        // Each row is one collected record; the sales table has no quantity column.
-        const BATCH = 200;
-        const allSales: any[] = [];
-        const seenSaleIds = new Set<string>();
-
-        const addSales = (rows: any[]) => {
-          (rows || []).forEach((row) => {
-            if (!row?.id || seenSaleIds.has(row.id)) return;
-            seenSaleIds.add(row.id);
-            allSales.push(row);
-          });
-        };
-
-        for (let i = 0; i < agentIds.length; i += BATCH) {
-          const batch = agentIds.slice(i, i + BATCH);
-          const { data: createdByRows, error: createdByError } = await supabase
-            .from("sales")
-            .select("id, sales_date, created_at")
-            .in("created_by", batch)
-            .eq("is_archived", false);
-
-          if (createdByError) throw createdByError;
-          addSales(createdByRows || []);
-
-          const { data: onBehalfRows, error: onBehalfError } = await supabase
-            .from("sales")
-            .select("id, sales_date, created_at")
-            .in("sold_on_behalf_of", batch)
-            .eq("is_archived", false);
-
-          if (onBehalfError) throw onBehalfError;
-          addSales(onBehalfRows || []);
-        }
-
-        if (mounted) {
-          setMonthly(bucketMonthlySales(allSales));
-        }
-      } catch (e) {
-        console.error("Agent records fetch failed:", e);
-        if (mounted) {
-          setErrorMessage("Unable to load records collected chart.");
-        }
-      } finally {
-        if (mounted) setLoading(false);
-      }
-    })();
-
-    return () => {
-      mounted = false;
-    };
-  }, [supabase]);
+const AgentRecordsChart = ({ title, tooltipLabel, dateFrom }: AgentRecordsChartProps) => {
+  const year = chartYear(dateFrom);
+  const { monthly, isPending, error } = useAgentRecordsByMonth(year);
 
   return (
     <div className="bg-white border border-gray-200 rounded-lg p-4">
       <div className="mb-4 flex items-center gap-3">
         <div className="h-px flex-1 bg-gradient-to-r from-transparent via-gray-200 to-transparent" />
         <span className="text-[10px] font-semibold tracking-[0.15em] text-gray-400 uppercase">
-          {title}
+          {title} {year}
         </span>
         <div className="h-px flex-1 bg-gradient-to-r from-transparent via-gray-200 to-transparent" />
       </div>
       <ResponsiveContainer width="100%" height={300}>
-        <ComposedChart
-          data={monthly}
-          margin={{ top: 24, right: 16, left: 0, bottom: 8 }}
-        >
+        <ComposedChart data={monthly} margin={{ top: 24, right: 16, left: 0, bottom: 8 }}>
           <defs>
             <linearGradient id="agentMonthlyBarFill" x1="0" y1="0" x2="0" y2="1">
               <stop offset="0%" stopColor="#4a5d0f" />
               <stop offset="100%" stopColor="#eef3c4" />
             </linearGradient>
           </defs>
-          <CartesianGrid
-            strokeDasharray="3 3"
-            stroke="#e5e7eb"
-            vertical={false}
-          />
-          <XAxis
-            dataKey="month"
-            tick={{ fontSize: 11, fill: "#6b7280" }}
-            axisLine={{ stroke: "#e5e7eb" }}
-            tickLine={false}
-          />
+          <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" vertical={false} />
+          <XAxis dataKey="month" tick={{ fontSize: 11, fill: "#6b7280" }} axisLine={{ stroke: "#e5e7eb" }} tickLine={false} />
           <YAxis
             tick={{ fontSize: 11, fill: "#6b7280" }}
             axisLine={false}
@@ -205,18 +61,9 @@ const AgentRecordsChart = ({
           />
           <Tooltip
             formatter={(v) => [Number(v).toLocaleString(), tooltipLabel]}
-            contentStyle={{
-              borderRadius: 6,
-              border: "1px solid #e5e7eb",
-              fontSize: 12,
-            }}
+            contentStyle={{ borderRadius: 6, border: "1px solid #e5e7eb", fontSize: 12 }}
           />
-          <Bar
-            dataKey="value"
-            fill="url(#agentMonthlyBarFill)"
-            barSize={42}
-            radius={[3, 3, 0, 0]}
-          />
+          <Bar dataKey="value" fill="url(#agentMonthlyBarFill)" barSize={42} radius={[3, 3, 0, 0]} />
           <Line
             type="monotone"
             dataKey="value"
@@ -225,23 +72,12 @@ const AgentRecordsChart = ({
             dot={{ r: 4, fill: "#f59e0b", stroke: "#f59e0b" }}
             activeDot={{ r: 5 }}
           >
-            <LabelList
-              dataKey="value"
-              position="top"
-              fontSize={11}
-              fill="#374151"
-            />
+            <LabelList dataKey="value" position="top" fontSize={11} fill="#374151" />
           </Line>
         </ComposedChart>
       </ResponsiveContainer>
-      {loading && (
-        <p className="text-xs text-gray-400 mt-2 text-center">
-          Loading {title.toLowerCase()}…
-        </p>
-      )}
-      {errorMessage && !loading && (
-        <p className="text-xs text-red-600 mt-2 text-center">{errorMessage}</p>
-      )}
+      {isPending && <p className="text-xs text-gray-400 mt-2 text-center">Loading {title.toLowerCase()}...</p>}
+      {error && !isPending && <p className="text-xs text-red-600 mt-2 text-center">{error}</p>}
     </div>
   );
 };

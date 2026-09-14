@@ -1,3 +1,8 @@
+import { fieldByKey, LIVE_FIELDS, fieldLabel } from "@/lib/saleDictionary";
+
+/** The Stove DB name for a sale field, or null when the field has none. */
+const stoveDbName = (key) => fieldByKey(key)?.stoveDbName ?? null;
+
 // Documentation Content Constants
 // This file contains reusable content blocks for the API documentation
 
@@ -168,6 +173,40 @@ export const ROLE_DESCRIPTIONS = {
   },
 };
 
+/** The fields the Stove DB shape carries: every dictionary field with a Stove DB name, in order. */
+export const STOVE_DB_FIELDS = LIVE_FIELDS.filter((f) => Boolean(f.stoveDbName)).map((f) => ({
+  name: f.stoveDbName,
+  label: fieldLabel(f.key),
+  from: f.table === "sales" ? f.column : `${f.table}.${f.column}`,
+  kind:
+    f.key === "terms_accepted"
+      ? "the six consents as an object"
+      : ["previous_stove_type", "cooking_fuel_source", "cooking_location"].includes(f.key)
+        ? "the choice's label"
+        : f.type,
+}));
+
+const STOVE_DB_SAMPLE = {
+  "Sales date": "2026-06-01",
+  "Serial number": "SN123456",
+  "User surname": "Okoro",
+  "User firstname": "Mary Jane",
+  "Contact person": "Mary Jane Okoro",
+  Address: "12 Market Road, Lokoja",
+  LGA: "Lokoja",
+  State: "Kogi",
+  Phone: "08012345678",
+  "Other contact phone": "08098765432",
+  "Sales agent": "Bala Sani",
+  "Sales partner": "Twin Name Partner",
+  "Sales branch": "Lokoja branch",
+  "Number of Pots": 2,
+  Wonderbox: true,
+  "Baseline stove": "Charcoal",
+  "Fuel source": "Purchase it",
+  CPA: { poaGoverned: true, monitoring: true, noResell: true, emissionReductions: true, noExport: true, demonstration: true },
+};
+
 export const RESPONSE_FORMATS = {
   title: "API Response Formats",
   description:
@@ -246,15 +285,28 @@ export const RESPONSE_FORMATS = {
         },
       },
     },
+    format3: {
+      title: "stove_db, the Stove DB shape",
+      description:
+        "The parent Stove DB's own field names, word for word, from the field dictionary. The name travels in its two columns, choices as the words the agreement uses, CPA as the six consents. Ask for it with responseFormat=stove_db on get-sales-advanced, or format=stove_db on end-user-records-api.",
+      usage: "The Stove DB's analysts; the two older shapes stay until they move",
+      example: {
+        success: true,
+        responseFormat: "stove_db",
+        data: [Object.fromEntries(STOVE_DB_FIELDS.map((f) => [f.name, STOVE_DB_SAMPLE[f.name] ?? null]))],
+      },
+    },
   },
   mapping: [
     {
       format1: "serialNumber",
+      stoveDbName: stoveDbName("stove_serial_no"),
       format2: "stove_serial_no",
       description: "Stove serial number",
     },
     {
       format1: "salesDate",
+      stoveDbName: stoveDbName("sales_date"),
       format2: "sales_date",
       description: "Date of sale",
     },
@@ -265,16 +317,19 @@ export const RESPONSE_FORMATS = {
     },
     {
       format1: "state",
+      stoveDbName: stoveDbName("state_backup"),
       format2: "state_backup / addresses.state",
       description: "State information",
     },
     {
       format1: "district",
+      stoveDbName: stoveDbName("lga_backup"),
       format2: "lga_backup",
       description: "Local Government Area",
     },
     {
       format1: "address",
+      stoveDbName: stoveDbName("full_address"),
       format2: "addresses.full_address",
       description: "Complete address",
     },
@@ -290,36 +345,43 @@ export const RESPONSE_FORMATS = {
     },
     {
       format1: "phone",
+      stoveDbName: stoveDbName("phone"),
       format2: "phone / contact_phone",
       description: "Primary phone number",
     },
     {
       format1: "contactPerson",
+      stoveDbName: stoveDbName("contact_person"),
       format2: "contact_person",
       description: "Contact person name",
     },
     {
       format1: "otherContactPhone",
+      stoveDbName: stoveDbName("other_phone"),
       format2: "other_phone",
       description: "Alternative phone",
     },
     {
       format1: "salesPartner",
+      stoveDbName: stoveDbName("partner_name"),
       format2: "partner_name",
       description: "Partner/Field assistant",
     },
     {
       format1: "userName",
+      stoveDbName: stoveDbName("end_user_first_name"),
       format2: "end_user_name (first part)",
       description: "User first name",
     },
     {
       format1: "userSurname",
+      stoveDbName: stoveDbName("end_user_surname"),
       format2: "end_user_name (remaining)",
       description: "User surname",
     },
     {
       format1: "cpa",
+      stoveDbName: stoveDbName("terms_accepted"),
       format2: "null (to be defined)",
       description: "CPA field",
     },

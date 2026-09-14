@@ -59,6 +59,8 @@ import paymentModelService from "../../services/paymentModelService";
 import adminSalesService from "../../services/adminSalesService";
 import FinancialReportsTable from "../../admin/components/financial-reports/FinancialReportsTable";
 import { AdminSales } from "@/types/adminSales";
+import { formatDate as formatDateShared } from "@/app/utils/formatDate";
+import { formatCurrency as formatCurrencyShared } from "@/app/utils/formatCurrency";
 
 interface PaymentModel {
   id: string;
@@ -318,8 +320,7 @@ export default function PaymentModelsPage() {
     setShowCreateModal(true);
   };
 
-  const formatCurrency = (amount: number) =>
-    `₦${amount.toLocaleString("en-NG", { minimumFractionDigits: 0 })}`;
+  const formatCurrency = (v: unknown) => formatCurrencyShared(v);
 
   const formatAmountInput = (value: string) => {
     const digits = value.replace(/[^0-9]/g, "");
@@ -329,8 +330,7 @@ export default function PaymentModelsPage() {
 
   const parseAmountInput = (value: string) => value.replace(/[^0-9]/g, "");
 
-  const formatDate = (dateStr: string) =>
-    new Date(dateStr).toLocaleDateString("en-GB", { day: "2-digit", month: "short", year: "numeric" });
+  const formatDate = (v: unknown) => formatDateShared(v);
 
   return (
     <ProtectedRoute requireSuperAdmin routeKey="settings-payment-models">

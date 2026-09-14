@@ -9,6 +9,7 @@ import {
 import { Button } from "@/components/ui/button";
 import { Copy, Eye, EyeOff, Check, Building2, Key, Shield, Calendar } from "lucide-react";
 import { Credential } from "@/app/services/adminCredentialsService";
+import { formatDate as formatDateShared } from "@/app/utils/formatDate";
 
 interface ViewCredentialModalProps {
   isOpen: boolean;
@@ -55,11 +56,7 @@ const ViewCredentialModal: React.FC<ViewCredentialModalProps> = ({
     ? credential.username ?? ""
     : credential.email ?? credential.organizations?.email ?? "";
 
-  const formatDate = (d: string) =>
-    new Date(d).toLocaleString("en-GB", {
-      day: "2-digit", month: "short", year: "numeric",
-      hour: "2-digit", minute: "2-digit",
-    });
+  const formatDate = (v: unknown) => formatDateShared(v, { time: true });
 
   return (
     <Dialog open={isOpen} onOpenChange={onClose}>

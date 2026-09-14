@@ -70,6 +70,7 @@ const AssignOrganizationsModal: React.FC<AssignOrganizationsModalProps> = ({
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
+  const [notice, setNotice] = useState("");
   const [statesExpanded, setStatesExpanded] = useState(true);
   const [orgsExpanded, setOrgsExpanded] = useState(true);
 
@@ -177,10 +178,43 @@ const AssignOrganizationsModal: React.FC<AssignOrganizationsModalProps> = ({
     try {
       setSaving(true);
       setError("");
-      await Promise.all([
-        superAdminAgentService.setAgentStates(agent.id, Array.from(selectedStates)),
-        superAdminAgentService.setAgentOrganizations(agent.id, Array.from(selectedDirectOrgIds)),
-      ]);
+      /*
+       * This screen presents states and named partners as additive, and
+       * disables unticking a partner a selected state already covers. That is
+       * the union model, and the server does not work that way: an agent is on
+       * one rule or the other.
+       *
+       * So the mode is read and preserved rather than guessed. For an agent
+       * covered by state, the named list here would be ignored, and writing it
+       * would have reported success while changing nothing. Their exclusions
+       * are left alone, because this screen has no way to express one.
+       *
+       * The old pair of writes stays as the fallback while the atomic endpoint
+       * rolls out, since edge functions do not deploy when this file does.
+       */
+      const scopeRes = await superAdminAgentService.getAgentScope(agent.id).catch(() => null);
+      const scope = scopeRes?.data ?? null;
+
+      if (scope) {
+        const byState = scope.mode === "state_coverage";
+        await superAdminAgentService.setAgentScope(agent.id, {
+          mode: scope.mode,
+          states: Array.from(selectedStates),
+          organizationIds: byState ? (scope.organization_ids ?? []) : Array.from(selectedDirectOrgIds),
+          excludedOrganizationIds: scope.excluded_organization_ids ?? [],
+        });
+        if (byState && selectedDirectOrgIds.size > 0) {
+          setNotice(
+            "This agent is covered by state, so their partner list follows the states above. " +
+            "Named partners were left unchanged."
+          );
+        }
+      } else {
+        await Promise.all([
+          superAdminAgentService.setAgentStates(agent.id, Array.from(selectedStates)),
+          superAdminAgentService.setAgentOrganizations(agent.id, Array.from(selectedDirectOrgIds)),
+        ]);
+      }
       // Notify other views (Partner Profiles, Agents Profile) to refresh
       // their cached assignment counts.
       try {
@@ -214,6 +248,13 @@ const AssignOrganizationsModal: React.FC<AssignOrganizationsModalProps> = ({
             <div className="p-3 bg-red-50 border border-red-200 rounded-lg flex items-center gap-2 flex-shrink-0">
               <AlertCircle className="h-4 w-4 text-red-600" />
               <span className="text-red-700 text-sm">{error}</span>
+            </div>
+          )}
+
+          {notice && (
+            <div className="p-3 bg-amber-50 border border-amber-200 rounded-lg flex items-center gap-2 flex-shrink-0">
+              <AlertCircle className="h-4 w-4 text-amber-600" />
+              <span className="text-amber-800 text-sm">{notice}</span>
             </div>
           )}
 

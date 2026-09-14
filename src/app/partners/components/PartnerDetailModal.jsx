@@ -4,6 +4,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
+import { formatDate as formatDateShared } from "@/app/utils/formatDate";
 
 const DetailItem = ({ label, value, span2 = false }) => (
   <div className={`space-y-0.5 ${span2 ? "md:col-span-2" : ""}`}>
@@ -21,14 +22,7 @@ const SectionCard = ({ title, children }) => (
 
 const PartnerDetailModal = ({ organization, isOpen, onClose }) => {
   if (!organization) return null;
-  const formatDate = (d) => {
-    if (!d) return "N/A";
-    try {
-      return new Date(d).toLocaleDateString("en-GB", { day: "2-digit", month: "short", year: "numeric" });
-    } catch {
-      return "N/A";
-    }
-  };
+  const formatDate = (v) => formatDateShared(v);
   const typeLabel = organization.partner_type
     ? organization.partner_type.charAt(0).toUpperCase() + organization.partner_type.slice(1)
     : "N/A";

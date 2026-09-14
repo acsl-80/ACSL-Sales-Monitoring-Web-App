@@ -1,4 +1,10 @@
-import jsPDF from "jspdf";
+// Type only. The library itself is loaded inside generateAgreementPDF, when a
+// document is actually asked for. As a static import it rode into the
+// dashboard's first load through AdminSalesDetailModal and FinancialReportsView:
+// roughly 400 KB of PDF code fetched on every dashboard visit and used on
+// none of them. pdfUtils.js and apiDocsPdf.ts already load it this way.
+import type jsPDFType from "jspdf";
+import { formatDate as formatDateShared } from "@/app/utils/formatDate";
 
 // Pixel-faithful replica of the atmosfair "Improved Cook Stoves Programme for
 // Nigeria — User Agreement / Receipt" paper form, generated in code from a sale
@@ -13,14 +19,7 @@ const BLUE_HEADER: [number, number, number] = [25, 73, 119]; // table header
 const BLUE_LIGHT: [number, number, number] = [232, 240, 250]; // label cells
 const BORDER: [number, number, number] = [120, 140, 165]; // muted blue grid lines
 
-const formatDate = (dateStr?: string) => {
-  if (!dateStr) return "";
-  return new Date(dateStr).toLocaleDateString("en-GB", {
-    day: "2-digit",
-    month: "short",
-    year: "numeric",
-  });
-};
+const formatDate = (v: unknown) => formatDateShared(v, { empty: "" });
 
 const formatAmount = (amount?: number | null) => {
   if (amount === undefined || amount === null) return "";
@@ -82,7 +81,8 @@ const toPrintJpeg = (
   }
 };
 
-export const generateAgreementPDF = async (sale: any): Promise<jsPDF> => {
+export const generateAgreementPDF = async (sale: any): Promise<jsPDFType> => {
+  const { default: jsPDF } = await import("jspdf");
   const doc = new jsPDF({ unit: "mm", format: "a4", compress: true });
 
   // ── Layout constants ───────────────────────────────────────────────────────

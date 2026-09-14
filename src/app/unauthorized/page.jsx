@@ -1,4 +1,3 @@
-/* eslint-disable react/no-unescaped-entities */
 
 import { useAuth } from "../contexts/useAuth";
 import { useRouter } from "@/compat/navigation";

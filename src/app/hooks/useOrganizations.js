@@ -4,6 +4,7 @@ import { useAuth } from "../contexts/useAuth";
 import { useToast } from "@/components/ui/toast";
 import organizationsAPIService from "../services/organizationsAPIService";
 import { safeFetchManager } from "../../utils/safeFetch";
+import { debug } from "@/app/utils/log";
 
 export const useOrganizations = (initialFilters = {}) => {
   const { isAuthenticated, user } = useAuth();
@@ -31,14 +32,14 @@ export const useOrganizations = (initialFilters = {}) => {
     isMountedRef.current = true;
     lastNavigationRef.current = Date.now();
 
-    console.log(`🔍 [${componentName}] Component mounted/remounted`, {
+    debug(`🔍 [${componentName}] Component mounted/remounted`, {
       isAuthenticated,
       timestamp: new Date().toISOString(),
     });
 
     return () => {
       isMountedRef.current = false;
-      console.log(
+      debug(
         `🔍 [${componentName}] Component unmounting - aborting requests`
       );
       safeFetchManager.abortComponentRequests(componentName);
@@ -50,7 +51,7 @@ export const useOrganizations = (initialFilters = {}) => {
     const handleVisibilityChange = () => {
       const isVisible = typeof window !== "undefined" ? !document.hidden : true;
       if (isVisible && isMountedRef.current) {
-        console.log(
+        debug(
           `🔍 [${componentName}] Tab became visible - checking state`
         );
 
@@ -110,7 +111,7 @@ export const useOrganizations = (initialFilters = {}) => {
         return updater;
       }
     }
-    console.log(
+    debug(
       `🔍 [${componentName}] Skipped state update - component unmounted`
     );
   }, []);
@@ -118,7 +119,7 @@ export const useOrganizations = (initialFilters = {}) => {
   // Main fetch function with enhanced error handling and lifecycle management
   const fetchOrganizationsStable = useCallback(
     async (newFilters = {}, isInitial = false) => {
-      console.log(`🔍 [${componentName}] fetchOrganizationsStable called:`, {
+      debug(`🔍 [${componentName}] fetchOrganizationsStable called:`, {
         newFilters,
         isInitial,
         isAuthenticated,
@@ -127,7 +128,7 @@ export const useOrganizations = (initialFilters = {}) => {
       });
 
       if (!isAuthenticated) {
-        console.log(
+        debug(
           `🔍 [${componentName}] Not authenticated - setting error state`
         );
         safeSetState(() => {
@@ -139,7 +140,7 @@ export const useOrganizations = (initialFilters = {}) => {
       }
 
       if (!isMountedRef.current) {
-        console.log(
+        debug(
           `🔍 [${componentName}] Component unmounted - aborting fetch`
         );
         return;
@@ -154,7 +155,7 @@ export const useOrganizations = (initialFilters = {}) => {
       isLoadingRef.current = true;
 
       try {
-        console.log(`🔍 [${componentName}] Starting fetch...`);
+        debug(`🔍 [${componentName}] Starting fetch...`);
 
         safeSetState(() => {
           if (isInitial) {
@@ -173,7 +174,7 @@ export const useOrganizations = (initialFilters = {}) => {
         };
         delete apiFilters.page;
 
-        console.log(
+        debug(
           `🔍 [${componentName}] Calling API with filters:`,
           apiFilters
         );
@@ -184,13 +185,13 @@ export const useOrganizations = (initialFilters = {}) => {
         );
 
         if (!isMountedRef.current) {
-          console.log(
+          debug(
             `🔍 [${componentName}] Component unmounted during fetch - ignoring response`
           );
           return;
         }
 
-        console.log(`🔍 [${componentName}] API response received:`, {
+        debug(`🔍 [${componentName}] API response received:`, {
           success: response?.success,
           dataLength: response?.data?.length || 0,
         });
@@ -236,7 +237,7 @@ export const useOrganizations = (initialFilters = {}) => {
         console.error(`🔍 [${componentName}] Fetch error:`, err.message);
 
         if (!isMountedRef.current) {
-          console.log(
+          debug(
             `🔍 [${componentName}] Component unmounted during error handling - ignoring`
           );
           return;
@@ -272,7 +273,7 @@ export const useOrganizations = (initialFilters = {}) => {
             err.message.includes("cancelled") ||
             err.message.includes("aborted")
           ) {
-            console.log(
+            debug(
               `🔍 [${componentName}] Request was cancelled - not setting error`
             );
             // Don't set error for cancelled requests
@@ -284,7 +285,7 @@ export const useOrganizations = (initialFilters = {}) => {
           setPagination({ page: 1, limit: 10, total: 0, totalPages: 0 });
         });
       } finally {
-        console.log(
+        debug(
           `🔍 [${componentName}] Fetch completed - resetting loading states`
         );
 
@@ -429,7 +430,7 @@ export const useOrganizations = (initialFilters = {}) => {
 
   // Emergency reset method (callable from console)
   const emergencyReset = useCallback(() => {
-    console.log(`🔍 [${componentName}] EMERGENCY RESET TRIGGERED`);
+    debug(`🔍 [${componentName}] EMERGENCY RESET TRIGGERED`);
 
     // Clear all stuck states
     safeFetchManager.clearTokenRefresh();
@@ -470,7 +471,7 @@ export const useOrganizations = (initialFilters = {}) => {
 
   // Enhanced initialization effect with proper cleanup and navigation handling
   useEffect(() => {
-    console.log(`🔍 [${componentName}] Init effect triggered:`, {
+    debug(`🔍 [${componentName}] Init effect triggered:`, {
       isAuthenticated,
       hasInitialized: hasInitializedRef.current,
       isMounted: isMountedRef.current,
@@ -480,7 +481,7 @@ export const useOrganizations = (initialFilters = {}) => {
     // Reset initialization flag if auth changes or we navigate back
     if (!isAuthenticated) {
       hasInitializedRef.current = false;
-      console.log(
+      debug(
         `🔍 [${componentName}] Auth lost - reset initialization flag`
       );
       return;
@@ -495,20 +496,20 @@ export const useOrganizations = (initialFilters = {}) => {
       hasInitializedRef.current = true;
       lastNavigationRef.current = now;
 
-      console.log(`🔍 [${componentName}] Starting initialization...`, {
+      debug(`🔍 [${componentName}] Starting initialization...`, {
         shouldReinitialize,
       });
 
       const loadInitialData = async () => {
         try {
           if (!isMountedRef.current) {
-            console.log(
+            debug(
               `🔍 [${componentName}] Component unmounted during init - aborting`
             );
             return;
           }
 
-          console.log(`🔍 [${componentName}] Loading initial data...`);
+          debug(`🔍 [${componentName}] Loading initial data...`);
           setLoading(true);
           setError(null);
 
@@ -520,14 +521,14 @@ export const useOrganizations = (initialFilters = {}) => {
           );
 
           if (!isMountedRef.current) {
-            console.log(
+            debug(
               `🔍 [${componentName}] Component unmounted during initial load - ignoring response`
             );
             return;
           }
 
           if (response.success) {
-            console.log(
+            debug(
               `🔍 [${componentName}] Initial data loaded successfully`
             );
 
@@ -558,7 +559,7 @@ export const useOrganizations = (initialFilters = {}) => {
           );
 
           if (!isMountedRef.current) {
-            console.log(
+            debug(
               `🔍 [${componentName}] Component unmounted during error handling - ignoring`
             );
             return;
@@ -592,7 +593,7 @@ export const useOrganizations = (initialFilters = {}) => {
   useEffect(() => {
     if (!isAuthenticated || !user?.id) {
       hasInitializedRef.current = false;
-      console.log(
+      debug(
         `🔍 [${componentName}] User changed or logged out - reset initialization`
       );
     }
