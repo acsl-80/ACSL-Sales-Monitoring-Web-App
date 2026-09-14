@@ -992,7 +992,11 @@ function Bench({ stoveId, onSaved, onBack, onNext, nextLabel, api = null }) {
    * the severity: an in-flight save, then the network being gone, then a
    * failing save mid-retry, then plain unsaved, then saved.
    */
-  const pill = saving
+  const pill = locked
+    // A read-only form has nothing to save, so the sync pill says so rather
+    // than "not saved yet" over fields nobody can change (Phase 29, D53).
+    ? { cls: "border-gray-300 bg-white text-gray-700", Icon: CheckCircle2, text: "Read only" }
+    : saving
     ? { cls: "border-gray-300 bg-white text-gray-700", Icon: Loader2, spin: true, text: "Saving…" }
     : offline && (dirty || failCount > 0)
     ? { cls: "border-red-200 bg-red-50 text-red-800", Icon: WifiOff, text: "Offline, will retry" }
