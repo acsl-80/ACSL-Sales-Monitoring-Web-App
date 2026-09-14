@@ -131,11 +131,16 @@ export default function BenchRail({
 
   // Counted by whoever holds the whole set: the server across a partner, this
   // page when the page is everything there is.
-  const counts = server?.totals ?? {
-    todo: decorated.filter((s) => s.state !== "done").length,
+  // Phase 29, D53: on the rail, Done is what is done at the bench: typed,
+  // and finished but not yet confirmed. The list beside it tells the two
+  // apart; a typist's progress through a run should not wait on the queue.
+  const raw = server?.totals ?? {
+    todo: decorated.filter((s) => s.state === "todo" || s.state === "draft").length,
+    awaiting: decorated.filter((s) => s.state === "finished").length,
     done: decorated.filter((s) => s.state === "done").length,
     all: decorated.length,
   };
+  const counts = { ...raw, done: (raw.done ?? 0) + (raw.awaiting ?? 0) };
 
   const shown = useMemo(() => {
     const needle = term.trim().toUpperCase();
@@ -161,7 +166,7 @@ export default function BenchRail({
       // them again here would only remove rows the server decided to include.
       if (needle) return controlled ? true : String(s.stove_id).toUpperCase().includes(needle);
       if (s.stove_id === current) return true;
-      if (filter === "todo" && s.state === "done") return false;
+      if (filter === "todo" && (s.state === "done" || s.state === "finished")) return false;
       if (filter === "done" && s.state !== "done") return false;
       return true;
     });

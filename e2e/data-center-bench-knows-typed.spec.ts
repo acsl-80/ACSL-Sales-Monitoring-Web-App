@@ -56,6 +56,11 @@ async function twoUntyped(page: Page): Promise<{ organizationId: string; a: stri
 async function forget(stoveId: string) {
   await branchSql(`delete from data_center.import_rows r using data_center.import_batches b
     where b.id = r.batch_id and b.source = 'workbench' and r.stove_serial_no = '${stoveId}' and r.sale_id is null`);
+  // A finish moved its batch to validated; with the row gone the batch is a
+  // drafts-only one again, which is what the other bench specs expect to find.
+  await branchSql(`update data_center.import_batches b set state = 'staged'
+    where b.source = 'workbench' and b.state = 'validated'
+      and not exists (select 1 from data_center.import_rows r where r.batch_id = b.id and r.status = 'valid')`);
 }
 
 test("a finished receipt leaves Still to type and reads awaiting confirmation; another typist cannot save over it", async ({ browser }) => {
