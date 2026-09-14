@@ -1751,10 +1751,14 @@ export default function Workbench() {
    */
   const liveTotals = useMemo(() => {
     if (!sweepTotals) return null;
+    // A receipt finished in this sitting has left Still to type and waits on
+    // the queue, so it moves to Awaiting confirmation until the next read
+    // (Phase 29, D53). A confirmed one moves on to Typed on that read.
     return {
       all: sweepTotals.all,
       todo: Math.max(0, sweepTotals.todo - finishedIds.size),
-      done: sweepTotals.done + finishedIds.size,
+      awaiting: (sweepTotals.awaiting ?? 0) + finishedIds.size,
+      done: sweepTotals.done,
     };
   }, [sweepTotals, finishedIds]);
 

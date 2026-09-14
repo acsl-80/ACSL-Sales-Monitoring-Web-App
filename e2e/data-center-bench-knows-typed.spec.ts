@@ -111,6 +111,7 @@ test("a sale made through the sales app's own door reads typed, then called, and
     amount: 50000,
     salesAgentName: null,
     allowSharedPhone: true,
+    termsAccepted: { poaGoverned: true, monitoring: true, noResell: true, emissionReductions: true, noExport: true, demonstration: true },
   });
   expect(made.status, JSON.stringify(made.body)).toBe(200);
   let saleId: string | null = null;
@@ -127,6 +128,7 @@ test("a sale made through the sales app's own door reads typed, then called, and
     expect(todo.stoves.map((s) => s.stove_id)).not.toContain(b);
 
     // The bench refuses to type it, before writing anything.
+    const [rowsBefore] = await branchSql<{ n: number }>(`select count(*)::int as n from data_center.import_rows where stove_serial_no = '${b}'`);
     const refused = await callEdgeFunction(admin, "data-center-import", {
       action: "workbench_save", stoveId: b, values: receipt("retype"), complete: false,
     });
@@ -134,7 +136,7 @@ test("a sale made through the sales app's own door reads typed, then called, and
     expect((refused.body as { code: string }).code).toBe("already_typed");
     expect((refused.body as { error: string }).error).toMatch(/sales app/);
     const [rows] = await branchSql<{ n: number }>(`select count(*)::int as n from data_center.import_rows where stove_serial_no = '${b}'`);
-    expect(rows.n, "no bench row was written for the typed stove").toBe(0);
+    expect(rows.n, "no bench row was written for the typed stove").toBe(rowsBefore.n);
 
     // A call on it, and the list says called.
     const logged = await callEdgeFunction(admin, "data-center-write", { action: "log_attempt", saleId, note: "knows-typed spec" });
@@ -173,6 +175,7 @@ test("the bench list shows the pills, a typed stove opens read only, and the lis
     const made = await callEdgeFunction(admin, "create-sale", {
       transactionId: `knows-ui-${Date.now()}`, organizationId, partnerName: org.partner_name, stoveSerialNo: a,
       salesDate: "2026-01-05", endUserName: "Typed Already", phone: "08015550779", amount: 50000, salesAgentName: null, allowSharedPhone: true,
+    termsAccepted: { poaGoverned: true, monitoring: true, noResell: true, emissionReductions: true, noExport: true, demonstration: true },
     });
     expect(made.status, JSON.stringify(made.body)).toBe(200);
     saleId = (await branchSql<{ sale_id: string }>(`select sale_id from data_center.v_stove_typed where stove_id = '${a}'`))[0].sale_id;
@@ -209,8 +212,8 @@ test("the bench list shows the pills, a typed stove opens read only, and the lis
     await expect(rowB).toHaveCount(0, { timeout: 20_000 });
     await admin.getByRole("button", { name: /^Awaiting confirmation \(/ }).click();
     await expect(admin.locator("tbody tr", { hasText: b }).locator("[data-typed-state='finished']")).toBeVisible({ timeout: 30_000 });
-    await forget(b);
   } finally {
+    await forget(b);
     await branchSql(`update data_center.workflow_config set value = '${before?.v ?? "60"}'::jsonb where key = 'bench.refresh_seconds'`);
     if (saleId) {
       await branchSql(`delete from data_center.call_records where sale_id = '${saleId}'`);
