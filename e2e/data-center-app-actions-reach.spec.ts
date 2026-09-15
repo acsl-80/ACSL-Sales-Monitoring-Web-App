@@ -65,7 +65,7 @@ test.describe("the sales app's actions reach the Data Center", () => {
           source, sales_factory, sales_date, transfer_date)
        select '${tx}', o.id, o.partner_name, 'PRV-01', o.state, o.branch, ${serials.length},
               '${JSON.stringify(serials.map((s) => ({ stove_id: s, factory: "Gombe", sales_reference: tx })))}'::jsonb,
-              'app-actions spec', 'Gombe', current_date, now()
+              'external-sync', 'Gombe', current_date, now()
          from public.organizations o where o.id = '${ORG}'
        returning id::text`,
     );
@@ -131,21 +131,27 @@ test.describe("the sales app's actions reach the Data Center", () => {
   });
 
   test("archiving a sale retires it from its agent's batch at once", async () => {
-    // Arrange: a live sale nobody holds, handed to the call-centre agent in a
-    // batch of one, the way the engine would.
+    // Arrange: a live sale of the partner, handed to the call-centre agent in
+    // a batch of one, the way the engine would. The sandbox's setup hands
+    // every sale out, so whatever item holds this one is stood down for the
+    // test and restored after it.
     const [agent] = await branchSql<{ id: string }>(
       `select id::text from public.profiles where email = '${USERS.callCentre}'`,
     );
-    const [sale] = await branchSql<{ id: string; organization_id: string }>(
-      `select s.id::text, s.organization_id::text
+    const [sale] = await branchSql<{ id: string; organization_id: string; held_item: string | null }>(
+      `select s.id::text, s.organization_id::text,
+              (select i.id::text from data_center.assignment_items i where i.sale_id = s.id and i.is_active) as held_item
          from public.sales s
         where s.is_archived is not true
           and s.organization_id = '${ORG}'
-          and not exists (select 1 from data_center.assignment_items i where i.sale_id = s.id and i.is_active)
-          and not exists (select 1 from data_center.call_records cr where cr.sale_id = s.id)
-        order by s.created_at desc limit 1`,
+          and not exists (select 1 from data_center.corrections x where x.sale_id = s.id)
+        order by (exists (select 1 from data_center.call_records cr where cr.sale_id = s.id)) asc, s.created_at desc
+        limit 1`,
     );
-    expect(sale, "a free live sale of the partner").toBeTruthy();
+    expect(sale, "a live sale of the partner").toBeTruthy();
+    if (sale.held_item) {
+      await branchSql(`update data_center.assignment_items set is_active = false where id = '${sale.held_item}'`);
+    }
     const [batch] = await branchSql<{ id: string }>(
       `insert into data_center.assignment_batches (organization_id, assigned_to, size, state, created_by)
        values ('${sale.organization_id}', '${agent.id}', 1, 'open', '${agent.id}') returning id::text`,
@@ -171,6 +177,9 @@ test.describe("the sales app's actions reach the Data Center", () => {
     } finally {
       await branchSql(`update public.sales set is_archived = false where id = '${sale.id}'`).catch(() => {});
       await branchSql(`delete from data_center.assignment_batches where id = '${batch.id}'`).catch(() => {});
+      if (sale.held_item) {
+        await branchSql(`update data_center.assignment_items set is_active = true where id = '${sale.held_item}'`).catch(() => {});
+      }
     }
   });
 
