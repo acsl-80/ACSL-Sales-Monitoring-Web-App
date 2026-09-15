@@ -235,8 +235,15 @@ test.describe("the sales app's actions reach the Data Center", () => {
     const refused = await callEdgeFunction(page, "delete-sale", { id: saleId }, `?id=${saleId}`);
     expect(refused.status, JSON.stringify(refused.body).slice(0, 300)).not.toBe(200);
     expect(JSON.stringify(refused.body)).toContain("call-centre work");
-    const [still] = await branchSql<{ n: number }>(`select count(*)::int as n from public.sales where id = '${saleId}'`);
+    expect(refused.status, "a refusal, not a failure").toBe(409);
+    const [still] = await branchSql<{ n: number; stock: string; stock_sale: string | null }>(
+      `select (select count(*)::int from public.sales where id = '${saleId}') as n,
+              (select status from public.stove_ids_base where stove_id = '${free!.stove_id}') as stock,
+              (select sale_id::text from public.stove_ids_base where stove_id = '${free!.stove_id}') as stock_sale`,
+    );
     expect(Number(still.n), "the sale is still there").toBe(1);
+    expect(still.stock, "the stove was not released by a refused delete").toBe("sold");
+    expect(still.stock_sale).toBe(saleId);
 
     // Act two: with the work cleared, the same delete goes through.
     await branchSql(`delete from data_center.call_records where sale_id = '${saleId}'`);

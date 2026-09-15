@@ -61,12 +61,13 @@ serve(async (req) => {
     console.error("❌ delete-sale error:", error.message);
 
     const isUnauthorized = error.message?.includes("Unauthorized");
+    const isRefused = error?.code === "call_work_attached";
 
     return withCors(
       new Response(
         JSON.stringify({ success: false, message: error.message }),
         {
-          status: isUnauthorized ? 401 : 400,
+          status: isUnauthorized ? 401 : isRefused ? 409 : 400,
           headers: { "Content-Type": "application/json" },
         }
       )

@@ -13,8 +13,10 @@
 --
 -- The rule now: the app owns the transfers and the sales; the Data Center owns
 -- what it derives from them, and keeps its derivations current by listening,
--- with triggers it owns, on the app's tables. The app's functions change not
--- at all. Undo is dropping the triggers.
+-- with triggers it owns, on the app's tables. The app's functions do not
+-- change, bar one: delete-sale asks the guard's question before it releases
+-- the stove, because its release and its delete are two calls. Undo is
+-- dropping the triggers.
 --
 --   D54  transfer events   a transfer row appearing, changing or disappearing
 --                          in public.stove_transfer_history updates or removes
@@ -101,13 +103,14 @@ begin
     -- A cancelled purchase takes its unsold serials out of stock. A bench
     -- claim on one of them was a hold on a stove that no longer exists, and
     -- would block the serial if the partner is ever issued it again.
+    -- Claims keep the serial as stock spells it, so both sides are folded.
     delete from data_center.import_claims c
      where c.sale_id is null
-       and c.stove_serial_no in (
+       and upper(c.stove_serial_no) in (
              select upper(trim(e.value ->> 'stove_id'))
                from jsonb_array_elements(coalesce(old.stove_ids, '[]'::jsonb)) e)
        and not exists (select 1 from public.stove_ids_base sb
-                        where upper(sb.stove_id) = c.stove_serial_no);
+                        where upper(sb.stove_id) = upper(c.stove_serial_no));
     return old;
   end if;
   perform data_center.refresh_transfer_funnel(new.id);
@@ -142,6 +145,20 @@ language sql stable security definer set search_path = data_center, public as $f
                    and cr.verification_outcome <> 'not_verified'),
     'corrections', (select count(*) from data_center.corrections x where x.sale_id = p_sale_id));
 $fn$;
+
+-- The same question, at the door the app's delete-sale can knock on. The
+-- app releases the stove and then deletes the sale in two calls; asking
+-- first means a refusal leaves the stove exactly as it was. Service role
+-- only: it is for the app's functions, not for the browser.
+create or replace function public.sale_call_work(_sale_id uuid)
+returns jsonb
+language sql stable security definer set search_path = data_center, public as $fn$
+  select data_center.sale_call_work(_sale_id);
+$fn$;
+revoke all on function public.sale_call_work(uuid) from public, anon, authenticated;
+grant execute on function public.sale_call_work(uuid) to service_role;
+comment on function public.sale_call_work(uuid) is
+  'What the Data Center holds against a sale (attempts, verdict, corrections), for the app''s delete-sale to read before it releases the stove (D56).';
 
 create or replace function data_center.guard_sale_delete()
 returns trigger
@@ -232,6 +249,14 @@ update data_center.assignment_items i
 
 select data_center.complete_finished_batches();
 
+-- The closure rule needs one active item, so a batch already emptied (every
+-- item retired, nothing left to call) is closed here as the trigger would.
+update data_center.assignment_batches b
+   set state = 'completed', completed_at = now(), updated_at = now()
+ where b.state = 'open'
+   and not exists (select 1 from data_center.assignment_items i
+                    where i.batch_id = b.id and i.is_active);
+
 -- ===========================================================================
 -- 5. Readback
 -- ===========================================================================
@@ -248,6 +273,11 @@ union all
 select 'active items on archived sales', count(*)::int
   from data_center.assignment_items i join public.sales s on s.id = i.sale_id
  where i.is_active and s.is_archived is true
+union all
+select 'open batches with no active item', count(*)::int
+  from data_center.assignment_batches b
+ where b.state = 'open'
+   and not exists (select 1 from data_center.assignment_items i where i.batch_id = b.id and i.is_active)
 union all
 select 'triggers in place', count(*)::int
   from pg_trigger where tgname in ('dc_transfer_funnel_row', 'dc_guard_sale_delete', 'dc_sale_archived')
