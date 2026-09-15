@@ -257,6 +257,31 @@ observable without seeding. Seed before claiming anything.
   were tested on the preview branch and rejected. Reach for them when the
   database password is awkward to get and you will corrupt the one record that
   says what has already run.
+- **A new refusal at the end of a flow orphans what the flow already did.**
+  `delete-sale` releases the stove in one call and deletes the sale in a
+  second. Phase 30 added a BEFORE DELETE trigger refusing a sale that carries
+  call work, which would have left the stove released and available while the
+  sale still stood, so one stove could be sold twice. The spec would never
+  have found it: it asserted the sale survived and never looked at the stove.
+  When a refusal goes into step N of a flow whose earlier steps have already
+  committed, ask the question before step 1 (the trigger stays as the
+  backstop), and assert on what those earlier steps touched.
+- **Red for a database trigger means lifting the trigger, not reverting the
+  branch.** Once the migration is applied to the sandbox, main's build is not
+  a red bed any more, because the rule lives in the database rather than in
+  the code under test. Drop the triggers, run the spec against main's build,
+  put them back in the same command so a failure cannot leave the sandbox
+  half-armed.
+- **A spec that inserts into one of the app's own tables reads its CHECK
+  constraints first.** `stove_transfer_history.source` admits `external-sync`
+  and `external-csv-sync` and nothing else, so a row tagged with the spec's
+  own name was refused and cost a full run. Column names are not the shape;
+  ask `pg_constraint` before arranging.
+- **Lint past the prettier noise with a rule override, not a formatter.**
+  `-f unix` was removed from core ESLint, so the old recipe fails before it
+  lints anything. `bunx eslint <files> --rule '{"prettier/prettier":"off"}'`
+  prints nothing when the files are clean and still flags a real `no-undef`,
+  which is the one this gate exists to catch.
 - Commit at every working state with a clear message.
 - Merge `main` into this branch weekly. `main` moves daily on its own via the
   sync cron and deploys straight to production.
@@ -265,3 +290,45 @@ observable without seeding. Seed before claiming anything.
   This module's own tests must be part of what blocks.
 - Critical flow for end-to-end coverage: import, validate, resolve an exception,
   commit, then see the record appear in the call centre table.
+
+## How a slice ships
+
+The sequence, because it was re-derived from memory every session and each
+step has cost somebody a rerun. One slice is one PR and one production build.
+
+1. **Read the ask back** in his own words before planning anything. A slice
+   built against a paraphrase is rebuilt.
+2. **Verify on production, read-only, before deciding.** Counts, constraints,
+   function bodies, the plan of the query you are about to add. Never call a
+   writing function on production as a probe; read `reclaim_preview` or the
+   config instead.
+3. **Record the decision** in `decisions.md` with its D number and the words
+   he used, before the code. `PLAN.md` gets the slice, `TASKS.md` the line.
+4. **Spec red first on the sandbox**, then the code. Red has to fail for the
+   reason the slice fixes; a spec that fails on its own arrangement proves
+   nothing and costs a run either way.
+5. **Open the PR**, wire the preview to the sandbox, apply the migration there
+   with its ledger row, deploy the module's functions to the sandbox by hand
+   (the integration does not).
+6. **Screenshots at 1366 and 375** for every screen the slice touches, copied
+   out of `test-results/` in the same command that takes them.
+7. **Fresh-context Claude reviewer** (`feature-dev:code-reviewer`), findings
+   folded in, and re-checked by the same reviewer before the word is asked for.
+8. **Proof comment** on the PR: red, green, neighbours, review, production
+   dry-read, screenshots. Then wait for his merge word.
+
+On the word, in one pass:
+
+9. Fast-forward `git push origin <branch>:main` and **verify `origin/main`
+   actually moved**.
+10. Migration on production through the Management API **with its ledger row**
+    and the readback the migration ends with.
+11. Deploy the functions the slice names and **read the versions back**.
+12. Wait for the production build, confirm `target production` and the
+    `sales.atmosfair.com.ng` alias, then **crawl the live bundle** for a string
+    the slice added.
+13. Move the sandbox pointer to the new main.
+14. **Live note** on the PR, and memory updated.
+
+Docs ride in the same push as code. A tracker tick that missed its push rides
+with the next one; never a docs-only push after a production build.
