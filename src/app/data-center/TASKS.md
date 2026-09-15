@@ -8,7 +8,7 @@ lives on each PR.
 
 A purchase cancelled in the app stayed on Partner Records until somebody pressed Recompute. Decisions D54 to D56.
 
-- [ ] S1 the Data Center listens: triggers it owns on `stove_transfer_history` and `sales` keep the funnel's membership current, retire an archived sale from its agent's batch and refuse a hard delete of a worked sale; Partner Records and the stove record answer a cancelled purchase by name. Spec `data-center-app-actions-reach`
+- [ ] S1 the Data Center listens: triggers it owns on `stove_transfer_history` and `sales` keep the funnel's membership current, retire an archived sale from its agent's batch and refuse a hard delete of a worked sale (delete-sale asks first, so a refusal never releases the stove); Partner Records and the stove record answer a cancelled purchase by name. Spec `data-center-app-actions-reach`. Deploy list: data-center-read, delete-sale
 
 ## Phase 29, the bench knows what is typed (his ask 2026-09-14)
 

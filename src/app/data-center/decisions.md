@@ -596,7 +596,12 @@ carry call work. Two triggers the module owns on `public.sales`: archiving a
 sale retires its active items and closes a batch left empty; deleting a sale
 that carries logged calls, a verdict or a correction is refused with the
 reason and the way through (cancel it instead). The refusal is the same rule
-the rollback already applies, now in one place for every deleter. Left as
+the rollback already applies, now in one place for every deleter. One change
+in the app itself, from the review: delete-sale releases the stove and then
+deletes the sale in two calls, so a refusal at the delete would have left the
+stove free while the sale stood. It now asks `public.sale_call_work` first
+and answers 409 before touching the stove; the trigger stays as the backstop,
+and a delete that fails after the release puts the stove back. Left as
 observations, not changed: the agent's verified counts and the feed's total
 still count archived sales as work done, which they were; a partner rename in
 the app does not reach `sales.partner_name`; the full computation still runs
