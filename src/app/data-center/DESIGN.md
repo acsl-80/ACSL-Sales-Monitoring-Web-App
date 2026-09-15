@@ -200,6 +200,14 @@ call form; both inherit the system above and add one grammar each.
   it. The words name the person and the channel ("Typed 3 Sep by Happy,
   bench"). A typed stove opens read only with a door to its record; nothing on
   the bench asks anyone to type what exists.
+- **The Data Center listens; it never asks the reader to press Recompute
+  (D54 to D56).** What the app does to a transfer or a sale reaches the
+  module through triggers the module owns on the app's tables, the moment it
+  happens: a cancelled purchase leaves Partner Records and every surface that
+  reads the funnel, an archived sale leaves its agent's list, a new transfer
+  appears. Where the app took something away, the module says where it went
+  (a cancelled purchase is named, with when, who and why) rather than showing
+  nothing. Counts still carry the computation's date and say so.
 - **A day lives in the URL.** `day` and `range` on the board and the agent's
   page; today is the default and stays out of the URL. Every list pages by
   keyset cursor with the same footer: what is shown of how many, the sort in

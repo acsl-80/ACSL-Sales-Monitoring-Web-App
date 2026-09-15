@@ -574,6 +574,19 @@ function Siblings({ transferId, stoveId, transactionId }) {
 export default function StoveRecord({ stoveId }) {
   const [data, setData] = useState(null);
   const [error, setError] = useState(null);
+  /**
+   * A serial that left stock with a cancelled purchase (D55). The sales app
+   * deletes the stove when the purchase is cancelled, so there is no record to
+   * open; what there is, is the answer to where it went.
+   */
+  const cancelledWords = (serial, c) => {
+    const when = c?.cancelled_at
+      ? new Date(c.cancelled_at).toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric" })
+      : "";
+    const by = c?.cancelled_by_name ? ` by ${c.cancelled_by_name}` : "";
+    const why = c?.cancellation_reason ? ` Reason given: ${c.cancellation_reason}.` : "";
+    return `Stove ${serial} left stock when purchase ${c?.transaction_id ?? ""}${c?.partner_name ? ` (${c.partner_name})` : ""} was cancelled${when ? ` on ${when}` : ""}${by}.${why} Cancelled purchases are listed under Sales in the main app.`;
+  };
   // How much of the two bounded lists is on screen. Reset whenever the stove
   // changes, so opening a second record does not inherit the first's state.
   const [callsShown, setCallsShown] = useState(FEW);
@@ -590,7 +603,9 @@ export default function StoveRecord({ stoveId }) {
           err instanceof DataCenterError
             ? err.code === "not_found"
               ? `There is no stove with the serial number ${stoveId}. Check the serial number against the label, or search for the part you are sure of.`
-              : err.message
+              : err.code === "cancelled_purchase"
+                ? cancelledWords(stoveId, err.data)
+                : err.message
             : "Could not load that stove.",
         ),
       );

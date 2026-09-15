@@ -549,3 +549,56 @@ a stove with a live sale, and a receipt somebody else finished, before
 writing anything. The list re-reads on `bench.refresh_seconds` and when the
 tab comes back. The partner records read the same words. Built in Phase 29,
 slice 1.
+
+## D54. The Data Center listens to the sales app's transfers (2026-09-15)
+
+His words: "in /stove-transfer-history we can cancel a purchase, it shows
+here /cancelled-purchases in cancelled purchase but on search of the transfer
+record here - /data-center/partner-records, you can see that the record still
+exists", then "unify the actions across the sales app, ensure that actions
+carried out on records balance out across". The cause: `transfer_funnel` is a
+copy of the transfers with the counts added up, rebuilt only by the full
+computation, and the sweep that drops a vanished transfer lives inside that
+rebuild. Nothing schedules the rebuild; a super admin presses Recompute. In
+between, thirteen surfaces read the copy. The rule now: the app owns the
+transfers, the Data Center owns what it derives from them and keeps that
+current by listening. A trigger the module owns on
+`public.stove_transfer_history` writes the transfer's funnel row when it
+appears or changes and removes it when it goes, through
+`refresh_transfer_funnel(uuid)`, which reads the same view as the full pass
+(3 ms for the largest transfer on production, an index walk over its
+serials). The counts on the row stay the computation's and keep its date; the
+page's "computed" line still describes them. A cancelled purchase also
+releases the bench's claims on its vanished serials. The app's functions do
+not change. Built in Phase 30, slice 1.
+
+## D55. A cancelled purchase is answered, not hidden (2026-09-15)
+
+Once D54 removes the row, a reference typed into Partner Records would meet
+"No transfers match" with nothing to tell a cancellation from a loss, which is
+the confusion that opened this phase. When a search term is given, the read
+returns the cancelled purchases it matches, from the app's own
+`cancelled_purchases`, within the caller's scope, and the page says when it
+was cancelled, by whom, why, and how many stoves left. A stove record opened
+on a serial that left with a cancelled purchase says which purchase and when,
+instead of "no such stove". Nothing is copied: both read the app's table.
+
+## D56. The app's sale lifecycle reaches the agents (2026-09-15)
+
+The audit behind his ask ("actions in other parts that should impact the data
+center") found two more gaps in the same shape. An archived sale (cancel_sale,
+the stove archive) left the pool and the standing counts at once but stayed
+on its agent's list, because the list reads active assignment items and
+nothing retired them. A hard delete of a sale (delete-sale, the app's Delete)
+cascaded the call record, its attempts and its corrections away without a
+word, where the module's own import rollback refuses to delete sales that
+carry call work. Two triggers the module owns on `public.sales`: archiving a
+sale retires its active items and closes a batch left empty; deleting a sale
+that carries logged calls, a verdict or a correction is refused with the
+reason and the way through (cancel it instead). The refusal is the same rule
+the rollback already applies, now in one place for every deleter. Left as
+observations, not changed: the agent's verified counts and the feed's total
+still count archived sales as work done, which they were; a partner rename in
+the app does not reach `sales.partner_name`; the full computation still runs
+only when pressed, so the counts on Partner Records are as current as the
+last press.

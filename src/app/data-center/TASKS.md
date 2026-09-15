@@ -4,11 +4,17 @@ Flat, one line per slice, newest programme first. States: todo, spec red,
 green, in review, merged, live. The why lives in `decisions.md`; the evidence
 lives on each PR.
 
+## Phase 30, the sales app's actions reach the Data Center (his ask 2026-09-15)
+
+A purchase cancelled in the app stayed on Partner Records until somebody pressed Recompute. Decisions D54 to D56.
+
+- [ ] S1 the Data Center listens: triggers it owns on `stove_transfer_history` and `sales` keep the funnel's membership current, retire an archived sale from its agent's batch and refuse a hard delete of a worked sale; Partner Records and the stove record answer a cancelled purchase by name. Spec `data-center-app-actions-reach`
+
 ## Phase 29, the bench knows what is typed (his ask 2026-09-14)
 
 Prevent a typist retyping a stove that is already digitised, from any channel, and learning it only at save. Decision D53.
 
-- [ ] S1 `v_stove_typed` and `bench.refresh_seconds`; the bench list and rail show typed and called on every row with Still to type, Awaiting confirmation, Typed and All; a typed stove opens read only with a door to its record; the save refuses a live sale and another typist's finished receipt; the list re-reads on the interval and on focus; partner records read the same words. PR #107, 2026-09-14: red on the sandbox 3 of 3, green on the branch 3 of 3; bench neighbours green bar two stale tests that fail on main's own build too (the signature spec's history locator, repaired here; the keeps-up Done chip, under Deferred); review findings folded in (call-sheet rows excluded from the channel, the older specs count awaiting). Merge, migration and Live note on the merge word
+- [x] S1 `v_stove_typed` and `bench.refresh_seconds`; the bench list and rail show typed and called on every row with Still to type, Awaiting confirmation, Typed and All; a typed stove opens read only with a door to its record; the save refuses a live sale and another typist's finished receipt; the list re-reads on the interval and on focus; partner records read the same words. PR #107, 2026-09-14: red on the sandbox 3 of 3, green on the branch 3 of 3; bench neighbours green bar two stale tests that fail on main's own build too (the signature spec's history locator, repaired here; the keeps-up Done chip, under Deferred); review findings folded in (call-sheet rows excluded from the channel, the older specs count awaiting). Live 2026-09-14 (main 446bb75): migration applied with its ledger row, read v28 and import v19 on production
 
 ## Phase 28, one standing for every call record (approved 2026-09-10)
 

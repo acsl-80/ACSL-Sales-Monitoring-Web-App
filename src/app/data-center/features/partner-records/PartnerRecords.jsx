@@ -8,7 +8,7 @@ import PeriodFilter from "../../components/PeriodFilter";
 import { usePeriod } from "../../lib/usePeriod";
 import { MEASURES } from "../../lib/measures";
 import {
-  Handshake, Loader2, AlertTriangle, Search, X, Clock, TriangleAlert,
+  Handshake, Loader2, AlertTriangle, Search, X, Clock, TriangleAlert, Ban,
 } from "lucide-react";
 
 /**
@@ -115,6 +115,8 @@ export default function PartnerRecords() {
       : null,
   );
   const [computedAt, setComputedAt] = useState(null);
+  /** Cancelled purchases the search matched (D55): answered, not hidden. */
+  const [cancelled, setCancelled] = useState([]);
   const [serverTotals, setServerTotals] = useState(null);
   const [matched, setMatched] = useState(0);
   const [scope, setScope] = useState(null);
@@ -152,6 +154,7 @@ export default function PartnerRecords() {
       setServerTotals(page.totals ?? null);
       setMatched(Number(page.matched ?? page.rows.length));
       setComputedAt(page.computedAt);
+      setCancelled(Array.isArray(page.cancelled) ? page.cancelled : []);
       setScope(page.scope);
       setError(null);
     } catch (err) {
@@ -312,12 +315,42 @@ export default function PartnerRecords() {
         </div>
       )}
 
+      {!loading && cancelled.length > 0 && (
+        <ul className="divide-y divide-gray-100 border-b border-gray-100" aria-label="Cancelled purchases matching the search">
+          {cancelled.map((c) => (
+            <li
+              key={`${c.transaction_id}-${c.cancelled_at}`}
+              className="flex items-start gap-2 bg-gray-50 px-4 py-3 text-sm text-gray-700"
+              data-cancelled-purchase={c.transaction_id}
+            >
+              <Ban className="mt-0.5 h-4 w-4 shrink-0 text-gray-400" />
+              <p>
+                <span className="font-medium text-gray-900">{c.transaction_id}</span>
+                {c.partner_name ? ` to ${c.partner_name}` : ""} was cancelled
+                {c.cancelled_at
+                  ? ` on ${new Date(c.cancelled_at).toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric" })}`
+                  : ""}
+                {c.cancelled_by_name ? ` by ${c.cancelled_by_name}` : ""}.
+                {" "}Its {plural(Number(c.stove_count ?? 0), "stove")} left stock.
+                {c.cancellation_reason ? ` Reason given: ${c.cancellation_reason}.` : ""}
+                {" "}
+                <a href="/sales/cancelled-purchases" className="text-(--dc-primary) underline-offset-2 hover:underline">
+                  Cancelled purchases
+                </a>
+              </p>
+            </li>
+          ))}
+        </ul>
+      )}
+
       {loading ? (
         <p className="flex items-center gap-2 p-6 text-sm text-gray-500">
           <Loader2 className="h-4 w-4 animate-spin" /> Loading partner records...
         </p>
       ) : rows.length === 0 ? (
-        <p className="p-6 text-sm text-gray-500">No transfers match.</p>
+        <p className="p-6 text-sm text-gray-500">
+          {cancelled.length > 0 ? "No live transfers match." : "No transfers match."}
+        </p>
       ) : (
         <div className="overflow-x-auto">
           <table className="min-w-[1180px] w-full text-sm">

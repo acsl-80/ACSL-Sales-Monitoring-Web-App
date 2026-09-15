@@ -446,6 +446,24 @@ export type TransferFunnelPage = {
   limit: number;
   scope: string;
   computedAt: string | null;
+  /**
+   * Cancelled purchases the search term matched (D55). The sales app moves a
+   * cancelled transfer out of the history, and its funnel row goes with it,
+   * so a reference typed into the search would otherwise meet "No transfers
+   * match" with no way to tell a cancellation from a loss.
+   */
+  cancelled: CancelledPurchaseNote[];
+};
+
+export type CancelledPurchaseNote = {
+  transaction_id: string;
+  partner_name: string | null;
+  organization_id: string | null;
+  stove_count: number;
+  sales_date: string | null;
+  cancelled_at: string;
+  cancellation_reason: string | null;
+  cancelled_by_name: string | null;
 };
 
 let boundsCache: Promise<{
