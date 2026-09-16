@@ -1074,6 +1074,43 @@ function Bench({ stoveId, onSaved, onBack, onNext, nextLabel, api = null }) {
         </p>
       )}
 
+      {/* Why this did not finish last time (D57).
+
+          A refused finish used to write nothing at all, so a receipt the rules
+          would not accept looked exactly like one nobody had pressed Finish on,
+          and the question could not be answered a day later. The row carries
+          the refusal now, and the typist meets it on the way back in rather
+          than only in the second it happened. */}
+      {work?.finish_refusal && work.status !== "valid" && !work.confirmed_at && (
+        <div
+          className="rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900"
+          data-finish-refusal={work.finish_refusal.field ?? "unnamed"}
+        >
+          <p className="flex items-start gap-2">
+            <TriangleAlert className="mt-0.5 h-4 w-4 shrink-0 text-amber-600" />
+            <span>
+              Finishing was last refused on {whenOf(work.finish_refusal.at)}.
+              {" "}{work.finish_refusal.reason}
+            </span>
+          </p>
+          {work.finish_refusal.hint && (
+            <p className="mt-1 flex items-start gap-2 pl-6 text-amber-800">
+              <Lightbulb className="mt-0.5 h-3.5 w-3.5 shrink-0" />
+              <span>{work.finish_refusal.hint}</span>
+            </p>
+          )}
+          {work.finish_refusal.field && (
+            <button
+              type="button"
+              onClick={() => revealField(work.finish_refusal.field)}
+              className="mt-2 ml-6 rounded-md border border-amber-300 bg-white px-2 py-1 text-xs font-medium text-amber-900 hover:bg-amber-100"
+            >
+              Show {fieldLabel(work.finish_refusal.field) || "the field"}
+            </button>
+          )}
+        </div>
+      )}
+
       {typedNow && (
         <p className="flex items-start gap-2 rounded-lg border border-(--dc-accent)/30 bg-(--dc-accent-soft)/40 p-3 text-sm text-gray-800" data-bench-typed>
           <CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0 text-(--dc-accent)" />

@@ -607,3 +607,34 @@ still count archived sales as work done, which they were; a partner rename in
 the app does not reach `sales.partner_name`; the full computation still runs
 only when pressed, so the counts on Partner Records are as current as the
 last press.
+
+## D57. A refused finish leaves a record (2026-09-16)
+
+Reported through a typist: receipts typed at the bench "when you hit finish
+does not save as finished", with one stove to look at, 101114218. It carried
+every field it needed, its partner's one sales model, and a part payment that
+model allows, and an identical receipt for the same partner finished two
+minutes earlier. Nothing could say what had happened, because a refused finish
+answered 400 and wrote nothing at all: the row kept whatever the twenty-second
+autosave last left, which is indistinguishable from a receipt nobody ever
+pressed Finish on. The edge logs return only the last minute or two, so they
+could not reach back either.
+
+A refused finish now keeps the typing, stays a draft, and records what refused
+it on the row: the reason the typist was told, the hint, the field it belongs
+to, when, and whose attempt it was. The bench says it when the stove is opened
+again, so the answer meets the next person to touch that receipt rather than
+only the one who was standing there. It can also be counted, so "which rule
+refuses the most receipts" becomes a query rather than an afternoon.
+
+The three refusals this covers are the ones that judge the receipt: its shape,
+the payment door, and a model the partner is not assigned. The ownership
+refusals stay exactly as they are. A stove somebody else has typed or finished
+answers 409 and writes nothing, because recording a refusal on their row would
+be writing to a receipt that is not this typist's to touch. A draft save leaves
+the record alone, since the autosave that follows a refusal would otherwise
+erase it within twenty seconds, and an accepted finish clears it.
+
+What this does not do: it does not change which receipts are refused. Every
+rule is the one that was already there, asked in the same order, answering the
+same sentence. Built in Phase 31, slice 1.

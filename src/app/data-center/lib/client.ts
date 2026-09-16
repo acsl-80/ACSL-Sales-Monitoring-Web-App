@@ -1734,6 +1734,18 @@ export const dataCenterImport = {
         rejection_reason: string | null;
         rejection_hint: string | null;
         exception_reason: string | null;
+        /**
+         * What refused the last Finish on this row (D57), or null when the last
+         * attempt was accepted and when none has been made. A draft save leaves
+         * it alone, so it survives the autosave that follows a refusal.
+         */
+        finish_refusal: {
+          reason: string;
+          hint: string | null;
+          field: string | null;
+          at: string;
+          by: string | null;
+        } | null;
         confirmed_at: string | null;
         sale_id: string | null;
         last_edited_at: string | null;

@@ -4307,6 +4307,9 @@ serve(async (req) => {
           const existing = await conn.queryObject({
             text: `select r.id::text, r.status, r.draft_values, r.normalized,
                           r.rejection_reason, r.rejection_hint, r.exception_reason,
+                          -- What refused the last Finish, so the bench can say
+                          -- it when the stove is opened again (D57).
+                          r.finish_refusal,
                           r.confirmed_at, r.sale_id::text,
                           r.last_edited_at, p.full_name as last_edited_by_name,
                           b.id::text as batch_id, b.uploaded_by::text as owner_id
@@ -4391,20 +4394,33 @@ serve(async (req) => {
         const benchPrice = model?.price ?? null;
         const benchOptions = complete ? await withReadConnection((c) => saleOptionLists(c)) : null;
         const shape = complete ? normalizeRow(record, { amount: benchPrice, options: benchOptions }) : null;
+        /*
+         * A refused finish is recorded on the row rather than thrown away (D57).
+         *
+         * These checks used to answer 400 here and write nothing, which is why
+         * stove 101114218 could not be explained a day later: the row held what
+         * the twenty-second autosave last left, which looks exactly like a
+         * receipt nobody ever pressed Finish on. The refusal is now carried
+         * down to the write, stored beside the typing, and answered afterwards
+         * with the same body and the same status as before.
+         *
+         * It is carried rather than written here because the ownership guards
+         * below have not run yet. A stove somebody else has typed or finished
+         * is refused with 409 and nothing written at all, and recording a
+         * refusal on their row would be writing to a receipt that is not this
+         * typist's to touch.
+         */
+        let refusal:
+          | { error: string; hint: string; field: string | null }
+          | null = null;
         if (complete) {
           if (shape && !shape.ok) {
-            return json(
-              {
-                error: shape.reason,
-                code: "incomplete",
-                data: {
-                  hint: shape.hint ??
-                    "Fill that in and save again, or Save draft to come back to it.",
-                },
-              },
-              400,
-              cors,
-            );
+            refusal = {
+              error: shape.reason,
+              hint: shape.hint ??
+                "Fill that in and save again, or Save draft to come back to it.",
+              field: null,
+            };
           }
           /*
            * The same door the commit will ask for, asked now, while the typist
@@ -4419,15 +4435,11 @@ serve(async (req) => {
               paymentModelId: model?.paymentModelId ?? null,
             });
             if (door.door === null) {
-              return json(
-                {
-                  error: door.reason,
-                  code: "incomplete",
-                  data: { hint: benchHintFor(door), field: door.field },
-                },
-                400,
-                cors,
-              );
+              refusal = {
+                error: door.reason,
+                hint: benchHintFor(door),
+                field: door.field,
+              };
             }
           }
         }
@@ -4458,7 +4470,7 @@ serve(async (req) => {
 
           // The partner's own list restricts, as it does for a file row and in
           // the sales app. Refused here by name rather than at commit.
-          if (complete && model) {
+          if (complete && model && !refusal) {
             const links = await conn.queryObject<{ payment_model_id: string }>({
               text: `select payment_model_id::text from public.organization_payment_models
                       where organization_id = $1`,
@@ -4466,21 +4478,13 @@ serve(async (req) => {
             });
             const allowed = links.rows.map((l) => l.payment_model_id);
             if (allowed.length > 0 && !allowed.includes(model.paymentModelId)) {
-              return json(
-                {
-                  error:
-                    `This partner is not assigned the "${model.canonicalName}" sales model, ` +
-                    "so the sales app would refuse this sale.",
-                  code: "incomplete",
-                  data: {
-                    field: "salesModel",
-                    hint: "Pick one of the models the picker offers for this partner, or have " +
-                      "the model assigned to the partner (Partner Sales Models), then finish it again.",
-                  },
-                },
-                400,
-                cors,
-              );
+              refusal = {
+                error: `This partner is not assigned the "${model.canonicalName}" sales model, ` +
+                  "so the sales app would refuse this sale.",
+                field: "salesModel",
+                hint: "Pick one of the models the picker offers for this partner, or have " +
+                  "the model assigned to the partner (Partner Sales Models), then finish it again.",
+              };
             }
           }
 
@@ -4611,7 +4615,24 @@ serve(async (req) => {
               );
             }
 
-            const status = complete ? "valid" : "draft";
+            // A refused finish stores what was typed and stays a draft, so the
+            // work survives the refusal it just earned (D57).
+            const status = complete && !refusal ? "valid" : "draft";
+            /*
+             * The refusal column moves only on a finish: written when this one
+             * was refused, cleared when it was accepted, left alone by a draft
+             * save. The autosave fires every twenty seconds, so a draft save
+             * that cleared it would erase the record before anybody read it.
+             */
+            const refusalJson = refusal
+              ? JSON.stringify({
+                reason: refusal.error,
+                hint: refusal.hint,
+                field: refusal.field,
+                at: new Date().toISOString(),
+                by: userId,
+              })
+              : null;
             // What the row ends up with, which is not the same as what was
             // asked for: the downgrade guard below can refuse a draft save.
             let stored = status;
@@ -4652,13 +4673,16 @@ serve(async (req) => {
                                            end,
                               last_edited_by = $5, last_edited_at = now(),
                               rejection_reason = null, rejection_hint = null,
-                              exception_reason = null
+                              exception_reason = null,
+                              finish_refusal = case when $6::boolean
+                                                      then $7::jsonb
+                                                    else finish_refusal end
                         where id = $1
                     returning status`,
                 args: [
                   existing.rows[0].id, JSON.stringify(values), status,
                   finished ? JSON.stringify(finished) : null,
-                  userId,
+                  userId, complete, refusalJson,
                 ],
               });
               stored = String(updated.rows[0]?.status ?? status);
@@ -4672,7 +4696,7 @@ serve(async (req) => {
                * offers the row. Committed rows keep their status; only the
                * gate moves.
                */
-              if (complete && existing.rows[0].batch_state === "committed") {
+              if (complete && !refusal && existing.rows[0].batch_state === "committed") {
                 await conn.queryObject({
                   text: `update data_center.import_batches
                             set state = 'validated', last_error = null, commit_lease_until = null
@@ -4689,15 +4713,16 @@ serve(async (req) => {
               const inserted = await conn.queryObject<{ status: string }>({
                 text: `insert into data_center.import_rows
                          (batch_id, row_number, raw, status, stove_serial_no,
-                          draft_values, normalized, last_edited_by, last_edited_at)
+                          draft_values, normalized, last_edited_by, last_edited_at,
+                          finish_refusal)
                        values ($1, $2, $3::jsonb, $4, $5, $3::jsonb,
                                case when $4 = 'valid' then $6::jsonb else null end,
-                               $7, now())
+                               $7, now(), $8::jsonb)
                        returning status`,
                 args: [
                   batchId, next.rows[0].n, JSON.stringify(values), status, stoveId,
                   finished ? JSON.stringify(finished) : null,
-                  userId,
+                  userId, refusalJson,
                 ],
               });
               stored = String(inserted.rows[0]?.status ?? status);
@@ -4711,6 +4736,30 @@ serve(async (req) => {
             }
 
             await conn.queryObject("commit");
+
+            /*
+             * The refusal, answered after the typing is safely stored (D57).
+             *
+             * Same body, same 400, same code as when this returned before the
+             * write, so the bench's handling of it does not change: it still
+             * puts the reason in the error box and reveals the field. What is
+             * different is that the row now carries it too, so the question
+             * "why did this not finish" has an answer tomorrow.
+             */
+            if (refusal) {
+              return json(
+                {
+                  error: refusal.error,
+                  code: "incomplete",
+                  data: {
+                    hint: refusal.hint,
+                    ...(refusal.field ? { field: refusal.field } : {}),
+                  },
+                },
+                400,
+                cors,
+              );
+            }
             /*
              * The status the row HAS, not the one it was asked for.
              *

@@ -4,6 +4,12 @@ Flat, one line per slice, newest programme first. States: todo, spec red,
 green, in review, merged, live. The why lives in `decisions.md`; the evidence
 lives on each PR.
 
+## Phase 31, a refused finish leaves a record (his ask 2026-09-16)
+
+A typist reported that pressing Finish did not save a receipt as finished, and nothing anywhere could say why. Decision D57.
+
+- [ ] S1 a refused finish keeps the typing, stays a draft and records what refused it (reason, hint, field, when, who); the bench says it when the stove is opened again; a draft save leaves it alone and an accepted finish clears it. Spec `data-center-bench-says-why`. Deploy list: data-center-import
+
 ## Phase 30, the sales app's actions reach the Data Center (his ask 2026-09-15)
 
 A purchase cancelled in the app stayed on Partner Records until somebody pressed Recompute. Decisions D54 to D56.
