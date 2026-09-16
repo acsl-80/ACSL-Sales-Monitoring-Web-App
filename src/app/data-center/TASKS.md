@@ -8,7 +8,9 @@ lives on each PR.
 
 One statement was 65% of the database's time: a badge counting 113 rows in twelve seconds. Decision D58.
 
-- [ ] S1 `work_waiting` counts once with FILTER instead of scanning `v_corrections` six times. Production: 12,038 ms to 3,898 ms, same seven numbers. The 19.5 ms route was measured and rejected in review: it would have been a third definition of whose correction it is. Spec `data-center-badge-one-pass`. Deploy list: data-center-corrections
+- [x] S1 `work_waiting` counts once with FILTER instead of scanning `v_corrections` six times. Production: 12,038 ms to 3,898 ms, same seven numbers. The 19.5 ms route was measured and rejected in review: it would have been a third definition of whose correction it is. PR #110, live 2026-09-16 (main 60c5319): corrections v7 on production, measured at 4,000 ms there after the deploy
+
+- [ ] S2 `v_corrections` and `routeFor` reach a correction's transfer through the stove's indexed stock row instead of expanding every transfer's JSON; the routing helper gains the ordering it never had. Both routes compared on production for all 114 corrections on every column, identical. Spec `data-center-corrections-by-stock`. Deploy list: data-center-corrections, data-center-write Spec `data-center-badge-one-pass`. Deploy list: data-center-corrections
 
 ## Phase 31, a refused finish leaves a record (his ask 2026-09-16)
 

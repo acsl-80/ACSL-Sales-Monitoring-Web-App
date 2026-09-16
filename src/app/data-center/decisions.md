@@ -682,3 +682,33 @@ failed on that count by name. The fixed
 overhead on every Data Center request, roughly 1.4 seconds of connection
 establishment and two HTTP round trips, is a separate matter and is written up
 in the plan. Built in Phase 32, slice 1.
+
+## D59. A correction finds its transfer without reading every transfer (2026-09-16)
+
+Slice 1 took the corrections badge from twelve seconds to four by counting once
+instead of six times. The four seconds that remained were the view's own, and
+they were spent in one place: `v_corrections` resolved each correction's
+transfer through a lateral over `v_transfer_stoves`, which expands every
+transfer's `stove_ids` JSON into one row per stove. That is 23,069 rows across
+794 transfers, re-expanded once per correction row, and then matched on the
+serial as text, because nothing about a JSON expansion can be indexed.
+
+The stove's own stock row already carries the answer. All 23,067 stoves in
+stock have a `sales_reference`, 23,066 of them name a transfer that exists, and
+`stove_ids_base.sale_id` is indexed, so the transfer is one index lookup from
+the sale. Measured on production before the change, both routes were compared
+for every correction on every column the lateral feeds: 114 of 114 identical,
+none different. The same query shape runs in 19.5 ms against the 4,000 ms the
+view costs today.
+
+`routeFor` moves in the same PR, because it answers the same question for the
+send-back panel and must not answer it differently. It also gains the ordering
+it never had: it took `limit 1` from an unordered join, so a stove named in two
+transfers could route to either of them. That is the fault the hardening
+migration of 2026-09-05 fixed in the view and left standing here.
+
+Not changed, deliberately: `v_transfer_stoves` itself. Nineteen other places
+read it, and it means "every stove this transfer ever named", which is a
+different question from "which transfer is this stove on now". Making it faster
+by changing what it means would be a different slice with a different proof.
+Built in Phase 32, slice 2.
