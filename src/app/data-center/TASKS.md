@@ -8,7 +8,7 @@ lives on each PR.
 
 One statement was 65% of the database's time: a badge counting 113 rows in twelve seconds. Decision D58.
 
-- [ ] S1 `work_waiting` counts once with FILTER instead of scanning `v_corrections` six times, and reaches the transfer through the sale's indexed stock row instead of expanding every transfer's JSON. Production: 12,038 ms to 19.5 ms, same seven numbers. Spec `data-center-badge-one-pass`. Deploy list: data-center-corrections
+- [ ] S1 `work_waiting` counts once with FILTER instead of scanning `v_corrections` six times. Production: 12,038 ms to 3,898 ms, same seven numbers. The 19.5 ms route was measured and rejected in review: it would have been a third definition of whose correction it is. Spec `data-center-badge-one-pass`. Deploy list: data-center-corrections
 
 ## Phase 31, a refused finish leaves a record (his ask 2026-09-16)
 

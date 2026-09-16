@@ -430,45 +430,40 @@ serve(async (req) => {
              * transfer's `stove_ids` JSON into one row per stove: 23,069 rows
              * across 794 transfers, re-expanded once per correction.
              *
-             * Measured on production: 12,038 ms as it was, 19.5 ms as it is.
+             * Measured on production: 12,038 ms as it was, 3,898 ms as it is.
              * It was 65% of the entire database's time, because the control
              * centre polls it every sixty seconds for every manager with the
              * page open, and each run held one of sixty connections for eight
              * seconds while it worked.
              *
-             * Two changes, and no third. The six scans become one pass with
-             * FILTER. And the transfer is reached through the stove's own
-             * stock row (`stove_ids_base.sale_id`, which is indexed) rather
-             * than by expanding JSON and matching the serial as text. Both
-             * routes were checked against every correction on production and
-             * named the same rep for all 113.
+             * One change, not two. The six scans become one pass with FILTER,
+             * and the rep still comes from `v_corrections`, which is the
+             * module's one definition of whose correction this is.
              *
-             * Every number this returns is the same number it returned before.
-             * That is the whole contract, and the spec asserts it against the
-             * old shape on data that exercises each count.
+             * The faster route was measured and rejected here on purpose.
+             * Reaching the transfer through the sale's own stock row takes
+             * this query to 19.5 ms rather than 3,898, and it named the same
+             * rep for all 113 corrections on production. It was not taken,
+             * because `v_corrections` and `routeFor` both resolve that rep by
+             * matching the serial against every transfer's expanded stove
+             * list, and a third derivation of the same fact is how the badge
+             * and the list come to disagree about who a correction belongs
+             * to. This module has already paid for that once: the hardening
+             * migration of 2026-09-05 exists because a serial in two
+             * transfers doubled an episode. Making the shared definition
+             * itself cheaper is worth doing and is its own slice, because ten
+             * or more surfaces read that view and they all have to move
+             * together.
+             *
+             * Every number this returns is the same number it returned
+             * before. That is the whole contract, and the spec asserts it
+             * against the old shape on data that exercises each count.
              */
             text: `with base as (
                      select c.state, c.assigned_to, c.fixed_by,
-                            coalesce(c.routed_rep_user_id, ra.user_id, ra.delegate_user_id)
-                              as current_rep_user_id,
-                            f.sales_rep
-                       from data_center.corrections c
-                       join public.sales s on s.id = c.sale_id
-                       -- The transfer this stove came out on, newest first, the
-                       -- same rule v_corrections applies; reached by the sale's
-                       -- own stock row instead of by expanding every transfer.
-                       left join lateral (
-                         select h.sales_rep
-                           from public.stove_ids_base sb
-                           join public.stove_transfer_history h
-                             on h.transaction_id = sb.sales_reference
-                           join data_center.transfer_funnel tf on tf.transfer_id = h.id
-                          where sb.sale_id = c.sale_id
-                          order by tf.transfer_date desc nulls last
-                          limit 1) f on true
-                       left join data_center.sales_rep_accounts ra
-                         on ra.rep_key = lower(btrim(f.sales_rep))
-                      where s.is_archived is not true
+                            c.current_rep_user_id, c.sales_rep
+                       from data_center.v_corrections c
+                      where c.is_archived is not true
                         and c.state in ('open', 'fixed')
                    )
                    select

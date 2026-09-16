@@ -5,18 +5,20 @@ import { signIn, USERS, branchSql, callEdgeFunction } from "./helpers";
  * Phase 32, slice 1 (D58): the corrections badge counts in one pass.
  *
  * `work_waiting` asked `v_corrections` six separate times, twice for the same
- * count, and that view resolves each correction's transfer by expanding every
- * transfer's stove list out of JSON. On production it counted 113 rows in
- * 12,038 ms and was 65% of the whole database's time, because the control
- * centre polls it every sixty seconds for every manager with the page open.
- *
- * One pass, and the transfer reached through the sale's own stock row: 19.5 ms
- * for the same 113 rows.
+ * count. On production it counted 113 rows in 12,038 ms and was 65% of the
+ * whole database's time, because the control centre polls it every sixty
+ * seconds for every manager with the page open. One pass over the same view:
+ * 3,898 ms.
  *
  * Nothing it reports may change. That is the whole contract, so this spec
- * arranges corrections that exercise every one of the counts, including the
- * states production has none of, and asserts the endpoint agrees with the old
+ * arranges a correction for every count, including the states and the routing
+ * production has none of, and asserts the endpoint agrees with the old
  * definition computed independently over the view.
+ *
+ * Each count is also shown to have been exercised, so an agreement of zeros
+ * cannot pass for a proof. That guard is the spec's own weak point if it is
+ * left to chance, so the unrouted fixture picks a sale whose rep genuinely has
+ * no account rather than hoping one turns up.
  */
 test.describe.configure({ timeout: 240_000 });
 
@@ -68,42 +70,77 @@ test("the badge counts in one pass and reports exactly what the old shape did", 
   expect(me?.id && other?.id, "two accounts to attribute work to").toBeTruthy();
 
   await clean();
-  // Four live sales that carry a stove, so the transfer lookup has something
-  // to resolve on both routes.
-  const sales = await branchSql<{ id: string }>(
+
+  /*
+   * One sale whose transfer names a rep nobody has an account for, so the
+   * correction opened on it lands in "unrouted" by the view's own rule rather
+   * than by luck, and three more for the other shapes.
+   */
+  const [unrouted] = await branchSql<{ id: string }>(
+    `select s.id::text
+       from public.sales s
+       join public.stove_ids_base sb on sb.sale_id = s.id
+       join public.stove_transfer_history h on h.transaction_id = sb.sales_reference
+      where s.is_archived is not true
+        and h.sales_rep is not null
+        and not exists (select 1 from data_center.sales_rep_accounts ra
+                         where ra.rep_key = lower(btrim(h.sales_rep)))
+        and not exists (select 1 from data_center.corrections x where x.sale_id = s.id)
+      order by s.created_at desc limit 1`,
+  );
+  expect(unrouted?.id, "a sale whose transfer rep has no account").toBeTruthy();
+
+  const rest = await branchSql<{ id: string }>(
     `select s.id::text
        from public.sales s
        join public.stove_ids_base sb on sb.sale_id = s.id
       where s.is_archived is not true
+        and s.id <> '${unrouted.id}'
         and not exists (select 1 from data_center.corrections x where x.sale_id = s.id)
-      order by s.created_at desc limit 4`,
+      order by s.created_at desc limit 3`,
   );
-  expect(sales.length, "four free live sales with stock").toBe(4);
+  expect(rest.length, "three more free live sales with stock").toBe(3);
+
+  // The unconfirmed count is about serials, not corrections, and the sandbox
+  // carries none. Raise one so the guard below means something, and put it
+  // back afterwards.
+  const [withCall] = await branchSql<{ sale_id: string }>(
+    `select cr.sale_id::text from data_center.call_records cr
+       join public.sales s on s.id = cr.sale_id
+      where s.is_archived is not true and cr.serial_unconfirmed_at is null
+      limit 1`,
+  );
 
   try {
+    if (withCall?.sale_id) {
+      await branchSql(
+        `update data_center.call_records set serial_unconfirmed_at = now()
+          where sale_id = '${withCall.sale_id}'`,
+      );
+    }
     /*
      * One of each shape the badge counts, including the two states production
-     * holds none of, which is exactly why they need arranging here:
+     * holds none of:
      *   open, assigned to me            -> mine_open
-     *   open, routed to nobody          -> unrouted, open_all
+     *   open, rep has no account        -> unrouted, open_all
      *   fixed by me                     -> mine_fixed, review, fixed_all
      *   fixed by somebody else          -> review, fixed_all
      */
     await branchSql(
       `insert into data_center.corrections (sale_id, seq, state, note, opened_at, assigned_to)
-       values ('${sales[0].id}', 1, 'open', '${TAG} assigned to me', now(), '${me.id}')`,
+       values ('${rest[0].id}', 1, 'open', '${TAG} assigned to me', now(), '${me.id}')`,
     );
     await branchSql(
       `insert into data_center.corrections (sale_id, seq, state, note, opened_at)
-       values ('${sales[1].id}', 1, 'open', '${TAG} routed to nobody', now())`,
+       values ('${unrouted.id}', 1, 'open', '${TAG} routed to nobody', now())`,
     );
     await branchSql(
       `insert into data_center.corrections (sale_id, seq, state, note, opened_at, fixed_at, fixed_by)
-       values ('${sales[2].id}', 1, 'fixed', '${TAG} fixed by me', now(), now(), '${me.id}')`,
+       values ('${rest[1].id}', 1, 'fixed', '${TAG} fixed by me', now(), now(), '${me.id}')`,
     );
     await branchSql(
       `insert into data_center.corrections (sale_id, seq, state, note, opened_at, fixed_at, fixed_by)
-       values ('${sales[3].id}', 1, 'fixed', '${TAG} fixed by another', now(), now(), '${other.id}')`,
+       values ('${rest[2].id}', 1, 'fixed', '${TAG} fixed by another', now(), now(), '${other.id}')`,
     );
 
     const want = await oracle(me.id);
@@ -120,13 +157,23 @@ test("the badge counts in one pass and reports exactly what the old shape did", 
     expect(got.unconfirmed, "serials unconfirmed").toBe(Number(want.unconfirmed));
     expect(got.unroutedReps, "reps with nobody to route to").toBe(Number(want.unrouted));
 
-    // And the arrangement really did exercise each one, so an agreement of
-    // zeros cannot pass for a proof.
-    expect(Number(want.open_all), "the open count saw the arranged rows").toBeGreaterThanOrEqual(2);
-    expect(Number(want.review), "the fixed count saw the arranged rows").toBeGreaterThanOrEqual(2);
+    // And every one of them was actually exercised, so an agreement of zeros
+    // cannot pass for a proof.
+    expect(got.openAll ?? 0, "the open count saw the arranged rows").toBeGreaterThanOrEqual(2);
+    expect(got.review ?? 0, "the fixed count saw the arranged rows").toBeGreaterThanOrEqual(2);
     expect(got.mineOpen, "one open correction is mine").toBeGreaterThanOrEqual(1);
     expect(got.mineFixed, "one fixed correction is mine").toBeGreaterThanOrEqual(1);
+    expect(got.unroutedReps ?? 0, "one correction is routed to nobody").toBeGreaterThanOrEqual(1);
+    if (withCall?.sale_id) {
+      expect(got.unconfirmed ?? 0, "one serial is unconfirmed").toBeGreaterThanOrEqual(1);
+    }
   } finally {
     await clean();
+    if (withCall?.sale_id) {
+      await branchSql(
+        `update data_center.call_records set serial_unconfirmed_at = null
+          where sale_id = '${withCall.sale_id}'`,
+      ).catch(() => {});
+    }
   }
 });

@@ -655,24 +655,30 @@ transfers, re-expanded once per correction row. The control centre polls the
 badge every sixty seconds for every manager with the page open, and each run
 held one of the database's sixty connections for eight seconds.
 
-Now it is one pass with FILTER, and it reaches the transfer through the sale's
-own stock row, `stove_ids_base.sale_id`, which is indexed. Measured on
-production: 12,038 ms before, 19.5 ms after, for the same 113 rows and the
-same seven numbers.
+Now it is one pass with FILTER over the same view. Measured on production:
+12,038 ms before, 3,898 ms after, for the same 113 rows and the same seven
+numbers.
 
-Both routes to the transfer were checked against every correction on
-production and named the same rep for all 113, so the cheaper route is not a
-different answer. The numbers themselves were compared old against new for
-three accounts on production, and the spec arranges corrections in the states
-production holds none of (fixed, assigned, fixed by somebody else) and asserts
-the endpoint agrees with the old definition on each count. That spec was then
-shown to have teeth: one count was deliberately miswired and it failed on that
-count by name.
+**The faster route was measured and deliberately not taken.** Reaching the
+transfer through the sale's own indexed stock row instead of the view takes
+this query to 19.5 ms, and it named the same rep for all 113 corrections on
+production. It was rejected in review because `v_corrections` and `routeFor`
+both resolve that rep their own way, and a third derivation of the same fact
+is how the badge and the corrections list come to disagree about whose
+correction it is. The module has already paid for that once: the hardening
+migration of 2026-09-05 exists because a serial appearing in two transfers
+doubled an episode. Two thirds of the cost for one definition is the right
+trade; the remaining 3,898 ms belongs to the view, and making the view itself
+cheaper is the next slice, where all ten or more of its readers move together.
 
-What this does not do. It does not touch `v_corrections`, which the corrections
-list and detail still read, so those surfaces are unchanged and still carry the
-cost of the JSON expansion. Making the view itself cheaper is the next slice
-and is a wider blast radius, since ten or more readers share it. The fixed
+The numbers were compared old against new for three accounts on production,
+and the spec arranges a correction for every count, including the states and
+the routing production holds none of, then asserts the endpoint agrees with
+the old definition on each. It also proves each count was exercised, with the
+unrouted fixture picking a sale whose rep genuinely has no account rather than
+hoping one turns up, and the unconfirmed guard raising a serial itself. The
+spec was shown to have teeth: one count was deliberately miswired and it
+failed on that count by name. The fixed
 overhead on every Data Center request, roughly 1.4 seconds of connection
 establishment and two HTTP round trips, is a separate matter and is written up
 in the plan. Built in Phase 32, slice 1.
