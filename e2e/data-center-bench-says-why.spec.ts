@@ -124,6 +124,40 @@ test("a refused finish keeps the typing, stays a draft, and records what refused
   }
 });
 
+test("a refused change to an already finished receipt leaves it finished, and still says why", async ({ page }) => {
+  await signIn(page, USERS.admin);
+  const stove = await untypedStove();
+  try {
+    // Finished and waiting to be confirmed, which is a row the same typist may
+    // still reopen and edit.
+    const done = await save(page, stove, whole(), true);
+    expect(done.status, JSON.stringify(done.body)).toBe(200);
+    expect((await benchRow(stove)).status).toBe("valid");
+
+    /*
+     * A later change the rules refuse. The receipt was accepted once and its
+     * accepted shape is what the confirmation queue will commit, so it stays
+     * finished: a fat-fingered edit must not pull somebody's finished work
+     * back out of the queue. What it must not do is stay quiet about it.
+     */
+    const refused = await save(page, stove, missingState(), true);
+    expect(refused.status, JSON.stringify(refused.body)).toBe(400);
+
+    const row = await benchRow(stove);
+    expect(row.status, "the accepted finish still stands").toBe("valid");
+    expect(row.has_refusal, "and the refused change is on the record").toBe(true);
+
+    const open = await callEdgeFunction(page, "data-center-import", {
+      action: "workbench_open", stoveId: stove,
+    });
+    const work = (open.body as { data: { work: { status: string; finish_refusal: { reason: string } | null } | null } }).data.work;
+    expect(work?.status).toBe("valid");
+    expect(work?.finish_refusal?.reason, "so the bench can say it rather than read as finished and silent").toBeTruthy();
+  } finally {
+    await forget(stove);
+  }
+});
+
 test("the autosave after a refusal does not erase it, and a finish that is accepted clears it", async ({ page }) => {
   await signIn(page, USERS.admin);
   const stove = await untypedStove();

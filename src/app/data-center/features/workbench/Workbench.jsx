@@ -1081,16 +1081,22 @@ function Bench({ stoveId, onSaved, onBack, onNext, nextLabel, api = null }) {
           and the question could not be answered a day later. The row carries
           the refusal now, and the typist meets it on the way back in rather
           than only in the second it happened. */}
-      {work?.finish_refusal && work.status !== "valid" && !work.confirmed_at && (
+      {work?.finish_refusal && !work.confirmed_at && (
         <div
           className="rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900"
           data-finish-refusal={work.finish_refusal.field ?? "unnamed"}
         >
           <p className="flex items-start gap-2">
             <TriangleAlert className="mt-0.5 h-4 w-4 shrink-0 text-amber-600" />
+            {/* A receipt that is already finished keeps its accepted shape: a
+                later change that the rules refused was never applied, and
+                saying only "finishing was refused" over a receipt that plainly
+                reads as finished is how somebody concludes the screen is
+                lying. */}
             <span>
-              Finishing was last refused on {whenOf(work.finish_refusal.at)}.
-              {" "}{work.finish_refusal.reason}
+              {work.status === "valid"
+                ? `This receipt stands as finished and is waiting to be confirmed. A change made after that was refused on ${whenOf(work.finish_refusal.at)} and has not been applied. ${work.finish_refusal.reason}`
+                : `Finishing was last refused on ${whenOf(work.finish_refusal.at)}. ${work.finish_refusal.reason}`}
             </span>
           </p>
           {work.finish_refusal.hint && (
