@@ -14,7 +14,7 @@ One statement was 65% of the database's time: a badge counting 113 rows in twelv
 
 A typist reported that pressing Finish did not save a receipt as finished, and nothing anywhere could say why. Decision D57.
 
-- [ ] S1 a refused finish keeps the typing, stays a draft and records what refused it (reason, hint, field, when, who); the bench says it when the stove is opened again; a draft save leaves it alone and an accepted finish clears it. Spec `data-center-bench-says-why`. Deploy list: data-center-import
+- [x] S1 a refused finish keeps the typing, stays a draft and records what refused it (reason, hint, field, when, who); the bench says it when the stove is opened again; a draft save leaves it alone and an accepted finish clears it. Spec `data-center-bench-says-why`. Deploy list: data-center-import. PR #109, live 2026-09-16 (main 4b014e8): red 2 of 2 on main's code with the column applied, green 3 of 3 after the review finding, migration applied on production with its ledger row, import v20
 
 ## Phase 30, the sales app's actions reach the Data Center (his ask 2026-09-15)
 
