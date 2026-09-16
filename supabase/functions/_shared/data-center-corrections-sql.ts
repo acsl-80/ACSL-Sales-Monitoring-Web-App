@@ -95,8 +95,19 @@ export async function routeFor(conn: PoolClient, saleId: string) {
                   rp.full_name as account_name,
                   (select count(*)::int from data_center.send_back_recipients where is_enabled) as standing
              from public.sales s
-             left join data_center.v_transfer_stoves b on b.stove_id = upper(trim(s.stove_serial_no))
-             left join data_center.transfer_funnel f on f.transfer_id = b.transfer_id
+             -- The same route v_corrections takes (D59): the transfer the
+             -- stove is on, by the stock row that names it, newest first.
+             -- This had no ordering at all, so a stove named in two transfers
+             -- could route to either of them, which is the fault the hardening
+             -- migration of 2026-09-05 fixed in the view and left standing here.
+             left join lateral (
+               select f.sales_rep
+                 from public.stove_ids_base sb
+                 join public.stove_transfer_history h on h.transaction_id = sb.sales_reference
+                 join data_center.transfer_funnel f on f.transfer_id = h.id
+                where sb.sale_id = s.id
+                order by f.transfer_date desc nulls last
+                limit 1) f on true
              left join data_center.sales_rep_accounts ra on ra.rep_key = lower(trim(f.sales_rep))
              left join public.profiles rp on rp.id = coalesce(ra.user_id, ra.delegate_user_id)
             where s.id = $1
