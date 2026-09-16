@@ -638,3 +638,41 @@ erase it within twenty seconds, and an accepted finish clears it.
 What this does not do: it does not change which receipts are refused. Every
 rule is the one that was already there, asked in the same order, answering the
 same sentence. Built in Phase 31, slice 1.
+
+## D58. The corrections badge counts in one pass (2026-09-16)
+
+His ask: look into the three to five second response times and propose a fix
+where substantiated. Measured on production, the answer was not the functions
+at all. One statement was 65% of the entire database's time: the corrections
+badge, `work_waiting`, 2,301 calls averaging 8.1 seconds and peaking at 35.
+It counts 113 rows.
+
+Two things made it cost that. It asked `v_corrections` six separate times,
+twice for the identical count. And that view resolves each correction's
+transfer through a lateral over `v_transfer_stoves`, which expands every
+transfer's `stove_ids` JSON into one row per stove, 23,069 rows across 794
+transfers, re-expanded once per correction row. The control centre polls the
+badge every sixty seconds for every manager with the page open, and each run
+held one of the database's sixty connections for eight seconds.
+
+Now it is one pass with FILTER, and it reaches the transfer through the sale's
+own stock row, `stove_ids_base.sale_id`, which is indexed. Measured on
+production: 12,038 ms before, 19.5 ms after, for the same 113 rows and the
+same seven numbers.
+
+Both routes to the transfer were checked against every correction on
+production and named the same rep for all 113, so the cheaper route is not a
+different answer. The numbers themselves were compared old against new for
+three accounts on production, and the spec arranges corrections in the states
+production holds none of (fixed, assigned, fixed by somebody else) and asserts
+the endpoint agrees with the old definition on each count. That spec was then
+shown to have teeth: one count was deliberately miswired and it failed on that
+count by name.
+
+What this does not do. It does not touch `v_corrections`, which the corrections
+list and detail still read, so those surfaces are unchanged and still carry the
+cost of the JSON expansion. Making the view itself cheaper is the next slice
+and is a wider blast radius, since ten or more readers share it. The fixed
+overhead on every Data Center request, roughly 1.4 seconds of connection
+establishment and two HTTP round trips, is a separate matter and is written up
+in the plan. Built in Phase 32, slice 1.

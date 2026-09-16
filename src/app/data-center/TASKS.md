@@ -4,6 +4,12 @@ Flat, one line per slice, newest programme first. States: todo, spec red,
 green, in review, merged, live. The why lives in `decisions.md`; the evidence
 lives on each PR.
 
+## Phase 32, the corrections badge counts in one pass (his ask 2026-09-16)
+
+One statement was 65% of the database's time: a badge counting 113 rows in twelve seconds. Decision D58.
+
+- [ ] S1 `work_waiting` counts once with FILTER instead of scanning `v_corrections` six times, and reaches the transfer through the sale's indexed stock row instead of expanding every transfer's JSON. Production: 12,038 ms to 19.5 ms, same seven numbers. Spec `data-center-badge-one-pass`. Deploy list: data-center-corrections
+
 ## Phase 31, a refused finish leaves a record (his ask 2026-09-16)
 
 A typist reported that pressing Finish did not save a receipt as finished, and nothing anywhere could say why. Decision D57.
