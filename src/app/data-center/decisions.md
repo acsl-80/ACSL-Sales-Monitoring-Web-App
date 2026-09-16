@@ -734,7 +734,7 @@ Measured inside the edge runtime, connect, one query, close, five runs each:
 direct 1,088 ms, pooled 840 ms. End to end on the sandbox, a light read: about
 1,960 ms direct against about 1,790 pooled by median over several samples, and
 1,780 against 1,500 by minimum. So roughly 10 to 16 per cent, which is real
-but not transformative. The second reason to take it matters more: the
+and modest. The second reason to take it matters more: the
 database allows 60 connections, a module-level pool once exhausted them and
 took the sales app down with it, and a pooler is the shape that makes that
 impossible rather than merely avoided.
