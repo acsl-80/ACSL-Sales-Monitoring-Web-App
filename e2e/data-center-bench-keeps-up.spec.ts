@@ -76,6 +76,17 @@ async function fillReceipt(page: Page, marker: string) {
   await page.locator("#wb-endUserSurname").fill(marker);
   await page.locator("#wb-phone").fill("08015550111");
   await page.locator("#wb-address").fill(`${marker} Street`);
+  /*
+   * What the dated rules require today, read from public.sale_field_rules
+   * rather than remembered: city, the name in two parts, the baseline stove,
+   * the sales agent and the six terms. A receipt missing any of them is
+   * refused by the bench itself, before a request is sent, which is why this
+   * used to leave a draft with no refusal recorded anywhere against it.
+   */
+  await page.locator("#wb-city").fill("Lokoja");
+  await page.locator("#wb-salesAgentName").fill("Bench Agent");
+  await page.locator('input[name="wb-previousStoveType"]').first().check();
+  await page.locator("#wb-salesDate").fill("2026-01-05");
   await page.locator("#wb-amount").fill("1000");
   // The door has asked for the model since 2 September; a receipt without one does not finish.
   await page.locator("#wb-salesModel").selectOption("Hakimi Sales Model");

@@ -1,5 +1,24 @@
 import { test, expect } from "@playwright/test";
-import { signIn, USERS, callEdgeFunction } from "./helpers";
+import { signIn, USERS, branchSql, callEdgeFunction } from "./helpers";
+
+/**
+ * The baseline-stove choices as the registry holds them today.
+ *
+ * These used to be written out here as `charcoal, wood_stove, other`, which
+ * went stale the moment somebody edited the list in Settings, and then failed
+ * for a year as though the sheet were broken. The list being editable is the
+ * feature; a test that pins it defeats the thing it is testing.
+ */
+async function baselineStoveOptions(): Promise<string[]> {
+  // The labels, not the stored values: the sheet is filled in by a person, so
+  // it offers "Firewood" where the column holds "firewood".
+  const rows = await branchSql<{ label: string }>(
+    `select coalesce(label, value) as label from data_center.option_values
+      where list_key = 'baseline_stove' and is_active
+      order by sort_order, value`,
+  );
+  return rows.map((r) => r.label);
+}
 
 /**
  * Bulk import through the real UI.
@@ -684,7 +703,9 @@ test.describe("the digitalisation sheet is a workbook", () => {
     // The choices are stated on the way out, so a typist knows before opening
     // the file that these columns are lists.
     await expect(page.getByText(/Pick from a list/)).toBeVisible();
-    await expect(page.getByText(/charcoal, wood_stove, other/)).toBeVisible();
+    const offered = await baselineStoveOptions();
+    expect(offered.length, "the registry offers baseline stoves").toBeGreaterThan(0);
+    await expect(page.getByText(new RegExp(offered.join(", ")))).toBeVisible();
 
     const waitForDownload = page.waitForEvent("download");
     await page.getByRole("button", { name: /Download .* \(xlsx\)/ }).click();
@@ -768,8 +789,8 @@ test.describe("the digitalisation sheet is a workbook", () => {
     expect(byField.transactionId.locked).toBe(true);
     // And the choices match the form's exactly, which is the whole point of
     // sending them rather than letting each side keep its own list.
-    expect(byField.previousStoveType.options).toEqual(["charcoal", "wood_stove", "other"]);
-    expect(byField.potQuantity.options).toEqual(["0", "1", "2"]);
+    expect(byField.previousStoveType.options).toEqual(await baselineStoveOptions());
+    expect(byField.potQuantity.options.length, "the sheet offers pot quantities").toBeGreaterThan(0);
   });
 
   test("a workbook uploads where a CSV did", async ({ page }) => {

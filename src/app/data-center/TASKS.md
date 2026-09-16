@@ -97,13 +97,28 @@ decisions D27 to D29.
 
 ## Deferred
 
-- Stale since Phase 27 (seen 2026-09-14 on main's own build): `e2e/data-center-bench-keeps-up.spec.ts` "the done chip climbs without a reload" finishes a receipt that the server now keeps as a draft, so Done never climbs; the fill helper predates the model door and the terms. Spec only; the keeps-up rule itself is covered by the bench's own arithmetic.
-- The board's year view reads every attempt of the year for every agent in one request and buckets by month in the function (PR #103, review note). Fine at today's volume; at the module's 500k target the year and the month should come from per-month aggregates in SQL.
-- Three dashboard definitions still say never called, verified and unreachable their own way: `verification.by_outcome` in compute_metrics, the analysis yield leak's never-called rule, and `pool.never_called`. Phase 28's `record_standing()` is the one definition; moving these three onto it changes dashboard numbers and needs its own conversation (D41).
-- Stale since F3b (seen 2026-09-07 on main's own build): two tests in `e2e/data-center-import.spec.ts` ("the sheet downloads, and the same file uploads back", "the sheet's columns come from settings") expect the previous-stove column to offer the literal `charcoal, wood_stove, other`; since F3b the column reads the registry's `baseline_stove` list. Update the spec to read the list from the registry. Spec only.
-- Host, seen while fixing the render loop (PR #79): the sidebar declares two entries with the same `route` key ("agents"), which React warns about on every render; and a username-based login falls through to the direct email path on any non-ok answer from `login-with-credentials`, reporting a transient server fault as wrong credentials. Two small host fixes.
-- The 181 live sales whose payment model is outside their partner's entitlement: an observation for the sales team, not a module change.
-- The host form's own copy of the previous-stove list (`CreateSalesForm.jsx`): host lane.
-- A structured editor for the sheet columns config.
-- Accounts for sales reps who have none.
-- The commit-chain rollback spec ("rollback under a live chain is refused") is timing-bound: the lease is released between slices, so a rollback that lands in the gap answers 200. Passed on its second run 2026-09-04. Pre-existing; a product fix would hold the lease for the whole chain.
+Cleared 2026-09-16: the two stale specs that had been failing on main's own
+build since Phase 27 and F3b. The bench one was blamed on the model door and
+the terms, and was actually the dated field rules: the fixture never filled
+city, the sales agent, the baseline stove or the sales date, so the bench
+refused the finish on the screen before sending anything, which is why no
+refusal was ever recorded against it. The sheet ones pinned a choice list
+that Settings is meant to edit, which is the feature they existed to prove;
+they read the registry now.
+
+**Waiting on a decision of yours.** Each one is a question, not a task.
+
+- Three dashboard definitions still say never called, verified and unreachable their own way: `verification.by_outcome` in compute_metrics, the analysis yield leak's never-called rule, and `pool.never_called`. Phase 28's `record_standing()` is the one definition; moving these three onto it changes dashboard numbers, which is why it has never been done quietly (D41).
+- The board's year view reads every attempt of the year for every agent in one request and buckets by month in the function (PR #103). Fine at today's volume, wrong at the module's 500k target, where the year and the month want per-month aggregates in SQL.
+- The fixed cost on every Data Center request, roughly 690 ms of auth and profile round trips and about 1.2 s of raw connection. Measured 2026-09-16; an attempt to cut it by sharing one connection per request made both paths worse and was discarded. The remaining candidate is the transaction pooler, which needs a measured trial on production.
+
+**Somebody else's lane, recorded so it is not lost.**
+
+- Host (seen while fixing the render loop, PR #79): the sidebar declares two entries with the same `route` key, which React warns about on every render; and a username login falls through to the direct email path on any non-ok answer from `login-with-credentials`, reporting a transient fault as wrong credentials.
+- Host: the form's own copy of the previous-stove list in `CreateSalesForm.jsx`.
+- Operations, not code: accounts for the sales reps who have none, and the 181 live sales whose payment model sits outside their partner's entitlement.
+
+**Known and left alone, with the reason.**
+
+- The commit-chain rollback spec ("rollback under a live chain is refused") is timing-bound: the lease is released between slices, so a rollback landing in the gap answers 200. Pre-existing, and the product fix is to hold the lease for the whole chain, which is a change to the chain rather than to the spec.
+- A structured editor for the sheet columns config. Nobody is building it; it is here so the idea is not re-invented, not as work in hand.
