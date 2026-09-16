@@ -712,3 +712,42 @@ read it, and it means "every stove this transfer ever named", which is a
 different question from "which transfer is this stove on now". Making it faster
 by changing what it means would be a different slice with a different proof.
 Built in Phase 32, slice 2.
+## D60. The module reaches the database through the pooler (2026-09-16)
+
+Measured today, the fixed cost on a Data Center request is roughly 690 ms of
+auth and profile round trips and about 1,200 ms of raw Postgres connection.
+The first attempt at the second half was to share one connection per request
+instead of two. It was built, measured against a reproduced baseline, and
+discarded: a light read went from 1,947 ms to 2,046 and a cheap one from 731
+to 1,852. The reason is that the cost is not per connection, it is the first
+connection a request opens, so halving the count buys nothing while opening
+one earlier for every request costs.
+
+That leaves the connection itself, which is what a pooler is for. The module's
+own header records the pooler being tried and rejected, measured, because "the
+pooler host sits in a different region from the project". That was the preview
+branch. Production is us-east-2 and its pooler is
+`aws-0-us-east-2.pooler.supabase.com`, the same region, so the reason does not
+apply here and was never re-tested.
+
+Measured inside the edge runtime, connect, one query, close, five runs each:
+direct 1,088 ms, pooled 840 ms. End to end on the sandbox, a light read: about
+1,960 ms direct against about 1,790 pooled by median over several samples, and
+1,780 against 1,500 by minimum. So roughly 10 to 16 per cent, which is real
+but not transformative. The second reason to take it matters more: the
+database allows 60 connections, a module-level pool once exhausted them and
+took the sales app down with it, and a pooler is the shape that makes that
+impossible rather than merely avoided.
+
+Two things this does not do. It does not put a password in a secret: the
+switch is `DATA_CENTER_POOLER_HOST`, a hostname, and the URL is built from the
+credentials already injected as `SUPABASE_DB_URL`, so nothing goes stale
+against a rotation. And it does not touch the computation, which takes a
+session-level advisory lock so that it cannot run twice at once; transaction
+pooling promises a connection per transaction, not per session, so
+`data-center-compute` now asks for a direct connection by name. Everything
+else in the module already used transaction-scoped locks and transaction-local
+`set_config`, which pool safely, and that was verified statement shape by
+statement shape through the pooler before any of this was written.
+
+Undo is removing one environment variable. Built in Phase 32, slice 3.

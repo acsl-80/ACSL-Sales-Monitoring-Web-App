@@ -26,7 +26,7 @@
 
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.39.3";
-import { withConnection, withReadConnection } from "../_shared/data-center-db.ts";
+import { withConnection, withDirectConnection, withReadConnection } from "../_shared/data-center-db.ts";
 import { featuresFor } from "../_shared/data-center-roles.ts";
 
 const DEFAULT_ORIGINS = [
@@ -177,7 +177,9 @@ serve(async (req) => {
         const started = Date.now();
         let result: { busy: true } | { busy: false; runId: string; written: number; duration: number };
         try {
-        result = await withConnection(async (conn) => {
+        // Straight to the database, never through a pooler: the lock below is a
+        // session lock, and transaction pooling does not promise a session.
+        result = await withDirectConnection(async (conn) => {
           const lock = await conn.queryObject<{ locked: boolean }>({
             text: "select pg_try_advisory_lock($1) as locked",
             args: [LOCK_KEY],

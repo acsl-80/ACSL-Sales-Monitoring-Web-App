@@ -76,12 +76,39 @@ import { Client } from "https://deno.land/x/postgres@v0.17.0/mod.ts";
 
 type Conn = Client;
 
-function connectionString(): string {
-  // Prefer an explicitly configured URL, so the pooler can be adopted by
-  // setting one secret rather than by changing code.
-  const url = Deno.env.get("DATA_CENTER_DB_URL") ?? Deno.env.get("SUPABASE_DB_URL");
-  if (!url) throw new Error("Neither DATA_CENTER_DB_URL nor SUPABASE_DB_URL is configured");
-  return url;
+/**
+ * The pooler's URL, built from the direct one so no password is ever configured.
+ *
+ * `SUPABASE_DB_URL` is injected into every function and already carries the
+ * credentials. The pooler wants the same password with a different host, port
+ * and user, so the switch is a hostname rather than a second connection string
+ * with a copy of the password in it. A hostname is not a secret and cannot go
+ * stale against a password rotation.
+ *
+ *   postgresql://postgres:PW@db.<ref>.supabase.co:5432/postgres
+ *   postgresql://postgres.<ref>:PW@<pooler host>:6543/postgres
+ */
+function poolerUrlFrom(direct: string, host: string): string {
+  const u = new URL(direct);
+  const ref = u.hostname.replace(/^db\./, "").replace(/\.supabase\.co$/, "");
+  const password = decodeURIComponent(u.password);
+  return `postgresql://postgres.${ref}:${encodeURIComponent(password)}@${host}:6543/postgres`;
+}
+
+function connectionString(mode: "pooled" | "direct" = "pooled"): string {
+  const direct = Deno.env.get("SUPABASE_DB_URL");
+  if (mode === "direct") {
+    if (!direct) throw new Error("SUPABASE_DB_URL is not configured");
+    return direct;
+  }
+  // An explicit URL still wins, so anything can be pointed anywhere by hand.
+  const explicit = Deno.env.get("DATA_CENTER_DB_URL");
+  if (explicit) return explicit;
+  // Otherwise the pooler, if a host has been named for it.
+  const poolerHost = Deno.env.get("DATA_CENTER_POOLER_HOST");
+  if (poolerHost && direct) return poolerUrlFrom(direct, poolerHost);
+  if (!direct) throw new Error("Neither DATA_CENTER_DB_URL nor SUPABASE_DB_URL is configured");
+  return direct;
 }
 
 /**
@@ -130,6 +157,36 @@ export async function openConnection(): Promise<Conn> {
   const client = new Client(connectionString());
   await client.connect();
   return client;
+}
+
+/**
+ * A connection to the database itself, never through a pooler.
+ *
+ * For work that needs the session to survive between statements. Transaction
+ * pooling gives one server connection per transaction, not per session, so a
+ * SESSION-level advisory lock taken in one statement is not guaranteed to be
+ * held by the next. The computation takes exactly such a lock to make itself
+ * unrunnable twice at once, and it is the only thing in the module that does;
+ * everything else uses `pg_try_advisory_xact_lock` and `set_config(..., true)`,
+ * which are transaction-scoped and pool safely.
+ *
+ * Measured through the pooler on 2026-09-16, a session lock taken and released
+ * in two statements did succeed. That is not proof: it means both statements
+ * happened to land on the same server connection. This exists so the
+ * computation never has to rely on that.
+ */
+export async function withDirectConnection<T>(work: (conn: Conn) => Promise<T>): Promise<T> {
+  const client = new Client(connectionString("direct"));
+  await client.connect();
+  try {
+    return await work(client);
+  } finally {
+    try {
+      await client.end();
+    } catch {
+      /* already gone; nothing left to close */
+    }
+  }
 }
 
 export async function closeConnection(conn: Conn | null): Promise<void> {

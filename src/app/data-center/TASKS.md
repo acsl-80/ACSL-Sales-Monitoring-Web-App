@@ -12,6 +12,8 @@ One statement was 65% of the database's time: a badge counting 113 rows in twelv
 
 - [ ] S2 `v_corrections` and `routeFor` reach a correction's transfer through the stove's indexed stock row instead of expanding every transfer's JSON; the routing helper gains the ordering it never had. Both routes compared on production for all 114 corrections on every column, identical. Spec `data-center-corrections-by-stock`. Deploy list: data-center-corrections, data-center-write Spec `data-center-badge-one-pass`. Deploy list: data-center-corrections
 
+- [ ] S3 the module reaches the database through the transaction pooler, switched by a hostname rather than a second connection string; the computation stays on a direct connection because its lock is session-level. Sandbox: 27 of 27 with the pooler live, and a light read about 10 to 16 per cent quicker. Deploy list: every data-center-* function, then set DATA_CENTER_POOLER_HOST
+
 ## Phase 31, a refused finish leaves a record (his ask 2026-09-16)
 
 A typist reported that pressing Finish did not save a receipt as finished, and nothing anywhere could say why. Decision D57.
