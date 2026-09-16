@@ -90,9 +90,20 @@ type Conn = Client;
  */
 function poolerUrlFrom(direct: string, host: string): string {
   const u = new URL(direct);
+  if (!/^db\..+\.supabase\.co$/.test(u.hostname) || !u.password) {
+    // Not the shape this derivation knows how to read. Say so rather than
+    // guess: a wrong URL here would fail at connect time with an error about
+    // a user nobody configured, which is a bad way to learn this.
+    throw new Error(
+      `Cannot derive a pooler URL from a database host of "${u.hostname}"; set DATA_CENTER_DB_URL explicitly instead`,
+    );
+  }
   const ref = u.hostname.replace(/^db\./, "").replace(/\.supabase\.co$/, "");
   const password = decodeURIComponent(u.password);
-  return `postgresql://postgres.${ref}:${encodeURIComponent(password)}@${host}:6543/postgres`;
+  // The database and any options come from the URL rather than being assumed,
+  // so pointing this at a non-default database keeps working.
+  const database = u.pathname && u.pathname !== "/" ? u.pathname : "/postgres";
+  return `postgresql://postgres.${ref}:${encodeURIComponent(password)}@${host}:6543${database}${u.search}`;
 }
 
 function connectionString(mode: "pooled" | "direct" = "pooled"): string {
@@ -174,6 +185,11 @@ export async function openConnection(): Promise<Conn> {
  * in two statements did succeed. That is not proof: it means both statements
  * happened to land on the same server connection. This exists so the
  * computation never has to rely on that.
+ *
+ * An explicit `DATA_CENTER_DB_URL` is ignored here on purpose. That override
+ * exists to route the module through a pooler, and this is the one path that
+ * must not be routed through one. If it is ever repurposed to point the module
+ * at a different database, this function needs revisiting with it.
  */
 export async function withDirectConnection<T>(work: (conn: Conn) => Promise<T>): Promise<T> {
   const client = new Client(connectionString("direct"));
