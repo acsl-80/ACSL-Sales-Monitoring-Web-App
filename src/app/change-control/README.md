@@ -51,8 +51,11 @@ any triage action. Those stay ERP-only.
 - `api.ts` — the one door, described above.
 - `types.ts` — shapes mirrored from the edge function's contract.
 - `lib/status.ts` — status labels and tone-to-colour classes for `StatusChip`.
-- `lib/url.ts` — the one guard used both to validate a typed page link and to
-  decide whether `?from=` is safe to prefill.
+- `lib/url.ts` — validates a typed page link. `?from=` is handled separately
+  in `new/page.tsx`: TanStack's `location.href` is path + query + hash only,
+  so the sidebar's `?from=` arrives relative — it is resolved against
+  `window.location.origin` and accepted only when the result's origin still
+  matches this app's, which also refuses a crafted `?from=https://elsewhere`.
 - `lib/images.ts` — downscales a picked screenshot before upload (ported
   unchanged from the ERP's own change-control picker).
 - `hooks/useChangeControlForm.ts` — the form's option lists and attachment
@@ -60,8 +63,10 @@ any triage action. Those stay ERP-only.
 - `hooks/useMyRequests.ts` — the person's requests; `refresh()` invalidates
   this after a raise, a reply, or a confirm, so both screens update.
 - `components/` — `ChangeControlGuard` (the permission gate every page uses),
-  `StatusChip`, `ScreenshotPicker`, `FileGallery`, `RequestThread`,
-  `RequesterActions`.
+  `StatusChip`, `ScreenshotPicker`, `RequestThread`, `RequesterActions`. A
+  request's `files` field is a count, not a list of attachments (the list
+  action never hands back a per-file url), so the thread and the detail page
+  only ever say how many screenshots are attached, never show them.
 - `page.tsx` (`/change-control`, My requests), `new/page.tsx`
   (`/change-control/new`, the form), `[ref]/page.tsx`
   (`/change-control/$ref`, one request).

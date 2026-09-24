@@ -15,7 +15,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { useToastNotification } from "../../contexts/useToastNotification";
-import { attachScreenshots, raiseRequest } from "../api";
+import { attachScreenshots, ChangeControlError, raiseRequest } from "../api";
 import ChangeControlGuard from "../components/ChangeControlGuard";
 import ScreenshotPicker from "../components/ScreenshotPicker";
 import { useChangeControlForm } from "../hooks/useChangeControlForm";
@@ -64,14 +64,25 @@ export default function NewChangeRequestPage() {
   const [files, setFiles] = useState<PendingFile[]>([]);
   const [submitting, setSubmitting] = useState(false);
   const [result, setResult] = useState<{ ref: string } | null>(null);
+  const [attaching, setAttaching] = useState(false);
   const [attachError, setAttachError] = useState<string | null>(null);
 
-  // Prefilled once from ?from=, and only when it is an actual web link — never
-  // a bare path or anything else the sidebar footer did not put there.
+  // Prefilled once from ?from=. TanStack's location.href is path + query +
+  // hash only (no origin), so the sidebar's ?from= arrives relative — resolve
+  // it against this origin before judging it, and only accept the result
+  // when it still lands on this origin. That also refuses a crafted
+  // ?from=https://elsewhere, which would otherwise resolve as its own
+  // absolute URL and pass a bare isHttpUrl check.
   useEffect(() => {
     const from = searchParams.get("from");
-    if (from && isHttpUrl(from)) {
-      setValues((prev) => (prev.page_url ? prev : { ...prev, page_url: from }));
+    if (!from) return;
+    try {
+      const resolved = new URL(from, window.location.origin);
+      if (resolved.origin === window.location.origin) {
+        setValues((prev) => (prev.page_url ? prev : { ...prev, page_url: resolved.href }));
+      }
+    } catch {
+      // Not a usable link; leave page_url blank.
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
@@ -109,10 +120,12 @@ export default function NewChangeRequestPage() {
     if (index === 2) {
       const title = values.title.trim();
       const whatHappened = values.what_happened.trim();
+      const whatExpected = values.what_expected.trim();
       if (title.length < 5 || title.length > 160)
         next.title = "Give it a short name, 5 to 160 characters.";
-      if (whatHappened.length < 10)
-        next.what_happened = "Say a bit more about what happened (at least 10 characters).";
+      if (whatHappened.length < 10 || whatHappened.length > 10000)
+        next.what_happened = "Say a bit more about what happened (10 to 10,000 characters).";
+      if (whatExpected.length > 10000) next.what_expected = "Keep it under 10,000 characters.";
     }
     if (index === 4 && !values.impact) next.impact = "Choose how much this affects your work.";
     setErrors((prev) => ({ ...prev, ...next }));
@@ -150,6 +163,7 @@ export default function NewChangeRequestPage() {
       setResult({ ref: raised.ref });
 
       if (files.length > 0) {
+        setAttaching(true);
         try {
           await attachScreenshots(
             raised.id,
@@ -157,12 +171,24 @@ export default function NewChangeRequestPage() {
           );
         } catch (err) {
           setAttachError(err instanceof Error ? err.message : "Could not attach the screenshots.");
+        } finally {
+          setAttaching(false);
         }
       }
       revokePendingFiles(files);
       setFiles([]);
       void refresh();
     } catch (err) {
+      // A timeout on the raise itself leaves the person unsure whether it
+      // went through — the server says it may have. Rather than leave the
+      // form filled in with Submit re-enabled (inviting a duplicate), send
+      // them to My requests, where the new request will show up once it has.
+      if (err instanceof ChangeControlError && err.status === 504) {
+        void refresh();
+        toast.info("Change Control did not answer in time", err.message);
+        router.push("/change-control");
+        return;
+      }
       toast.error(
         "Could not raise the request",
         err instanceof Error ? err.message : "Something went wrong.",
@@ -297,6 +323,9 @@ export default function NewChangeRequestPage() {
                       rows={3}
                       placeholder="What did you expect instead?"
                     />
+                    {errors.what_expected && (
+                      <p className="text-sm text-red-600">{errors.what_expected}</p>
+                    )}
                   </div>
                 </div>
               </StepSection>
@@ -375,6 +404,8 @@ export default function NewChangeRequestPage() {
                 <h1 className="text-xl font-bold">Raised as {result.ref}</h1>
               </div>
               <p className="text-sm text-gray-600">Status changes show in My requests.</p>
+
+              {attaching && <p className="text-sm text-gray-500">Attaching screenshots...</p>}
 
               {attachError && (
                 <div className="rounded-md border border-amber-200 bg-amber-50 p-3 text-sm text-amber-800">

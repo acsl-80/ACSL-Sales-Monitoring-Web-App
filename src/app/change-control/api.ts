@@ -26,28 +26,52 @@ import type {
 const FUNCTION_NAME = "change-request-intake";
 const FALLBACK_ERROR = "Change Control could not do that just now. Please try again later.";
 
+/**
+ * Thrown by every call in this module. `status` is the HTTP status the
+ * function answered with (404, 429, 504, ...) when known, so a screen can
+ * tell "the request was refused" (400) from "it may have gone through, the
+ * answer just did not arrive in time" (504) rather than treating every
+ * failure the same way.
+ */
+export class ChangeControlError extends Error {
+  status?: number;
+
+  constructor(message: string, status?: number) {
+    super(message);
+    this.name = "ChangeControlError";
+    this.status = status;
+  }
+}
+
 // supabase-js hands back an HTTP error as `error` (a FunctionsHttpError) whose
 // `.context` is the raw Response — the function's own `{ error: "..." }` body
-// lives there, not on the error object itself.
-async function messageFromInvokeError(error: unknown): Promise<string> {
+// and its status live there, not on the error object itself.
+async function detailsFromInvokeError(
+  error: unknown,
+): Promise<{ message: string; status?: number }> {
   const withContext = error as { context?: Response; message?: string } | null;
   if (withContext?.context && typeof withContext.context.json === "function") {
+    const status = withContext.context.status;
     try {
       const body = await withContext.context.json();
-      if (body && typeof body.error === "string") return body.error;
+      if (body && typeof body.error === "string") return { message: body.error, status };
     } catch {
       // The server's own body could not be read as JSON; fall through.
     }
+    return { message: withContext.message || FALLBACK_ERROR, status };
   }
-  return withContext?.message || FALLBACK_ERROR;
+  return { message: withContext?.message || FALLBACK_ERROR };
 }
 
 async function invoke<T>(body: BodyInit | Record<string, unknown>): Promise<T> {
   const supabase = getSupabase();
   const { data, error } = await supabase.functions.invoke(FUNCTION_NAME, { body });
-  if (error) throw new Error(await messageFromInvokeError(error));
+  if (error) {
+    const { message, status } = await detailsFromInvokeError(error);
+    throw new ChangeControlError(message, status);
+  }
   if (data && typeof data === "object" && typeof (data as { error?: unknown }).error === "string") {
-    throw new Error((data as { error: string }).error);
+    throw new ChangeControlError((data as { error: string }).error);
   }
   return data as T;
 }

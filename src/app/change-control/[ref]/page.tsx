@@ -5,7 +5,6 @@ import Link from "@/compat/Link";
 import { Card, CardContent } from "@/components/ui/card";
 import { formatDate } from "../../utils/formatDate";
 import ChangeControlGuard from "../components/ChangeControlGuard";
-import FileGallery from "../components/FileGallery";
 import RequesterActions from "../components/RequesterActions";
 import RequestThread from "../components/RequestThread";
 import StatusChip from "../components/StatusChip";
@@ -21,14 +20,13 @@ const Field = ({ label, children }: { label: string; children: React.ReactNode }
 /** /change-control/$ref — one request: its details, its screenshots, and its thread. */
 export default function ChangeControlDetailPage() {
   const { ref } = useParams<{ ref: string }>();
-  const { requests, isLoading, error, refresh } = useMyRequests();
+  const { requests, isLoading, isFetching, error, refresh } = useMyRequests();
 
   const request = useMemo(() => requests.find((r) => r.ref === ref) ?? null, [requests, ref]);
   const mergedTargetKnown = useMemo(
     () => !!request?.merged_into && requests.some((r) => r.ref === request.merged_into),
     [requests, request],
   );
-  const screenshots = useMemo(() => (request?.files ?? []).filter((f) => !f.comment_id), [request]);
 
   return (
     <ChangeControlGuard
@@ -48,7 +46,7 @@ export default function ChangeControlDetailPage() {
           </div>
         )}
 
-        {!isLoading && !request && !error && (
+        {!isLoading && !isFetching && !request && !error && (
           <Card>
             <CardContent className="p-8 text-center text-gray-600">
               There is no request at this reference, or it is not one of yours.
@@ -133,21 +131,18 @@ export default function ChangeControlDetailPage() {
               </section>
             )}
 
-            {screenshots.length > 0 && (
-              <section className="space-y-2">
-                <h2 className="text-sm font-semibold text-gray-700">Screenshots</h2>
-                <FileGallery files={screenshots} />
-              </section>
+            {request.files > 0 && (
+              <p className="text-sm text-gray-600">
+                {request.files} {request.files === 1 ? "screenshot" : "screenshots"} attached.
+              </p>
             )}
 
             <RequesterActions request={request} onDone={refresh} />
 
-            {!request.limited && (
-              <section className="space-y-2">
-                <h2 className="text-sm font-semibold text-gray-700">Thread</h2>
-                <RequestThread request={request} onPosted={refresh} />
-              </section>
-            )}
+            <section className="space-y-2">
+              <h2 className="text-sm font-semibold text-gray-700">Thread</h2>
+              <RequestThread request={request} onPosted={refresh} />
+            </section>
           </>
         )}
 

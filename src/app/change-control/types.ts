@@ -60,23 +60,6 @@ export type ChangeControlStatusTone =
   | "reopen"
   | "closed";
 
-// The list action's contract names a `files` array on a request but does not
-// pin down one file's own shape beyond "files" (see the edge function's
-// header). This is read defensively in components/FileGallery.tsx across the
-// field names an attachment row is known to carry on the ERP side.
-export type ChangeControlFile = {
-  id?: string;
-  comment_id?: string | null;
-  file_name?: string;
-  name?: string;
-  mime_type?: string;
-  type?: string;
-  url?: string;
-  signed_url?: string;
-  download_url?: string;
-  size_bytes?: number;
-};
-
 export type ChangeControlRequest = {
   id: string;
   ref: string;
@@ -103,7 +86,11 @@ export type ChangeControlRequest = {
   limited: boolean;
   merged_into: string | null;
   summary: string | null;
-  files: ChangeControlFile[];
+  // A count, not a list (cc_intake_list counts public.cc_attachments — see
+  // erp-web's 20260924210000_change_control_sales_bridge.sql). The list
+  // action never hands back a per-file url, so there is nothing to link to
+  // or preview; this is shown as "N screenshots attached".
+  files: number;
   thread: ThreadItem[];
 };
 
