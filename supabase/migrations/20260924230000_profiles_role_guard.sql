@@ -24,7 +24,11 @@
 --      and gets no role and no organisation until a super admin gives it one.
 --
 -- No row changes. The one direct client write to profiles, User Management's super-admin fallback in
--- UserManagementContent.jsx, is a super admin's and still works.
+-- UserManagementContent.jsx, already matched no rows before this file (the read policy shows a person
+-- only their own row); the app does that work through manage-users.
+--
+-- Part 2 was reversed the same evening by 20260924233000: the admin API confirms an account after
+-- inserting it, so the trigger took every admin-created account for a sign-up.
 --
 -- REVERSAL:
 --   drop trigger if exists profiles_guard_privileged_columns on public.profiles;
