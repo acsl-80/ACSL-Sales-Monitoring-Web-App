@@ -70,7 +70,8 @@ export type FeatureKey =
   | "edit-any-partner"
   | "edit-any-agent"
   | "view-all-records"
-  | "tools";
+  | "tools"
+  | "change-control-link";
 
 interface RolePermissions {
   routes: RouteKey[];
@@ -143,6 +144,7 @@ const ALL_FEATURES: FeatureKey[] = [
   "edit-any-agent",
   "view-all-records",
   "tools",
+  "change-control-link",
 ];
 
 export const PERMISSIONS: Record<string, RolePermissions> = {
@@ -184,6 +186,7 @@ export const PERMISSIONS: Record<string, RolePermissions> = {
       "manage-partner-agents",
       "user-management",
       "org-sales-view",
+      "change-control-link",
     ],
   },
   acsl_agent: {
@@ -208,7 +211,13 @@ export const PERMISSIONS: Record<string, RolePermissions> = {
       "user-guide",
       "sales-monitoring-app",
     ],
-    features: ["my-partners-filter", "stove-allocation", "create-sale", "org-sales-view"],
+    features: [
+      "my-partners-filter",
+      "stove-allocation",
+      "create-sale",
+      "org-sales-view",
+      "change-control-link",
+    ],
   },
   partner: {
     // Partners: no Partner Management, no ACSL Agents Profile, no Performance Report (ACSL),

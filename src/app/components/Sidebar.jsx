@@ -1,8 +1,10 @@
 
 import { useState } from "react";
 import { useRouter } from "@/compat/navigation";
+import { useRouterState } from "@tanstack/react-router";
 import { useAuth } from "../contexts/useAuth";
 import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
 import {
   ShoppingCart,
   X,
@@ -27,10 +29,12 @@ import {
   BookOpen,
   HelpCircle,
   Database,
+  MessageSquarePlus,
 
 } from "lucide-react";
 import { usePermissions } from "../hooks/usePermissions";
 import { useDataCenterModuleAccess } from "../data-center/lib/useModuleAccess";
+import { buildChangeControlUrl } from "@/lib/changeControl";
 import Link from "@/compat/Link";
 
 // Single canonical nav. Visibility is driven entirely by permissions —
@@ -110,13 +114,22 @@ const allNavItems = [
 const Sidebar = ({ isOpen, onClose, currentRoute }) => {
   const router = useRouter();
   const { isAcslAgent, isAcslAgentManager } = useAuth();
-  const { canRoute, isSuperAdmin } = usePermissions();
+  const { can, canRoute, isSuperAdmin } = usePermissions();
 
   // Data Center access is granted per USER, case by case, which the static
   // role map cannot express. This hook (cached per session) supplements it for
   // exactly one nav item; showing the entry is presentation, and the module
   // and its endpoints re-check access for real.
   const hasDataCenterAccess = useDataCenterModuleAccess(!isSuperAdmin);
+
+  // The sidebar mounts once in the persistent shell and does not remount on
+  // navigation (see DashboardLayout.tsx), so a render-time read of
+  // window.location.href would go stale. Subscribing to the route forces a
+  // re-render on every navigation, which keeps the change-control link's
+  // `from` current. It selects the full href, not the pathname, so a change of
+  // only the query (a tab, a filter) re-renders it too.
+  useRouterState({ select: (s) => s.location.href });
+  const showChangeControlLink = can("change-control-link");
 
   const [expandedItems, setExpandedItems] = useState({});
 
@@ -155,6 +168,16 @@ const Sidebar = ({ isOpen, onClose, currentRoute }) => {
   };
 
   const handleOverlayClick = () => {
+    if (typeof window !== "undefined" && window.innerWidth < 1024) onClose();
+  };
+
+  // The change-control link opens the ERP in a new tab rather than routing
+  // within this app, so it does not go through navigateToRoute — but on a
+  // phone, where the sidebar is a drawer, it closes the same way every other
+  // link does.
+  const handleChangeControlClick = (e) => {
+    // Built again at click time, so `from` is the page as it is now, whatever rendered last.
+    e.currentTarget.href = buildChangeControlUrl();
     if (typeof window !== "undefined" && window.innerWidth < 1024) onClose();
   };
 
@@ -275,6 +298,35 @@ const Sidebar = ({ isOpen, onClose, currentRoute }) => {
           })}
         </nav>
 
+        {showChangeControlLink && (
+          <div className="border-t border-gray-200 p-3 flex-shrink-0">
+            <div className="rounded-lg bg-white p-3 space-y-2">
+              <p className="text-sm font-semibold text-gray-900">
+                See a problem or have an idea?
+              </p>
+              <p className="text-xs text-gray-500">
+                Raise it in the ACSL ERP with a screenshot. The page you are on is recorded for you.
+              </p>
+              <Button
+                asChild
+                size="sm"
+                className="w-full justify-center gap-2 bg-[#4a5d0f] text-white hover:bg-[#3d4d0c]"
+              >
+                <a
+                  href={buildChangeControlUrl()}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  aria-label="Request a change"
+                  title="Report a problem or ask for a change. Opens the ACSL ERP; you sign in with your ERP login."
+                  onClick={handleChangeControlClick}
+                >
+                  <MessageSquarePlus className="h-4 w-4 flex-shrink-0" />
+                  <span>Request a change</span>
+                </a>
+              </Button>
+            </div>
+          </div>
+        )}
       </div>
     </>
   );
