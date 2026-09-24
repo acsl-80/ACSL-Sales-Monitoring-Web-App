@@ -1,15 +1,12 @@
 
 import { useState, useEffect } from "react";
 import { Button } from "@/components/ui/button";
-import { LogOut, User, PanelLeft, Smartphone, MessageSquarePlus } from "lucide-react";
-import { useRouterState } from "@tanstack/react-router";
+import { LogOut, User, PanelLeft, Smartphone } from "lucide-react";
 import { useAuth } from "../contexts/useAuth";
 import { useRouter } from "@/compat/navigation";
 import { useToastNotification } from "../contexts/useToastNotification";
-import { usePermissions } from "../hooks/usePermissions";
 import manageProfileService from "../services/manageProfileService";
 import UserProfileModal from "./UserProfileModal";
-import { buildChangeControlUrl } from "@/lib/changeControl";
 
 // Module-level cache so we don't re-fetch /manage-profile on every layout
 // mount or sidebar navigation. Keyed by user id.
@@ -27,13 +24,6 @@ const TopNavigation = ({
   const { signOut, isAuthenticated, user } = useAuth();
   const router = useRouter();
   const { toast } = useToastNotification();
-  const { can } = usePermissions();
-  // TopNavigation lives in the persistent shell and does not remount on
-  // navigation (see DashboardLayout.tsx); subscribing to the route keeps the
-  // change-control link's `from` URL current instead of stuck on the page
-  // that first mounted the shell.
-  useRouterState({ select: (s) => s.location.pathname });
-  const showChangeControlLink = can("change-control-link");
 
   const userId = user?.id || authUser?.id || null;
   const [userProfile, setUserProfile] = useState(() =>
@@ -162,28 +152,6 @@ const TopNavigation = ({
               </span>
             </a>
           </Button>
-
-          {showChangeControlLink && (
-            <Button
-              variant="ghost"
-              size="sm"
-              asChild
-              className="inline-flex items-center gap-2 px-2 sm:px-3 text-gray-700 hover:bg-gray-50 shadow-none"
-            >
-              <a
-                href={buildChangeControlUrl()}
-                target="_blank"
-                rel="noopener noreferrer"
-                aria-label="Request a change"
-                title="Report a problem or ask for a change. Opens the ACSL ERP; you sign in with your ERP login."
-              >
-                <MessageSquarePlus className="h-4 w-4 flex-shrink-0" />
-                <span className="hidden whitespace-nowrap text-xs sm:inline sm:text-sm">
-                  Request a change
-                </span>
-              </a>
-            </Button>
-          )}
 
           <Button
             variant="ghost"
