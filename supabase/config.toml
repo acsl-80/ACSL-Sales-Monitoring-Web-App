@@ -424,3 +424,9 @@ verify_jwt = true
 # the rest of config.toml.
 [functions.sale-dictionary]
 verify_jwt = true
+
+# Change Control from inside the sales app (D14 to D16). Checks the session and role itself and calls
+# the ERP with a key from this project's secrets. Declared so a merge to main deploys it, and so a PR's
+# preview branch carries it.
+[functions.change-request-intake]
+verify_jwt = true

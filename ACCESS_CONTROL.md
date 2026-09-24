@@ -46,6 +46,7 @@ Legend: **Full access** = complete module access • **No Access / Hidden** = me
 - All users log in and land on the same `/dashboard` route (single redirect for all roles).
 - All users share the same sidebar and view scaffolding as Super Admin; visibility is filtered via `canRoute` permission checks, not separate layouts.
 - Users at every level only see information/records relevant to them (org/assignment-based row scoping).
+- Change Control (`change-control-link`) is for ACSL staff only: super admins, ACSL agent managers and ACSL agents. The server function `change-request-intake` checks the same three roles (and the alias `super_admin_agent`) on every call and refuses partners and partner agents whatever the screen shows; keep the two in step.
 - **Partners and Partner Agents**: no access to Partner Management or Agent Management.
 - **Partners**: no access to the ACSL Agents Performance Report tab.
 - **Partners**: in User Management, can create **only** Partner Agent users; the role dropdown is locked to "Partner Agent" and the partner's own organization is preselected in the form (no picker choice).
