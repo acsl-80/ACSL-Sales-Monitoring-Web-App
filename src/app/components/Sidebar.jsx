@@ -4,7 +4,6 @@ import { useRouter } from "@/compat/navigation";
 import { useRouterState } from "@tanstack/react-router";
 import { useAuth } from "../contexts/useAuth";
 import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
 import {
   ShoppingCart,
   X,
@@ -34,7 +33,6 @@ import {
 } from "lucide-react";
 import { usePermissions } from "../hooks/usePermissions";
 import { useDataCenterModuleAccess } from "../data-center/lib/useModuleAccess";
-import { buildChangeControlUrl } from "@/lib/changeControl";
 import Link from "@/compat/Link";
 
 // Single canonical nav. Visibility is driven entirely by permissions —
@@ -128,8 +126,9 @@ const Sidebar = ({ isOpen, onClose, currentRoute }) => {
   // re-render on every navigation, which keeps the change-control link's
   // `from` current. It selects the full href, not the pathname, so a change of
   // only the query (a tab, a filter) re-renders it too.
-  useRouterState({ select: (s) => s.location.href });
+  const currentHref = useRouterState({ select: (s) => s.location.href });
   const showChangeControlLink = can("change-control-link");
+  const changeControlHref = `/change-control/new?from=${encodeURIComponent(currentHref)}`;
 
   const [expandedItems, setExpandedItems] = useState({});
 
@@ -168,16 +167,6 @@ const Sidebar = ({ isOpen, onClose, currentRoute }) => {
   };
 
   const handleOverlayClick = () => {
-    if (typeof window !== "undefined" && window.innerWidth < 1024) onClose();
-  };
-
-  // The change-control link opens the ERP in a new tab rather than routing
-  // within this app, so it does not go through navigateToRoute — but on a
-  // phone, where the sidebar is a drawer, it closes the same way every other
-  // link does.
-  const handleChangeControlClick = (e) => {
-    // Built again at click time, so `from` is the page as it is now, whatever rendered last.
-    e.currentTarget.href = buildChangeControlUrl();
     if (typeof window !== "undefined" && window.innerWidth < 1024) onClose();
   };
 
@@ -305,25 +294,25 @@ const Sidebar = ({ isOpen, onClose, currentRoute }) => {
                 See a problem or have an idea?
               </p>
               <p className="text-xs text-gray-500">
-                Raise it in the ACSL ERP with a screenshot. The page you are on is recorded for you.
+                Raise it here with a screenshot. The page you are on is recorded for you.
               </p>
-              <Button
-                asChild
-                size="sm"
-                className="w-full justify-center gap-2 bg-[#4a5d0f] text-white hover:bg-[#3d4d0c]"
+              <Link
+                href={changeControlHref}
+                aria-label="Request a change"
+                title="Report a problem or ask for a change"
+                onClick={() => navigateToRoute(changeControlHref)}
+                className="inline-flex w-full items-center justify-center gap-2 rounded-md bg-[#4a5d0f] px-3 py-1.5 text-xs font-medium text-white transition-colors hover:bg-[#3d4d0c]"
               >
-                <a
-                  href={buildChangeControlUrl()}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  aria-label="Request a change"
-                  title="Report a problem or ask for a change. Opens the ACSL ERP; you sign in with your ERP login."
-                  onClick={handleChangeControlClick}
-                >
-                  <MessageSquarePlus className="h-4 w-4 flex-shrink-0" />
-                  <span>Request a change</span>
-                </a>
-              </Button>
+                <MessageSquarePlus className="h-4 w-4 flex-shrink-0" />
+                <span>Request a change</span>
+              </Link>
+              <Link
+                href="/change-control"
+                onClick={() => navigateToRoute("/change-control")}
+                className="block text-center text-xs text-gray-500 hover:text-[#4a5d0f] hover:underline"
+              >
+                My requests
+              </Link>
             </div>
           </div>
         )}
