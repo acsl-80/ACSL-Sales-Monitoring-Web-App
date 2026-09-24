@@ -126,8 +126,9 @@ const Sidebar = ({ isOpen, onClose, currentRoute }) => {
   // navigation (see DashboardLayout.tsx), so a render-time read of
   // window.location.href would go stale. Subscribing to the route forces a
   // re-render on every navigation, which keeps the change-control link's
-  // `from` current.
-  useRouterState({ select: (s) => s.location.pathname });
+  // `from` current. It selects the full href, not the pathname, so a change of
+  // only the query (a tab, a filter) re-renders it too.
+  useRouterState({ select: (s) => s.location.href });
   const showChangeControlLink = can("change-control-link");
 
   const [expandedItems, setExpandedItems] = useState({});
@@ -174,7 +175,9 @@ const Sidebar = ({ isOpen, onClose, currentRoute }) => {
   // within this app, so it does not go through navigateToRoute — but on a
   // phone, where the sidebar is a drawer, it closes the same way every other
   // link does.
-  const handleChangeControlClick = () => {
+  const handleChangeControlClick = (e) => {
+    // Built again at click time, so `from` is the page as it is now, whatever rendered last.
+    e.currentTarget.href = buildChangeControlUrl();
     if (typeof window !== "undefined" && window.innerWidth < 1024) onClose();
   };
 

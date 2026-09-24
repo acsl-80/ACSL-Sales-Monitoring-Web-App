@@ -37,6 +37,7 @@ This app is **one application** with **one UI, one navigation system, one compon
 | Track Stoves | All stoves | Assigned partner stoves | Assigned partner stoves | Organization stoves | Assigned stoves |
 | Map | Full access | No Access | No Access | No Access | No Access |
 | Settings | Full access | No Access | No Access | No Access | No Access |
+| Sidebar footer: Request a change (opens the ACSL ERP's Change Control form; permission `change-control-link`) | Yes | Yes | Yes | No | No |
 
 Legend: **Full access** = complete module access • **No Access / Hidden** = menu item not visible or restricted for this role.
 
@@ -65,6 +66,7 @@ Legend: **Full access** = complete module access • **No Access / Hidden** = me
 - **acsl_agent** — like manager, minus User Management and ACSL Agents Profile (Agent Management → ACSL Agents).
 - **partner** — no Partner Management, no ACSL Agents Profile, no Map, no Settings, no User Groups. Performance Report shows the **Partners tab only** (own organization). Still sees User Manager, Partner Agents Profile, Sales, Stove Users Data, Track Stoves.
 - **partner_agent / agent** — Dashboard, Sales, Sell Stove, Stove Manager, Stove Users Data, Sales Monitoring App only.
+- **Request a change** (sidebar footer) — super_admin, acsl_agent_manager and acsl_agent only (and super_admin_agent, which resolves to acsl_agent). It opens the ACSL ERP's Change Control form in a new tab with `app=sales-web` and the current page as `from`; the address comes from `VITE_ERP_CHANGE_CONTROL_URL`. Partners and partner agents report through their ACSL contact (Change Control decision D1).
 
 ## User Manager (create-user) form rules
 
