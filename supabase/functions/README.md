@@ -54,8 +54,9 @@ deploy that function. Everything else in this directory it ignores: across
 pushes that added `data-center-read` and `data-center-admin`, it deployed
 neither, and both had to go out by hand.
 
-Two blocks are declared today, `end-user-records-api` and `get-end-user-api-key`,
-and those two are the only functions the integration has ever touched.
+Four blocks are declared today: `end-user-records-api`, `get-end-user-api-key`,
+`sale-dictionary` and `change-request-intake`. Only those four are deployed by the
+integration; every other function goes out by hand.
 
 **This happens on a merge to `main`, not only at branch creation.** An earlier
 version of this file said branch creation only. That was wrong, and merging
