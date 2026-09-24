@@ -31,6 +31,7 @@ import { Route as DownloadIndexRouteImport } from './routes/download/index'
 import { Route as DocsIndexRouteImport } from './routes/docs/index'
 import { Route as DataCenterIndexRouteImport } from './routes/data-center/index'
 import { Route as DashboardIndexRouteImport } from './routes/dashboard/index'
+import { Route as ChangeControlIndexRouteImport } from './routes/change-control/index'
 import { Route as AppIndexRouteImport } from './routes/app/index'
 import { Route as AgreementImagesIndexRouteImport } from './routes/agreement-images/index'
 import { Route as AgentsIndexRouteImport } from './routes/agents/index'
@@ -48,6 +49,7 @@ import { Route as DataCenterDashboardRouteImport } from './routes/data-center/da
 import { Route as DataCenterCorrectionsRouteImport } from './routes/data-center/corrections'
 import { Route as DataCenterCallCentreRouteImport } from './routes/data-center/call-centre'
 import { Route as DataCenterAnalysisRouteImport } from './routes/data-center/analysis'
+import { Route as ChangeControlNewRouteImport } from './routes/change-control/new'
 import { Route as AgentsProfilesRouteImport } from './routes/agents/profiles'
 import { Route as AgentsPartnerAgentsProfilesRouteImport } from './routes/agents/partner-agents-profiles'
 import { Route as UserManagementUsersIndexRouteImport } from './routes/user-management/users/index'
@@ -68,6 +70,7 @@ import { Route as SalesIdIndexRouteImport } from './routes/sales/$id/index'
 import { Route as EndUserRecordsApiIndexRouteImport } from './routes/end-user-records/api/index'
 import { Route as DocsSuperadminIndexRouteImport } from './routes/docs/superadmin/index'
 import { Route as DocsAdminIndexRouteImport } from './routes/docs/admin/index'
+import { Route as ChangeControlRefIndexRouteImport } from './routes/change-control/$ref/index'
 import { Route as AdminSystemConfigIndexRouteImport } from './routes/admin/system-config/index'
 import { Route as AdminSettingsIndexRouteImport } from './routes/admin/settings/index'
 import { Route as AdminSalesIndexRouteImport } from './routes/admin/sales/index'
@@ -202,6 +205,11 @@ const DashboardIndexRoute = DashboardIndexRouteImport.update({
   path: '/dashboard/',
   getParentRoute: () => rootRouteImport,
 } as any)
+const ChangeControlIndexRoute = ChangeControlIndexRouteImport.update({
+  id: '/change-control/',
+  path: '/change-control/',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const AppIndexRoute = AppIndexRouteImport.update({
   id: '/app/',
   path: '/app/',
@@ -286,6 +294,11 @@ const DataCenterCallCentreRoute = DataCenterCallCentreRouteImport.update({
 const DataCenterAnalysisRoute = DataCenterAnalysisRouteImport.update({
   id: '/data-center/analysis',
   path: '/data-center/analysis',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ChangeControlNewRoute = ChangeControlNewRouteImport.update({
+  id: '/change-control/new',
+  path: '/change-control/new',
   getParentRoute: () => rootRouteImport,
 } as any)
 const AgentsProfilesRoute = AgentsProfilesRouteImport.update({
@@ -398,6 +411,11 @@ const DocsSuperadminIndexRoute = DocsSuperadminIndexRouteImport.update({
 const DocsAdminIndexRoute = DocsAdminIndexRouteImport.update({
   id: '/docs/admin/',
   path: '/docs/admin/',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ChangeControlRefIndexRoute = ChangeControlRefIndexRouteImport.update({
+  id: '/change-control/$ref/',
+  path: '/change-control/$ref/',
   getParentRoute: () => rootRouteImport,
 } as any)
 const AdminSystemConfigIndexRoute = AdminSystemConfigIndexRouteImport.update({
@@ -520,6 +538,7 @@ export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
   '/agents/partner-agents-profiles': typeof AgentsPartnerAgentsProfilesRoute
   '/agents/profiles': typeof AgentsProfilesRoute
+  '/change-control/new': typeof ChangeControlNewRoute
   '/data-center/analysis': typeof DataCenterAnalysisRoute
   '/data-center/call-centre': typeof DataCenterCallCentreRoute
   '/data-center/corrections': typeof DataCenterCorrectionsRoute
@@ -537,6 +556,7 @@ export interface FileRoutesByFullPath {
   '/agents/': typeof AgentsIndexRoute
   '/agreement-images/': typeof AgreementImagesIndexRoute
   '/app/': typeof AppIndexRoute
+  '/change-control/': typeof ChangeControlIndexRoute
   '/dashboard/': typeof DashboardIndexRoute
   '/data-center/': typeof DataCenterIndexRoute
   '/docs/': typeof DocsIndexRoute
@@ -573,6 +593,7 @@ export interface FileRoutesByFullPath {
   '/admin/sales/': typeof AdminSalesIndexRoute
   '/admin/settings/': typeof AdminSettingsIndexRoute
   '/admin/system-config/': typeof AdminSystemConfigIndexRoute
+  '/change-control/$ref/': typeof ChangeControlRefIndexRoute
   '/docs/admin/': typeof DocsAdminIndexRoute
   '/docs/superadmin/': typeof DocsSuperadminIndexRoute
   '/end-user-records/api/': typeof EndUserRecordsApiIndexRoute
@@ -602,6 +623,7 @@ export interface FileRoutesByTo {
   '/': typeof IndexRoute
   '/agents/partner-agents-profiles': typeof AgentsPartnerAgentsProfilesRoute
   '/agents/profiles': typeof AgentsProfilesRoute
+  '/change-control/new': typeof ChangeControlNewRoute
   '/data-center/analysis': typeof DataCenterAnalysisRoute
   '/data-center/call-centre': typeof DataCenterCallCentreRoute
   '/data-center/corrections': typeof DataCenterCorrectionsRoute
@@ -619,6 +641,7 @@ export interface FileRoutesByTo {
   '/agents': typeof AgentsIndexRoute
   '/agreement-images': typeof AgreementImagesIndexRoute
   '/app': typeof AppIndexRoute
+  '/change-control': typeof ChangeControlIndexRoute
   '/dashboard': typeof DashboardIndexRoute
   '/data-center': typeof DataCenterIndexRoute
   '/docs': typeof DocsIndexRoute
@@ -655,6 +678,7 @@ export interface FileRoutesByTo {
   '/admin/sales': typeof AdminSalesIndexRoute
   '/admin/settings': typeof AdminSettingsIndexRoute
   '/admin/system-config': typeof AdminSystemConfigIndexRoute
+  '/change-control/$ref': typeof ChangeControlRefIndexRoute
   '/docs/admin': typeof DocsAdminIndexRoute
   '/docs/superadmin': typeof DocsSuperadminIndexRoute
   '/end-user-records/api': typeof EndUserRecordsApiIndexRoute
@@ -685,6 +709,7 @@ export interface FileRoutesById {
   '/': typeof IndexRoute
   '/agents/partner-agents-profiles': typeof AgentsPartnerAgentsProfilesRoute
   '/agents/profiles': typeof AgentsProfilesRoute
+  '/change-control/new': typeof ChangeControlNewRoute
   '/data-center/analysis': typeof DataCenterAnalysisRoute
   '/data-center/call-centre': typeof DataCenterCallCentreRoute
   '/data-center/corrections': typeof DataCenterCorrectionsRoute
@@ -702,6 +727,7 @@ export interface FileRoutesById {
   '/agents/': typeof AgentsIndexRoute
   '/agreement-images/': typeof AgreementImagesIndexRoute
   '/app/': typeof AppIndexRoute
+  '/change-control/': typeof ChangeControlIndexRoute
   '/dashboard/': typeof DashboardIndexRoute
   '/data-center/': typeof DataCenterIndexRoute
   '/docs/': typeof DocsIndexRoute
@@ -738,6 +764,7 @@ export interface FileRoutesById {
   '/admin/sales/': typeof AdminSalesIndexRoute
   '/admin/settings/': typeof AdminSettingsIndexRoute
   '/admin/system-config/': typeof AdminSystemConfigIndexRoute
+  '/change-control/$ref/': typeof ChangeControlRefIndexRoute
   '/docs/admin/': typeof DocsAdminIndexRoute
   '/docs/superadmin/': typeof DocsSuperadminIndexRoute
   '/end-user-records/api/': typeof EndUserRecordsApiIndexRoute
@@ -769,6 +796,7 @@ export interface FileRouteTypes {
     | '/'
     | '/agents/partner-agents-profiles'
     | '/agents/profiles'
+    | '/change-control/new'
     | '/data-center/analysis'
     | '/data-center/call-centre'
     | '/data-center/corrections'
@@ -786,6 +814,7 @@ export interface FileRouteTypes {
     | '/agents/'
     | '/agreement-images/'
     | '/app/'
+    | '/change-control/'
     | '/dashboard/'
     | '/data-center/'
     | '/docs/'
@@ -822,6 +851,7 @@ export interface FileRouteTypes {
     | '/admin/sales/'
     | '/admin/settings/'
     | '/admin/system-config/'
+    | '/change-control/$ref/'
     | '/docs/admin/'
     | '/docs/superadmin/'
     | '/end-user-records/api/'
@@ -851,6 +881,7 @@ export interface FileRouteTypes {
     | '/'
     | '/agents/partner-agents-profiles'
     | '/agents/profiles'
+    | '/change-control/new'
     | '/data-center/analysis'
     | '/data-center/call-centre'
     | '/data-center/corrections'
@@ -868,6 +899,7 @@ export interface FileRouteTypes {
     | '/agents'
     | '/agreement-images'
     | '/app'
+    | '/change-control'
     | '/dashboard'
     | '/data-center'
     | '/docs'
@@ -904,6 +936,7 @@ export interface FileRouteTypes {
     | '/admin/sales'
     | '/admin/settings'
     | '/admin/system-config'
+    | '/change-control/$ref'
     | '/docs/admin'
     | '/docs/superadmin'
     | '/end-user-records/api'
@@ -933,6 +966,7 @@ export interface FileRouteTypes {
     | '/'
     | '/agents/partner-agents-profiles'
     | '/agents/profiles'
+    | '/change-control/new'
     | '/data-center/analysis'
     | '/data-center/call-centre'
     | '/data-center/corrections'
@@ -950,6 +984,7 @@ export interface FileRouteTypes {
     | '/agents/'
     | '/agreement-images/'
     | '/app/'
+    | '/change-control/'
     | '/dashboard/'
     | '/data-center/'
     | '/docs/'
@@ -986,6 +1021,7 @@ export interface FileRouteTypes {
     | '/admin/sales/'
     | '/admin/settings/'
     | '/admin/system-config/'
+    | '/change-control/$ref/'
     | '/docs/admin/'
     | '/docs/superadmin/'
     | '/end-user-records/api/'
@@ -1016,6 +1052,7 @@ export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
   AgentsPartnerAgentsProfilesRoute: typeof AgentsPartnerAgentsProfilesRoute
   AgentsProfilesRoute: typeof AgentsProfilesRoute
+  ChangeControlNewRoute: typeof ChangeControlNewRoute
   DataCenterAnalysisRoute: typeof DataCenterAnalysisRoute
   DataCenterCallCentreRoute: typeof DataCenterCallCentreRoute
   DataCenterCorrectionsRoute: typeof DataCenterCorrectionsRoute
@@ -1033,6 +1070,7 @@ export interface RootRouteChildren {
   AgentsIndexRoute: typeof AgentsIndexRoute
   AgreementImagesIndexRoute: typeof AgreementImagesIndexRoute
   AppIndexRoute: typeof AppIndexRoute
+  ChangeControlIndexRoute: typeof ChangeControlIndexRoute
   DashboardIndexRoute: typeof DashboardIndexRoute
   DataCenterIndexRoute: typeof DataCenterIndexRoute
   DocsIndexRoute: typeof DocsIndexRoute
@@ -1069,6 +1107,7 @@ export interface RootRouteChildren {
   AdminSalesIndexRoute: typeof AdminSalesIndexRoute
   AdminSettingsIndexRoute: typeof AdminSettingsIndexRoute
   AdminSystemConfigIndexRoute: typeof AdminSystemConfigIndexRoute
+  ChangeControlRefIndexRoute: typeof ChangeControlRefIndexRoute
   DocsAdminIndexRoute: typeof DocsAdminIndexRoute
   DocsSuperadminIndexRoute: typeof DocsSuperadminIndexRoute
   EndUserRecordsApiIndexRoute: typeof EndUserRecordsApiIndexRoute
@@ -1251,6 +1290,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof DashboardIndexRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/change-control/': {
+      id: '/change-control/'
+      path: '/change-control'
+      fullPath: '/change-control/'
+      preLoaderRoute: typeof ChangeControlIndexRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/app/': {
       id: '/app/'
       path: '/app'
@@ -1368,6 +1414,13 @@ declare module '@tanstack/react-router' {
       path: '/data-center/analysis'
       fullPath: '/data-center/analysis'
       preLoaderRoute: typeof DataCenterAnalysisRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/change-control/new': {
+      id: '/change-control/new'
+      path: '/change-control/new'
+      fullPath: '/change-control/new'
+      preLoaderRoute: typeof ChangeControlNewRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/agents/profiles': {
@@ -1508,6 +1561,13 @@ declare module '@tanstack/react-router' {
       path: '/docs/admin'
       fullPath: '/docs/admin/'
       preLoaderRoute: typeof DocsAdminIndexRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/change-control/$ref/': {
+      id: '/change-control/$ref/'
+      path: '/change-control/$ref'
+      fullPath: '/change-control/$ref/'
+      preLoaderRoute: typeof ChangeControlRefIndexRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/admin/system-config/': {
@@ -1664,6 +1724,7 @@ const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
   AgentsPartnerAgentsProfilesRoute: AgentsPartnerAgentsProfilesRoute,
   AgentsProfilesRoute: AgentsProfilesRoute,
+  ChangeControlNewRoute: ChangeControlNewRoute,
   DataCenterAnalysisRoute: DataCenterAnalysisRoute,
   DataCenterCallCentreRoute: DataCenterCallCentreRoute,
   DataCenterCorrectionsRoute: DataCenterCorrectionsRoute,
@@ -1681,6 +1742,7 @@ const rootRouteChildren: RootRouteChildren = {
   AgentsIndexRoute: AgentsIndexRoute,
   AgreementImagesIndexRoute: AgreementImagesIndexRoute,
   AppIndexRoute: AppIndexRoute,
+  ChangeControlIndexRoute: ChangeControlIndexRoute,
   DashboardIndexRoute: DashboardIndexRoute,
   DataCenterIndexRoute: DataCenterIndexRoute,
   DocsIndexRoute: DocsIndexRoute,
@@ -1717,6 +1779,7 @@ const rootRouteChildren: RootRouteChildren = {
   AdminSalesIndexRoute: AdminSalesIndexRoute,
   AdminSettingsIndexRoute: AdminSettingsIndexRoute,
   AdminSystemConfigIndexRoute: AdminSystemConfigIndexRoute,
+  ChangeControlRefIndexRoute: ChangeControlRefIndexRoute,
   DocsAdminIndexRoute: DocsAdminIndexRoute,
   DocsSuperadminIndexRoute: DocsSuperadminIndexRoute,
   EndUserRecordsApiIndexRoute: EndUserRecordsApiIndexRoute,

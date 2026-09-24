@@ -37,7 +37,7 @@ This app is **one application** with **one UI, one navigation system, one compon
 | Track Stoves | All stoves | Assigned partner stoves | Assigned partner stoves | Organization stoves | Assigned stoves |
 | Map | Full access | No Access | No Access | No Access | No Access |
 | Settings | Full access | No Access | No Access | No Access | No Access |
-| Sidebar footer: Request a change (opens the ACSL ERP's Change Control form; permission `change-control-link`) | Yes | Yes | Yes | No | No |
+| Change Control (`/change-control`, `/change-control/new`, `/change-control/$ref`; sidebar footer "Request a change"; permission `change-control-link`) | Yes | Yes | Yes | No | No |
 
 Legend: **Full access** = complete module access • **No Access / Hidden** = menu item not visible or restricted for this role.
 
@@ -67,7 +67,7 @@ Legend: **Full access** = complete module access • **No Access / Hidden** = me
 - **acsl_agent** — like manager, minus User Management and ACSL Agents Profile (Agent Management → ACSL Agents).
 - **partner** — no Partner Management, no ACSL Agents Profile, no Map, no Settings, no User Groups. Performance Report shows the **Partners tab only** (own organization). Still sees User Manager, Partner Agents Profile, Sales, Stove Users Data, Track Stoves.
 - **partner_agent / agent** — Dashboard, Sales, Sell Stove, Stove Manager, Stove Users Data, Sales Monitoring App only.
-- **Request a change** (sidebar footer) — super_admin, acsl_agent_manager and acsl_agent only (and super_admin_agent, which resolves to acsl_agent). It opens the ACSL ERP's Change Control form in a new tab with `app=sales-web` and the current page as `from`; the address comes from `VITE_ERP_CHANGE_CONTROL_URL`. Partners and partner agents report through their ACSL contact (Change Control decision D1).
+- **Request a change** (sidebar footer) — super_admin, acsl_agent_manager and acsl_agent only (and super_admin_agent, which resolves to acsl_agent). It opens `/change-control/new` in this app (same tab), prefilled with the current page as `?from=`, plus a small "My requests" link to `/change-control`. See "Change Control scoping" below. Partners and partner agents report through their ACSL contact (Change Control decision D1).
 
 ## User Manager (create-user) form rules
 
@@ -165,7 +165,14 @@ The **Settings** module (sidebar group with children *Payment Models*, *Credenti
   Any non-super-admin hitting these URLs directly is redirected to `/unauthorized`.
 - **Not part of this module**: `/settings/user-management` is the **User Manager** (User Management matrix row), not the Settings module — it stays gated by `allowedRoles` (`super_admin`, `acsl_agent_manager`, `partner`) per that separate row, and is intentionally left unchanged.
 
-## Data scoping
+## Change Control scoping (implemented, S8c)
+
+`/change-control` (My requests), `/change-control/new` (raise a request) and `/change-control/$ref` (one request) let ACSL staff raise and follow change requests without an ERP login (`src/app/change-control/`).
+
+- **Gate**: `change-control-link` is a *feature*, not an entry in the `PERMISSIONS` route map, so `ProtectedRoute`'s `routeKey` gate does not apply to these three pages. Each one wraps in `ChangeControlGuard` (`src/app/change-control/components/ChangeControlGuard.tsx`), which checks `can("change-control-link")` once the role is known and sends anyone without it to `/unauthorized` — the same destination `routeKey` would use, just driven by the feature flag directly. Sidebar visibility uses the same `can("change-control-link")` check it always did.
+- **Server-side gate**: `supabase/functions/change-request-intake/index.ts` checks the caller's role on every call against the same three roles (plus the `super_admin_agent` alias), independently of what the screen shows — keep the two in step if either changes.
+- **Row scoping**: the `list` action answers only the caller's own requests (scoped server-side, then relayed through by the ERP's own `change-control-intake`); there is no client-side filter and no way to see another person's request.
+- **Data flow**: this app never calls the ERP directly. `src/app/change-control/api.ts` is the only file that calls `change-request-intake`, and it is the only server this app's Change Control screens talk to.
 
 Menu/route visibility is necessary but not sufficient — record-level access must also be enforced wherever a shared view is scoped by organization/assignment (e.g. org filters, RLS in services/edge functions) so that non-admin roles only see rows relevant to them, even inside a shared component.
 
