@@ -4,6 +4,12 @@ Flat, one line per slice, newest programme first. States: todo, spec red,
 green, in review, merged, live. The why lives in `decisions.md`; the evidence
 lives on each PR.
 
+## Hotfix 2026-09-25, create-sale claims the stove as the server
+
+No sale could be created by a signed-in person after the 24 September stove-rights change. Decision D62.
+
+- [ ] create-sale claims the stove, and undoes its own sale on any failed claim, as the server. Spec `host-create-sale-claims-as-server`. No migration. Deploy list: create-sale
+
 ## Phase 32, the corrections badge counts in one pass (his ask 2026-09-16)
 
 One statement was 65% of the database's time: a badge counting 113 rows in twelve seconds. Decision D58.

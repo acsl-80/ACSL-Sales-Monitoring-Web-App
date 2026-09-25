@@ -751,3 +751,40 @@ else in the module already used transaction-scoped locks and transaction-local
 statement shape through the pooler before any of this was written.
 
 Undo is removing one environment variable. Built in Phase 32, slice 3.
+
+## D62. create-sale claims the stove as the server (2026-09-25)
+
+Found while verifying D61, and fixed on his word: "Fix create-sale now".
+
+Since 2026-09-24 stove rows are written by the server only
+(`20260924234000_stove_ids_writes_server_only`): signed-in users lost UPDATE
+on `stove_ids` and `stove_ids_base`. That is right, and it assumed create-sale
+already wrote them as the server. It did not. Its client carries the service
+key but forwards the caller's Authorization header, and PostgREST takes its
+role from that header, so every write ran as the signed-in person. From the
+moment the migration landed, every sale made by a signed-in person failed at
+the stove claim with "Failed to update stove_ids": the Sell Stove form, the
+phone app, and the Data Center's commit, which calls create-sale with the
+confirming person's own login. Production had created no sale since 14:01 on
+the 24th and had refused none yet, so nothing had been damaged; the next
+attempt would have been refused.
+
+And it would have left a sale behind. create-sale inserts the sale, then
+claims the stove, and undid the sale only when another sale had won the race.
+A claim that errored returned 500 with the sale standing and its stove still
+free. The sandbox collected seven such sales from one morning's test runs.
+
+Decided: the claim, and the undo of create-sale's own sale, run on a second
+client that is the server and nothing else. Everything else create-sale writes
+stays on the caller's client, so row policies and anything that records who
+made the sale behave exactly as before. The only trigger on stove rows
+(`sync_transfer_sales_date_on_stove`) does not read the caller, so the claim
+moving to the server changes nothing downstream. The undo now runs on any
+failed claim, not only a lost race.
+
+Checked and left alone: delete-sale and manage-stove-ids already write stove
+rows with a server client, and are the only other functions that write them.
+
+Rejected: handing signed-in users UPDATE back as a stopgap. It would reopen
+part of what the 24 September change closed, for the length of a fix that
+could ship the same afternoon.

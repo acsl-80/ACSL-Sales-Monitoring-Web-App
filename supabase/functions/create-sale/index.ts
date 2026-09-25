@@ -29,7 +29,9 @@ Deno.serve(async (req) => {
     return withCors(new Response("ok", { status: 200 }));
   }
 
-  // Use service role to bypass RLS for writes
+  // Carries the caller's own login, so the database sees who is selling: row
+  // policies and anything that records the actor read it. Despite the service
+  // key, a forwarded Authorization header makes PostgREST act as the caller.
   const supabase = createClient(
     Deno.env.get("SUPABASE_URL")!,
     Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!,
@@ -38,6 +40,25 @@ Deno.serve(async (req) => {
         headers: { Authorization: req.headers.get("Authorization")! },
       },
     }
+  );
+  /*
+   * The server's own client, with no caller attached. Used for exactly two
+   * writes: claiming the stove, and undoing this function's own sale when the
+   * claim does not happen.
+   *
+   * Stove rows are written by the server only since 2026-09-24
+   * (20260924234000_stove_ids_writes_server_only): signed-in users lost
+   * UPDATE on stove_ids. The claim ran on the client above, as the caller, so
+   * from that moment every create-sale from Sell Stove, the phone app and the
+   * Data Center's commit failed at the claim with "Failed to update
+   * stove_ids", and left the sale it had just inserted behind (D62). The
+   * caller has already been authenticated and scoped to the organisation by
+   * the time either write runs, and the claim is filtered by that
+   * organisation, so running it as the server widens nothing.
+   */
+  const server = createClient(
+    Deno.env.get("SUPABASE_URL")!,
+    Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!,
   );
 
   try {
@@ -671,7 +692,7 @@ Deno.serve(async (req) => {
     // `neq("sold")` rather than `eq("available")` on purpose: it mirrors the
     // precondition already checked above, so a stove in some future status
     // that is not `sold` keeps behaving exactly as it does today.
-    const { data: claimedStoves, error: stoveUpdateError } = await supabase
+    const { data: claimedStoves, error: stoveUpdateError } = await server
       .from("stove_ids")
       .update({ status: "sold", sale_id: saleId })
       .eq("stove_id", stoveSerialNo)
@@ -679,23 +700,21 @@ Deno.serve(async (req) => {
       .neq("status", "sold")
       .select("stove_id");
 
-    if (stoveUpdateError) {
-      console.error("❌ Failed to update stove_ids:", stoveUpdateError);
-      return jsonError("Failed to update stove_ids", 500);
-    }
-
-    if (!claimedStoves || claimedStoves.length === 0) {
-      // Somebody claimed this stove between the check above and here. The sale
-      // that was just inserted has no stove, so it is removed rather than left
-      // behind as a second sale for a stove that already has one.
-      //
-      // Nothing references it yet: the stove was never linked, and installment
-      // payments are recorded after this point. sales_history records both the
-      // insert and the delete, which is the honest account of what happened.
-      console.warn(
-        `⚠️ Stove ${stoveSerialNo} was claimed by another sale first. Rolling back sale ${saleId}.`
-      );
-      const { error: rollbackError } = await supabase
+    /*
+     * A sale whose stove was not claimed is removed, whatever the reason.
+     *
+     * Nothing references it yet: the stove was never linked, and installment
+     * payments are recorded after this point. sales_history records both the
+     * insert and the delete, which is the honest account of what happened.
+     * This used to run only when another sale won the race; a claim that
+     * errored returned 500 and left the sale standing, which is how the
+     * sandbox collected seven stoveless sales in one morning (D62). It runs
+     * as the server because undoing this function's own insert is not a
+     * decision the caller's rights should be able to refuse.
+     */
+    const undoSale = async (why: string) => {
+      console.warn(`⚠️ ${why} Rolling back sale ${saleId}.`);
+      const { error: rollbackError } = await server
         .from("sales")
         .delete()
         .eq("id", saleId);
@@ -709,6 +728,19 @@ Deno.serve(async (req) => {
           rollbackError.message
         );
       }
+    };
+
+    if (stoveUpdateError) {
+      console.error("❌ Failed to update stove_ids:", stoveUpdateError);
+      await undoSale(`The claim on stove ${stoveSerialNo} failed.`);
+      return jsonError("Failed to update stove_ids", 500);
+    }
+
+    if (!claimedStoves || claimedStoves.length === 0) {
+      // Somebody claimed this stove between the check above and here, so the
+      // sale just inserted would be a second sale for a stove that already
+      // has one.
+      await undoSale(`Stove ${stoveSerialNo} was claimed by another sale first.`);
       return jsonError(
         `Stove serial number "${stoveSerialNo}" was sold by someone else moments ago. Please choose another stove.`,
         409
