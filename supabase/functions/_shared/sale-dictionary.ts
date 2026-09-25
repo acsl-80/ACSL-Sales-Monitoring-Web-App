@@ -31,6 +31,12 @@ export type DictionaryField = {
   column: string;
   /** The key create-sale and update-sale read; null when the field is not written that way. */
   payload: string | null;
+  /**
+   * Where both forms hold the value, when that is not the payload key. The
+   * first name is sent as `endUserFirstName` and held as `endUserName`; a
+   * dated rule reads the form, so it reads this (D61).
+   */
+  formKey?: string;
   type: SaleFieldType;
   group: string;
   order: number;

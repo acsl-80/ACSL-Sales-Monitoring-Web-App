@@ -752,6 +752,54 @@ statement shape through the pooler before any of this was written.
 
 Undo is removing one environment variable. Built in Phase 32, slice 3.
 
+## D61. A dated rule reads the field where the forms keep it (2026-09-25)
+
+His words: "whenever you save it just spins and saves as draft not as
+finished. specific case, Rose Adejo has over 40 entered records refusing to
+save to finish, diagnose what the problem is and fix holistically."
+
+None of her drafts carried a recorded refusal (D57), so the server had never
+refused a finish: the bench had refused in the browser before sending one.
+Running the bench's own check over every live draft on production named the
+cause. From 11 September the dated rules made the first name mandatory on any
+sale dated that day or later. The rule looked the first name up by its
+dictionary payload key, `endUserFirstName`, which is what create-sale is sent.
+Both forms hold the first name under `endUserName` and translate it on the way
+out, so the rule found nothing on either form and refused every such receipt.
+The refusal was reported under a key no field displays, so nothing turned red,
+nothing scrolled, and the box said "Still to sort out: endUserFirstName" about
+a name the typist could see was filled in. On 2026-09-25, 140 bench receipts
+were dated on or after 11 September, and not one had ever finished. Before
+that date, 2,123 had committed. Rose types current receipts; Hassan and Ridwan
+were mostly typing older ones, which is why the wall looked like hers.
+
+Decided: the dictionary says where the forms keep a field whenever that is not
+its payload key (`formKey`), and a rule reads that. It is data rather than a
+special case in `ruleFormKey`, so the next field that differs is one line.
+The Sell Stove form runs the same validator over the same rules and had the
+same fault; it has been used for one sale in two weeks, so nobody met it
+there, and the same line fixes it.
+
+Also decided, because the same review found them: every field a dated rule can
+demand has an entry on the bench, so a refusal names it as the agreement does
+and brings it into view. The baseline stove has been required since
+11 September and had none; pots, heat retention and cooking fuel start on
+5 January 2027 and had none either, which would have been the next receipt
+that would not finish. A key the bench still cannot map is named in words
+from the dictionary, never as code. And a spec now reads the rules from the
+database and checks that every one lands on a key both forms hold, so a rule
+added in Settings is checked by the same test.
+
+Why no spec saw it: every bench spec typed a sale date of 5 January 2026,
+months before the rules. The new one types a September receipt.
+
+Rejected: finishing the stuck drafts for the typists. The fix lets 126 of the
+202 live drafts pass the bench's check as they stand (99 of Rose's 134), but
+finishing is the typist's judgement on a paper receipt, and the other 76 are
+genuinely short of something, mostly a phone number, the address, a consent
+or the LGA. They open, they press Save as finished, and the ones that are
+short now say which field and point at it.
+
 ## D62. create-sale claims the stove as the server (2026-09-25)
 
 Found while verifying D61, and fixed on his word: "Fix create-sale now".

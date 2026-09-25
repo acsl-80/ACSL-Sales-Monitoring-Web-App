@@ -133,11 +133,20 @@ export function camelKey(column: string): string {
  * Where the form keeps the value a rule asks for. Both forms hold a sale's
  * columns under the dictionary's payload key (camelCase), and the address
  * under `addressData` with camelCase keys of its own.
+ *
+ * Except where the dictionary says otherwise with `formKey`. The first name
+ * is sent to create-sale as `endUserFirstName`, but both forms hold it under
+ * `endUserName` and translate it on the way out. Read by its payload key, the
+ * first-name rule found nothing on any form, so from 11 September every sale
+ * dated that day or later was refused for a first name that was filled in
+ * (D61). The key lives in the dictionary rather than here so the next field
+ * that differs is one line of data.
  */
 export function ruleFormKey(rule: SaleFieldRule): string {
   if (rule.tableName === "addresses") return camelKey(rule.columnName);
-  const payload = fieldByKey(rule.fieldKey)?.payload;
-  return payload && payload !== "addressData" ? payload : camelKey(rule.columnName);
+  const field = fieldByKey(rule.fieldKey);
+  const key = field?.formKey ?? field?.payload;
+  return key && key !== "addressData" ? key : camelKey(rule.columnName);
 }
 
 /** The key the validator reports a missing value under; the address line has its own name there. */

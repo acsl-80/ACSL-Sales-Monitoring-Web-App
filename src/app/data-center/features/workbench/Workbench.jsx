@@ -14,7 +14,7 @@ import SaleForm, {
   problemsInFormOrder,
 } from "./SaleForm";
 import BenchRail from "./BenchRail";
-import { fieldLabel } from "@/lib/saleDictionary";
+import { fieldLabel, payloadLabel } from "@/lib/saleDictionary";
 import { plural } from "../../lib/plural";
 import { usePolling } from "../../lib/usePolling";
 import { TypedPill, CallPill, typedWords, callWords } from "../../components/StovePills";
@@ -676,7 +676,10 @@ function Bench({ stoveId, onSaved, onBack, onNext, nextLabel, api = null }) {
           ...problemsRef.current.problems,
           ...(problemsRef.current.termsMissing ? { termsAccepted: true } : {}),
         });
-        const names = ordered.map(([k]) => FIELD_META[k]?.label ?? k);
+        // A key the bench has no entry for is still named in words, never as
+        // code: "Still to sort out: endUserFirstName" is what a typist was
+        // shown for three weeks about a name she had filled in (D61).
+        const names = ordered.map(([k]) => FIELD_META[k]?.label ?? payloadLabel(k));
         // Named, in the order they sit on the page, and the first one is
         // brought into view. "2 fields still to sort out" sent people hunting.
         setError(`Still to sort out: ${names.join(", ")}.`);

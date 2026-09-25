@@ -4,6 +4,12 @@ Flat, one line per slice, newest programme first. States: todo, spec red,
 green, in review, merged, live. The why lives in `decisions.md`; the evidence
 lives on each PR.
 
+## Phase 33, a receipt dated after the rules went live can finish (his ask 2026-09-25)
+
+Rose Adejo's receipts would not save as finished, and nothing said why. Decision D61.
+
+- [ ] S1 the first-name rule reads the field where both forms keep it (`formKey` in the dictionary), and the bench can point at every field a dated rule can demand. Spec `data-center-bench-finishes-after-go-live`. No migration; no function deploy (the dictionary JSON is read by the browser build)
+
 ## Hotfix 2026-09-25, create-sale claims the stove as the server
 
 No sale could be created by a signed-in person after the 24 September stove-rights change. Decision D62.

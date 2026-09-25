@@ -144,6 +144,17 @@ export const FIELD_META = {
   salesModel: { id: "wb-salesModel", label: fieldLabel("payment_model_id") },
   amount: { id: "wb-amount", label: fieldLabel("amount") },
   amountReceived: { id: "wb-amountReceived", label: fieldLabel("first_payment") },
+  /*
+   * Every field a dated rule can demand has to be here, or the refusal names
+   * it by its code key and nothing on the page moves. The baseline stove has
+   * been required since 11 September and was missing; the other three start
+   * on 5 January 2027. `every dated rule lands on a key both forms hold`
+   * keeps this list and the rules in step (D61).
+   */
+  potQuantity: { id: "wb-potQuantity", label: fieldLabel("pot_quantity") },
+  heatRetentionDevice: { id: "wb-heatRetentionDevice", label: fieldLabel("heat_retention_device") },
+  previousStoveType: { id: "wb-previousStoveType", label: fieldLabel("previous_stove_type") },
+  cookingFuelSource: { id: "wb-cookingFuelSource", label: fieldLabel("cooking_fuel_source") },
   termsAccepted: { id: "wb-termsAccepted", label: fieldLabel("terms_accepted") },
   signature: { id: "wb-signature", label: fieldLabel("signature") },
 };
@@ -604,7 +615,12 @@ export default function SaleForm({
       </Section>
 
       <Section title="Stove set">
-        <Field label={fieldLabel("pot_quantity")} htmlFor="wb-potQuantity">
+        <Field
+          label={fieldLabel("pot_quantity")}
+          htmlFor="wb-potQuantity"
+          required={inForce.has("pot_quantity")}
+          error={errors.potQuantity}
+        >
           <SearchableSelect
             id="wb-potQuantity"
             ariaLabel={fieldLabel("pot_quantity")}
@@ -615,7 +631,12 @@ export default function SaleForm({
             options={potOptions}
           />
         </Field>
-        <Field label={fieldLabel("heat_retention_device")} htmlFor="wb-heatRetentionDevice">
+        <Field
+          label={fieldLabel("heat_retention_device")}
+          htmlFor="wb-heatRetentionDevice"
+          required={inForce.has("heat_retention_device")}
+          error={errors.heatRetentionDevice}
+        >
           <label className="flex items-center gap-2 py-1.5 text-sm text-gray-700">
             <input
               id="wb-heatRetentionDevice"
@@ -631,9 +652,30 @@ export default function SaleForm({
       </Section>
 
       <Section title="Cooking habits">
-        <div className="sm:col-span-2 lg:col-span-3">
-          <p className="mb-1 text-xs font-medium text-gray-700">{fieldLabel("previous_stove_type")}</p>
-          <div className="flex flex-wrap gap-4">
+        {/*
+          A radio group, so it has no single control to label: the group is
+          the target a refusal scrolls to and focuses, and it carries the ring
+          and the sentence the other fields get from Field (D61).
+        */}
+        <div className="scroll-mt-24 sm:col-span-2 lg:col-span-3">
+          <p id="wb-previousStoveType-label" className="mb-1 text-xs font-medium text-gray-700">
+            {fieldLabel("previous_stove_type")}
+            {inForce.has("previous_stove_type") && (
+              <span className="ml-0.5 text-red-600" aria-hidden="true">
+                *
+              </span>
+            )}
+          </p>
+          <div
+            id="wb-previousStoveType"
+            role="radiogroup"
+            aria-labelledby="wb-previousStoveType-label"
+            aria-invalid={errors.previousStoveType ? "true" : undefined}
+            tabIndex={-1}
+            className={`flex flex-wrap gap-4 outline-none ${
+              errors.previousStoveType ? "rounded-md p-1 ring-2 ring-red-300 ring-offset-1" : ""
+            }`}
+          >
             {previousStoves.map((o) => (
               <label key={o.value} className="flex items-center gap-2 text-sm text-gray-700">
                 <input
@@ -657,6 +699,9 @@ export default function SaleForm({
               disabled={disabled}
               onChange={(e) => set("previousStoveOther", e.target.value)}
             />
+          )}
+          {errors.previousStoveType && (
+            <p className="mt-1 text-xs text-red-600">{errors.previousStoveType}</p>
           )}
         </div>
         <Field label={fieldLabel("meals_per_day")} htmlFor="wb-mealsPerDay">

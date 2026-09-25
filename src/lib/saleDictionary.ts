@@ -13,7 +13,9 @@
  * update-sale read; the forms already send those keys and keep doing so.
  */
 
-import dictionary from "../../supabase/functions/_shared/sale-dictionary.json";
+// The attribute is what lets the suite load this file under Node, the same
+// form the edge copy already uses for Deno. The build treats both alike.
+import dictionary from "../../supabase/functions/_shared/sale-dictionary.json" with { type: "json" };
 import { useEffect, useState } from "react";
 import { getSupabase } from "./supabaseClient";
 import { supabaseUrl } from "./supabaseConfig";
@@ -27,6 +29,8 @@ export type DictionaryField = {
   table: string;
   column: string;
   payload: string | null;
+  /** Where both forms hold the value, when that is not the payload key (D61). */
+  formKey?: string;
   type: string;
   group: string;
   order: number;
