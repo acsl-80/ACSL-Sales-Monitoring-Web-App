@@ -105,9 +105,14 @@ async function fillReceipt(page: Page, marker: string, opts: { baselineStove: bo
   await state.click();
   await page.getByPlaceholder("Type part of the state").fill("Kogi");
   await page.getByRole("listbox").getByRole("option", { name: "Kogi", exact: true }).click();
+  // Narrowed by typing before the click, as bench-asks-for-the-model does:
+  // Yagba West sits far down Kogi's list, and clicking it unfiltered timed
+  // out once in a full run.
   const lga = page.getByRole("combobox", { name: "LGA" });
   await expect(lga).toBeEnabled();
+  await lga.evaluate((el) => el.scrollIntoView({ block: "center" }));
   await lga.click();
+  await page.getByPlaceholder("Type part of the LGA").fill("Yagba West");
   await page
     .getByRole("listbox")
     .getByRole("option", { name: "Yagba West", exact: true })
@@ -120,6 +125,21 @@ async function fillReceipt(page: Page, marker: string, opts: { baselineStove: bo
     .first();
   await terms.check();
   await expect(terms).toBeChecked();
+}
+
+/**
+ * Leave nothing behind. A finished receipt left in the admin's open bench
+ * batch is counted by bench-asks-for-the-model's "no finished row" check,
+ * so this spec discards its own open batches as that one does.
+ */
+async function discardMyBenchBatch(page: Page) {
+  const r = await callEdgeFunction(page, "data-center-import", { action: "batches" });
+  const batches = (r.body as { data?: Record<string, unknown>[] })?.data ?? [];
+  for (const b of batches) {
+    if (b.source === "workbench" && b.state !== "committed" && b.state !== "rolled_back") {
+      await callEdgeFunction(page, "data-center-import", { action: "discard", batchId: b.id });
+    }
+  }
 }
 
 /** The bench row this spec typed, found by the surname it was given. */
@@ -136,6 +156,9 @@ async function rowFor(marker: string) {
 
 test.describe("a receipt dated after the rules went live", () => {
   test.describe.configure({ timeout: 180_000 });
+  test.afterEach(async ({ page }) => {
+    await discardMyBenchBatch(page).catch(() => {});
+  });
 
   test("finishes, with its first name filled in", async ({ page }, testInfo) => {
     const opened = await openTwinSweep(page);
