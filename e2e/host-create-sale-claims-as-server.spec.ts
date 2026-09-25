@@ -47,6 +47,15 @@ async function partnerName(): Promise<string> {
   return org.name;
 }
 
+/**
+ * A phone of its own for every sale: create-sale refuses a second sale on a
+ * number already used, so two tests sharing one refuse each other before
+ * either reaches the claim.
+ */
+function phoneFor(transactionId: string): string {
+  return `0801${transactionId.replace(/\D/g, "").slice(-7).padStart(7, "0")}`;
+}
+
 function saleBody(serial: string, partner: string, transactionId: string) {
   return {
     transactionId,
@@ -57,9 +66,9 @@ function saleBody(serial: string, partner: string, transactionId: string) {
     amount: 25000,
     endUserFirstName: "Claim",
     endUserSurname: "Server",
-    phone: "08012345671",
+    phone: phoneFor(transactionId),
     contactPerson: "Claim Server",
-    contactPhone: "08012345671",
+    contactPhone: phoneFor(transactionId),
     salesAgentName: "Bala Sani",
     termsAccepted: {
       poaGoverned: true, monitoring: true, noResell: true,

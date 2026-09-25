@@ -704,8 +704,11 @@ Deno.serve(async (req) => {
      * A sale whose stove was not claimed is removed, whatever the reason.
      *
      * Nothing references it yet: the stove was never linked, and installment
-     * payments are recorded after this point. sales_history records both the
-     * insert and the delete, which is the honest account of what happened.
+     * payments are recorded after this point. Nor does it leave a history:
+     * sales_history cascades away with the sale, and the delete trigger writes
+     * a row only when it can name an actor, which the server cannot give it.
+     * That was as true of the old rollback as of this one. The warning logged
+     * below is the record that a sale was made and undone.
      * This used to run only when another sale won the race; a claim that
      * errored returned 500 and left the sale standing, which is how the
      * sandbox collected seven stoveless sales in one morning (D62). It runs
