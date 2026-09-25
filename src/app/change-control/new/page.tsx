@@ -72,13 +72,15 @@ export default function NewChangeRequestPage() {
   // it against this origin before judging it, and only accept the result
   // when it still lands on this origin. That also refuses a crafted
   // ?from=https://elsewhere, which would otherwise resolve as its own
-  // absolute URL and pass a bare isHttpUrl check.
+  // absolute URL and pass a bare isHttpUrl check. A Change Control page is
+  // never the page a request is about (the sidebar link is pressed there too),
+  // so it leaves the field blank for the person to fill.
   useEffect(() => {
     const from = searchParams.get("from");
     if (!from) return;
     try {
       const resolved = new URL(from, window.location.origin);
-      if (resolved.origin === window.location.origin) {
+      if (resolved.origin === window.location.origin && !/^\/change-control(\/|$)/.test(resolved.pathname)) {
         setValues((prev) => (prev.page_url ? prev : { ...prev, page_url: resolved.href }));
       }
     } catch {
