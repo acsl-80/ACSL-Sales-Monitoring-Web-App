@@ -1,5 +1,6 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.39.3";
+import { callerScope } from "../_shared/callerScope.ts";
 
 /**
  * performance-report: the Performance Report screens, one request each.
@@ -112,9 +113,24 @@ serve(async (req) => {
     }
     const performance = () => ({ ms: Date.now() - started });
 
+    // The state views answer for the caller's organisations only: every
+    // organisation for a super admin, assigned partners for ACSL staff, their
+    // own for a partner. They used to answer nationwide for everyone allowed in.
+    const scopeFilter = async (): Promise<string[] | null> =>
+      profile.role === "super_admin" ? null : (await callerScope(req)).orgIds ?? [];
+
     if (action === "states") {
-      const { data, error } = await admin.rpc("report_states_performance");
+      const orgIds = await scopeFilter();
+      const { data, error } = await admin.rpc("report_states_performance", { p_organization_ids: orgIds });
       if (error) throw error;
+      // Partners have no access to the ACSL agents report; leave their names out.
+      if (profile.role === "partner" && data?.states) {
+        for (const s of data.states) {
+          s.agent_details = [];
+          s.acsl_agents = 0;
+        }
+        data.covered_states = [];
+      }
       return json({ success: true, data, performance: performance() });
     }
 
@@ -135,6 +151,7 @@ serve(async (req) => {
         p_search: search || null,
         p_page: page,
         p_limit: limit,
+        p_organization_ids: await scopeFilter(),
       });
       if (error) throw error;
       const total = Number(data?.total ?? 0);
@@ -147,7 +164,19 @@ serve(async (req) => {
     }
 
     if (action === "agents") {
-      const agentIds = idList(body.agent_ids);
+      let agentIds = idList(body.agent_ids);
+      // A manager sees their own figures and their ACSL agents', not another
+      // manager's team; the ids come from the request, so they are checked here.
+      if (profile.role === "acsl_agent_manager" && agentIds.length > 0) {
+        const { data: team, error: teamError } = await admin
+          .from("profiles")
+          .select("id")
+          .eq("manager_id", userId)
+          .eq("role", "acsl_agent");
+        if (teamError) throw teamError;
+        const mine = new Set([userId, ...(team ?? []).map((t: { id: string }) => t.id)]);
+        agentIds = agentIds.filter((id) => mine.has(id));
+      }
       if (agentIds.length === 0) {
         return json({
           success: true,

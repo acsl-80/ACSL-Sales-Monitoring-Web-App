@@ -49,7 +49,7 @@ serve(async (req) => {
       );
     }
 
-    const result = await deleteSale(supabase, saleId, userRole, organizationId);
+    const result = await deleteSale(supabase, saleId, userRole, organizationId, userId);
 
     return withCors(
       new Response(JSON.stringify({ success: true, ...result }), {

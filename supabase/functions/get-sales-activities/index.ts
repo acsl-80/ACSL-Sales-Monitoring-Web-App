@@ -121,11 +121,11 @@ serve(async (req) => {
       .order("performed_at", { ascending: false });
 
     // Apply user-based filtering
-    if (user_id) {
-      query = query.eq("performed_by", user_id);
-    } else if (profile.role === "agent") {
-      // Agents can only see their own activities
+    // An agent sees only their own activity, whatever user_id asks for.
+    if (["agent", "partner_agent"].includes(profile.role)) {
       query = query.eq("performed_by", userData.user.id);
+    } else if (user_id) {
+      query = query.eq("performed_by", user_id);
     }
 
     // Apply filters
@@ -166,10 +166,11 @@ serve(async (req) => {
       .select("*", { count: "exact", head: true })
       .eq("sales.organization_id", profile.organization_id);
 
-    if (user_id) {
-      countQuery = countQuery.eq("performed_by", user_id);
-    } else if (profile.role === "agent") {
+    // An agent sees only their own activity, whatever user_id asks for.
+    if (["agent", "partner_agent"].includes(profile.role)) {
       countQuery = countQuery.eq("performed_by", userData.user.id);
+    } else if (user_id) {
+      countQuery = countQuery.eq("performed_by", user_id);
     }
 
     if (action_type) {
@@ -201,10 +202,11 @@ serve(async (req) => {
       )
       .eq("sales.organization_id", profile.organization_id);
 
-    if (user_id) {
-      summaryQuery = summaryQuery.eq("performed_by", user_id);
-    } else if (profile.role === "agent") {
+    // An agent sees only their own activity, whatever user_id asks for.
+    if (["agent", "partner_agent"].includes(profile.role)) {
       summaryQuery = summaryQuery.eq("performed_by", userData.user.id);
+    } else if (user_id) {
+      summaryQuery = summaryQuery.eq("performed_by", user_id);
     }
 
     if (date_from) {

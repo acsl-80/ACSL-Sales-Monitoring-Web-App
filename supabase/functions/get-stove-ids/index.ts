@@ -1,5 +1,5 @@
 import { serve } from "https://deno.land/std@0.224.0/http/server.ts";
-import { createClient } from "https://esm.sh/@supabase/supabase-js@2.39.7";
+import { callerScope, inScope, ScopeError } from "../_shared/callerScope.ts";
 
 function withCors(res: Response) {
   res.headers.set("Access-Control-Allow-Origin", "*");
@@ -15,10 +15,20 @@ serve(async (req) => {
   if (req.method === "OPTIONS") {
     return withCors(new Response("ok", { status: 200 }));
   }
-  const supabase = createClient(
-    Deno.env.get("SUPABASE_URL")!,
-    Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!
-  );
+  // A signed-in, active caller only, and only the organisations in their scope.
+  let scope;
+  try {
+    scope = await callerScope(req);
+  } catch (e) {
+    const status = e instanceof ScopeError ? e.status : 500;
+    return withCors(
+      new Response(JSON.stringify({ success: false, message: (e as Error).message }), {
+        status,
+        headers: { "Content-Type": "application/json" },
+      })
+    );
+  }
+  const supabase = scope.serviceClient;
 
   const {
     organization_id,
@@ -49,6 +59,15 @@ serve(async (req) => {
     );
   }
 
+  if (!isBulk && !inScope(scope, organization_id)) {
+    return withCors(
+      new Response(
+        JSON.stringify({ success: false, message: "That organisation is outside your scope" }),
+        { status: 403, headers: { "Content-Type": "application/json" } }
+      )
+    );
+  }
+
   const pageLimit = Math.min(parseInt(rawLimit ?? "200"), 500);
   const pageOffset = parseInt(rawOffset ?? "0");
 
@@ -62,15 +81,45 @@ serve(async (req) => {
 
   // ── format2: bulk stoves across all (or a given set of) organizations ───────
   if (isBulk) {
-    let bulk = supabase
+    // Every organisation for a super admin; otherwise the caller's scope only.
+    // A scope short enough for a URL filter is applied here; a larger one (a
+    // manager covering hundreds of partners) is left to the stove table's row
+    // policy by querying with the caller's own token.
+    const requested: string[] | null =
+      Array.isArray(organization_ids) && organization_ids.length > 0 ? organization_ids : null;
+    let orgFilter: string[] | null = requested;
+    let bulkClient = supabase;
+    if (scope.orgIds !== null) {
+      const allowed = requested ? requested.filter((id) => scope.orgIds!.includes(id)) : scope.orgIds;
+      if (allowed.length === 0) {
+        return withCors(
+          new Response(
+            JSON.stringify({
+              success: true,
+              format: "format2",
+              data: [],
+              pagination: { limit: pageLimit, offset: pageOffset, total: 0 },
+            }),
+            { status: 200, headers: { "Content-Type": "application/json" } }
+          )
+        );
+      }
+      if (allowed.length <= 200) {
+        orgFilter = allowed;
+      } else {
+        orgFilter = requested ? allowed : null;
+        bulkClient = scope.userClient;
+      }
+    }
+
+    let bulk = bulkClient
       .from("stove_ids")
       .select("id, stove_id, status, organization_id", { count: "exact" })
       .order("id", { ascending: true })
       .range(pageOffset, pageOffset + pageLimit - 1);
     if (status) bulk = bulk.eq("status", status);
-    // Optional scoping to a subset of orgs; omit to fetch every org.
-    if (Array.isArray(organization_ids) && organization_ids.length > 0) {
-      bulk = bulk.in("organization_id", organization_ids);
+    if (orgFilter) {
+      bulk = bulk.in("organization_id", orgFilter);
     }
 
     const { data: bulkData, error: bulkError, count: bulkCount } = await bulk;

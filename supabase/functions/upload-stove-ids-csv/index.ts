@@ -2,6 +2,7 @@
 import { serve } from "https://deno.land/std@0.224.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.39.7";
 import { parse } from "https://esm.sh/csv-parse@5.5.4/sync";
+import { requireSuperAdminOrService, ScopeError } from "../_shared/callerScope.ts";
 
 function withCors(res: Response) {
   res.headers.set("Access-Control-Allow-Origin", "*");
@@ -13,6 +14,17 @@ function withCors(res: Response) {
 serve(async (req) => {
   if (req.method === "OPTIONS") {
     return withCors(new Response("ok", { status: 200 }));
+  }
+
+  // Adding stove records is a super admin's job, or another server's.
+  try {
+    await requireSuperAdminOrService(req);
+  } catch (e) {
+    const status = e instanceof ScopeError ? e.status : 500;
+    return withCors(new Response(
+      JSON.stringify({ success: false, message: (e as Error).message }),
+      { status, headers: { "Content-Type": "application/json" } }
+    ));
   }
 
   const supabase = createClient(

@@ -2,6 +2,7 @@ import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { withCors } from "./cors.ts";
 import { authenticate } from "./authenticate.ts";
+import { callerScope, inScope } from "../_shared/callerScope.ts";
 
 serve(async (req) => {
   console.log("🚀 Organization Payment Models API started");
@@ -68,6 +69,10 @@ async function executeMainLogic(req: Request) {
   let result: any;
 
   if (req.method === "GET") {
+    // Another organisation's payment terms are not the caller's to read.
+    if (userRole !== "super_admin" && !inScope(await callerScope(req), orgId)) {
+      throw new Error("Unauthorized: That organisation is outside your scope");
+    }
     result = await getOrgModels(supabase, orgId, userRole);
   } else if (req.method === "POST") {
     if (userRole !== "super_admin") throw new Error("Unauthorized: Super admin only");

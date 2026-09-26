@@ -1,4 +1,5 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { requireSuperAdminOrService, ScopeError } from "../_shared/callerScope.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -12,10 +13,14 @@ Deno.serve(async (req) => {
   }
 
   try {
-    const authHeader = req.headers.get("Authorization");
-    if (!authHeader?.startsWith("Bearer ")) {
-      return new Response(JSON.stringify({ error: "Unauthorized" }), {
-        status: 401,
+    // Sending mail from the app's account is for super admins (the Settings
+    // test send) and other servers, not for any holder of a token.
+    try {
+      await requireSuperAdminOrService(req);
+    } catch (e) {
+      const status = e instanceof ScopeError ? e.status : 500;
+      return new Response(JSON.stringify({ error: (e as Error).message }), {
+        status,
         headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
     }
