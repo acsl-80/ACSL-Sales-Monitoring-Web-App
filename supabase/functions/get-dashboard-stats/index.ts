@@ -107,6 +107,15 @@ serve(async (req) => {
 
     const organizationId = profile.organization_id;
 
+    // A partner agent's sales figures are their own sales; stock stays the
+    // organisation's (ACCESS_CONTROL.md, Dashboard). Attribution follows the
+    // agent dashboard: sold on their behalf, or created by them when nobody
+    // else was named. For everyone else the filter matches every row.
+    const ownSalesOnly = ["partner_agent", "agent"].includes(profile.role);
+    const salesAttribution = ownSalesOnly
+      ? `sold_on_behalf_of.eq.${userData.user.id},and(sold_on_behalf_of.is.null,created_by.eq.${userData.user.id})`
+      : "id.not.is.null";
+
     if (!organizationId) {
       return withCors(
         new Response(
@@ -148,6 +157,7 @@ serve(async (req) => {
       .from("sales")
       .select("*", { count: "exact", head: true })
       .eq("organization_id", organizationId)
+      .or(salesAttribution)
       .eq("is_archived", false);
     if (endOfYear) stovesSoldQuery = stovesSoldQuery.lt("sales_date", endOfYear);
 
@@ -167,6 +177,7 @@ serve(async (req) => {
       .from("sales")
       .select("*", { count: "exact", head: true })
       .eq("organization_id", organizationId)
+      .or(salesAttribution)
       .eq("is_archived", false);
 
     if (salesCountError) {
@@ -208,6 +219,7 @@ serve(async (req) => {
         .from("sales")
         .select("*", { count: "exact", head: true })
         .eq("organization_id", organizationId)
+        .or(salesAttribution)
         .eq("is_archived", false)
         .eq("status", "completed");
 
@@ -233,6 +245,7 @@ serve(async (req) => {
           { count: "exact", head: true }
         )
         .eq("organization_id", organizationId)
+        .or(salesAttribution)
         .eq("is_archived", false)
         .not("address.latitude", "is", null)
         .not("address.longitude", "is", null);
@@ -250,6 +263,7 @@ serve(async (req) => {
         .from("sales")
         .select("*", { count: "exact", head: true })
         .eq("organization_id", organizationId)
+        .or(salesAttribution)
         .eq("is_archived", false)
         .in("status", ["incomplete", "pending"]);
 
@@ -270,7 +284,7 @@ serve(async (req) => {
      * Production has none of either today, so no figure moves.
      */
     const { data: summary, error: financialError } = await supabase.rpc("dashboard_sales_summary", {
-      p_organization_ids: [organizationId],
+      ...(ownSalesOnly ? { p_agent_ids: [userData.user.id] } : { p_organization_ids: [organizationId] }),
       p_date_from: dateFrom,
       p_date_to: dateTo,
     });
