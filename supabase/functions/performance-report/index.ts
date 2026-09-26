@@ -164,7 +164,19 @@ serve(async (req) => {
     }
 
     if (action === "agents") {
-      const agentIds = idList(body.agent_ids);
+      let agentIds = idList(body.agent_ids);
+      // A manager sees their own figures and their ACSL agents', not another
+      // manager's team; the ids come from the request, so they are checked here.
+      if (profile.role === "acsl_agent_manager" && agentIds.length > 0) {
+        const { data: team, error: teamError } = await admin
+          .from("profiles")
+          .select("id")
+          .eq("manager_id", userId)
+          .eq("role", "acsl_agent");
+        if (teamError) throw teamError;
+        const mine = new Set([userId, ...(team ?? []).map((t: { id: string }) => t.id)]);
+        agentIds = agentIds.filter((id) => mine.has(id));
+      }
       if (agentIds.length === 0) {
         return json({
           success: true,
