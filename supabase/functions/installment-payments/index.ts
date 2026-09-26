@@ -115,8 +115,9 @@ async function verifySaleAccess(supabase: any, saleId: string, auth: any) {
   }
 
   // Authorization check: a partner their organisation's sales, a partner agent
-  // their own, ACSL staff (managers included) their assigned partners', a super
-  // admin every sale. Any other role is refused rather than let through.
+  // their own, an ACSL agent their assigned partners', a super admin every sale.
+  // Any other role is refused rather than let through (authenticate.ts already
+  // refuses ACSL agent managers).
   if (["partner", "admin"].includes(auth.userRole)) {
     if (sale.organization_id !== auth.organizationId) {
       throw new Error("Unauthorized: You do not have access to this sale");
@@ -126,7 +127,7 @@ async function verifySaleAccess(supabase: any, saleId: string, auth: any) {
     if (sale.organization_id !== auth.organizationId || !own) {
       throw new Error("Unauthorized: You do not have access to this sale");
     }
-  } else if (["acsl_agent", "super_admin_agent", "acsl_agent_manager"].includes(auth.userRole)) {
+  } else if (["acsl_agent", "super_admin_agent"].includes(auth.userRole)) {
     if (!auth.assignedOrgIds?.includes(sale.organization_id)) {
       throw new Error("Unauthorized: You are not assigned to this organization");
     }
