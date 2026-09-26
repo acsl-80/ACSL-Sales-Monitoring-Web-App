@@ -1,4 +1,5 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js";
+import { callerScope, inScope } from "../_shared/callerScope.ts";
 function withCors(res) {
   res.headers.set("Access-Control-Allow-Origin", "*");
   res.headers.set("Access-Control-Allow-Methods", "GET, OPTIONS");
@@ -128,7 +129,20 @@ Deno.serve(async (req) => {
     if (!hasSystemWideAccess) {
       saleQuery = saleQuery.eq("organization_id", profile.organization_id);
     }
-    const { data: sale, error: saleError } = await saleQuery.maybeSingle();
+    const { data: fetched, error: saleError } = await saleQuery.maybeSingle();
+
+    // The sale must be in the caller's scope: every sale for a super admin,
+    // assigned partners' sales for ACSL staff, the organisation's for a
+    // partner, and a partner agent's own. Anything else reads as not found.
+    let sale = fetched;
+    if (sale) {
+      const scope = await callerScope(req);
+      const ownSalesOnly = ["partner_agent", "agent"].includes(scope.role);
+      const visible =
+        inScope(scope, sale.organization_id) &&
+        (!ownSalesOnly || sale.created_by === scope.userId || sale.sold_on_behalf_of === scope.userId);
+      if (!visible) sale = null;
+    }
     if (saleError || !sale) {
       return withCors(
         new Response(

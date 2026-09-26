@@ -105,7 +105,7 @@ async function executeMainLogic(req: Request) {
 async function verifySaleAccess(supabase: any, saleId: string, auth: any) {
   const { data: sale, error } = await supabase
     .from("sales")
-    .select("id, organization_id, amount, is_installment, payment_model_id, total_paid, payment_status")
+    .select("id, organization_id, amount, is_installment, payment_model_id, total_paid, payment_status, created_by, sold_on_behalf_of")
     .eq("id", saleId)
     .single();
 
@@ -114,17 +114,25 @@ async function verifySaleAccess(supabase: any, saleId: string, auth: any) {
     throw new Error(`Database error: ${error.message}`);
   }
 
-  // Authorization check
-  if (["partner", "admin", "partner_agent", "agent"].includes(auth.userRole)) {
+  // Authorization check: a partner their organisation's sales, a partner agent
+  // their own, ACSL staff (managers included) their assigned partners', a super
+  // admin every sale. Any other role is refused rather than let through.
+  if (["partner", "admin"].includes(auth.userRole)) {
     if (sale.organization_id !== auth.organizationId) {
       throw new Error("Unauthorized: You do not have access to this sale");
     }
-  } else if (auth.userRole === "acsl_agent" || auth.userRole === "super_admin_agent") {
+  } else if (["partner_agent", "agent"].includes(auth.userRole)) {
+    const own = sale.created_by === auth.userId || sale.sold_on_behalf_of === auth.userId;
+    if (sale.organization_id !== auth.organizationId || !own) {
+      throw new Error("Unauthorized: You do not have access to this sale");
+    }
+  } else if (["acsl_agent", "super_admin_agent", "acsl_agent_manager"].includes(auth.userRole)) {
     if (!auth.assignedOrgIds?.includes(sale.organization_id)) {
       throw new Error("Unauthorized: You are not assigned to this organization");
     }
+  } else if (auth.userRole !== "super_admin") {
+    throw new Error("Unauthorized: You do not have access to this sale");
   }
-  // super_admin has access to everything
 
   return sale;
 }
