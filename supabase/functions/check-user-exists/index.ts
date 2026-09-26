@@ -1,4 +1,6 @@
 // Deno Edge Function: check-user-exists.ts
+import { requireSuperAdminOrService, ScopeError } from "../_shared/callerScope.ts";
+
 Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') {
     return new Response(null, {
@@ -8,6 +10,17 @@ Deno.serve(async (req) => {
         'Access-Control-Allow-Headers': '*',
         'Access-Control-Allow-Methods': 'POST, OPTIONS',
       },
+    });
+  }
+
+  // Super admins and other servers only; the answer is a yes or no.
+  try {
+    await requireSuperAdminOrService(req);
+  } catch (e) {
+    const status = e instanceof ScopeError ? e.status : 500;
+    return new Response(JSON.stringify({ error: (e as Error).message }), {
+      status,
+      headers: { 'Access-Control-Allow-Origin': '*', 'Content-Type': 'application/json' },
     });
   }
 
@@ -66,10 +79,7 @@ Deno.serve(async (req) => {
   );
 
   return new Response(
-    JSON.stringify({
-      exists: !!matchingUser,
-      ...(matchingUser ? { user: matchingUser } : {}),
-    }),
+    JSON.stringify({ exists: !!matchingUser }),
     {
       headers: {
         'Access-Control-Allow-Origin': '*',

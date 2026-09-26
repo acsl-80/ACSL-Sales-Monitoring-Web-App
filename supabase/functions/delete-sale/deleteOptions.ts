@@ -4,7 +4,8 @@ export async function deleteSale(
   supabase: any,
   saleId: string,
   userRole: string,
-  organizationId: string | null
+  organizationId: string | null,
+  userId: string
 ) {
   console.log("🗑️ Deleting sale:", saleId);
 
@@ -15,7 +16,7 @@ export async function deleteSale(
   // Fetch the sale first to verify it exists and check org ownership
   let query = supabase
     .from("sales")
-    .select("id, organization_id, transaction_id, stove_serial_no")
+    .select("id, organization_id, transaction_id, stove_serial_no, created_by, sold_on_behalf_of")
     .eq("id", saleId)
     .single();
 
@@ -28,9 +29,17 @@ export async function deleteSale(
     throw new Error(`Failed to fetch sale: ${fetchError?.message}`);
   }
 
-  // Admins can only delete sales in their own organization
-  if (userRole === "admin" && organizationId && sale.organization_id !== organizationId) {
-    throw new Error("Unauthorized: You can only delete sales from your organization");
+  // Everyone but a super admin deletes only within their own organisation, and
+  // a partner agent only the sales they made. The old check named the legacy
+  // role "admin" alone, so partners and partner agents passed it for any sale.
+  if (userRole !== "super_admin") {
+    if (!organizationId || sale.organization_id !== organizationId) {
+      throw new Error("Unauthorized: You can only delete sales from your organization");
+    }
+    const ownSalesOnly = ["partner_agent", "agent"].includes(userRole);
+    if (ownSalesOnly && sale.created_by !== userId && sale.sold_on_behalf_of !== userId) {
+      throw new Error("Unauthorized: You can only delete your own sales");
+    }
   }
 
   // Ask the Data Center first (D56). A sale with logged calls, a verdict or a

@@ -27,12 +27,9 @@ export async function authenticateUser(supabase: any): Promise<AuthResult> {
   let userRole: string;
   let userOrgId: string | null = null;
 
-  // Check if user email is super admin first (simpler approach)
-  if (userData.user.email === "superadmin@mail.com") {
-    console.log("✅ Super admin identified by email");
-    userRole = "super_admin";
-    userOrgId = null;
-  } else {
+  // The role comes from the profile, for everyone. A fixed email address used
+  // to be treated as a super admin here without its profile being read.
+  {
     // For non-super admin, try to get profile without RLS dependency
     console.log("� Fetching user profile from profiles table...");
 

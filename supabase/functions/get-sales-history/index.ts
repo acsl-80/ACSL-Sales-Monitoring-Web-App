@@ -77,7 +77,7 @@ serve(async (req)=>{
       query = query.lte("performed_at", date_to);
     }
     // If user is an agent, only show their own history
-    if (profile.role === "agent") {
+    if (["agent", "partner_agent"].includes(profile.role)) {
       query = query.eq("performed_by", userData.user.id);
     }
     // Apply pagination
@@ -126,7 +126,7 @@ serve(async (req)=>{
     if (date_to) {
       countQuery = countQuery.lte("performed_at", date_to);
     }
-    if (profile.role === "agent") {
+    if (["agent", "partner_agent"].includes(profile.role)) {
       countQuery = countQuery.eq("performed_by", userData.user.id);
     }
     const { count, error: countError } = await countQuery;
@@ -135,7 +135,7 @@ serve(async (req)=>{
     }
     // Get summary stats
     let statsQuery = supabase.from("sales_history").select("action_type, sales!inner(organization_id)").eq("sales.organization_id", profile.organization_id);
-    if (profile.role === "agent") {
+    if (["agent", "partner_agent"].includes(profile.role)) {
       statsQuery = statsQuery.eq("performed_by", userData.user.id);
     }
     const { data: statsData } = await statsQuery;
