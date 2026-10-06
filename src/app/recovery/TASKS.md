@@ -7,8 +7,8 @@ the newest section first.
 
 ## R1, the rig (Orezi's ask 2026-10-06: "yes, start R1")
 
-State: **written, not yet run on a preview.** Branch `feat/recovery-r1`, not
-pushed. Owner: Claude (lead), review by Codex.
+State: **written and reviewed, not yet run on a preview.** Branch
+`feat/recovery-r1`, not pushed. Owner: Claude (lead), review by Codex.
 
 - [x] Plan and build rules carried in: `PLAN.md`, `CLAUDE.md`, decision R-D1
 - [x] Schema `recovery` with `module_access`, `feature_grants`, `change_log` and
@@ -39,7 +39,9 @@ pushed. Owner: Claude (lead), review by Codex.
       production guard). Coverage partial: Codex marked several atoms limited
       because live database state was not in its evidence, and two Claude lanes
       failed on a runtime error. Artifacts in `.local/review-artifacts/`
-- [ ] Codex re-check of da198cf
+- [x] Codex re-checks: da198cf closed the findings and turned up one more
+      (an access answer in flight for the previous account), fixed in 3cfbbf8;
+      a narrower version of it fixed in 945dd01; the last pass found nothing
 - [ ] Orezi's rulings: R-D4 (open holes, hardening first), R-D5 (where a
       recoverer lands)
 
