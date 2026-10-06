@@ -2,9 +2,12 @@
 -- nobody signed in reaches the recovery schema.
 --
 -- For a PREVIEW BRANCH DATABASE, after both R1 migrations have run. Paste the
--- whole file into the SQL editor and run it as one script. It changes nothing:
--- the made-up account it signs in as is created inside the transaction and
--- rolled back with it.
+-- whole file into the Supabase SQL editor and run it as one script; the editor
+-- runs a script as one transaction, which the `set local` below needs. From
+-- psql, run it the same way: psql -1 -f r1-recoverer-reads-nothing.sql
+--
+-- It leaves nothing behind. The made-up account it signs in as is removed
+-- before the last query, and if any step fails the whole script rolls back.
 --
 -- What it does, as the database sees it:
 --   1. creates a made-up `recoverer` account the way an admin would, which
@@ -15,19 +18,26 @@
 --      view in public, and tries every table in recovery;
 --   4. lists the definer functions in public it could call, which run with
 --      their owner's rights and so step around row security;
---   5. rolls everything back.
+--   5. removes the account and shows one result, worst first.
 --
--- Reading the result (first query):
---   verdict 'nothing'         zero rows, or refused: what R1 needs everywhere
---   verdict 'reference data'  rows from a named list of public reference tables
---                             any signed-in account reads (states, LGAs, field
---                             rules, payment models, app releases)
---   verdict 'READS ROWS'      anything else with rows. R1 is not proven while
---                             any row says this.
--- The second query lists callable definer functions. Each is a door row
--- security does not guard; whether it leaks depends on its body.
-
-begin;
+-- Reading the result (the editor shows only the last query, so there is one):
+--   verdict 'REACHABLE'         a recovery table answered the signed-in account,
+--                               even with zero rows. The schema is not locked.
+--   verdict 'refused'           a recovery table refused it with a permission
+--                               error, or a browser role has no schema usage:
+--                               what R1 needs.
+--   verdict 'INCONCLUSIVE'      a read failed for a reason other than
+--                               permission. It proves nothing; find out why.
+--   verdict 'READS ROWS'        a relation with rows outside the reference list.
+--                               R1 is not proven while any row says this.
+--   verdict 'definer function'  a function the account can call that runs with
+--                               its owner's rights. A door row security does
+--                               not guard; whether it leaks depends on its body.
+--   verdict 'reference data'    rows from the named public reference tables any
+--                               signed-in account reads (states, LGAs, field
+--                               rules, payment models, app releases)
+--   verdict 'nothing'           zero rows, or refused with a permission error:
+--                               what R1 needs everywhere in public
 
 -- 1. A made-up recoverer, no organisation.
 insert into auth.users (
@@ -93,31 +103,49 @@ end $$;
 
 reset role;
 
--- The verdict, one row per relation, worst first.
-select schema_name, relation, kind, row_count, refused,
-       case
-         when coalesce(row_count, 0) = 0 then 'nothing'
-         when schema_name = 'public'
-              and relation in ('nigeria_states', 'nigeria_lgas', 'sale_field_rules',
-                               'payment_models', 'app_releases') then 'reference data'
-         else 'READS ROWS'
-       end as verdict
-  from r1_proof
- order by (coalesce(row_count, 0) > 0
-           and relation not in ('nigeria_states', 'nigeria_lgas', 'sale_field_rules',
-                                'payment_models', 'app_releases')) desc,
-          schema_name, relation;
-
 -- 4. Definer functions in public the account could call.
-select p.proname as function_name,
-       pg_get_function_identity_arguments(p.oid) as arguments
+insert into r1_proof (schema_name, relation, kind, row_count, refused)
+select 'public', p.proname || '(' || pg_get_function_identity_arguments(p.oid) || ')',
+       'definer function', null, null
   from pg_proc p
   join pg_namespace n on n.oid = p.pronamespace
  where n.nspname = 'public'
    and p.prosecdef
    and p.prokind = 'f'
-   and has_function_privilege('authenticated', p.oid, 'execute')
- order by 1;
+   and has_function_privilege('authenticated', p.oid, 'execute');
 
--- 5. Leave nothing behind.
-rollback;
+-- 4b. Whether either browser role may use the recovery schema at all.
+insert into r1_proof (schema_name, relation, kind, row_count, refused)
+select 'recovery', '(schema usage for ' || r || ')', 'schema usage', null,
+       case when has_schema_privilege(r, 'recovery', 'usage') then null else 'no usage' end
+  from unnest(array['anon', 'authenticated']) r;
+
+-- 5. Remove the made-up account (its profile goes with it), then the verdict.
+delete from auth.users where id = 'c0000000-0000-4000-8000-0000000000f1'::uuid;
+
+select verdict, schema_name, relation, kind, row_count, refused
+  from (
+    select *,
+           case
+             when kind = 'definer function' then 'definer function'
+             -- The recovery schema must refuse outright. Answering with zero
+             -- rows still means it was reached.
+             when schema_name = 'recovery' and refused is null then 'REACHABLE'
+             when schema_name = 'recovery' and kind = 'schema usage' then 'refused'
+             when schema_name = 'recovery' and refused like '42501 %' then 'refused'
+             -- Only a permission refusal proves anything. Any other error says
+             -- nothing either way.
+             when refused is not null and refused not like '42501 %' then 'INCONCLUSIVE'
+             when refused is not null then 'nothing'
+             when row_count = 0 then 'nothing'
+             when schema_name = 'public'
+                  and relation in ('nigeria_states', 'nigeria_lgas', 'sale_field_rules',
+                                   'payment_models', 'app_releases') then 'reference data'
+             else 'READS ROWS'
+           end as verdict
+      from r1_proof
+  ) v
+ order by case verdict when 'REACHABLE' then 0 when 'READS ROWS' then 1
+                       when 'INCONCLUSIVE' then 2 when 'definer function' then 3
+                       when 'reference data' then 4 else 5 end,
+          schema_name, relation;

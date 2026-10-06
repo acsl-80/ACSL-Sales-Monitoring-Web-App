@@ -17,7 +17,16 @@
  * Its SQL twin is src/app/recovery/proof/r1-recoverer-reads-nothing.sql.
  */
 import { test, expect, type Page } from "@playwright/test";
-import { BRANCH_REF, PREVIEW_PASSWORD, USERS, branchSql, callEdgeFunction, primeBypass, signIn } from "./helpers";
+import {
+  BRANCH_REF,
+  PRODUCTION_REF,
+  PREVIEW_PASSWORD,
+  USERS,
+  branchSql,
+  callEdgeFunction,
+  primeBypass,
+  signIn,
+} from "./helpers";
 
 const RECOVERER_ID = "c0000000-0000-4000-8000-0000000000e1";
 const RECOVERER_EMAIL = "r1-recoverer@preview.acsl.test";
@@ -93,6 +102,7 @@ async function revokeRecovery(email: string) {
  * recoverer is turned away from /dashboard, which is part of what is proven.
  */
 async function signInAsRecoverer(page: Page): Promise<{ token: string; anonKey: string }> {
+  await guardProduction(page);
   let anonKey = "";
   page.on("request", (r) => {
     const key = r.headers()["apikey"];
@@ -116,19 +126,64 @@ async function signInAsRecoverer(page: Page): Promise<{ token: string; anonKey: 
   return { token, anonKey };
 }
 
-/** Rows a token can read from one relation, or null when refused. */
-async function rowsReadable(page: Page, schema: string, relation: string, anonKey: string, bearer: string) {
+/**
+ * Never let a made-up login or a probe reach production, even if the preview
+ * were wired to it by mistake. Installed before the first page load.
+ */
+async function guardProduction(page: Page) {
+  await page.route(`https://${PRODUCTION_REF}.supabase.co/**`, (route) => route.abort("blockedbyclient"));
+}
+
+type Read =
+  | { outcome: "rows"; rows: number }
+  | { outcome: "refused" }
+  | { outcome: "inconclusive"; detail: string };
+
+/**
+ * What one token can read from one relation.
+ *
+ * Only two answers count: a successful read with an exact count, or a
+ * permission refusal from Postgres (42501). Anything else, a bad key, a server
+ * error, a missing count, is inconclusive and fails the proof, because a
+ * request that broke for another reason proves nothing about access.
+ */
+async function readAs(page: Page, relation: string, anonKey: string, bearer: string): Promise<Read> {
   const response = await page.request.get(`${SUPABASE}/rest/v1/${relation}?select=*&limit=1`, {
-    headers: {
-      apikey: anonKey,
-      Authorization: `Bearer ${bearer}`,
-      Prefer: "count=exact",
-      "Accept-Profile": schema,
-    },
+    headers: { apikey: anonKey, Authorization: `Bearer ${bearer}`, Prefer: "count=exact", "Accept-Profile": "public" },
   });
-  if (!response.ok()) return { status: response.status(), rows: null as number | null };
-  const total = (response.headers()["content-range"] ?? "").split("/")[1];
-  return { status: response.status(), rows: total === undefined || total === "*" ? null : Number(total) };
+  if (response.ok()) {
+    const total = Number((response.headers()["content-range"] ?? "").split("/")[1]);
+    return Number.isFinite(total)
+      ? { outcome: "rows", rows: total }
+      : { outcome: "inconclusive", detail: `no exact count (${response.headers()["content-range"]})` };
+  }
+  const body = (await response.json().catch(() => ({}))) as { code?: string };
+  if ((response.status() === 401 || response.status() === 403) && body.code === "42501") {
+    return { outcome: "refused" };
+  }
+  return { outcome: "inconclusive", detail: `${response.status()} ${body.code ?? ""}`.trim() };
+}
+
+/** Whether PostgREST refused the recovery schema itself, which is the only acceptable answer. */
+async function recoverySchemaRefused(page: Page, table: string, anonKey: string, bearer: string) {
+  const response = await page.request.get(`${SUPABASE}/rest/v1/${table}?select=*&limit=1`, {
+    headers: { apikey: anonKey, Authorization: `Bearer ${bearer}`, "Accept-Profile": "recovery" },
+  });
+  const body = (await response.json().catch(() => ({}))) as { code?: string };
+  return { status: response.status(), code: body.code ?? null };
+}
+
+/** Read every relation of one kind as the recoverer; return what read rows and what was inconclusive. */
+async function sweep(page: Page, relations: string[], anonKey: string, token: string, skip = new Set<string>()) {
+  const reads: string[] = [];
+  const inconclusive: string[] = [];
+  for (const relation of relations) {
+    if (skip.has(relation)) continue;
+    const result = await readAs(page, relation, anonKey, token);
+    if (result.outcome === "rows" && result.rows > 0) reads.push(`${relation} (${result.rows})`);
+    if (result.outcome === "inconclusive") inconclusive.push(`${relation}: ${result.detail}`);
+  }
+  return { reads, inconclusive };
 }
 
 test.describe.configure({ mode: "serial" });
@@ -153,10 +208,12 @@ test.describe("Recovery R1: the rig", () => {
         ["anon key", anonKey],
         ["signed-in token", token],
       ] as const) {
-        const result = await rowsReadable(page, "recovery", table, anonKey, bearer);
-        // PostgREST refuses a schema it does not expose (406, PGRST106). Any
-        // 2xx at all, even with zero rows, means the schema is reachable.
-        expect(result.status, `recovery.${table} with the ${who}`).toBeGreaterThanOrEqual(400);
+        // PostgREST refuses a schema it does not expose with 406 and PGRST106.
+        // That answer also proves the key was accepted and the request reached
+        // PostgREST, so a broken key or a server error cannot pass for it. Any
+        // other answer, a 2xx with zero rows included, is a failure.
+        const result = await recoverySchemaRefused(page, table, anonKey, bearer);
+        expect(result, `recovery.${table} with the ${who}`).toEqual({ status: 406, code: "PGRST106" });
       }
     }
   });
@@ -168,12 +225,8 @@ test.describe("Recovery R1: the rig", () => {
        where n.nspname = 'public' and c.relkind in ('r', 'p') order by 1`);
     expect(tables.length).toBeGreaterThan(10);
 
-    const reads: string[] = [];
-    for (const { relname } of tables) {
-      if (REFERENCE_TABLES.has(relname)) continue;
-      const result = await rowsReadable(page, "public", relname, anonKey, token);
-      if (result.rows !== null && result.rows > 0) reads.push(`${relname} (${result.rows})`);
-    }
+    const { reads, inconclusive } = await sweep(page, tables.map((t) => t.relname), anonKey, token, REFERENCE_TABLES);
+    expect(inconclusive, "tables whose answer proves nothing either way").toEqual([]);
     expect(reads, "tables in public a recoverer can read rows from").toEqual([]);
   });
 
@@ -186,11 +239,8 @@ test.describe("Recovery R1: the rig", () => {
       select c.relname from pg_class c join pg_namespace n on n.oid = c.relnamespace
        where n.nspname = 'public' and c.relkind in ('v', 'm') order by 1`);
 
-    const reads: string[] = [];
-    for (const { relname } of views) {
-      const result = await rowsReadable(page, "public", relname, anonKey, token);
-      if (result.rows !== null && result.rows > 0) reads.push(`${relname} (${result.rows})`);
-    }
+    const { reads, inconclusive } = await sweep(page, views.map((v) => v.relname), anonKey, token);
+    expect(inconclusive, "views whose answer proves nothing either way").toEqual([]);
     expect(reads, "views in public a recoverer can read rows from").toEqual([]);
   });
 
@@ -249,7 +299,13 @@ test.describe("Recovery R1: the rig", () => {
 
   test("staff are let in per person, on top of their own role", async ({ page }) => {
     await revokeRecovery(USERS.acslAgent);
+    await guardProduction(page);
+    // An absent link proves nothing until the sidebar has asked the server.
+    const sidebarAsked = page.waitForResponse((r) => r.url().includes("/functions/v1/recovery-read"), {
+      timeout: 60_000,
+    });
     await signIn(page, USERS.acslAgent);
+    await sidebarAsked;
     await expect(page.getByRole("link", { name: "Recovery", exact: true })).toHaveCount(0);
     const before = await callEdgeFunction(page, "recovery-read", { action: "access" });
     expect((before.body as { data: { hasAccess: boolean } }).data.hasAccess).toBe(false);
@@ -270,6 +326,7 @@ test.describe("Recovery R1: the rig", () => {
   });
 
   test("a super admin holds Recovery without a row", async ({ page }) => {
+    await guardProduction(page);
     await signIn(page, USERS.admin);
     await expect(page.getByRole("link", { name: "Recovery", exact: true })).toBeVisible({ timeout: 30_000 });
     const access = await callEdgeFunction(page, "recovery-read", { action: "access" });

@@ -35,7 +35,8 @@ export const LEVEL_FEATURES: Record<RecoveryAccessLevel, RecoveryFeature[]> = {
 
 const KNOWN = new Set<string>(RECOVERY_FEATURES);
 
-function isLevel(value: string | null): value is RecoveryAccessLevel {
+/** A level this file knows. Anything else, stored or not, grants nothing. */
+export function isLevel(value: string | null): value is RecoveryAccessLevel {
   return value !== null && Object.prototype.hasOwnProperty.call(LEVEL_FEATURES, value);
 }
 

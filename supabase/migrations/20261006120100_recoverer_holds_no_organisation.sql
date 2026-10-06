@@ -24,22 +24,27 @@
 --
 -- No existing row is touched, no column added, no policy or function changed.
 -- Every account that is not a recoverer is unaffected: the rule is true for any
--- role other than 'recoverer'. NOT VALID then VALIDATE keeps the lock short:
--- the add takes a brief lock without scanning, and the scan runs under a lock
--- that lets reads and writes continue.
+-- role other than 'recoverer'.
+--
+-- THE LOCK. Adding a CHECK takes an ACCESS EXCLUSIVE lock on profiles, and the
+-- migration runner applies this file as one transaction, so the lock is held
+-- until the validation scan ends. profiles holds one row per account, so the
+-- scan is milliseconds. The real risk is the queue: an ALTER waiting behind a
+-- long transaction makes every sign-in wait behind it. lock_timeout makes it
+-- give up after three seconds instead; if it does, run it again.
 --
 -- Written for Orezi to run, on a preview branch database first.
 --
 -- Rollback:
 --   alter table public.profiles drop constraint profiles_recoverer_holds_no_organisation;
 
-alter table public.profiles
-  add constraint profiles_recoverer_holds_no_organisation
-  check (role is distinct from 'recoverer' or organization_id is null)
-  not valid;
+begin;
+
+set local lock_timeout = '3s';
 
 alter table public.profiles
-  validate constraint profiles_recoverer_holds_no_organisation;
+  add constraint profiles_recoverer_holds_no_organisation
+  check (role is distinct from 'recoverer' or organization_id is null);
 
 comment on constraint profiles_recoverer_holds_no_organisation on public.profiles is
   'A recoverer account is recruited only for the Recovery module and must read nothing in the sales app, which scopes by organisation. See src/app/recovery/PLAN.md.';
@@ -54,6 +59,8 @@ begin
   end if;
   raise notice 'Recovery R1 verified: a recoverer account cannot hold an organisation';
 end $$;
+
+commit;
 
 -- Readback to paste back after running (read-only):
 --

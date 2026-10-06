@@ -31,7 +31,7 @@ profile guard stops a signed-in person setting an organisation, but the server,
 the dashboard and `handle_new_user()` (from app_metadata) all can.
 
 So `public.profiles` gains one CHECK: `role is distinct from 'recoverer' or
-organization_id is null`. Added NOT VALID, then validated. No row, column,
+organization_id is null`. With a three-second lock timeout, so it cannot queue sign-ins behind it. No row, column,
 policy or function changes. Its own migration,
 `20261006120100_recoverer_holds_no_organisation.sql`, so it can be judged
 separately. Rejected: editing `scope_organization_ids()` and the three row

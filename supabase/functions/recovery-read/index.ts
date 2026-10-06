@@ -20,7 +20,7 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.39.3";
 import { withReadConnection } from "../_shared/data-center-db.ts";
-import { featuresFor, isSuperAdmin, RECOVERY_FEATURES } from "../_shared/recovery-roles.ts";
+import { featuresFor, isLevel, isSuperAdmin, RECOVERY_FEATURES } from "../_shared/recovery-roles.ts";
 
 // Explicit origin list, never `*`: these answers are gated on a bearer token,
 // and a permissive origin turns any page the user visits into a caller.
@@ -88,7 +88,9 @@ async function resolveAccess(userId: string): Promise<Access> {
       args: [userId],
     });
     const level = result.rows[0]?.access_level ?? null;
-    if (level === null) return NO_ACCESS;
+    // The table's CHECK admits only known levels; this holds the same line if
+    // the two ever drift, so an unknown level is no access rather than access.
+    if (!isLevel(level)) return NO_ACCESS;
     return {
       hasAccess: true,
       accessLevel: level,

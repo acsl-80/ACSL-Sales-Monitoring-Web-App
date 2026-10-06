@@ -58,6 +58,10 @@ and deleting the route files takes the module out whole.
   it out of PostgREST is what stops the browser and the Flutter app reaching it.
   Usage on the schema is revoked from `anon` and `authenticated`; row security
   is on with no policies. Three locks, and none of them is optional.
+- **Every function created in `recovery` revokes its own execute** from
+  `public, anon, authenticated` in the same migration. Postgres lets PUBLIC
+  execute a new function by default, and a per-schema default cannot take
+  that away.
 - **`recoverer` fails closed everywhere it is unknown.** It is a sales-app role
   with no routes, no features and no organisation scope. Any check written as
   "if not super admin then treat as partner" or any `else` that hands out rows

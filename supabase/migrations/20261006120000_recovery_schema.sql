@@ -162,11 +162,13 @@ grant select, insert, update, delete on recovery.feature_grants to service_role;
 grant select, insert on recovery.change_log to service_role;
 grant usage on all sequences in schema recovery to service_role;
 
--- Tables later slices add start locked the same way, without each migration
--- having to remember.
-alter default privileges in schema recovery revoke all on tables    from public, anon, authenticated;
-alter default privileges in schema recovery revoke all on sequences from public, anon, authenticated;
-alter default privileges in schema recovery revoke all on functions from public, anon, authenticated;
+-- Tables and sequences later slices add are granted to service_role without
+-- each migration having to remember. Nothing is revoked here, because a
+-- per-schema default can only add to the global defaults, never take away.
+-- Postgres's global default lets PUBLIC execute every new function, so each
+-- function a later slice adds in this schema revokes its own execute, as
+-- log_change() does above. The schema's revoked usage is what stops a call
+-- reaching one in the meantime.
 alter default privileges in schema recovery grant select, insert, update, delete on tables to service_role;
 alter default privileges in schema recovery grant usage on sequences to service_role;
 
@@ -196,15 +198,29 @@ begin
     if exists (select 1 from pg_policies where schemaname = 'recovery' and tablename = t) then
       raise exception 'Recovery R1 failed: recovery.% has a policy, and must have none', t;
     end if;
-    if has_table_privilege('authenticated', format('recovery.%I', t), 'select')
-       or has_table_privilege('anon', format('recovery.%I', t), 'select') then
-      raise exception 'Recovery R1 failed: recovery.% is readable by anon or authenticated', t;
+    if has_table_privilege('authenticated', format('recovery.%I', t), 'select, insert, update, delete')
+       or has_table_privilege('anon', format('recovery.%I', t), 'select, insert, update, delete') then
+      raise exception 'Recovery R1 failed: anon or authenticated holds a privilege on recovery.%', t;
     end if;
   end loop;
 
+  if exists (select 1 from pg_class c join pg_namespace n on n.oid = c.relnamespace
+              where n.nspname = 'recovery' and c.relkind = 'S'
+                and (has_sequence_privilege('anon', c.oid, 'usage, select')
+                     or has_sequence_privilege('authenticated', c.oid, 'usage, select'))) then
+    raise exception 'Recovery R1 failed: a recovery sequence is usable by anon or authenticated';
+  end if;
+
+  if has_function_privilege('anon', 'recovery.log_change()', 'execute')
+     or has_function_privilege('authenticated', 'recovery.log_change()', 'execute') then
+    raise exception 'Recovery R1 failed: recovery.log_change() is executable by anon or authenticated';
+  end if;
+
   if (select count(*) from pg_trigger
        where tgrelid in ('recovery.module_access'::regclass, 'recovery.feature_grants'::regclass)
-         and tgname in ('audit_module_access', 'audit_feature_grants')) <> 2 then
+         and tgname in ('audit_module_access', 'audit_feature_grants')
+         and tgenabled = 'O'
+         and tgfoid = 'recovery.log_change()'::regprocedure) <> 2 then
     raise exception 'Recovery R1 failed: an audit trigger is missing';
   end if;
 
