@@ -32,7 +32,14 @@ pushed. Owner: Claude (lead), review by Codex.
       failing request, which `non-interference` will report as a console error
 - [ ] Run on the preview: `recovery-r1`, `non-interference`, `host-pages-load`,
       `data-center-pages-load`, `data-center`; run the SQL proof
-- [ ] Cross-family review (Codex) folded in
+- [x] Cross-family review: Codex (gpt-6.1-sol) reviewed 3862f2e blind, with a
+      Claude lane alongside. Eight issues confirmed, all fixed in da198cf
+      (unknown level read as access, migration checks, profiles lock timeout,
+      sidebar cache bound to the user, spec and SQL proof false greens,
+      production guard). Coverage partial: Codex marked several atoms limited
+      because live database state was not in its evidence, and two Claude lanes
+      failed on a runtime error. Artifacts in `.local/review-artifacts/`
+- [ ] Codex re-check of da198cf
 - [ ] Orezi's rulings: R-D4 (open holes, hardening first), R-D5 (where a
       recoverer lands)
 
@@ -40,7 +47,7 @@ pushed. Owner: Claude (lead), review by Codex.
 
 Checked: the app builds, `tsc` is clean, lint is clean on every changed file
 (one fast-refresh warning, the same one the Data Center's `access.tsx` has),
-all 517 specs parse.
+all 517 specs parse, and a blind cross-family review ran (above).
 
 Not checked: nothing has run against a database. The local Supabase stack here
 held a stale database from August, and applying the pending migrations to it
@@ -56,6 +63,9 @@ a passing one.
 
 ### Next, after R1
 
+- The Data Center's own sidebar hook has the cache flaw Codex found in this
+  one (not bound to the user). Flagged as its own task for the Data Center's
+  lane; not touched here.
 - Recoverer accounts are created by a super admin from the Supabase dashboard
   or SQL for now: `manage-users` holds a fixed role list and refuses
   `recoverer`. Adding it there is a host change, for its own slice.

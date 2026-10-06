@@ -58,6 +58,10 @@ export function useRecoveryModuleAccess(enabled: boolean): boolean {
   useEffect(() => {
     let alive = true;
     let resolvedFor: string | null = null;
+    // Each resolution takes a number; only the newest may write state or the
+    // cache. An answer still in flight for the previous person is dropped
+    // rather than shown to the next one.
+    let generation = 0;
 
     // A change of person (sign-out, another sign-in) asks again rather than
     // keeping what the last person was shown. A token refresh for the same
@@ -66,32 +70,37 @@ export function useRecoveryModuleAccess(enabled: boolean): boolean {
     const { data: listener } = getSupabase().auth.onAuthStateChange((_event, session) => {
       const userId = session?.user.id ?? null;
       if (userId === resolvedFor) return;
+      generation += 1;
       if (alive) setHasAccess(false);
       setTimeout(() => void resolve(), 0);
     });
 
     async function resolve() {
+      const mine = ++generation;
+      const current = () => alive && mine === generation;
       if (!enabled) return;
       const { data } = await getSupabase().auth.getSession();
+      if (!current()) return;
       const userId = data.session?.user.id;
       resolvedFor = userId ?? null;
       if (!userId) {
-        if (alive) setHasAccess(false);
+        setHasAccess(false);
         return;
       }
       const cached = readCache(userId);
       if (cached !== null) {
-        if (alive) setHasAccess(cached);
+        setHasAccess(cached);
         return;
       }
       try {
         const access = await recoveryClient.getAccess();
+        if (!current()) return;
         const value = Boolean(access.hasAccess);
         writeCache(userId, value);
-        if (alive) setHasAccess(value);
+        setHasAccess(value);
       } catch {
         // Fail closed, and do not cache a transient failure.
-        if (alive) setHasAccess(false);
+        if (current()) setHasAccess(false);
       }
     }
 
