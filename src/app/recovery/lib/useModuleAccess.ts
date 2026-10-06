@@ -57,7 +57,9 @@ export function useRecoveryModuleAccess(enabled: boolean): boolean {
 
   useEffect(() => {
     let alive = true;
-    let resolvedFor: string | null = null;
+    // The newest account the auth listener has reported; undefined until it
+    // reports one. An answer for anyone else is dropped.
+    let latest: string | null | undefined = undefined;
     // Each resolution takes a number; only the newest may write state or the
     // cache. An answer still in flight for the previous person is dropped
     // rather than shown to the next one.
@@ -69,7 +71,8 @@ export function useRecoveryModuleAccess(enabled: boolean): boolean {
     // because supabase-js can deadlock on an auth call made inside it.
     const { data: listener } = getSupabase().auth.onAuthStateChange((_event, session) => {
       const userId = session?.user.id ?? null;
-      if (userId === resolvedFor) return;
+      if (userId === latest) return;
+      latest = userId;
       generation += 1;
       if (alive) setHasAccess(false);
       setTimeout(() => void resolve(), 0);
@@ -82,7 +85,8 @@ export function useRecoveryModuleAccess(enabled: boolean): boolean {
       const { data } = await getSupabase().auth.getSession();
       if (!current()) return;
       const userId = data.session?.user.id;
-      resolvedFor = userId ?? null;
+      // A newer account has been reported and its own resolution is coming.
+      if (latest !== undefined && (userId ?? null) !== latest) return;
       if (!userId) {
         setHasAccess(false);
         return;
