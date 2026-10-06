@@ -29,10 +29,12 @@ import {
   HelpCircle,
   Database,
   MessageSquarePlus,
+  ArchiveRestore,
 
 } from "lucide-react";
 import { usePermissions } from "../hooks/usePermissions";
 import { useDataCenterModuleAccess } from "../data-center/lib/useModuleAccess";
+import { useRecoveryModuleAccess } from "../recovery/lib/useModuleAccess";
 import Link from "@/compat/Link";
 
 // Single canonical nav. Visibility is driven entirely by permissions —
@@ -81,6 +83,8 @@ const allNavItems = [
 
   { name: "Data Center", icon: Database, route: "data-center", href: "/data-center" },
 
+  { name: "Recovery", icon: ArchiveRestore, route: "recovery", href: "/recovery" },
+
   { name: "Track Stoves", icon: Tag, route: "stove-management", href: "/stove-management" },
 
   { name: "API Documentation", icon: FileText, route: "docs", href: "/end-user-records/api" },
@@ -119,6 +123,9 @@ const Sidebar = ({ isOpen, onClose, currentRoute }) => {
   // exactly one nav item; showing the entry is presentation, and the module
   // and its endpoints re-check access for real.
   const hasDataCenterAccess = useDataCenterModuleAccess(!isSuperAdmin);
+  // Recovery, the same way. Asked only of people the map does not already let
+  // in, so a super admin or a recoverer costs nothing.
+  const hasRecoveryAccess = useRecoveryModuleAccess(!canRoute("recovery"));
 
   // The sidebar mounts once in the persistent shell and does not remount on
   // navigation (see DashboardLayout.tsx), so a render-time read of
@@ -150,6 +157,9 @@ const Sidebar = ({ isOpen, onClose, currentRoute }) => {
       // Per-user module access supplements the static map for this one entry.
       if (item.route === "data-center") {
         return canRoute(item.route) || hasDataCenterAccess ? item : null;
+      }
+      if (item.route === "recovery") {
+        return canRoute(item.route) || hasRecoveryAccess ? item : null;
       }
       return canRoute(item.route) ? item : null;
     })

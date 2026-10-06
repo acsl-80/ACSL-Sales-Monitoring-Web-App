@@ -21,6 +21,7 @@ import { Route as StoveManagerIndexRouteImport } from './routes/stove-manager/in
 import { Route as StoveManagementIndexRouteImport } from './routes/stove-management/index'
 import { Route as SalesIndexRouteImport } from './routes/sales/index'
 import { Route as SalesMonitoringAppIndexRouteImport } from './routes/sales-monitoring-app/index'
+import { Route as RecoveryIndexRouteImport } from './routes/recovery/index'
 import { Route as ProfileIndexRouteImport } from './routes/profile/index'
 import { Route as PaymentModelsIndexRouteImport } from './routes/payment-models/index'
 import { Route as PartnersIndexRouteImport } from './routes/partners/index'
@@ -153,6 +154,11 @@ const SalesIndexRoute = SalesIndexRouteImport.update({
 const SalesMonitoringAppIndexRoute = SalesMonitoringAppIndexRouteImport.update({
   id: '/sales-monitoring-app/',
   path: '/sales-monitoring-app/',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const RecoveryIndexRoute = RecoveryIndexRouteImport.update({
+  id: '/recovery/',
+  path: '/recovery/',
   getParentRoute: () => rootRouteImport,
 } as any)
 const ProfileIndexRoute = ProfileIndexRouteImport.update({
@@ -567,6 +573,7 @@ export interface FileRoutesByFullPath {
   '/partners/': typeof PartnersIndexRoute
   '/payment-models/': typeof PaymentModelsIndexRoute
   '/profile/': typeof ProfileIndexRoute
+  '/recovery/': typeof RecoveryIndexRoute
   '/sales-monitoring-app/': typeof SalesMonitoringAppIndexRoute
   '/sales/': typeof SalesIndexRoute
   '/stove-management/': typeof StoveManagementIndexRoute
@@ -652,6 +659,7 @@ export interface FileRoutesByTo {
   '/partners': typeof PartnersIndexRoute
   '/payment-models': typeof PaymentModelsIndexRoute
   '/profile': typeof ProfileIndexRoute
+  '/recovery': typeof RecoveryIndexRoute
   '/sales-monitoring-app': typeof SalesMonitoringAppIndexRoute
   '/sales': typeof SalesIndexRoute
   '/stove-management': typeof StoveManagementIndexRoute
@@ -738,6 +746,7 @@ export interface FileRoutesById {
   '/partners/': typeof PartnersIndexRoute
   '/payment-models/': typeof PaymentModelsIndexRoute
   '/profile/': typeof ProfileIndexRoute
+  '/recovery/': typeof RecoveryIndexRoute
   '/sales-monitoring-app/': typeof SalesMonitoringAppIndexRoute
   '/sales/': typeof SalesIndexRoute
   '/stove-management/': typeof StoveManagementIndexRoute
@@ -825,6 +834,7 @@ export interface FileRouteTypes {
     | '/partners/'
     | '/payment-models/'
     | '/profile/'
+    | '/recovery/'
     | '/sales-monitoring-app/'
     | '/sales/'
     | '/stove-management/'
@@ -910,6 +920,7 @@ export interface FileRouteTypes {
     | '/partners'
     | '/payment-models'
     | '/profile'
+    | '/recovery'
     | '/sales-monitoring-app'
     | '/sales'
     | '/stove-management'
@@ -995,6 +1006,7 @@ export interface FileRouteTypes {
     | '/partners/'
     | '/payment-models/'
     | '/profile/'
+    | '/recovery/'
     | '/sales-monitoring-app/'
     | '/sales/'
     | '/stove-management/'
@@ -1081,6 +1093,7 @@ export interface RootRouteChildren {
   PartnersIndexRoute: typeof PartnersIndexRoute
   PaymentModelsIndexRoute: typeof PaymentModelsIndexRoute
   ProfileIndexRoute: typeof ProfileIndexRoute
+  RecoveryIndexRoute: typeof RecoveryIndexRoute
   SalesMonitoringAppIndexRoute: typeof SalesMonitoringAppIndexRoute
   SalesIndexRoute: typeof SalesIndexRoute
   StoveManagementIndexRoute: typeof StoveManagementIndexRoute
@@ -1218,6 +1231,13 @@ declare module '@tanstack/react-router' {
       path: '/sales-monitoring-app'
       fullPath: '/sales-monitoring-app/'
       preLoaderRoute: typeof SalesMonitoringAppIndexRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/recovery/': {
+      id: '/recovery/'
+      path: '/recovery'
+      fullPath: '/recovery/'
+      preLoaderRoute: typeof RecoveryIndexRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/profile/': {
@@ -1753,6 +1773,7 @@ const rootRouteChildren: RootRouteChildren = {
   PartnersIndexRoute: PartnersIndexRoute,
   PaymentModelsIndexRoute: PaymentModelsIndexRoute,
   ProfileIndexRoute: ProfileIndexRoute,
+  RecoveryIndexRoute: RecoveryIndexRoute,
   SalesMonitoringAppIndexRoute: SalesMonitoringAppIndexRoute,
   SalesIndexRoute: SalesIndexRoute,
   StoveManagementIndexRoute: StoveManagementIndexRoute,

@@ -7,7 +7,12 @@ export type AppRole =
   | "admin"
   | "partner_agent"
   | "agent"
-  | "agent_user";
+  | "agent_user"
+  // An account recruited only to recover stove records. Its pages are Recovery
+  // and the person's own profile, and nothing else: no features, no
+  // organisation scope. What they may do inside Recovery is decided per person
+  // in recovery.module_access. See src/app/recovery/PLAN.md.
+  | "recoverer";
 
 export type RouteKey =
   | "dashboard"
@@ -42,6 +47,10 @@ export type RouteKey =
   // exists for this user at all. What they can do once inside is tier 2, held
   // per user in data_center.feature_grants. See src/app/data-center/PLAN.md.
   | "data-center"
+  // The Recovery module's front door. Held by super_admin and by the
+  // recoverer role; staff granted Recovery per person reach it through the
+  // sidebar's per-user check, as with the Data Center.
+  | "recovery"
   | "performance-report"
   | "sales-cancelled-purchases"
   | "user-guide"
@@ -118,6 +127,7 @@ const ALL_ROUTES: RouteKey[] = [
   // role lists it, so the module is unreachable for everyone else. Widen this
   // only once the module is proven and the call-centre role exists.
   "data-center",
+  "recovery",
   "user-guide",
 ];
 
@@ -272,6 +282,12 @@ export const PERMISSIONS: Record<string, RolePermissions> = {
       "sales-monitoring-app",
     ],
     features: ["create-sale"],
+  },
+  // Recovery and their own profile. Nothing else, on purpose: this role holds
+  // no sales-app scope, so even a page it reached would have no rows to show.
+  recoverer: {
+    routes: ["recovery", "profile"],
+    features: [],
   },
 };
 
