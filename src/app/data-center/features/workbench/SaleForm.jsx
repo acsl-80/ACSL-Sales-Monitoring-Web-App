@@ -316,11 +316,20 @@ export default function SaleForm({
       const id = res?.data?.upload?.id ?? res?.data?.id;
       if (!res?.success || !id) throw new Error(res?.error ?? "Upload failed");
       set(kind === "stove" ? "stoveImageId" : "agreementImageId", id);
-      // A data URL, as Sell Stove does: a blob URL hides that a scan is a PDF,
-      // and the preview then draws a PDF as a broken image.
-      const reader = new FileReader();
-      reader.onload = (e) => setPreviews((p) => ({ ...p, [kind]: e.target.result }));
-      reader.readAsDataURL(file);
+      /*
+       * The preview is the stored file's own address, kept on the draft. A data
+       * URL opened a blank tab (Chromium will not open one in a new tab), and a
+       * preview held only here was gone when the draft was reopened.
+       */
+      const url = res?.data?.upload?.url ?? res?.data?.url;
+      if (url) {
+        set(kind === "stove" ? "stoveImageUrl" : "agreementImageUrl", url);
+        setPreviews((p) => ({ ...p, [kind]: null }));
+      } else {
+        const reader = new FileReader();
+        reader.onload = (e) => setPreviews((p) => ({ ...p, [kind]: e.target.result }));
+        reader.readAsDataURL(file);
+      }
     } catch (err) {
       setUploadError(
         `That image did not upload: ${err?.message ?? "unknown reason"}. ` +
@@ -865,7 +874,7 @@ export default function SaleForm({
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
           <ImageUploadSection
             label={fieldLabel("stove_image_id")}
-            preview={previews.stove}
+            preview={previews.stove ?? (values.stoveImageId ? values.stoveImageUrl : null)}
             uploading={uploading.stove}
             onUpload={(file) => upload(file, "stove")}
             placeholder="A photograph of the stove with its serial number visible"
@@ -875,7 +884,9 @@ export default function SaleForm({
           />
           <ImageUploadSection
             label={fieldLabel("agreement_image_id")}
-            preview={previews.agreement}
+            preview={
+              previews.agreement ?? (values.agreementImageId ? values.agreementImageUrl : null)
+            }
             uploading={uploading.agreement}
             onUpload={(file) => upload(file, "agreement")}
             placeholder="A photograph or scan of the signed paper agreement"

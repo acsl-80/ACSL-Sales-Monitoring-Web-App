@@ -1,5 +1,5 @@
 import { test, expect, type Page } from "@playwright/test";
-import { signIn, USERS } from "./helpers";
+import { callEdgeFunction, signIn, USERS } from "./helpers";
 
 /**
  * A photograph taken or chosen at the bench uploads and stays on the record.
@@ -99,5 +99,82 @@ test("a scanned agreement PDF uploads at the bench and shows as a document", asy
   });
   await expect(photos.getByText(/Uploading\./)).toHaveCount(0, { timeout: 60_000 });
   await expect(photos.getByText(/did not upload/)).toHaveCount(0);
-  await expect(photos.getByRole("link", { name: "View uploaded document" })).toBeVisible();
+  const view = photos.getByRole("link", { name: "View uploaded document" });
+  await expect(view).toBeVisible();
+
+  /*
+   * On 2026-10-09 the link opened a blank tab. It held the file as a data URL,
+   * and Chromium will not open a data URL in a new tab. It has to point at the
+   * stored file, which also shows the file is really there.
+   */
+  // Headless Chromium downloads a PDF rather than showing it, so the tab's own
+  // address proves nothing here; the link's target and what it serves do.
+  const href = (await view.getAttribute("href")) ?? "";
+  expect(href, "the link should open the stored file, not a blank tab").toMatch(
+    /^https:\/\/.*\/storage\/v1\/object\/public\/images\/.+\.pdf$/,
+  );
+  const served = await page.request.get(href);
+  expect(served.status(), "the stored file should be served").toBe(200);
+});
+
+/** Clear the admin's bench batch, through the product. */
+async function discardMyBenchBatch(page: Page) {
+  const r = await callEdgeFunction(page, "data-center-import", { action: "batches" });
+  const batches = (r.body as { data?: Record<string, unknown>[] })?.data ?? [];
+  for (const b of batches.filter(
+    (b) => b.source === "workbench" && b.state !== "committed" && b.state !== "rolled_back",
+  )) {
+    await callEdgeFunction(page, "data-center-import", { action: "discard", batchId: b.id });
+  }
+}
+
+/**
+ * The photo's preview lived only in the page's memory, so a draft reopened
+ * later showed empty slots although the photo was saved on it. A typist
+ * reads that as the photo gone and uploads it again.
+ */
+test("a photo saved on a draft is still showing when the draft is reopened", async ({
+  page,
+}) => {
+  const opened = await openBench(page);
+  expect(opened, "the twin partner is not in the funnel on this database").toBe(true);
+
+  // The rail marks the open stove with aria-current; its text is the serial.
+  const rail = page.locator("li > button");
+  const serial = (await page.locator('li > button[aria-current="true"]').innerText()).trim();
+  const photos = page
+    .getByRole("heading", { name: "Photographs" })
+    .locator("xpath=ancestor::section[1]");
+  try {
+    await page.locator("#wb-endUserSurname").fill(`Photo${Date.now() % 100000}`);
+    await photos
+      .locator('input[type="file"]')
+      .first()
+      .setInputFiles({ name: "stove.png", mimeType: "image/png", buffer: PNG });
+    await expect(photos.getByRole("img", { name: "Preview" })).toHaveCount(1, {
+      timeout: 60_000,
+    });
+    await page.getByRole("button", { name: "Save draft" }).click();
+    await expect(page.getByText(/Not saved yet/)).toHaveCount(0, { timeout: 30_000 });
+
+    // Away to another stove, then back: the form is rebuilt from the server.
+    const other = rail.filter({ hasNotText: serial }).first();
+    const otherSerial = (await other.innerText()).trim();
+    await other.click();
+    await expect(page.locator('li > button[aria-current="true"]')).toContainText(otherSerial, {
+      timeout: 30_000,
+    });
+    await rail.filter({ hasText: serial }).first().click();
+    await expect(page.locator('li > button[aria-current="true"]')).toContainText(serial, {
+      timeout: 30_000,
+    });
+    await expect(page.locator("#wb-endUserSurname")).toHaveValue(/^Photo/, { timeout: 30_000 });
+
+    await expect(
+      photos.getByRole("img", { name: "Preview" }),
+      "the stove photo saved on the draft should still be showing",
+    ).toHaveCount(1, { timeout: 30_000 });
+  } finally {
+    await discardMyBenchBatch(page);
+  }
 });
