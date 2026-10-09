@@ -1,6 +1,33 @@
 // Related data fetcher module
 import { Filters } from "./parse-filters.ts";
 
+/*
+ * Every lookup below puts its ids in the request URL. A page of 500 sales
+ * gives 500 address ids and, since the bench, often 500 installment sale ids:
+ * a URL near 19 KB, which the layer between this function and PostgREST
+ * never answers. On 2026-10-09 End User Records hung on exactly that, after
+ * the sales query itself had returned. The same limit is why build-query.ts
+ * chunks organisation ids. Ask in chunks of this size, in parallel, and merge.
+ */
+const ID_CHUNK_SIZE = 100;
+
+async function selectIn(
+  supabase: any,
+  table: string,
+  columns: string,
+  column: string,
+  ids: string[],
+): Promise<{ data: any[]; error: { message: string } | null }> {
+  const chunks: string[][] = [];
+  for (let i = 0; i < ids.length; i += ID_CHUNK_SIZE) chunks.push(ids.slice(i, i + ID_CHUNK_SIZE));
+  const results = await Promise.all(
+    chunks.map((part) => supabase.from(table).select(columns).in(column, part)),
+  );
+  const failed = results.find((r: any) => r.error);
+  if (failed) return { data: [], error: failed.error };
+  return { data: results.flatMap((r: any) => r.data || []), error: null };
+}
+
 export async function fetchRelatedData(
   supabase: any,
   sales: any[],
@@ -84,10 +111,13 @@ async function fetchOrganizations(supabase: any, sales: any[]) {
 
   console.log(`🏢 Fetching ${orgIds.length} unique organizations`);
 
-  const { data: organizations, error: orgsError } = await supabase
-    .from("organizations")
-    .select("id, partner_name, branch, state, email, created_at")
-    .in("id", orgIds);
+  const { data: organizations, error: orgsError } = await selectIn(
+    supabase,
+    "organizations",
+    "id, partner_name, branch, state, email, created_at",
+    "id",
+    orgIds,
+  );
 
   if (orgsError) {
     console.log("❌ Error fetching organizations:", orgsError.message);
@@ -127,12 +157,13 @@ async function fetchAddresses(supabase: any, sales: any[]) {
 
   console.log(`📍 Fetching ${addressIds.length} unique addresses`);
 
-  const { data: addresses, error: addressError } = await supabase
-    .from("addresses")
-    .select(
-      "id, city, state, street, country, latitude, longitude, full_address, created_at"
-    )
-    .in("id", addressIds);
+  const { data: addresses, error: addressError } = await selectIn(
+    supabase,
+    "addresses",
+    "id, city, state, street, country, latitude, longitude, full_address, created_at",
+    "id",
+    addressIds,
+  );
 
   if (addressError) {
     console.log("❌ Error fetching addresses:", addressError.message);
@@ -170,10 +201,13 @@ async function fetchCreators(supabase: any, sales: any[]) {
 
   console.log(`👤 Fetching ${creatorIds.length} unique creators`);
 
-  const { data: creators, error: creatorsError } = await supabase
-    .from("profiles")
-    .select("id, full_name, email, phone, role")
-    .in("id", creatorIds);
+  const { data: creators, error: creatorsError } = await selectIn(
+    supabase,
+    "profiles",
+    "id, full_name, email, phone, role",
+    "id",
+    creatorIds,
+  );
 
   if (creatorsError) {
     console.log("❌ Error fetching creators:", creatorsError.message);
@@ -211,10 +245,7 @@ async function fetchModifiers(supabase: any, sales: any[]) {
     return;
   }
 
-  const { data, error } = await supabase
-    .from("profiles")
-    .select("id, full_name, email")
-    .in("id", ids);
+  const { data, error } = await selectIn(supabase, "profiles", "id, full_name, email", "id", ids);
 
   if (error) {
     console.log("❌ Error fetching modifiers:", error.message);
@@ -246,10 +277,13 @@ async function fetchImages(supabase: any, sales: any[]) {
 
   console.log(`🖼️ Fetching ${allImageIds.length} unique images`);
 
-  const { data: images, error: imagesError } = await supabase
-    .from("uploads")
-    .select("id, public_id, url, type, created_by, created_at")
-    .in("id", allImageIds);
+  const { data: images, error: imagesError } = await selectIn(
+    supabase,
+    "uploads",
+    "id, public_id, url, type, created_by, created_at",
+    "id",
+    allImageIds,
+  );
 
   if (imagesError) {
     console.log("❌ Error fetching images:", imagesError.message);
@@ -296,10 +330,13 @@ async function fetchInstallmentSummaries(supabase: any, sales: any[]) {
     `💳 Fetching payment counts for ${installmentSaleIds.length} installment sales`
   );
 
-  const { data: payments, error: paymentsError } = await supabase
-    .from("installment_payments")
-    .select("sale_id")
-    .in("sale_id", installmentSaleIds);
+  const { data: payments, error: paymentsError } = await selectIn(
+    supabase,
+    "installment_payments",
+    "sale_id",
+    "sale_id",
+    installmentSaleIds,
+  );
 
   if (paymentsError) {
     console.log("❌ Error fetching installment payments:", paymentsError.message);
