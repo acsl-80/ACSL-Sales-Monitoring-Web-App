@@ -861,3 +861,43 @@ Rejected: a dictionary entry for it. The dictionary is what the forms, the
 corrections catalogue and the phone app read, and an id is none of their business.
 Rejected: naming the key `id`. Every other key in the shape is a Stove DB name in
 words, and "Sales app ID" says which system the id belongs to.
+
+## D64. The sidebar's Data Center answer belongs to one person (2026-10-07)
+
+Found by the Codex review of the Recovery module on 7 October, whose sidebar hook
+was a copy of this one, and asked for by him the same day.
+
+`useDataCenterModuleAccess` kept its answer in sessionStorage for fifteen minutes,
+as `{at, value}`, and seeded the sidebar from it on mount. Nothing in the cache
+said whose answer it was. So when someone with a grant signs out and someone
+without one signs in on the same tab inside those fifteen minutes, the second
+person's sidebar shows the Data Center entry. Clicking it lands on "No Data Center
+access", because every page and every `data-center-*` function asks again, so no
+data was ever exposed. It is still a wrong screen, and a confusing one.
+
+Decided, the same shape Recovery took in its review fix (da198cf on
+feat/recovery-r1): the cache records the user it was answered for and is read only
+for that user; the hook starts closed and opens once this person's answer is
+known; it listens for auth changes and asks again only when the signed-in user
+actually changes, so a token refresh costs nothing. The re-check runs on a
+`setTimeout`, out of the listener, because supabase-js can deadlock on an auth
+call made inside it. The key moves to `dc_module_access_v2`, so a v1 entry with
+no user in it is never read. `invalidateModuleAccessCache` keeps its name; Settings
+calls it after a grant or a revoke.
+
+Two departures from the Recovery copy. The hook asks `lib/client.ts` for the
+user and the auth subscription instead of calling `getSupabase()` itself, because
+nothing else in this module may. And an answer that arrives after the person has
+changed is dropped rather than shown, because a slow request for the last person
+finishing after the next person's answer is the same defect by a different road.
+
+From the fresh-context review: the listener ignores supabase-js's initial session
+event, which the mount check already covers, because hearing it twice sent two
+access requests on every first load. A change of person retires the check in
+flight at once rather than when the next one starts. And the hook starts closed
+again whenever it is switched off and on. The spec now counts the requests: a
+person with no grant costs exactly one.
+
+Rejected: clearing the cache from `AuthContext.signOut`. It would fix sign-out
+but not a session that ends or changes some other way, and it is a host file this
+module may not edit.

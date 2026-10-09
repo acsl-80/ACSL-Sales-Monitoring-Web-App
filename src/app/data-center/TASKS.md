@@ -4,6 +4,12 @@ Flat, one line per slice, newest programme first. States: todo, spec red,
 green, in review, merged, live. The why lives in `decisions.md`; the evidence
 lives on each PR.
 
+## Fix 2026-10-07, the sidebar's Data Center answer belongs to one person
+
+Found by the Codex review of Recovery, whose hook copied this one. Decision D64.
+
+- [ ] in review: `useDataCenterModuleAccess` binds its cache to the user, starts closed, and asks again when the signed-in user changes; key `dc_module_access_v2`. Spec `data-center-sidebar-follows-the-person`. No migration. No function deploy
+
 ## Berlin sync, the Stove DB shape carries the sale's id (his ask 2026-10-02)
 
 Clara (atmosfair) keys each synced sale by the sales app's own id, to tell it from a stove typed into the Stove DB by hand. Decision D63.

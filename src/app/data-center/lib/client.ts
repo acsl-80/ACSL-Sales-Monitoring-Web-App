@@ -65,6 +65,31 @@ async function authHeader(): Promise<string> {
 }
 
 /**
+ * Who is signed in, for the sidebar's cached access answer (D64). Auth rather
+ * than module data, but it comes through here all the same, so this file stays
+ * the only one in the module that touches the Supabase client.
+ */
+export async function signedInUserId(): Promise<string | null> {
+  const { data } = await getSupabase().auth.getSession();
+  return data.session?.user.id ?? null;
+}
+
+/**
+ * Calls back with the signed-in user's id on every auth event after the
+ * first, null once signed out, and returns the unsubscribe. The initial
+ * session is left out: a caller reads that with `signedInUserId`, and hearing
+ * it twice costs a second request. The callback runs inside supabase-js's auth
+ * lock: an auth call made from it can deadlock, so defer one with `setTimeout`.
+ */
+export function onSignedInUser(callback: (userId: string | null) => void): () => void {
+  const { data } = getSupabase().auth.onAuthStateChange((event, session) => {
+    if (event === "INITIAL_SESSION") return;
+    callback(session?.user.id ?? null);
+  });
+  return () => data.subscription.unsubscribe();
+}
+
+/**
  * Call a `data-center-*` edge function.
  *
  * The caller's grants are resolved server-side from this token on every
