@@ -1,6 +1,8 @@
 // Payment Model Service
-// Direct Supabase client implementation (no edge functions required).
+// Direct Supabase client implementation, except recording a payment, which the
+// installment-payments function does as the server.
 import { getSupabase } from "@/lib/supabaseClient";
+import { supabaseFunctionsUrl } from "@/lib/supabaseConfig";
 
 const supabase = getSupabase();
 
@@ -372,56 +374,43 @@ class PaymentModelService {
     return { success: true, data: payments, summary, payment_model };
   }
 
+  // The installment-payments function records the payment and moves the sale's paid
+  // total and payment status with it, as the server, for the roles and sales its
+  // rules allow. Written from the browser, the payment could save while the total
+  // did not (a partner cannot update a sale an agent created), and it did.
   async recordInstallmentPayment(saleId, payload) {
-    const userId = await currentUserId();
-    if (!userId) throw new Error("Not authenticated");
+    const { data: sessionData } = await supabase.auth.getSession();
+    const token = sessionData?.session?.access_token;
+    if (!token) throw new Error("Not authenticated");
 
-    const insertRow = {
-      sale_id: saleId,
-      amount: Number(payload.amount),
-      payment_method: payload.payment_method,
-      proof_image_url: payload.proof_image_url || null,
-      proof_image_id: payload.proof_image_id || null,
-      notes: payload.notes || null,
-      recorded_by: userId,
-      payment_date:
-        payload.payment_date || new Date().toISOString().slice(0, 10),
-    };
-
-    const { data, error } = await supabase
-      .from("installment_payments")
-      .insert(insertRow)
-      .select()
-      .single();
-    if (error) throw new Error(error.message);
-
-    // Ensure the sale row reflects the new payment (in case no DB trigger handles it)
-    try {
-      const { data: saleRow } = await supabase
-        .from("sales")
-        .select("amount, total_paid")
-        .eq("id", saleId)
-        .single();
-      if (saleRow) {
-        const newTotalPaid =
-          (Number(saleRow.total_paid) || 0) + Number(payload.amount);
-        const total = Number(saleRow.amount) || 0;
-        const newStatus =
-          total > 0 && newTotalPaid >= total
-            ? "fully_paid"
-            : newTotalPaid > 0
-            ? "partially_paid"
-            : "pending";
-        await supabase
-          .from("sales")
-          .update({ total_paid: newTotalPaid, payment_status: newStatus })
-          .eq("id", saleId);
+    const res = await fetch(
+      `${supabaseFunctionsUrl}/installment-payments/${encodeURIComponent(saleId)}`,
+      {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${token}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          amount: Number(payload.amount),
+          payment_method: payload.payment_method,
+          proof_image_url: payload.proof_image_url || null,
+          proof_image_id: payload.proof_image_id || null,
+          notes: payload.notes || null,
+          payment_date:
+            payload.payment_date || new Date().toISOString().slice(0, 10),
+        }),
       }
-    } catch (e) {
-      console.warn("[recordInstallmentPayment] sale totals update failed", e);
+    );
+    const result = await res.json().catch(() => ({}));
+    if (!res.ok || result?.success === false) {
+      throw new Error(result?.message || result?.error || "Failed to record payment");
     }
-
-    return { success: true, message: "Payment recorded", data };
+    return {
+      success: true,
+      message: result?.message || "Payment recorded",
+      data: result?.data,
+    };
   }
 }
 

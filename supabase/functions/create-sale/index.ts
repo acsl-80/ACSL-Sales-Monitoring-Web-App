@@ -29,8 +29,9 @@ Deno.serve(async (req) => {
     return withCors(new Response("ok", { status: 200 }));
   }
 
-  // Carries the caller's own login, so the database sees who is selling: row
-  // policies and anything that records the actor read it. Despite the service
+  // Carries the caller's own login, so the database sees who is selling: its
+  // reads (the caller's profile, duplicate checks, payment models) and the
+  // address insert run under the caller's row policies. Despite the service
   // key, a forwarded Authorization header makes PostgREST act as the caller.
   const supabase = createClient(
     Deno.env.get("SUPABASE_URL")!,
@@ -42,9 +43,13 @@ Deno.serve(async (req) => {
     }
   );
   /*
-   * The server's own client, with no caller attached. Used for exactly two
-   * writes: claiming the stove, and undoing this function's own sale when the
-   * claim does not happen.
+   * The server's own client, with no caller attached. It makes every write
+   * to sales, stove_ids and installment_payments: the sale itself, the stove
+   * claim, undoing this function's own sale when the claim does not happen,
+   * and the first instalment. The caller has been authenticated and the
+   * organisation resolved from their profile or checked against their
+   * assignments before any of them runs, and created_by and recorded_by are
+   * set from that caller, so the sale history still names them.
    *
    * Stove rows are written by the server only since 2026-09-24
    * (20260924234000_stove_ids_writes_server_only): signed-in users lost
@@ -603,7 +608,7 @@ Deno.serve(async (req) => {
     // The status is the trigger's to set: update_sale_status() applies
     // public.calculate_sale_status, which reads public.sale_field_rules.
     console.log("📝 Inserting main sale");
-    const { data: saleInsertData, error: saleError } = await supabase
+    const { data: saleInsertData, error: saleError } = await server
       .from("sales")
       .insert([
         {
@@ -755,7 +760,7 @@ Deno.serve(async (req) => {
     // ── Record initial installment payment (if any) ─────────────────────────
     if (installmentData && installmentData.initialAmount > 0) {
       console.log("💰 Recording initial installment payment:", installmentData.initialAmount);
-      const { error: paymentError } = await supabase
+      const { error: paymentError } = await server
         .from("installment_payments")
         .insert({
           sale_id: saleId,
