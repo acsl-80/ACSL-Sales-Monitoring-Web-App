@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo, useCallback } from "react";
+import { useState, useEffect, useMemo, useCallback, useRef } from "react";
 import { useToastNotification } from "@/app/contexts/useToastNotification";
 import DashboardLayout from "../components/DashboardLayout";
 import PageHeader from "../components/PageHeader";
@@ -55,6 +55,10 @@ const EndUserRecordsContent = () => {
   const { toast } = useToastNotification();
   const [allSales, setAllSales] = useState([]);
   const [loading, setLoading] = useState(true);
+  // The first batch is on screen and the rest are still arriving.
+  const [loadingMore, setLoadingMore] = useState(false);
+  const [expectedTotal, setExpectedTotal] = useState(null);
+  const fetchRun = useRef(0);
   const [error, setError] = useState("");
 
   const [searchTerm, setSearchTerm] = useState("");
@@ -87,35 +91,76 @@ const EndUserRecordsContent = () => {
   );
 
   const fetchSales = useCallback(async () => {
+    /*
+     * The edge function caps limit at 500, so the page reads every role-scoped
+     * record in batches (the server scopes rows per role). Fetched one after
+     * another, 5,500 sales kept the page on a spinner until the last batch
+     * landed. The first batch now shows at once and the rest follow, a few at
+     * a time; a reload or an edit starts a new run and retires the old one.
+     */
+    const run = ++fetchRun.current;
+    const current = () => run === fetchRun.current;
+    const PAGE_LIMIT = 500;
+    const MAX_PAGES = 40;
+    const CONCURRENCY = 4;
+    const getPage = (page) =>
+      salesAdvancedService.getSalesData(
+        { page, limit: PAGE_LIMIT, responseFormat: "format2" },
+        "POST",
+        "EndUserRecords"
+      );
+
+    setLoading(true);
+    setLoadingMore(false);
+    setError("");
     try {
-      setLoading(true);
-      setError("");
-      // The edge function caps limit at 500, so page through until all
-      // role-scoped records are loaded (server enforces row scoping per role).
-      const PAGE_LIMIT = 500;
-      const MAX_PAGES = 40;
-      let page = 1;
-      let records = [];
-      let totalPages = 1;
-      do {
-        const result = await salesAdvancedService.getSalesData(
-          { page, limit: PAGE_LIMIT, responseFormat: "format2" },
-          "POST",
-          "EndUserRecords"
-        );
-        if (!result.success) {
-          setError(result.error || "Failed to fetch data");
-          return;
-        }
-        records = records.concat(result.data || []);
-        totalPages = result.pagination?.totalPages || 1;
-        page += 1;
-      } while (page <= totalPages && page <= MAX_PAGES);
-      setAllSales(records);
-    } catch (err) {
-      setError(err.message || "An error occurred");
-    } finally {
+      const first = await getPage(1);
+      if (!current()) return;
+      if (!first.success) {
+        setError(first.error || "Failed to fetch data");
+        return;
+      }
+      const pages = [first.data || []];
+      const totalPages = Math.min(first.pagination?.totalPages || 1, MAX_PAGES);
+      setAllSales(pages[0]);
+      setExpectedTotal(first.pagination?.total ?? null);
       setLoading(false);
+      if (totalPages <= 1) return;
+
+      setLoadingMore(true);
+      // Offset pages can overlap when a sale is added mid-read, so keep one of each.
+      const merged = () => {
+        const seen = new Set();
+        return pages.flat().filter((s) => (seen.has(s.id) ? false : seen.add(s.id)));
+      };
+      let next = 2;
+      let failed = false;
+      const worker = async () => {
+        while (next <= totalPages && !failed && current()) {
+          const page = next++;
+          const result = await getPage(page);
+          if (!current()) return;
+          if (!result.success) {
+            failed = true;
+            return;
+          }
+          pages[page - 1] = result.data || [];
+          setAllSales(merged());
+        }
+      };
+      await Promise.all(Array.from({ length: CONCURRENCY }, worker));
+      if (current() && failed) {
+        setError(
+          "Some records could not be loaded, so the list and the export are incomplete. Reload the page to try again."
+        );
+      }
+    } catch (err) {
+      if (current()) setError(err.message || "An error occurred");
+    } finally {
+      if (current()) {
+        setLoading(false);
+        setLoadingMore(false);
+      }
     }
   }, []);
 
@@ -283,7 +328,8 @@ const EndUserRecordsContent = () => {
               size="sm"
               className="bg-black hover:bg-gray-800 text-white flex items-center gap-1.5 rounded-none"
               onClick={handleExport}
-              disabled={filteredSales.length === 0}
+              // An export taken mid-load would hold only the batches that had arrived.
+              disabled={filteredSales.length === 0 || loadingMore}
             >
               <Download className="h-4 w-4" />
               Export
@@ -384,6 +430,13 @@ const EndUserRecordsContent = () => {
                 <p className="text-sm text-gray-600">
                   Showing <span className="font-medium">{startRecord}–{endRecord}</span> of{" "}
                   <span className="font-medium">{totalRecords}</span> records
+                  {loadingMore && (
+                    <span className="ml-2 inline-flex items-center text-gray-500">
+                      <Loader2 className="h-3.5 w-3.5 animate-spin mr-1" />
+                      Loading the rest: {allSales.length}
+                      {expectedTotal ? ` of ${expectedTotal}` : ""} so far
+                    </span>
+                  )}
                 </p>
                 <div className="flex items-center gap-2">
                   <span className="text-sm text-gray-500">per page:</span>
