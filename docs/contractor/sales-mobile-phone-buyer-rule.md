@@ -17,7 +17,7 @@ The rule applies across every partner. The web form, the server and the phone ap
 
 - **Today's app keeps working, unchanged.** It stays stricter than the new rule (it blocks every reused number), which is safe.
 - **`create-sale` refuses same buyer and phone** with HTTP 409 and a body of the form `{ success: false, error: "<message>", code: "SAME_BUYER_SAME_PHONE", transactionId: "<the other sale>" }`. The message will not contain the words "transaction id" and "already exists" together, so `_alreadyCreated` in `lib/core/services/sync_service.dart` will not mistake it for "already saved".
-- **`create-sale` accepts a shared number** and returns `shares_phone_with: [{ sale_id, transaction_id }]` in its success body.
+- **`create-sale` accepts a shared number** and returns `shares_phone_with: [{ sale_id, transaction_id, same_buyer }]` in its success body. From the phone app `same_buyer` is always false, because a same-buyer sale is refused.
 - **`update-sale` applies the same rule** when the phone or the name changes, and never matches a sale against itself.
 - **`GET get-end-user-phones` gains two fields** beside the list it returns today: `buyerKeys` (an array of 16-character keys, one per buyer and phone on file) and `buyerKeyRules` (`{ version, titles }`). Nothing else in the response changes, and an app that ignores the new fields sees exactly what it sees now.
 
@@ -61,7 +61,7 @@ Your implementation must reproduce every row, with the title list `mr mrs miss m
 
 ## What changes on the phone app, in order
 
-Each step can ship on its own; none of them breaks the one before.
+Each step can ship on its own; none of them breaks the one before. Steps 1 and 3 need nothing from the server and can start now; the rest need the server change, which goes live first.
 
 1. **Carry the error code.** `lib/core/services/supabase_service.dart` (around lines 141 to 150) keeps only the message and the status code from an error body. Keep `code` and `transactionId` too, so the app decides on `code`, not on wording.
 2. **Cache the keys and the rules.** In `_refreshEndUserPhones` (`lib/core/services/data_refresh_service.dart`, around 422 to 450), read `buyerKeys` and `buyerKeyRules` when present and store them beside the phone list in `LocalCacheService`, under keys of their own. Keep the existing `truncated` handling for both.
