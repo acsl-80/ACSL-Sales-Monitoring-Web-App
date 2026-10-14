@@ -14,6 +14,7 @@ Status: agreed 2026-10-14; mapped the same day; not started. The rule is the ope
 
 - **Nothing breaks for a user between phases.** Each phase ships on its own, and the phone app already in the field (1.0.18) keeps working after every one of them.
 - **Speed.** Lookups use the phone tail index; the web form never downloads the whole phone list; the phone app's list is fetched only when it changed; recording a note never makes the seller wait. `create-sale`'s response time is measured from the logs before and after.
+  Baseline (production logs, 2026-10-08 to 2026-10-14, five of seven days readable): `create-sale` 78 successful calls, median 2.1 s, 90th percentile 2.7 s, slowest 5.6 s; `get-end-user-phones` 21 calls, median 1.7 s, 90th percentile 2.1 s.
 - **Migrations are written as files with the query that proves they landed; the operator runs them.**
 - **Nothing already stored is changed or deleted** except where a phase says so and the operator has approved it.
 
@@ -35,7 +36,7 @@ Four read-only passes, split by direction of flow, then the claims that change t
 **Defects in today's check, found by the map** (fixed in Phase 1 as part of the change):
 - **A lost reply strands a phone sale.** `create-sale` checks the phone (line 304) before the transaction id (line 395). When the phone app retries a sale that did save, it gets the phone refusal, which it does not recognise as "already saved", so the sale stays queued and refused forever. The app keeps the same transaction id on every retry; the server never reads its `clientRequestId`.
 - **The check runs as the caller,** so a partner cannot see other partners' sales and cross-partner repeats pass. `update-sale` checks globally: two scopes for one rule.
-- **The lookup scans the table** (`ilike '%tail%'`, 7.5 ms today, growing), misses numbers stored with spaces or dashes, and still counts cancelled sales, although the code comment says cancelling frees the number. The tail index already exists and leaves cancelled sales out.
+- **The lookup scans the table** (`ilike '%tail%'`, 7.5 ms today, growing), would miss a number stored with spaces or dashes (none on production today), and still counts cancelled sales, although the code comment says cancelling frees the number. The tail index already exists and leaves cancelled sales out. Measured on production: the two agree on 369 of 375 shared numbers; the other 6 differ only by the 13 cancelled sales on them, which stop counting.
 - **A name-only edit is never checked** by `update-sale`.
 - **A lookup error is ignored** and the sale goes through (fails open). Kept as is: refusing every sale when the lookup hiccups would be worse; the register catches the rare miss.
 
@@ -92,7 +93,7 @@ The vectors live in one file, `supabase/functions/_shared/buyer-key-vectors.json
 
 Each phase is one PR, proven on a preview branch, live before the next starts. After every phase the web app, the Data Center and phone app 1.0.18 all keep working.
 
-**Phase 0. Groundwork, no behaviour change**
+**Phase 0. Groundwork, no behaviour change.** Built 2026-10-14 on #146; its spec failed on a database without the migration and passes on #146's test database (4 of 4).
 - `_shared/buyerKey.ts` and its test over the vectors file.
 - Migration A: a server-only function `public.sales_sharing_phone(p_tail text, p_exclude uuid)` returning the live (not archived) sales on a tail with their names, read through the tail index; execute revoked from signed-in users. `data_center.shared_phones` gains `kind text not null default 'shared_number'` (check: `shared_number`, `same_buyer`), so both existing inserts keep working.
 - Baseline: `create-sale` median and slowest response times from the logs.
