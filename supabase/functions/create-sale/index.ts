@@ -1,6 +1,7 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { loadSaleOptions, normalizeChoice } from "../_shared/sale-options.ts";
 import { resolveAssignedOrgIds } from "../_shared/resolveAssignedOrgIds.ts";
+import { buyerKey, phoneTail } from "../_shared/buyerKey.ts";
 
 function withCors(res: Response): Response {
   res.headers.set("Access-Control-Allow-Origin", "*");
@@ -12,9 +13,31 @@ function withCors(res: Response): Response {
   return res;
 }
 
-function jsonError(message: string, status = 400): Response {
+function jsonError(
+  message: string,
+  status = 400,
+  extra: Record<string, unknown> = {},
+): Response {
   return withCors(
-    new Response(JSON.stringify({ success: false, message }), { status })
+    new Response(JSON.stringify({ success: false, message, ...extra }), { status })
+  );
+}
+
+/**
+ * The refusal for the same customer entered twice. Read as it is on the phone
+ * app's pending card, so it says what happened and what to do. It must never
+ * contain "transaction id": the phone app reads "transaction id" plus "already
+ * exists" as "this sale already saved", and the Data Center import retries any
+ * refusal mentioning "transaction id".
+ */
+function sameBuyerMessage(otherTransactionId: string | null): string {
+  // Named only when the caller may see that sale; otherwise it is not
+  // identified at all.
+  const other = otherTransactionId ? `sale ${otherTransactionId}` : "another sale";
+  return (
+    `Not saved: this customer (same name and phone number) is already registered on ${other}. ` +
+    "The same customer cannot be recorded twice. Check the name and phone number. " +
+    "If they are correct, this sale is a duplicate and does not need to be saved."
   );
 }
 
@@ -299,53 +322,34 @@ Deno.serve(async (req) => {
       }
     }
 
-    let sharesPhoneWith: { id: string; transaction_id: string; phone: string | null }[] = [];
-
-    // ── End-user phone uniqueness ─────────────────────────────────────────────
-    // Every sale must be tied to a unique end-user phone. Compare digits-only so
-    // "0801…" and "+234 801 …" collide. Cancelled sales live in
-    // `cancelled_purchases` (not `sales`), so cancelling a sale frees the phone.
-    {
-      const phoneDigits = String(phone).replace(/\D+/g, "");
-      if (phoneDigits.length < 7) {
-        return jsonError("End user phone number is invalid", 400);
-      }
-      // Compare the last 10 digits, NOT the full digit string: "08031234567"
-      // (11 digits) and "2348031234567" (13) are the same subscriber, and a
-      // full-string comparison lets the same customer through twice in
-      // different formats. This tail is the shared comparison key — the mobile
-      // app (`PhoneUtils.normalizePhone`) and `get-end-user-phones` use it too.
-      const tail = phoneDigits.slice(-10);
-      const { data: dupes, error: dupErr } = await supabase
-        .from("sales")
-        .select("id, transaction_id, phone")
-        .ilike("phone", `%${tail}%`)
-        .limit(100);
-      if (dupErr) {
-        console.error("Duplicate-phone check failed:", dupErr);
-      } else {
-        const clash = (dupes ?? []).find((r: { phone: string | null }) => {
-          const rowDigits = String(r.phone ?? "").replace(/\D+/g, "");
-          return rowDigits.length >= 10 && rowDigits.slice(-10) === tail;
-        });
-        if (clash && !allowSharedPhone) {
-          return jsonError(
-            `This end user phone is already used on sale ${clash.transaction_id}. Each sale must have a unique end user phone number.`,
-            409
-          );
-        }
-        // Carried to the end so the response can name every sale already on
-        // this number. A caller that opted in has to be able to record the
-        // sharing, and it cannot do that from a number alone.
-        if (clash) {
-          sharesPhoneWith = (dupes ?? []).filter((r: { phone: string | null }) => {
-            const rowDigits = String(r.phone ?? "").replace(/\D+/g, "");
-            return rowDigits.length >= 10 && rowDigits.slice(-10) === tail;
-          });
-        }
-      }
+    // ── Duplicate transaction ID ──────────────────────────────────────────────
+    // Checked before the phone, on purpose. The phone app retries a queued sale
+    // whose reply was lost on a weak network, with the same transaction id. If
+    // that sale did save, this is the answer the app recognises as "already
+    // saved" (409, "transaction ID ... already exists") and clears from its
+    // queue. With the phone checked first, the retry was refused as a duplicate
+    // customer instead and stayed queued on the device for good.
+    const { data: existingTxn, error: txnLookupError } = await supabase
+      .from("sales")
+      .select("id")
+      .eq("transaction_id", transactionId)
+      .maybeSingle();
+    if (txnLookupError) {
+      console.error("❌ Transaction ID lookup failed:", txnLookupError.message);
+      return jsonError("Could not verify transaction ID uniqueness", 500);
+    }
+    if (existingTxn) {
+      return jsonError(
+        `A sale with transaction ID "${transactionId}" already exists`,
+        409
+      );
     }
 
+    // A number too short to be a phone is refused here; the shared-number and
+    // same-customer check runs last, just before anything is written (below).
+    if (String(phone).replace(/\D+/g, "").length < 7) {
+      return jsonError("End user phone number is invalid", 400);
+    }
 
 
     // ── Amount validation ─────────────────────────────────────────────────────
@@ -389,23 +393,6 @@ Deno.serve(async (req) => {
       return jsonError(
         `All terms & conditions must be accepted (missing: ${missingConsents.join(", ")})`,
         400
-      );
-    }
-
-    // ── Duplicate transaction ID ──────────────────────────────────────────────
-    const { data: existingTxn, error: txnLookupError } = await supabase
-      .from("sales")
-      .select("id")
-      .eq("transaction_id", transactionId)
-      .maybeSingle();
-    if (txnLookupError) {
-      console.error("❌ Transaction ID lookup failed:", txnLookupError.message);
-      return jsonError("Could not verify transaction ID uniqueness", 500);
-    }
-    if (existingTxn) {
-      return jsonError(
-        `A sale with transaction ID "${transactionId}" already exists`,
-        409
       );
     }
 
@@ -572,6 +559,80 @@ Deno.serve(async (req) => {
       agreementImageId && String(agreementImageId).trim() !== ""
         ? agreementImageId
         : null;
+
+    // ── One customer, one record; one phone, several buyers ───────────────────
+    // The rule (docs/plans/phone-and-buyer-rule.md): a household shares a phone,
+    // so a number already on another sale is allowed when the buyer's name is
+    // different, and reported back so the sharing is noted. The same name on the
+    // same number is the same customer entered twice, and is refused. Names are
+    // compared by buyer key (_shared/buyerKey.ts), so order, case, titles and an
+    // alias in brackets do not make one customer look like two.
+    //
+    // Looked up as the server, across every partner, through the phone tail
+    // index; cancelled sales do not count. The Data Center's digitisation
+    // (`allowSharedPhone`) is never refused: a receipt records a stove already
+    // sold, so a repeat buyer there is saved and marked `same_buyer` for the call
+    // centre to confirm.
+    //
+    // The rule is global, but what the caller is TOLD is not: a sale is named
+    // (its id and transaction id) only when the caller's own access already
+    // lets them read it, which is all the old caller-scoped check ever showed.
+    // A same-customer match the caller cannot see is still refused, with
+    // "another sale" in place of a name. Run last, after the stove and the
+    // payment checks, so asking about a number takes a real free stove of the
+    // caller's own, and a refusal writes nothing.
+    //
+    // A failed lookup lets the sale through, as before: refusing every sale when
+    // the lookup hiccups would be worse than missing a rare repeat.
+    let sharesPhoneWith: { id: string; transaction_id: string | null; same_buyer: boolean }[] = [];
+    {
+      const tail = phoneTail(phone);
+      if (tail) {
+        const { data: others, error: shareErr } = await server.rpc("sales_sharing_phone", {
+          p_tail: tail,
+        });
+        if (shareErr) {
+          console.error("Shared-phone lookup failed:", shareErr.message);
+        } else if (others && others.length > 0) {
+          type Other = {
+            id: string;
+            transaction_id: string | null;
+            phone: string | null;
+            end_user_name: string | null;
+            end_user_first_name: string | null;
+            end_user_surname: string | null;
+          };
+          const mine = await buyerKey(phone, endUserFirstNameClean, endUserSurnameClean, endUserNameJoined);
+          const marked = await Promise.all(
+            (others as Other[]).map(async (o) => ({
+              id: o.id,
+              transaction_id: o.transaction_id,
+              same_buyer:
+                mine !== "" &&
+                (await buyerKey(o.phone, o.end_user_first_name, o.end_user_surname, o.end_user_name)) === mine,
+            })),
+          );
+          // Which of them the caller may see, by their own row rules.
+          const { data: seen, error: seenErr } = await supabase
+            .from("sales")
+            .select("id")
+            .in("id", marked.map((m) => m.id));
+          if (seenErr) console.error("Visibility read failed:", seenErr.message);
+          const visible = new Set((seen ?? []).map((r: { id: string }) => r.id));
+
+          const sameBuyer = marked.find((m) => m.same_buyer);
+          if (sameBuyer && !allowSharedPhone) {
+            const named = visible.has(sameBuyer.id) ? sameBuyer.transaction_id : null;
+            return jsonError(sameBuyerMessage(named), 409, {
+              code: "SAME_BUYER_SAME_PHONE",
+              transactionId: named,
+            });
+          }
+          sharesPhoneWith = marked.filter((m) => visible.has(m.id));
+        }
+      }
+    }
+
     // ── Insert address ────────────────────────────────────────────────────────
     console.log("📍 Inserting address:", addressData);
     // As the server: since 20260926170000 only super admins may insert into
@@ -791,15 +852,19 @@ Deno.serve(async (req) => {
           sale_id: saleId,
           data: { id: saleId },
           /*
-            Named only when there is something to name, so a caller that did
-            not opt in sees exactly the response it saw before. The Data Center
-            reads this to register the sharing; nothing else looks at it.
+            Named only when the number is on other live sales: the sales it is
+            shared with, and whether each is the same buyer (only possible for
+            the Data Center's digitisation, since anyone else is refused).
+            The Data Center reads this to register the sharing; the web form
+            reads it to say the shared number was noted. A sale on an unshared
+            number gets exactly the response it always did.
           */
           ...(sharesPhoneWith.length > 0
             ? {
               shares_phone_with: sharesPhoneWith.map((r) => ({
                 sale_id: r.id,
                 transaction_id: r.transaction_id,
+                same_buyer: r.same_buyer,
               })),
             }
             : {}),

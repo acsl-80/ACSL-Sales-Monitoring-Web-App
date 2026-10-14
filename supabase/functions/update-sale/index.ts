@@ -6,6 +6,7 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { loadSaleOptions, normalizeChoice } from "../_shared/sale-options.ts";
 import { resolveAssignedOrgIds } from "../_shared/resolveAssignedOrgIds.ts";
+import { buyerKey, nameKey, phoneTail } from "../_shared/buyerKey.ts";
 
 function withCors(res: Response): Response {
   res.headers.set("Access-Control-Allow-Origin", "*");
@@ -17,9 +18,13 @@ function withCors(res: Response): Response {
   return res;
 }
 
-function jsonError(message: string, status = 400): Response {
+function jsonError(
+  message: string,
+  status = 400,
+  extra: Record<string, unknown> = {},
+): Response {
   return withCors(
-    new Response(JSON.stringify({ success: false, message }), { status })
+    new Response(JSON.stringify({ success: false, message, ...extra }), { status })
   );
 }
 
@@ -102,7 +107,8 @@ Deno.serve(async (req) => {
       .select(
         `id, organization_id, address_id, phone, created_by,
          transaction_id, stove_serial_no, partner_name, sales_date, amount,
-         contact_person, contact_phone, end_user_name, state_backup, lga_backup,
+         contact_person, contact_phone, end_user_name, end_user_first_name,
+         end_user_surname, state_backup, lga_backup,
          signature, is_installment, total_paid,
          previous_stove_type, cooking_fuel_source, cooking_location,
          address:addresses!left(full_address)`
@@ -201,36 +207,68 @@ Deno.serve(async (req) => {
       return jsonError(`Contact phone: ${PHONE_FORMAT_MESSAGE}`, 400);
     }
 
-    // End-user phone uniqueness (excluding this sale).
-    // Skip when the phone is unchanged from the current sale's stored phone.
+    // One customer, one record (the same rule as create-sale; see
+    // docs/plans/phone-and-buyer-rule.md). An edit may move a sale onto a number
+    // other sales hold when the buyer's name differs: a household shares a
+    // phone. It may not make this sale the same buyer, by name and number, as
+    // another live sale.
     //
-    // Compare the LAST 10 DIGITS, not the full digit string — "08031234567"
-    // and "2348031234567" are the same subscriber. This matters twice here:
-    // re-saving a sale in the other notation counts as unchanged (no needless
-    // lookup), and a genuine clash in a different notation is caught. Same key
-    // as `create-sale`, `get-end-user-phones` and the mobile app; if these
-    // drift apart the create and edit paths disagree about what's a duplicate.
+    // Checked when the number or the name changes. Comparing by phone tail and
+    // name key means re-saving the same details in another notation
+    // ("+234…" for "0…", the surname first) counts as unchanged and costs no
+    // lookup. The name this sale will carry follows the sales trigger: parts
+    // sent are combined with the stored part not sent; a joined name sent alone
+    // is split by the trigger, and the key reads the same words either way.
     {
-      const phoneDigits = String(phone).replace(/\D+/g, "");
-      const currentDigits = String(sale.phone ?? "").replace(/\D+/g, "");
-      const tail = phoneDigits.slice(-10);
-      const currentTail = currentDigits.slice(-10);
-      if (phoneDigits && tail !== currentTail) {
-        const { data: dupes } = await supabase
-          .from("sales")
-          .select("id, transaction_id, phone")
-          .neq("id", saleId)
-          .ilike("phone", `%${tail}%`)
-          .limit(100);
-        const clash = (dupes ?? []).find((r: { phone: string | null }) => {
-          const rowDigits = String(r.phone ?? "").replace(/\D+/g, "");
-          return rowDigits.length >= 10 && rowDigits.slice(-10) === tail;
+      const partsSent = endUserFirstNameClean !== undefined || endUserSurnameClean !== undefined;
+      const nextFirst = partsSent
+        ? (endUserFirstNameClean === undefined ? sale.end_user_first_name : endUserFirstNameClean)
+        : null;
+      const nextSurname = partsSent
+        ? (endUserSurnameClean === undefined ? sale.end_user_surname : endUserSurnameClean)
+        : null;
+      const nextTail = phoneTail(phone);
+      const nextName = nameKey(nextFirst, nextSurname, endUserNameJoined);
+      const changed =
+        nextTail !== phoneTail(sale.phone) ||
+        nextName !== nameKey(sale.end_user_first_name, sale.end_user_surname, sale.end_user_name);
+      if (nextTail && changed) {
+        const { data: others, error: shareErr } = await supabase.rpc("sales_sharing_phone", {
+          p_tail: nextTail,
+          p_exclude: saleId,
         });
-        if (clash) {
-          return jsonError(
-            `This end user phone is already used on sale ${clash.transaction_id}.`,
-            409
-          );
+        if (shareErr) {
+          console.error("Shared-phone lookup failed:", shareErr.message);
+        } else if (others && others.length > 0) {
+          const mine = await buyerKey(phone, nextFirst, nextSurname, endUserNameJoined);
+          for (const o of others as {
+            transaction_id: string | null;
+            organization_id: string | null;
+            phone: string | null;
+            end_user_name: string | null;
+            end_user_first_name: string | null;
+            end_user_surname: string | null;
+          }[]) {
+            if (
+              mine !== "" &&
+              (await buyerKey(o.phone, o.end_user_first_name, o.end_user_surname, o.end_user_name)) === mine
+            ) {
+              // The rule is global; naming the other sale is not. It is named
+              // for a super admin, and for anyone but a partner agent (who sees
+              // only their own sales) when it belongs to this sale's partner.
+              const mayName =
+                profile.role === "super_admin" ||
+                (profile.role !== "partner_agent" && o.organization_id === sale.organization_id);
+              const named = mayName ? o.transaction_id : null;
+              const other = named ? `sale ${named}` : "another sale";
+              return jsonError(
+                `Not saved: this customer (same name and phone number) is already registered on ${other}. ` +
+                  "The same customer cannot be recorded twice. Check the name and phone number.",
+                409,
+                { code: "SAME_BUYER_SAME_PHONE", transactionId: named },
+              );
+            }
+          }
         }
       }
     }

@@ -16,7 +16,7 @@ The rule applies across every partner. The web form, the server and the phone ap
 ## What the server guarantees
 
 - **Today's app keeps working, unchanged.** It stays stricter than the new rule (it blocks every reused number), which is safe.
-- **`create-sale` refuses same buyer and phone** with HTTP 409 and a body of the form `{ success: false, error: "<message>", code: "SAME_BUYER_SAME_PHONE", transactionId: "<the other sale>" }`. The message will not contain the words "transaction id" and "already exists" together, so `_alreadyCreated` in `lib/core/services/sync_service.dart` will not mistake it for "already saved".
+- **`create-sale` refuses same buyer and phone** with HTTP 409 and a body of the form `{ success: false, message: "<message>", code: "SAME_BUYER_SAME_PHONE", transactionId: "<the other sale, or null>" }`. The other sale is named only when the agent's own account may already see it; across partners `transactionId` is null and the message says "another sale". The message will not contain the words "transaction id" and "already exists" together, so `_alreadyCreated` in `lib/core/services/sync_service.dart` will not mistake it for "already saved".
 - **`create-sale` accepts a shared number** and returns `shares_phone_with: [{ sale_id, transaction_id, same_buyer }]` in its success body. From the phone app `same_buyer` is always false, because a same-buyer sale is refused.
 - **`update-sale` applies the same rule** when the phone or the name changes, and never matches a sale against itself.
 - **`GET get-end-user-phones` gains two fields** beside the list it returns today: `buyerKeys` (an array of 16-character keys, one per buyer and phone on file) and `buyerKeyRules` (`{ version, titles }`). Nothing else in the response changes, and an app that ignores the new fields sees exactly what it sees now.
@@ -90,7 +90,7 @@ A batch already carries on past a refused sale today (each queued sale is in its
 
 ### What the agent reads today, before your release
 
-Until 1.0.19 ships, a refused sale shows the server's message on its pending card exactly as sent. It reads: "Not saved: this customer is already registered with this phone number on sale TR-XXXXXX. The same customer cannot be recorded twice. Check the name and phone number; if they are correct, this sale is already recorded and can be deleted from the phone." The server also now recognises a retry of a sale that already saved, so a lost reply no longer strands a sale.
+Until 1.0.19 ships, a refused sale shows the server's message on its pending card exactly as sent. It reads: "Not saved: this customer (same name and phone number) is already registered on sale TR-XXXXXX. The same customer cannot be recorded twice. Check the name and phone number. If they are correct, this sale is a duplicate and does not need to be saved." Where the other sale is not the agent's to see, "sale TR-XXXXXX" reads "another sale". The server also now recognises a retry of a sale that already saved, so a lost reply no longer strands a sale.
 
 ## How to check it
 

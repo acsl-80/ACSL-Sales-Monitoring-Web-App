@@ -1,5 +1,5 @@
 import { test, expect } from "@playwright/test";
-import { signIn, USERS, callEdgeFunction } from "./helpers";
+import { signIn, USERS, callEdgeFunction, branchSql } from "./helpers";
 
 /**
  * The standing requirement for this whole module: the sales monitoring web app
@@ -25,9 +25,7 @@ test.describe("the sales app is unaffected", () => {
       const context = await browser.newContext();
       const page = await context.newPage();
       await signIn(page, email);
-      await expect(page, `${email} did not reach the dashboard`).toHaveURL(
-        /\/dashboard/,
-      );
+      await expect(page, `${email} did not reach the dashboard`).toHaveURL(/\/dashboard/);
       await context.close();
     }
   });
@@ -54,9 +52,7 @@ test.describe("the sales app is unaffected", () => {
     }
   });
 
-  test("the profile menu resolves, which the hardcoded URL used to break", async ({
-    page,
-  }) => {
+  test("the profile menu resolves, which the hardcoded URL used to break", async ({ page }) => {
     const failures: string[] = [];
     page.on("response", (r) => {
       if (r.url().includes("/functions/v1/manage-profile") && r.status() >= 400) {
@@ -82,14 +78,15 @@ test.describe("the sales app is unaffected", () => {
   });
 
   /**
-   * create-sale still refuses a duplicate phone for everyone who did not ask.
+   * create-sale still refuses the same customer twice for everyone who did not
+   * ask.
    *
    * This module added `allowSharedPhone` to `create-sale`, the one pre-existing
    * edge function it touches and the one the Sell Stove form and the Flutter
-   * app both call on their main path. The rule it relaxes - one live sale per
-   * phone number - is a real guard against an agent mistyping a number in front
-   * of a customer, and only the digitalisation path is allowed to say it means
-   * a shared number.
+   * app both call on their main path. Since the phone and buyer rule
+   * (docs/plans/phone-and-buyer-rule.md) a number may sit on several sales when
+   * the buyers differ; what stays refused is the same buyer, by name and
+   * number, entered again. Only the digitalisation path may say it means that.
    *
    * The opt-in is `body.allowSharedPhone === true`, deliberately strict, so the
    * third case below matters as much as the first: a caller that sends a
@@ -97,7 +94,7 @@ test.describe("the sales app is unaffected", () => {
    * refuse; this asserts it, and it is the only test in the suite that touches
    * the write path of a function real users hit today.
    */
-  test("create-sale still refuses a duplicate phone unless asked in so many words", async ({
+  test("create-sale still refuses the same customer twice unless asked in so many words", async ({
     page,
   }) => {
     await signIn(page, USERS.admin);
@@ -129,10 +126,25 @@ test.describe("the sales app is unaffected", () => {
       "no seeded sale with a phone: the records read is broken, not the fixture",
     ).toBeTruthy();
 
+    // The same buyer: the name of a live sale on that number, sent back as the
+    // form sends it.
+    const [buyer] = await branchSql<{
+      first: string | null;
+      surname: string | null;
+      joined: string | null;
+    }>(
+      `select end_user_first_name as first, end_user_surname as surname, end_user_name as joined
+         from public.sales_sharing_phone(right(regexp_replace('${sale!.primary_phone}', '[^0-9]', '', 'g'), 10))
+        limit 1`,
+    );
+    expect(buyer?.joined, "a live sale holds that number").toBeTruthy();
+
     const attempt = (allowSharedPhone?: unknown) =>
       callEdgeFunction(page, "create-sale", {
         stoveSerialNo: "NON-EXISTENT-FOR-THIS-TEST",
-        endUserName: "Non-interference probe",
+        endUserName: buyer.joined,
+        endUserFirstName: buyer.first,
+        endUserSurname: buyer.surname,
         phone: sale!.primary_phone,
         contactPerson: "Probe",
         contactPhone: "08030000999",
@@ -152,15 +164,18 @@ test.describe("the sales app is unaffected", () => {
     const asTheFormSends = await attempt(undefined);
     expect(
       asTheFormSends.status,
-      `expected the duplicate-phone refusal, got ${JSON.stringify(asTheFormSends.body)}`,
+      `expected the same-customer refusal, got ${JSON.stringify(asTheFormSends.body)}`,
     ).toBe(409);
-    expect(JSON.stringify(asTheFormSends.body)).toMatch(/already used on sale/i);
-    // And the response gains nothing it did not have before.
+    expect(asTheFormSends.body).toHaveProperty("code", "SAME_BUYER_SAME_PHONE");
+    // A refusal carries no sharing report; that is for sales that saved.
     expect(asTheFormSends.body).not.toHaveProperty("shares_phone_with");
 
     expect((await attempt(false)).status).toBe(409);
     // Truthy, but not `true`. Strictness is the whole guard.
     expect((await attempt("yes")).status).toBe(409);
+    // And only `true` gets past the rule, on to the later checks this probe
+    // was never built to pass (it sends no consent and a made-up serial).
+    expect((await attempt(true)).status).toBe(400);
   });
 
   /**
@@ -214,10 +229,7 @@ test.describe("the sales app is unaffected", () => {
     const tomorrow = new Date(Date.now() + 36 * 3600 * 1000);
 
     const future = await on(iso(tomorrow), "08039990001");
-    expect(
-      future.status,
-      `expected a refusal, got ${JSON.stringify(future.body)}`,
-    ).toBe(400);
+    expect(future.status, `expected a refusal, got ${JSON.stringify(future.body)}`).toBe(400);
     expect(JSON.stringify(future.body)).toMatch(/in the future/i);
 
     /*
