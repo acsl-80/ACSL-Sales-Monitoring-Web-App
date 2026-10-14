@@ -139,9 +139,20 @@ test.describe("the sales app is unaffected", () => {
     );
     expect(buyer?.joined, "a live sale holds that number").toBeTruthy();
 
+    // The customer check runs last, after the stove and consent checks, so the
+    // probe carries a real free stove of that partner and the consents. A
+    // refusal writes nothing and leaves the stove free.
+    const [stove] = await branchSql<{ stove_id: string }>(
+      `select stove_id from public.stove_ids_base
+        where organization_id = '${sale!.organization_id}' and status = 'available'
+          and sale_id is null and is_archived is not true
+        order by stove_id desc limit 1`,
+    );
+    expect(stove?.stove_id, "a free stove of that partner").toBeTruthy();
+
     const attempt = (allowSharedPhone?: unknown) =>
       callEdgeFunction(page, "create-sale", {
-        stoveSerialNo: "NON-EXISTENT-FOR-THIS-TEST",
+        stoveSerialNo: stove.stove_id,
         endUserName: buyer.joined,
         endUserFirstName: buyer.first,
         endUserSurname: buyer.surname,
@@ -152,6 +163,15 @@ test.describe("the sales app is unaffected", () => {
         salesDate: "2026-08-23",
         amount: 1000,
         transactionId: `NI-${Date.now()}-${Math.floor(Math.random() * 1e6)}`,
+        termsAccepted: {
+          poaGoverned: true,
+          monitoring: true,
+          noResell: true,
+          emissionReductions: true,
+          noExport: true,
+          demonstration: true,
+        },
+        addressData: { fullAddress: "NI-PROBE Road", state: "Gombe", city: "Gombe" },
         // An admin belongs to no partner, so the org has to be named or the
         // function refuses at 400 long before it reaches the phone rule - and
         // a 400 here would look like a pass turning into a fail for the wrong
@@ -173,9 +193,26 @@ test.describe("the sales app is unaffected", () => {
     expect((await attempt(false)).status).toBe(409);
     // Truthy, but not `true`. Strictness is the whole guard.
     expect((await attempt("yes")).status).toBe(409);
-    // And only `true` gets past the rule, on to the later checks this probe
-    // was never built to pass (it sends no consent and a made-up serial).
-    expect((await attempt(true)).status).toBe(400);
+    // Every refusal left the stove free.
+    const [still] = await branchSql<{ status: string }>(
+      `select status from public.stove_ids_base where stove_id = '${stove.stove_id}'`,
+    );
+    expect(still.status).toBe("available");
+
+    // And only `true` gets past the rule: the sale saves. Undone at once.
+    const allowed = await attempt(true);
+    try {
+      expect(allowed.status, JSON.stringify(allowed.body)).toBe(200);
+    } finally {
+      const made = `select id from public.sales where transaction_id like 'NI-%'`;
+      await branchSql(
+        `update public.stove_ids_base set status = 'available', sale_id = null where sale_id in (${made})`,
+      ).catch(() => {});
+      await branchSql(`delete from public.sales where transaction_id like 'NI-%'`).catch(() => {});
+      await branchSql(`delete from public.addresses where full_address = 'NI-PROBE Road'`).catch(
+        () => {},
+      );
+    }
   });
 
   /**
