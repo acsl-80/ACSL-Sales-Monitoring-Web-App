@@ -1,0 +1,154 @@
+{
+  "titles": [
+    "mr",
+    "mrs",
+    "miss",
+    "ms",
+    "dr",
+    "alhaji",
+    "alhaja",
+    "hajia",
+    "hajiya",
+    "malam",
+    "mallam",
+    "chief",
+    "madam"
+  ],
+  "cases": [
+    {
+      "firstName": "Aisha",
+      "surname": "Bello",
+      "joinedName": null,
+      "phone": "08031234567",
+      "phoneTail": "8031234567",
+      "nameKey": "aisha bello",
+      "buyerKey": "a98b6aac661bef64"
+    },
+    {
+      "firstName": "BELLO",
+      "surname": "aisha",
+      "joinedName": null,
+      "phone": "+2348031234567",
+      "phoneTail": "8031234567",
+      "nameKey": "aisha bello",
+      "buyerKey": "a98b6aac661bef64"
+    },
+    {
+      "firstName": "  Aisha ",
+      "surname": " Bello",
+      "joinedName": null,
+      "phone": "234 803 123 4567",
+      "phoneTail": "8031234567",
+      "nameKey": "aisha bello",
+      "buyerKey": "a98b6aac661bef64"
+    },
+    {
+      "firstName": null,
+      "surname": null,
+      "joinedName": "Aisha Bello",
+      "phone": "8031234567",
+      "phoneTail": "8031234567",
+      "nameKey": "aisha bello",
+      "buyerKey": "a98b6aac661bef64"
+    },
+    {
+      "firstName": null,
+      "surname": null,
+      "joinedName": "Bello, Aisha",
+      "phone": "0803-123-4567",
+      "phoneTail": "8031234567",
+      "nameKey": "aisha bello",
+      "buyerKey": "a98b6aac661bef64"
+    },
+    {
+      "firstName": "Mrs Aisha",
+      "surname": "Bello",
+      "joinedName": null,
+      "phone": "08031234567",
+      "phoneTail": "8031234567",
+      "nameKey": "aisha bello",
+      "buyerKey": "a98b6aac661bef64"
+    },
+    {
+      "firstName": "Aisha",
+      "surname": "Bello [Mama Ade]",
+      "joinedName": null,
+      "phone": "08031234567",
+      "phoneTail": "8031234567",
+      "nameKey": "aisha bello",
+      "buyerKey": "a98b6aac661bef64"
+    },
+    {
+      "firstName": "Alhaji Musa",
+      "surname": "Bello",
+      "joinedName": null,
+      "phone": "08031234567",
+      "phoneTail": "8031234567",
+      "nameKey": "bello musa",
+      "buyerKey": "144af3b241a14237"
+    },
+    {
+      "firstName": "Mu'azu",
+      "surname": "Ade-Bayo",
+      "joinedName": null,
+      "phone": "08031234567",
+      "phoneTail": "8031234567",
+      "nameKey": "adebayo muazu",
+      "buyerKey": "d8e61139c2a48191"
+    },
+    {
+      "firstName": "Mama",
+      "surname": "Ngozi",
+      "joinedName": null,
+      "phone": "08031234567",
+      "phoneTail": "8031234567",
+      "nameKey": "mama ngozi",
+      "buyerKey": "c6681ebc3ee3a674"
+    },
+    {
+      "firstName": "Aishat",
+      "surname": "Bello",
+      "joinedName": null,
+      "phone": "08031234567",
+      "phoneTail": "8031234567",
+      "nameKey": "aishat bello",
+      "buyerKey": "e43a70e6f911b57f"
+    },
+    {
+      "firstName": "Aisha",
+      "surname": "Bello",
+      "joinedName": null,
+      "phone": "07031234567",
+      "phoneTail": "7031234567",
+      "nameKey": "aisha bello",
+      "buyerKey": "73d241344030ad83"
+    },
+    {
+      "firstName": "",
+      "surname": "",
+      "joinedName": "",
+      "phone": "08031234567",
+      "phoneTail": "8031234567",
+      "nameKey": "",
+      "buyerKey": ""
+    },
+    {
+      "firstName": "Mrs",
+      "surname": "",
+      "joinedName": null,
+      "phone": "08031234567",
+      "phoneTail": "8031234567",
+      "nameKey": "",
+      "buyerKey": ""
+    },
+    {
+      "firstName": "Aisha",
+      "surname": "Bello",
+      "joinedName": null,
+      "phone": "803123",
+      "phoneTail": "",
+      "nameKey": "aisha bello",
+      "buyerKey": ""
+    }
+  ]
+}
