@@ -123,6 +123,13 @@ const CreateSalesForm = ({
   // card — mirrors the selected-partner chip pattern elsewhere in this form.
   const [addressConfirmed, setAddressConfirmed] = useState(false);
   const [error, setError] = useState(null);
+  // The save button is at the foot of a long form and this message at its
+  // head: whenever a message appears it is brought into view, or a refused
+  // save looks like nothing happened.
+  const errorBannerRef = useRef(null);
+  useEffect(() => {
+    if (error) errorBannerRef.current?.scrollIntoView({ behavior: "smooth", block: "center" });
+  }, [error]);
   const [success, setSuccess] = useState(false);
 
   // Initialize form data based on mode
@@ -219,8 +226,12 @@ const CreateSalesForm = ({
       originalFormData &&
       tail === phoneTail(originalFormData.phone) &&
       mineName === nameKey(originalFormData.endUserName, originalFormData.endUserSurname, null);
+    // An edit form checks nothing until its original values have loaded, or
+    // the first pass would compare an unchanged record and could flash an
+    // error on a repeat that digitisation recorded.
+    const loading = isEditMode && !originalFormData;
     // The format error (set by handleInputChange) covers a malformed number.
-    if (!isValidNgPhone(raw) || !tail || unchanged) {
+    if (!isValidNgPhone(raw) || !tail || unchanged || loading) {
       phoneCheckTokenRef.current++;
       setPhoneChecking(false);
       setPhoneMatch(null);
@@ -1030,7 +1041,12 @@ const CreateSalesForm = ({
   const validateForm = () => {
     const newErrors = validateSalesForm(formData, { rules: fieldRules });
     setErrors(newErrors);
-    return Object.keys(newErrors).length === 0;
+    const problems = Object.values(newErrors).filter(Boolean);
+    // Some required fields (previous stove type, sales agent, transaction id)
+    // have no message under them, so a refused save looked like a button that
+    // did nothing. The banner says what is missing, every time.
+    setError(problems.length > 0 ? `Not saved yet. Please complete: ${problems.join("; ")}` : null);
+    return problems.length === 0;
   };
 
   const handleSubmit = async (e) => {
@@ -1358,7 +1374,11 @@ const CreateSalesForm = ({
       </div>
 
       {error && (
-        <div className="mb-4 p-3 bg-red-50 border border-red-200 rounded-lg flex items-center gap-2">
+        <div
+          ref={errorBannerRef}
+          role="alert"
+          className="mb-4 p-3 bg-red-50 border border-red-200 rounded-lg flex items-center gap-2"
+        >
           <AlertCircle className="h-4 w-4 text-red-600 flex-shrink-0" />
           <span className="text-sm text-red-700">{error}</span>
         </div>
@@ -1975,6 +1995,9 @@ const CreateSalesForm = ({
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 md:gap-4">
             <div className="md:col-span-2 lg:col-span-3">
               <Label>{payloadLabel("previousStoveType")}</Label>
+              {errors.previousStoveType && (
+                <p className="text-sm text-red-500 mt-1">{errors.previousStoveType}</p>
+              )}
               <div className="flex flex-wrap gap-4 mt-2">
                 {previousStoveOptions.map(({ value, label }) => (
                   <label key={value} className="flex items-center gap-2 cursor-pointer">

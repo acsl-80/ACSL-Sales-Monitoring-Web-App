@@ -2167,7 +2167,8 @@ serve(async (req) => {
                             and length(me.tail) = 10
                             and right(regexp_replace(coalesce(s2.phone, ''), '[^0-9]', '', 'g'), 10)
                                 = me.tail
-                          limit 5`,
+                          order by s2.created_at
+                          limit 50`,
                   args: [saleId],
                 })
                 : { rows: [] },
