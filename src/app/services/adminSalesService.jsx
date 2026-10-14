@@ -273,6 +273,10 @@ class AdminSalesService {
       return {
         success: true,
         data: result.data,
+        // The other live sales on this phone number that the caller may see
+        // (create-sale sends it only when there are some). A shared number is
+        // allowed; the Sell Stove page says so after the save.
+        sharesPhoneWith: result.shares_phone_with ?? [],
       };
     } catch (error) {
       console.error("Error creating sale:", error);

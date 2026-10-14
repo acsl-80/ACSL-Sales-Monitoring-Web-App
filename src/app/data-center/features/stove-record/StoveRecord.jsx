@@ -236,6 +236,75 @@ function PastSales({ sales }) {
 }
 
 /** The funnel, for one stove, left to right. */
+/**
+ * The other live sales on this buyer's phone number.
+ *
+ * Since the phone and buyer rule (docs/plans/phone-and-buyer-rule.md) a number
+ * may sit on several sales, because a family shares one phone. That is amber:
+ * nothing is wrong, but whoever rings the number must say which stove they are
+ * calling about. The same name on the same number is the same customer twice;
+ * create-sale refuses it, only digitisation can record it, and it stays red so
+ * it is checked on a call before either record is verified.
+ */
+function PhoneTwins({ twins, phone }) {
+  const repeats = twins.filter((t) => t.same_buyer);
+  const red = repeats.length > 0;
+  const tone = red
+    ? { box: "border-red-300 bg-red-50", text: "text-red-900", soft: "text-red-800" }
+    : { box: "border-amber-300 bg-amber-50", text: "text-amber-900", soft: "text-amber-800" };
+  return (
+    <div data-testid="phone-twins" data-tone={red ? "same-buyer" : "shared"} className={`mt-3 rounded-lg border p-3 ${tone.box}`}>
+      <p className={`flex items-center gap-1.5 text-sm font-semibold ${tone.text}`}>
+        <TriangleAlert className="h-4 w-4" />
+        {red
+          ? `The same customer is on ${plural(repeats.length, "other sale")}`
+          : `Shared number: also on ${plural(twins.length, "other sale")}`}
+      </p>
+      <p className={`mt-1 text-sm ${tone.text}`}>
+        {red
+          ? "Same name, same phone number: this customer was recorded more than once. Check on a call which stove they have before either record is verified."
+          : "Different names on one number, which is allowed: a family can share a phone. When you ring it, say which stove you are calling about."}
+      </p>
+      <p className={`mt-1 text-xs ${tone.soft}`}>
+        Matched on the last ten digits, so the country code makes no
+        difference: +234 803 123 4567, 234 803 123 4567 and 0803 123 4567
+        are one subscriber. These all share{" "}
+        <span className="font-mono">
+          {String(phone ?? "").replace(/\D+/g, "").slice(-10)}
+        </span>.
+      </p>
+      <ul className="mt-2 space-y-1">
+        {twins.map((t) => (
+          <li key={t.transaction_id ?? t.stove_serial_no} className="text-sm">
+            {t.stove_id ? (
+              <Link
+                href={`/data-center/stove/${encodeURIComponent(t.stove_id)}`}
+                className={`font-mono font-medium underline ${tone.text}`}
+              >
+                {t.stove_id}
+              </Link>
+            ) : (
+              <span className={`font-mono font-medium ${tone.text}`}>
+                {t.stove_serial_no ?? "an unknown serial number"}
+              </span>
+            )}
+            <span className={tone.soft}>
+              {", "}
+              {t.end_user_name ?? "no name"}
+              {t.sales_date ? `, sold ${dateOf(t.sales_date)}` : ""}
+            </span>
+            {t.same_buyer && (
+              <span className="ml-2 rounded bg-red-100 px-1.5 py-0.5 text-xs font-semibold text-red-900">
+                same customer
+              </span>
+            )}
+          </li>
+        ))}
+      </ul>
+    </div>
+  );
+}
+
 function Journey({ stages }) {
   return (
     /*
@@ -947,7 +1016,7 @@ export default function StoveRecord({ stoveId }) {
               <Detail
                 label={fieldLabel("phone")}
                 value={sale?.phone ?? s.phone}
-                title="One stove to one telephone number: this is the buyer's only link to this stove"
+                title="The buyer's link to this stove. A family may share one number; the same name on it twice is a repeat"
               />
               <Detail label={fieldLabel("other_phone")} value={sale?.other_phone ?? s.alternative_phone} />
               <Detail label={fieldLabel("contact_person")} value={sale?.contact_person} />
@@ -1012,56 +1081,7 @@ export default function StoveRecord({ stoveId }) {
               />
             </Grid>
             {data.phoneTwins.length > 0 && (
-              /*
-                One stove to one phone. create-sale refuses a second sale on a
-                live number, so reaching this means the register was written
-                round that door - a legacy row, a restore, a direct edit. It is
-                shown loudly because the consequence is quiet: an agent rings
-                the number, is told about a different stove, and marks the
-                wrong record verified.
-              */
-              <div className="mt-3 rounded-lg border border-red-300 bg-red-50 p-3">
-                <p className="flex items-center gap-1.5 text-sm font-semibold text-red-900">
-                  <TriangleAlert className="h-4 w-4" />
-                  This phone number is on {plural(data.phoneTwins.length, "other sale")}
-                </p>
-                <p className="mt-1 text-sm text-red-900">
-                  One stove goes to one phone number. Whoever rings it cannot know
-                  which stove they are calling about, so both records need
-                  checking before either is verified.
-                </p>
-                <p className="mt-1 text-xs text-red-800">
-                  Matched on the last ten digits, so the country code makes no
-                  difference: +234 803 123 4567, 234 803 123 4567 and 0803 123 4567
-                  are one subscriber. These all share{" "}
-                  <span className="font-mono">
-                    {String(sale?.phone ?? s.phone ?? "").replace(/\D+/g, "").slice(-10)}
-                  </span>.
-                </p>
-                <ul className="mt-2 space-y-1">
-                  {data.phoneTwins.map((t) => (
-                    <li key={t.transaction_id ?? t.stove_serial_no} className="text-sm">
-                      {t.stove_id ? (
-                        <Link
-                          href={`/data-center/stove/${encodeURIComponent(t.stove_id)}`}
-                          className="font-mono font-medium text-red-900 underline"
-                        >
-                          {t.stove_id}
-                        </Link>
-                      ) : (
-                        <span className="font-mono font-medium text-red-900">
-                          {t.stove_serial_no ?? "an unknown serial number"}
-                        </span>
-                      )}
-                      <span className="text-red-800">
-                        {" "}
-                        — {t.end_user_name ?? "no name"}
-                        {t.sales_date ? `, sold ${dateOf(t.sales_date)}` : ""}
-                      </span>
-                    </li>
-                  ))}
-                </ul>
-              </div>
+              <PhoneTwins twins={data.phoneTwins} phone={sale?.phone ?? s.phone} />
             )}
 
             <Payments payments={data.payments} sale={sale} />

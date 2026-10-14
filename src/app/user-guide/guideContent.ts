@@ -653,7 +653,7 @@ The fields are in the order you normally collect them: Sales agent's name, First
 
 - Tick **Select if End User is same as Contact Person** and the platform copies the end user's first name and surname into *Contact Person / Buyer* and the end user's phone into *Contact Phone*, so you do not type them twice.
 - **Phone numbers** must be valid Nigerian numbers in one of these forms: \`08031234567\`, \`+2348031234567\` or \`2348031234567\`. Anything else is rejected with a message under the field.
-- **End user phone must be unique.** If the number already exists the form tells you so and shows the transaction it belongs to, so you can check whether this is a duplicate entry.
+- **One phone number can be on more than one sale, but not for the same customer.** A family can share a phone, so a number already on another sale under a different name is allowed: the form shows an amber note naming that sale and the sale still saves. The same name with the same number is the same customer recorded twice, and the form refuses it. Names are compared the way people write them, so word order, capital letters, titles such as Mr or Alhaji, and a nickname in brackets make no difference.
 
 **Location**
 
@@ -970,7 +970,7 @@ Keep the API key secret — anyone holding it can read the same data.`,
 - **Wrong details on a sale** — use the pencil (Edit Sale) icon on Sales Records and correct the record. The change is stamped with your name.
 - **The sale should not have happened** — cancel it with a reason. It moves to Cancelled Transactions and the stove serial returns to available stock.
 - **A batch was transferred in error** — reverse it; the serials return to ACSL and the reversal is listed under Cancelled Purchases.
-- **Duplicate customer** — the sales form blocks a repeated end user phone and names the existing transaction, so check that record before creating a new one.
+- **Duplicate customer**: the sales form refuses the same customer (same name and same phone number) a second time and names the existing transaction when you can see it, so check that record before creating a new one. A shared number with a different name is only a note.
 
 Nothing is ever silently deleted: cancellations and edits keep an audit trail showing who did what and when.`,
   },
@@ -1015,7 +1015,8 @@ Partner, sales model, stove serial, amount, end user first name and surname, end
     title: "20. Troubleshooting & common messages",
     body: `| Message or symptom | What it means | What to do |
 | --- | --- | --- |
-| *A customer with this phone number already exists* | The end user phone is already on another sale; the message names that transaction | Open the named transaction and check. If it really is a new customer, confirm the correct number |
+| *Not saved: this customer (same name and phone number) is already registered* | The same customer is already on another sale; the message names that transaction when you can see it | Open the named transaction and check. If it is a different person who shares the phone, check the name is spelt as on the agreement |
+| Amber note: *This number is also on sale ...* | Another customer already uses this phone number. This is allowed, a family can share a phone | Nothing to fix. Check the number and name are right, then save |
 | *Invalid phone number* | The number is not in an accepted Nigerian format | Enter it as \`08031234567\`, \`+2348031234567\` or \`2348031234567\` |
 | The stove serial is not in the list | The serial is not available to the selected partner — it may be unallocated, already sold or allocated elsewhere | Check the serial in Track Stoves and allocate it to the partner first |
 | *Organization ID not found. Please log in again.* | Your session lost its organisation link | Sign out and back in. If it persists, ask an administrator to check your partner assignment |

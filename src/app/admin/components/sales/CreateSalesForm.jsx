@@ -53,6 +53,26 @@ import superAdminAgentService from "../../../services/superAdminAgentService";
 import { useAuth } from "../../../contexts/useAuth";
 import { formatCurrency as formatCurrencyShared } from "@/app/utils/formatCurrency";
 import { fieldLabel, fieldOptions, groupLabel, payloadLabel, useFieldOptions } from "@/lib/saleDictionary";
+import { nameKey, phoneTail } from "../../../../../supabase/functions/_shared/buyerKey.ts";
+
+/** "TR-1, TR-2 and 3 more": the sales a live check found, briefly. */
+const listSales = (ids) => {
+  const named = (ids || []).filter(Boolean);
+  if (named.length === 0) return "another sale";
+  const shown = named.slice(0, 3).join(", ");
+  const more = named.length - 3;
+  return `sale ${shown}${more > 0 ? ` and ${more} more` : ""}`;
+};
+
+// The live check's two answers (phone and buyer rule). The refusal reads as
+// create-sale's own does; the note says the sale will still save.
+const sameBuyerNote = (match) =>
+  `This customer (same name and phone number) is already registered on ${listSales(match.transactionIds)}. ` +
+  "The same customer cannot be recorded twice.";
+
+const sharedNumberNote = (match) =>
+  `This number is also on ${listSales(match.transactionIds)} under a different name. ` +
+  "A family can share one phone, so this sale will still save.";
 
 const FormField = ({ label, error, children, htmlFor }) => (
   <div>
@@ -125,6 +145,9 @@ const CreateSalesForm = ({
   // Validation state
   const [errors, setErrors] = useState({});
   const [phoneChecking, setPhoneChecking] = useState(false);
+  // The live phone and buyer check: null, or { kind: "shared" | "same_buyer",
+  // transactionIds }. See the effect below.
+  const [phoneMatch, setPhoneMatch] = useState(null);
   const phoneCheckTokenRef = useRef(0);
 
   // Installment payment state
@@ -171,65 +194,78 @@ const CreateSalesForm = ({
   // Determine if this is edit mode
   const isEditMode = mode === "edit" && initialData;
 
-  // Live end-user phone duplicate check (debounced). Flags an existing customer
-  // as the user types so the error surfaces before submit. Cancelled sales live
-  // in `cancelled_purchases` (not `sales`), so cancelling frees the phone.
+  // Live end-user phone and buyer check (debounced), the phone and buyer rule
+  // (docs/plans/phone-and-buyer-rule.md). A number may sit on several sales,
+  // because a household shares a phone: that is a note, never a block. The same
+  // name on the same number is the same customer entered twice: that is an
+  // error, and create-sale refuses it whatever this says.
+  //
+  // One small read per typing pause: visible_sales_on_phone returns only the
+  // live sales the signed-in user may already read, by the index on the phone
+  // tail, and the names are compared here with the server's own rule
+  // (nameKey). A repeat on a sale this user cannot see is not shown here; the
+  // server still refuses it on save. The result lives in its own state rather
+  // than in `errors`, so the format error and this check never overwrite each
+  // other.
   useEffect(() => {
     const raw = formData.phone || "";
-    const digits = raw.replace(/\D+/g, "");
-    // Skip duplicate lookup unless the number is a valid NG mobile — the format
-    // error (set by handleInputChange) already covers the wrong-format case.
-    if (!isValidNgPhone(raw) || digits.length < 7) {
+    const tail = phoneTail(raw);
+    const mineName = nameKey(formData.endUserName, formData.endUserSurname, null);
+    // An edit that leaves the number and the name as they were is not checked,
+    // as update-sale does not check it: a record that already shares its
+    // number must stay editable.
+    const unchanged =
+      isEditMode &&
+      originalFormData &&
+      tail === phoneTail(originalFormData.phone) &&
+      mineName === nameKey(originalFormData.endUserName, originalFormData.endUserSurname, null);
+    // The format error (set by handleInputChange) covers a malformed number.
+    if (!isValidNgPhone(raw) || !tail || unchanged) {
+      phoneCheckTokenRef.current++;
       setPhoneChecking(false);
-      setErrors((prev) =>
-        prev.phone && prev.phone.startsWith("A customer with this phone")
-          ? { ...prev, phone: null }
-          : prev,
-      );
+      setPhoneMatch(null);
       return;
     }
     const token = ++phoneCheckTokenRef.current;
     setPhoneChecking(true);
     const timer = setTimeout(async () => {
       try {
-        const sb = getSupabase();
-        const tail = digits.slice(-10);
-        const currentId = isEditMode ? initialData?.id : null;
-        let q = sb
-          .from("sales")
-          .select("id, transaction_id, phone")
-          .ilike("phone", `%${tail}%`)
-          .limit(50);
-        if (currentId) q = q.neq("id", currentId);
-        const { data } = await q;
+        const { data, error: rpcError } = await getSupabase().rpc("visible_sales_on_phone", {
+          p_tail: tail,
+          p_exclude: isEditMode ? initialData?.id ?? null : null,
+        });
         if (token !== phoneCheckTokenRef.current) return;
-        // Last-10 comparison, matching create-sale and the mobile app: the same
-        // subscriber can be stored as 0803… or 234803… and both must collide.
-        const tailKey = digits.slice(-10);
-        const clash = (data || []).find((r) => {
-          const rowDigits = String(r.phone ?? "").replace(/\D+/g, "");
-          return rowDigits.length >= 10 && rowDigits.slice(-10) === tailKey;
-        });
-        setErrors((prev) => {
-          if (clash) {
-            return {
-              ...prev,
-              phone: `A customer with this phone number already exists (sale ${clash.transaction_id}).`,
-            };
-          }
-          if (prev.phone && prev.phone.startsWith("A customer with this phone")) {
-            return { ...prev, phone: null };
-          }
-          return prev;
-        });
+        if (rpcError) throw rpcError;
+        const rows = data || [];
+        const same = mineName
+          ? rows.filter(
+              (r) => nameKey(r.end_user_first_name, r.end_user_surname, r.end_user_name) === mineName,
+            )
+          : [];
+        if (same.length > 0) {
+          setPhoneMatch({ kind: "same_buyer", transactionIds: same.map((r) => r.transaction_id) });
+        } else if (rows.length > 0) {
+          setPhoneMatch({ kind: "shared", transactionIds: rows.map((r) => r.transaction_id) });
+        } else {
+          setPhoneMatch(null);
+        }
       } catch (err) {
+        // A failed check never stops a sale; the server applies the rule.
         console.warn("Live phone check failed", err);
+        if (token === phoneCheckTokenRef.current) setPhoneMatch(null);
       } finally {
         if (token === phoneCheckTokenRef.current) setPhoneChecking(false);
       }
     }, 300);
     return () => clearTimeout(timer);
-  }, [formData.phone, isEditMode, initialData?.id]);
+  }, [
+    formData.phone,
+    formData.endUserName,
+    formData.endUserSurname,
+    isEditMode,
+    initialData?.id,
+    originalFormData,
+  ]);
 
   // Auto-fill Contact Person / Buyer and Contact Phone from end-user details
   // when the "same as end user" checkbox is selected.
@@ -770,8 +806,8 @@ const CreateSalesForm = ({
         setErrors((prev) => ({ ...prev, [field]: NG_PHONE_FORMAT_MESSAGE }));
         return;
       }
-      // Valid (or empty) — clear format error; the duplicate-check effect will
-      // repopulate `phone` if the number already exists.
+      // Valid (or empty): clear the format error. The phone and buyer check
+      // keeps its own state (phoneMatch), so clearing this never hides it.
       setErrors((prev) => ({ ...prev, [field]: null }));
       return;
     }
@@ -1066,7 +1102,7 @@ const CreateSalesForm = ({
         }
         setSuccess(true);
         if (onSuccess) {
-          onSuccess(response.data);
+          onSuccess(response.data, { sharesPhoneWith: response.sharesPhoneWith ?? [] });
         }
         // If it's a modal, don't show success state, let parent handle it
         if (isModal && onSuccess) {
@@ -1511,18 +1547,30 @@ const CreateSalesForm = ({
                 className={errors.endUserSurname ? "border-red-500" : ""}
               />
             </FormField>
-            <FormField label={`${payloadLabel("phone")} *`} error={errors.phone} htmlFor="phone">
+            <FormField
+              label={`${payloadLabel("phone")} *`}
+              error={errors.phone || (phoneMatch?.kind === "same_buyer" ? sameBuyerNote(phoneMatch) : null)}
+              htmlFor="phone"
+            >
               <Input
                 id="phone"
                 type="tel"
                 value={formData.phone}
                 onChange={(e) => handleInputChange("phone", e.target.value)}
                 placeholder="+234 803 123 4567"
-                className={errors.phone ? "border-red-500" : ""}
-                aria-invalid={errors.phone ? "true" : "false"}
+                className={errors.phone || phoneMatch?.kind === "same_buyer" ? "border-red-500" : ""}
+                aria-invalid={errors.phone || phoneMatch?.kind === "same_buyer" ? "true" : "false"}
               />
               {phoneChecking && !errors.phone && (
                 <p className="mt-1 text-xs text-gray-500">Checking…</p>
+              )}
+              {!phoneChecking && !errors.phone && phoneMatch?.kind === "shared" && (
+                <p
+                  data-testid="phone-shared-note"
+                  className="mt-1 rounded-md border border-amber-300 bg-amber-50 px-2 py-1 text-xs text-amber-900"
+                >
+                  {sharedNumberNote(phoneMatch)}
+                </p>
               )}
             </FormField>
             <FormField label={payloadLabel("aka")} htmlFor="aka">

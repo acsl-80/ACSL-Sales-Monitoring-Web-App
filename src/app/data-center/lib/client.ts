@@ -845,18 +845,22 @@ export type StoveRecord = {
   /**
    * Any other live sale carrying this buyer's phone number.
    *
-   * One stove to one phone is the rule, and create-sale enforces it, so this
-   * is empty in a healthy register. It is carried anyway so the record can
-   * show a violation rather than leave it to be discovered by a call agent
-   * ringing a number that answers about a different stove.
+   * A number may sit on several sales (a family shares a phone), so this is
+   * not empty in a healthy register; the record shows it so a call agent says
+   * which stove they are calling about. `same_buyer` marks the same name on
+   * the number, the same customer twice, which only digitisation can record
+   * (docs/plans/phone-and-buyer-rule.md).
    */
   phoneTwins: {
     stove_id: string | null;
     stove_serial_no: string | null;
     transaction_id: string | null;
     end_user_name: string | null;
+    end_user_first_name: string | null;
+    end_user_surname: string | null;
     sales_date: string | null;
     phone: string | null;
+    same_buyer: boolean;
   }[];
   siblings: { total: number; sold: number } | null;
 };

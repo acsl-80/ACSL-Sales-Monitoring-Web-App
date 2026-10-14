@@ -490,7 +490,7 @@ Known build pitfalls, all already mitigated in the repo:
 
 | Symptom | Likely cause | Where to look |
 | --- | --- | --- |
-| "A customer with this phone number already exists" | Deliberate uniqueness rule on end-user phone | `CreateSalesForm.jsx` + `create-sale`; the message includes the conflicting transaction ID |
+| "Not saved: this customer (same name and phone number) is already registered" (409, `code: SAME_BUYER_SAME_PHONE`) | The phone and buyer rule: a number may be on several sales, the same name on the same number may not | `create-sale` / `update-sale` via `_shared/buyerKey.ts`; the form's live check is `visible_sales_on_phone`; the other sale is named only when the caller can see it. Plan: `docs/plans/phone-and-buyer-rule.md` |
 | Phone rejected as invalid | Only `08031234567`, `+2348031234567`, `2348031234567` are accepted | `isValidNgPhone` in `src/app/utils/` |
 | A stove serial does not appear in the sales form | Stove ID not `available`, not assigned to that partner, or a PostgREST filter escaping issue with special characters in the partner name | `manage-organizations`, `get-stove-ids` |
 | LGA blank when editing a sale | State/LGA options not yet loaded when the Select renders | `normalizeSaleLocation` in `salesFormUtils.js`; the Select is keyed to remount |

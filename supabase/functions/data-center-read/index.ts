@@ -31,6 +31,7 @@ import {
   COUNT_CEILING,
 } from "./records-query.ts";
 import { buildScopeSql, buildTransferScopeSql, type ScopeInput } from "./scope.ts";
+import { nameKey } from "../_shared/buyerKey.ts";
 
 /**
  * One stove's audit history, as SQL three places agree on.
@@ -2137,13 +2138,12 @@ serve(async (req) => {
               /**
                * Anybody else holding this phone number.
                *
-               * The rule is one stove to one phone, and create-sale already
-               * refuses a second sale on a number whose last ten digits are
-               * already live - so in a healthy register this comes back empty
-               * every time. It is asked anyway, because the one place a
-               * violation would be noticed is the record that names the buyer,
-               * the serial and the number together, and a rule nobody can
-               * observe is a rule nobody trusts.
+               * Since the phone and buyer rule (docs/plans/phone-and-buyer-rule.md)
+               * a number may sit on several sales, because a family shares a
+               * phone, and the agent ringing it needs to know which stove they
+               * are calling about. What create-sale refuses is the same name on
+               * the same number; only digitisation can record that, and the
+               * record marks it (`same_buyer`, below) so it is checked on a call.
                *
                * The tail is compared exactly as create-sale compares it, which
                * is also the expression idx_sales_phone_tail is built on, so
@@ -2157,7 +2157,8 @@ serve(async (req) => {
                              from public.sales where id = $1
                          )
                          select s2.stove_serial_no, s2.transaction_id,
-                                s2.end_user_name, s2.sales_date, s2.phone,
+                                s2.end_user_name, s2.end_user_first_name,
+                                s2.end_user_surname, s2.sales_date, s2.phone,
                                 sb2.stove_id
                            from public.sales s2
                            join me on s2.id <> me.id
@@ -2279,7 +2280,26 @@ serve(async (req) => {
                 changesTotal:
                   Number((changeCount.rows[0] as { total?: number } | undefined)?.total ?? 0),
                 consignment: consignment.rows,
-                phoneTwins: phoneTwins.rows,
+                /*
+                 * Each other sale on this number, marked `same_buyer` when its
+                 * name reduces to this sale's name by the phone and buyer rule
+                 * (_shared/buyerKey.ts). A shared number is allowed, a family
+                 * shares a phone; the same name on it is the same customer
+                 * twice, which only digitisation can record.
+                 */
+                phoneTwins: phoneTwins.rows.map((t) => {
+                  const twin = t as Record<string, unknown>;
+                  const me = sale.rows[0] as Record<string, unknown> | undefined;
+                  const mine = me
+                    ? nameKey(me.end_user_first_name, me.end_user_surname, me.end_user_name)
+                    : "";
+                  return {
+                    ...twin,
+                    same_buyer:
+                      mine !== "" &&
+                      nameKey(twin.end_user_first_name, twin.end_user_surname, twin.end_user_name) === mine,
+                  };
+                }),
                 siblings: siblings.rows[0] ?? null,
               },
             },

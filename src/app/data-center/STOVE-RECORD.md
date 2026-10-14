@@ -67,15 +67,19 @@ the person back to the paper.
 It runs on submit, not on keystroke. A serial is fifteen characters typed in one
 go, and a request per character is fourteen requests whose answers nobody reads.
 
-## One stove, one owner, one phone
+## One stove, one owner; one phone, one customer
 
 Both rules are enforced in `create-sale`, which is the only door a sale comes
-through — the Sell Stove form, the digitalisation workbench and the bulk import
-all commit that way. It refuses a serial whose stock row reads `sold`, and
-refuses a phone whose **last ten digits** already appear on a live sale.
+through: the Sell Stove form, the phone app, the digitalisation workbench and
+the bulk import all commit that way. It refuses a serial whose stock row reads
+`sold`. Since the phone and buyer rule (`docs/plans/phone-and-buyer-rule.md`,
+14 Oct 2026) a phone number may sit on several sales, because a family shares
+one phone; what it refuses is the **same customer**, the same name on the same
+number, entered a second time. Only digitisation may record that, and the call
+centre checks it.
 
-The last ten digits is the comparison key everywhere, so the country code makes
-no difference. All of these are one subscriber:
+The phone half of the comparison is the **last ten digits**, so the country
+code makes no difference. All of these are one subscriber:
 
 ```
 08031234567   +2348031234567   234 803 123 4567
@@ -86,14 +90,18 @@ The last of those matters more than it looks: a spreadsheet reads `08031234567`
 as a number and eats the leading zero. `_shared/nigerian-phone.ts` normalises on
 the way in; the tail comparison catches whatever got past it.
 
-The stove record asks whether the number appears anywhere else and says so
-loudly if it does. It is empty in a healthy register, and it is asked anyway,
-because the consequence of a duplicate is quiet: an agent rings the number, is
+The name half is reduced by `_shared/buyerKey.ts` (aliases in brackets dropped,
+case and punctuation ignored, titles such as Mr and Alhaji dropped, word order
+ignored), and `buyer-key-vectors.json` is the oracle every copy must pass.
+
+The stove record lists every other live sale on the number. A shared number is
+**amber**: nothing is wrong, but whoever rings it must say which stove they are
+calling about. A sale marked `same_buyer` turns it **red** with a "same
+customer" tag, because the consequence is quiet: an agent rings the number, is
 told about a different stove, and marks the wrong record verified.
 
-`idx_sales_phone_tail` makes that check an index lookup. It is **not** unique —
-see ROADMAP Phase 16 for why that is a question for the owner rather than a
-decision this module takes.
+`idx_sales_phone_tail` makes the lookup an index read. It is **not** unique,
+and by this rule it never will be.
 
 ## The period control
 

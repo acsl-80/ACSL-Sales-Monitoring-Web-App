@@ -24,10 +24,15 @@ function CreateSaleView() {
     return clearSelection;
   }, []);
 
-  const handleSuccess = () => {
+  const handleSuccess = (_sale, { sharesPhoneWith = [] } = {}) => {
+    // A number shared with other sales is allowed (a family can share one
+    // phone); the seller is told which, so a wrong number can still be caught.
+    const others = sharesPhoneWith.map((r) => r.transaction_id).filter(Boolean);
     toast.success(
       "Sale Created Successfully",
-      "The sale has been recorded and will be processed."
+      others.length > 0
+        ? `The sale has been recorded. Its phone number is also on sale ${others.slice(0, 3).join(", ")}${others.length > 3 ? ` and ${others.length - 3} more` : ""}, under a different name.`
+        : "The sale has been recorded and will be processed."
     );
     router.push("/sales");
   };

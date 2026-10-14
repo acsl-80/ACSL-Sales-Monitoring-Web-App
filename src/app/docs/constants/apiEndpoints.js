@@ -196,7 +196,8 @@ export const ADMIN_ENDPOINTS = {
       endpoint: "create-sale",
       method: "POST",
       url: `${API_BASE_CONFIG.functionsUrl}/create-sale`,
-      description: "Create a new sale record",
+      description:
+        "Create a new sale record. Phone and buyer rule: a phone number may be on several sales; the same customer (same name and same phone number) is refused with 409 and code SAME_BUYER_SAME_PHONE.",
       requiredAuth: true,
       role: "admin",
       parameters: {
@@ -213,6 +214,10 @@ export const ADMIN_ENDPOINTS = {
         success: "boolean",
         data: "newly created sale object",
         message: "string",
+        shares_phone_with:
+          "array (only when the number is on other live sales the caller can see): { sale_id, transaction_id, same_buyer }",
+        code: "string (on a refusal): SAME_BUYER_SAME_PHONE when the same customer is already registered",
+        transactionId: "string or null (on SAME_BUYER_SAME_PHONE): the other sale, named only when the caller can see it",
       },
     },
     updateSale: {
