@@ -78,6 +78,20 @@ Each step can ship on its own; none of them breaks the one before. Steps 1 and 3
 
 Optional: when a success body carries `shares_phone_with`, the success toast can say the number is shared.
 
+### Sync and speed, in the same release
+
+10. **Fetch the list only when it changed.** `get-end-user-phones` will send an `ETag`. Send it back as `If-None-Match`; a `304` means keep the cache. Today the full list is downloaded on every refresh.
+11. **Check the queue when the list arrives.** After a refresh, run the buyer-key check over every unsynced sale. A queued sale that now matches a buyer on file is marked on its card with the same message the server would send, before any sync attempt, so the agent learns while still near the customer and no photos are uploaded for a sale that will be refused.
+12. **A refused sale stops retrying until it is edited.** A 409 with `code == "SAME_BUYER_SAME_PHONE"` (or any 4xx other than "already saved") will never succeed on retry. Mark it, skip it in later "sync all" runs, and retry only after the agent edits it. Network errors and 5xx keep retrying as today.
+13. **Keep uploaded photo ids.** Today a queued sale whose photos uploaded but whose sale was then refused uploads the photos again on every retry. Store the returned ids on the queue row after each successful upload and reuse them.
+14. **Time limits on sync calls.** `upload-image` and `create-sale` inside `syncPendingSales` have no timeout, so one hung request holds the whole batch. Use the same pattern as the online create (`.timeout(...)`, around 45 s for an upload, 30 s for the sale); a timeout is a network failure and the batch moves on.
+
+A batch already carries on past a refused sale today (each queued sale is in its own `try`), and that must stay true.
+
+### What the agent reads today, before your release
+
+Until 1.0.19 ships, a refused sale shows the server's message on its pending card exactly as sent. It reads: "Not saved: this customer is already registered with this phone number on sale TR-XXXXXX. The same customer cannot be recorded twice. Check the name and phone number; if they are correct, this sale is already recorded and can be deleted from the phone." The server also now recognises a retry of a sale that already saved, so a lost reply no longer strands a sale.
+
 ## How to check it
 
 - The Dart unit test passes every vector.

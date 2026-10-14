@@ -1,34 +1,53 @@
 # Phone number and buyer rule: plan
 
-Status: agreed 2026-10-14, not started. The rule is the operator's of 2026-10-14. It replaces "one live sale per phone", which was parked on 2026-10-02. Digitisation decided the same day: it records a repeat buyer and does not refuse, and the repeat is flagged for the call centre.
+Status: agreed 2026-10-14; mapped the same day; not started. The rule is the operator's of 2026-10-14. It replaces "one live sale per phone", parked on 2026-10-02 ("do not tighten the phone lookup as a side effect"); this plan is the planned piece that park asked for. Digitisation decided the same day: it records a repeat buyer and does not refuse, and the repeat is flagged for the call centre.
 
 ## The rule
 
-1. **Same phone, different buyer name: allowed, and noted.** The sale saves. The other sales on that number are reported back to whoever is entering it, and the sharing is visible on the record for review.
+1. **Same phone, different buyer name: allowed, and noted.** The sale saves. The other sales on that number are reported back to whoever is entering it, and the sharing is visible for review.
 2. **Same phone, same buyer name: refused.** That is the same customer entered twice.
 3. **It applies across every partner,** not only inside the seller's organisation.
 4. **Digitisation is the exception.** A paper receipt records a stove already sold, so a repeat buyer there is saved, not refused, and flagged for the call centre to confirm on a call.
 5. **One definition of "same name" is used everywhere:** the server, the web form and the phone app. It is written once, below, with test vectors all three must pass.
 
-## What changes today, by entry point
+## Working rules for this build
 
-| Entry point | Today | After |
-|---|---|---|
-| `create-sale` (web Sell Stove, phone app, Data Center commit) | Refuses any number already on a sale (409). Since 26 Sep the lookup runs as the caller, so it only sees the caller's own scope. | Looks across all sales as the server. Refuses same buyer and phone (409, code `SAME_BUYER_SAME_PHONE`); accepts a shared number and returns `shares_phone_with`. |
-| `update-sale` (phone or name edit) | Refuses an edit that moves the phone onto a number already used. Already runs as the server. | Same rule as create, checked when the phone or the name changes, excluding the sale itself. |
-| Web Sell Stove live check | Reads `sales` as the caller (scope-limited) and blocks any reused number. | Uses the same list the phone app uses (`get-end-user-phones`). A shared number shows a note; same buyer and phone shows an error. |
-| Phone app (APK) | Blocks any reused number, offline, against a cached list of every number. | Same as the web form, offline. Brain-codes' slice: see `docs/contractor/sales-mobile-phone-buyer-rule.md`. Until it ships, the app stays stricter than the rule, which is safe. |
-| Data Center digitisation | Sends `allowSharedPhone: true`; a reused number is reported and recorded in `data_center.shared_phones`. | Still never refused. `create-sale` says which of the other sales are the same buyer; the import records those in the same register marked as the same buyer, and they appear in the call centre's "needs a decision" block for a call. |
-| Call centre | The shared-phone register (`data_center.shared_phones`) holds digitisation's shared numbers, each with a source and a confirmed tick, shown in "needs a decision" and on its own page. | The register gains one field, `kind`: `shared_number` or `same_buyer`. Same-buyer rows are shown first and say "same buyer on more than one stove: confirm on a call". Shared numbers from Sell Stove and the phone app are registered too (source `sales_app`, a value the register already allows). |
+- **Nothing breaks for a user between phases.** Each phase ships on its own, and the phone app already in the field (1.0.18) keeps working after every one of them.
+- **Speed.** Lookups use the phone tail index; the web form never downloads the whole phone list; the phone app's list is fetched only when it changed; recording a note never makes the seller wait. `create-sale`'s response time is measured from the logs before and after.
+- **Migrations are written as files with the query that proves they landed; the operator runs them.**
+- **Nothing already stored is changed or deleted** except where a phase says so and the operator has approved it.
 
 ## What production holds (measured 2026-10-14)
 
 - 5,765 sales. 375 numbers sit on more than one sale (964 sales). 220 of those numbers carry more than one buyer name.
-- 188 groups where the same buyer and phone repeat (474 sales). Group sizes: 140 pairs, 30 of three, and a tail up to one buyer on 13 sales. 16 groups span more than one partner.
-- **471 of those 474 sales came through Data Center digitisation.** Field sales almost never repeat a buyer.
-- Names: 1 of 5,765 carries a non-ASCII character (a curly apostrophe). 64 carry bracketed text (aliases such as "[Mama Ade]"). Honorifics appear about 130 times (Alhaji 47, Baba 31, Malam 20, Mrs 10).
+- 188 groups where the same buyer and phone repeat (474 sales); 471 of those sales came through digitisation. By call: 48 groups fully verified on every stove, 28 partly, 58 called but not fully verified, 54 never called. In 27 groups a call corrected the name or phone, so the corrected values no longer match.
+- The call centre's register (`data_center.shared_phones`) holds 954 rows, all from digitisation, none confirmed. Every live shared number is in it.
+- **The register decides crediting.** `data_center.compute_analysis` leaves out of the creditable count any sale with an unconfirmed register row ("Phone shared, unconfirmed"). 951 live sales are held that way today: 467 same buyer, 482 different names. 291 of them are fully verified on a call but still held, because verifying a sale does not tick the register.
+- Names: 1 of 5,765 carries a non-ASCII character. 64 carry bracketed aliases. Honorifics appear about 130 times.
+- The phone app in the field is 1.0.18 (`app_releases`, not forced). `create-sale` is v57 (deployed 2026-10-14). `get-end-user-phones` is the July build (v11).
 
-The rule applies to new sales and edits. Nothing already stored is changed or deleted.
+## The map (2026-10-14)
+
+Four read-only passes, split by direction of flow, then the claims that change the plan checked by hand.
+
+**Who writes a sale's phone or buyer name.** Only `create-sale` and `update-sale`. Digitisation reaches `create-sale` over HTTP with `allowSharedPhone: true`. The call centre stores corrected phones and names in `call_records` only; a person carries a correction into the sale through `update-sale`. The ERP never writes these fields here. No database constraint or trigger enforces phone uniqueness; the rule lives only in code.
+
+**Defects in today's check, found by the map** (fixed in Phase 1 as part of the change):
+- **A lost reply strands a phone sale.** `create-sale` checks the phone (line 304) before the transaction id (line 395). When the phone app retries a sale that did save, it gets the phone refusal, which it does not recognise as "already saved", so the sale stays queued and refused forever. The app keeps the same transaction id on every retry; the server never reads its `clientRequestId`.
+- **The check runs as the caller,** so a partner cannot see other partners' sales and cross-partner repeats pass. `update-sale` checks globally: two scopes for one rule.
+- **The lookup scans the table** (`ilike '%tail%'`, 7.5 ms today, growing), misses numbers stored with spaces or dashes, and still counts cancelled sales, although the code comment says cancelling frees the number. The tail index already exists and leaves cancelled sales out.
+- **A name-only edit is never checked** by `update-sale`.
+- **A lookup error is ignored** and the sale goes through (fails open). Kept as is: refusing every sale when the lookup hiccups would be worse; the register catches the rare miss.
+
+**What depends on the exact words or shapes** (each kept or changed on purpose):
+- The phone app treats a 409 as "already saved" only if its message contains both "transaction id" and "already exists"; the Data Center import retries a refusal three times if it mentions "transaction id". New messages avoid both.
+- The phone app reads `get-end-user-phones` as a list of 10-digit strings under `data`; that stays exactly as it is, and new fields are added beside it.
+- `shares_phone_with` means two shapes today: `create-sale` returns `{ sale_id, transaction_id }`, the call record read returns `{ stove_id, buyer, sale_id }`. `create-sale` only adds `same_buyer`; the other shape is untouched.
+- The web form clears its own error by matching the start of its message text; the Stove record page shows any second sale on a number as a red "one stove goes to one phone number" violation; the e2e spec `non-interference` pins the old 409 text; the user guide and three docs quote the old rule.
+
+**Inside the database.** The name trigger (`sales_a_name_parts`) keeps the joined name equal to first name plus surname whenever the parts are present, so the key reads the same name either way. The register has no row policies; it is protected by the `data_center` schema being closed to signed-in users, and is reached by the Data Center functions over a direct connection. A new `kind` column needs a default, or both existing inserts break. A new `public` function is callable by signed-in users unless its execute right is revoked; the pattern is `sale_call_work`.
+
+**In flight elsewhere.** Branch `fix/close-open-reads` (7 Oct, recovery work, no PR) changes the start of `get-end-user-phones` to refuse accounts outside the sales app; edits here stay clear of those lines. Three unmerged branches carry migrations dated 6 and 7 Oct, so new migrations are dated after them. No open PR, upstream sync or newer phone app collides.
 
 ## The buyer key
 
@@ -43,8 +62,9 @@ Defined once here; the code in each language follows it exactly.
   4. Delete every other character that is not a to z or a space (so `Mu'azu` is `muazu`, `Ade-Bayo` is `adebayo`).
   5. Split on spaces, drop empty words and any word on the title list, sort the words, join with one space.
   An empty name key means the name check does not run; only the shared-number note can apply.
-- **Title list** (configuration, served by the server, not typed into any client): `mr mrs miss ms dr alhaji alhaja hajia hajiya malam mallam chief madam`. "Mama" and "Baba" are kept, because they are often the name a person goes by ("Mama Ngozi"). See open question 2.
+- **Title list** (configuration, served by the server, not typed into any client): `mr mrs miss ms dr alhaji alhaja hajia hajiya malam mallam chief madam`. "Mama" and "Baba" are kept, because they are often the name a person goes by.
 - **Buyer key:** the first 16 hex characters of SHA-256 over the UTF-8 text `<tail>|<name key>`. The phone app compares keys, so a device never holds a list of customer names.
+- **Corrections.** Where a call recorded a corrected phone or name, the register and the backfill use the corrected value, because the call is the fact.
 
 Test vectors (every implementation must produce these):
 
@@ -66,84 +86,88 @@ Test vectors (every implementation must produce these):
 | Mrs | (empty) | | 08031234567 | 8031234567 | (empty) | (none) |
 | Aisha | Bello | | 803123 | (none) | aisha bello | (none) |
 
-The vectors live in one file, `supabase/functions/_shared/buyer-key-vectors.json`, which the Deno tests read and which is handed to the phone app as is.
+The vectors live in one file, `supabase/functions/_shared/buyer-key-vectors.json`, which the tests read and which is handed to the phone app as is.
 
-## Slices, in order
+## Phases
 
-Each slice ships on its own and leaves the system working.
+Each phase is one PR, proven on a preview branch, live before the next starts. After every phase the web app, the Data Center and phone app 1.0.18 all keep working.
 
-**S1. Server rule, and the list the clients need** (one PR with S2)
-- `_shared/buyerKey.ts`: phone tail, name key, buyer key, title list; Deno test over the vectors file.
-- `create-sale`: the phone lookup moves to the server client and compares buyer keys. Same key: 409 with `code: "SAME_BUYER_SAME_PHONE"` and the other sale's transaction id. Shared number only: save, and return `shares_phone_with` always (today only when `allowSharedPhone` is sent), each entry now carrying `same_buyer: true|false`. With `allowSharedPhone` (digitisation only) a same-buyer repeat saves instead of refusing, and is reported the same way. The 409 message must not contain the words "transaction id" and "already exists" together, because the phone app reads that pair as "already saved".
-- `update-sale`: the same check when the phone or the name changes, excluding the sale itself.
-- `get-end-user-phones`: adds `buyerKeys` (array) and `buyerKeyRules` (`{ version, titles }`) beside the existing list. Additive: today's app ignores both.
-- Proof: Deno vectors test; a parity check that runs the key over every production sale and matches the counts above (188 groups, 474 sales); preview-branch specs for the cases under "How it is proven".
+**Phase 0. Groundwork, no behaviour change**
+- `_shared/buyerKey.ts` and its test over the vectors file.
+- Migration A: a server-only function `public.sales_sharing_phone(p_tail text, p_exclude uuid)` returning the live (not archived) sales on a tail with their names, read through the tail index; execute revoked from signed-in users. `data_center.shared_phones` gains `kind text not null default 'shared_number'` (check: `shared_number`, `same_buyer`), so both existing inserts keep working.
+- Baseline: `create-sale` median and slowest response times from the logs.
+- Proof: the vectors test; the function returns what the old query returns on a sample of real tails, minus cancelled sales; a signed-in account calling it is refused; existing register writes still succeed on the branch.
 
-**S2. Web Sell Stove** (same PR as S1)
-- The live check calls `get-end-user-phones` once per form, computes the key in the browser with the served titles, and shows a note for a shared number, an error for same buyer and phone. It replaces the scope-limited `sales` read.
-- After a save that returns `shares_phone_with`, the success state says the number is shared and names the other transaction ids.
-- Proof: preview screenshots of the note and the error; the existing Sell Stove specs stay green.
+**Phase 1. The rule on the server**
+- `create-sale`: the transaction id check moves before the phone check (a retried sale that already saved is recognised again); the phone lookup goes through the new function, globally. Same buyer: 409 with `code: "SAME_BUYER_SAME_PHONE"` and the message below. Shared number with another name: saves, and `shares_phone_with` lists the other sales with `same_buyer: false`. Digitisation (`allowSharedPhone`): never refused; `same_buyer` marks the repeats.
+- `update-sale`: the same rule when the phone or the name changes, excluding the sale itself.
+- The message, written to be read on the phone app's pending card as it is today: "Not saved: this customer is already registered with this phone number on sale TR-XXXXXX. The same customer cannot be recorded twice. Check the name and phone number; if they are correct, this sale is already recorded and can be deleted from the phone."
+- `non-interference` spec updated to the new rule; new specs for every case under "How it is proven".
+- Old phone app: still blocks any reused number before sending (stricter, safe); a refused sale shows the message above on its card; the batch carries on (each queued sale is synced on its own).
 
-**S3. Brain-codes: the phone app.** Starts when S1 is live. The handoff is the contract.
+**Phase 2. The web form and the screens that state the old rule**
+- Sell Stove's live check calls one small server check per typing pause (300 ms, as now) and shows a note for a shared number, an error for the same buyer. It replaces the browser's scope-limited read; no list is downloaded.
+- After a save on a shared number the success state says it was noted.
+- The Stove record page shows a second sale on a number in amber ("shared number") and keeps red for the same buyer.
+- The user guide, `STOVE-RECORD.md` and the API docs say the new rule.
 
-**S4. The call centre sees the flag** (runs here while S3 is with Brain-codes)
-- Migration: `data_center.shared_phones` gains `kind text not null default 'shared_number' check (kind in ('shared_number','same_buyer'))`. Written as a file with the query that proves it landed, for the operator to run.
-- `data-center-import`: it already records `shares_phone_with`; it now writes `kind = 'same_buyer'` for entries with `same_buyer: true`, source `digitalisation`, unconfirmed.
-- `create-sale`: a shared number from Sell Stove or the phone app is registered with source `sales_app` and `kind = 'shared_number'`, through a server-only database function (the `data_center` schema stays out of PostgREST).
-- Call centre: "needs a decision" counts same-buyer rows separately and opens them first; the shared-phone page shows the kind and lets the agent tick confirmed with a note, as it does today.
-- Proof: a digitised repeat appears in "needs a decision" as same buyer; a Sell Stove sale on a shared number appears in the register as `sales_app`; confirming one clears it from the count.
+**Phase 3. The phone app's list, and the handoff**
+- `get-end-user-phones` keeps `data` exactly as it is and adds `buyerKeys` and `buyerKeyRules`, with an ETag so an unchanged list costs nothing.
+- The handoff goes to Brain-codes the day this is live.
 
-**S5. Backfill the existing repeats into the call centre.** The 188 same-buyer groups (474 sales, 471 of them digitised) are written into the register as `same_buyer`, unconfirmed, so the call centre works through them with the same screen. A dry run first that reports the counts it would write; the operator runs the real one. Nothing about the sales themselves changes.
+**Phase 4. The call centre sees the flag**
+- The import writes `kind = 'same_buyer'` for digitised repeats. "Needs a decision" counts same-buyer rows separately and opens them first; the shared-phone page shows the kind; agents tick confirmed with a note as today.
+- Shared numbers from Sell Stove and the phone app are registered (source `sales_app`), after the reply is sent so the seller never waits. **Waits on decision 1.**
+
+**Phase 5. The existing repeats**
+- `kind` set to `same_buyer` on the existing register rows of the 188 groups, using corrected values where a call recorded them. A dry run reports the counts first; the operator runs it. This changes no crediting.
+- What happens to the 48 groups verified on every stove, and to the 291 verified-but-held sales, **waits on decision 2.**
+
+**Phase 6. Brain-codes: phone app 1.0.19.** From the handoff, against the live server.
 
 ## How it is proven
 
-Before any code, one test per behaviour, each watched failing on today's code first:
+One test per behaviour, each watched failing on today's code first:
 
 - Same phone, different name, other partner: saves, and `shares_phone_with` names the first sale.
 - Same name and phone, other partner: 409 `SAME_BUYER_SAME_PHONE`.
 - Same name and phone written differently (order swapped, `+234` against `080`, a title, an alias in brackets): 409.
 - **Disconfirming:** same name, different phone: saves. A name alone never refuses.
-- Digitisation, same name and phone: saves, and `shares_phone_with` marks the earlier sale `same_buyer: true`.
-- Edit a sale without touching phone or name: saves (no self-match).
-- Edit the phone onto another sale's number under the same name: 409.
-- Phone app on today's build, against the new server: unchanged behaviour (stricter, nothing breaks).
-- Parity: the TypeScript key over production reproduces 188 groups and 474 sales; the phone app's Dart key reproduces every vector.
+- A retried sale whose first attempt saved: recognised as already saved, not refused.
+- A cancelled sale's number: free to use.
+- Digitisation, same name and phone: saves, and `same_buyer: true` on the earlier sale.
+- Edit without touching phone or name: saves. Edit the name so it matches another sale on the same number: 409.
+- Phone app 1.0.18 against the new server, including a batch with one refused sale: the others sync.
+- Parity: the key over production reproduces 188 groups and 474 sales.
+- Speed: `create-sale` response time no worse than the baseline.
 
 ## Invariants
 
 - No new sale or edit from Sell Stove or the phone app leaves two live sales with the same buyer key. Digitisation may, and every such repeat is in the register as `same_buyer` until a call confirms it.
 - A shared number never blocks a sale by itself.
-- The key is computed the same way in every place; the vectors file is the oracle.
-- No stored sale changes because of this work.
+- The key is computed the same way everywhere; the vectors file is the oracle.
 - The phone app never receives buyer names in bulk.
+- `get-end-user-phones` keeps its `data` list unchanged.
 
 ## Non-goals
 
-- Fuzzy name matching (typos, nicknames beyond brackets, accented letters). A mismatch falls to the safe side: the sale saves and the number is noted.
-- Merging, cancelling or deleting the existing repeats.
-- A database-level unique index. Two people entering the same buyer in the same second is not a real risk today; it moves to "later" if it is ever seen.
-- Changing the transaction id duplicate guard, the stove claim, or who may read the phone list.
+- Fuzzy name matching (typos, nicknames beyond brackets, accented letters). A mismatch falls to the safe side: the sale saves and is noted.
+- Merging, cancelling or deleting any sale.
+- A database-level unique index.
+- Changing who may read the phone list.
 
 ## Later
 
-- A database backstop if a race is ever observed.
+- A database backstop if a race between two simultaneous sales is ever seen.
 - Accent folding, if non-ASCII names start appearing.
-
-## Implementation order: here first, then the phone app
-
-The server goes first, because it is the rule every channel ends at and the phone app's half depends on it:
-
-1. **S1 and S2 here**, one PR, proven on a preview branch, then live. Today's APK keeps working against it unchanged (it stays stricter).
-2. **S3 with Brain-codes** from the day S1 is live: the new list fields and the error code exist for them to build and test against. Two of their steps need nothing from us and can start now: carrying the error code, and the key function with its test over the vectors file.
-3. **S4 and S5 here** while Brain-codes work, since they touch only the Data Center.
-
-Building the phone app first would leave it nothing to test against, and its offline check would disagree with a server that still refuses every reused number.
 
 ## Decided
 
 - **Digitisation and one buyer with several stoves** (2026-10-14): digitisation records the repeat and does not refuse; the repeat is flagged for the call centre to confirm. Sell Stove and the phone app refuse.
+- **Order** (2026-10-14): here first, then the phone app.
 
-## Open questions
+## Waiting on the operator
 
-1. **The title list.** Proposed above, with Mama and Baba kept as names. The list is configuration, so it can change without a release.
-2. **What an agent is told about the other sale.** Proposal: its transaction id only, never the other buyer's name or partner.
+1. **Do shared numbers from Sell Stove and the phone app wait for a call before they count as creditable?** Today every shared number in the register is held out of the creditable count until a call confirms it (decision D23: "the call is how a suspicion becomes a fact"). Registering field sales the same way keeps one rule; registering them as notes that do not hold crediting keeps their numbers moving. Proposal: hold them, like digitised ones.
+2. **Calls that already verified the stoves.** 48 repeat-buyer groups are fully verified on every stove, and 291 verified sales across the register are held only because the register was never ticked. Ticking them would raise the creditable count. Proposal: decide after Phase 5's dry run shows exactly which sales would move.
+3. **The title list** and **what an agent is told about the other sale** (proposal: its transaction id only).
