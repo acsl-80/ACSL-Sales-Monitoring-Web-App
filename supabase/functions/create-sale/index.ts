@@ -30,8 +30,8 @@ Deno.serve(async (req) => {
   }
 
   // Carries the caller's own login, so the database sees who is selling: its
-  // reads (the caller's profile, duplicate checks, payment models) and the
-  // address insert run under the caller's row policies. Despite the service
+  // reads (the caller's profile, duplicate checks, payment models) run under
+  // the caller's row policies. Despite the service
   // key, a forwarded Authorization header makes PostgREST act as the caller.
   const supabase = createClient(
     Deno.env.get("SUPABASE_URL")!,
@@ -44,9 +44,9 @@ Deno.serve(async (req) => {
   );
   /*
    * The server's own client, with no caller attached. It makes every write
-   * to sales, stove_ids and installment_payments: the sale itself, the stove
-   * claim, undoing this function's own sale when the claim does not happen,
-   * and the first instalment. The caller has been authenticated and the
+   * to addresses, sales, stove_ids and installment_payments: the buyer's
+   * address, the sale itself, the stove claim, undoing this function's own
+   * sale when the claim does not happen, and the first instalment. The caller has been authenticated and the
    * organisation resolved from their profile or checked against their
    * assignments before any of them runs, and created_by and recorded_by are
    * set from that caller, so the sale history still names them.
@@ -574,7 +574,10 @@ Deno.serve(async (req) => {
         : null;
     // ── Insert address ────────────────────────────────────────────────────────
     console.log("📍 Inserting address:", addressData);
-    const { data: address, error: addressError } = await supabase
+    // As the server: since 20260926170000 only super admins may insert into
+    // addresses, so an address written as the caller was refused for every
+    // other role, and the sale with it ("Address save failed").
+    const { data: address, error: addressError } = await server
       .from("addresses")
       .insert([
         {
