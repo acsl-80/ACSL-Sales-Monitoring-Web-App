@@ -920,7 +920,7 @@ How it works:
 - **A sale that moves to another number** takes its unconfirmed row with it. A number left with one live sale is no longer shared, so its unconfirmed rows go too. Confirmed rows stay as history.
 - **The import still writes its rows in its commit transaction.** Both writers upsert on `(phone_tail, sale_id)`, and the kind only ever rises, so the two converge in either order.
 
-The consequence to know about: a sale already verified on a call, and so creditable, is held again when a new sale lands on its number, until the call centre confirms the number. That is D23's rule, "the call is how a suspicion becomes a fact", applied to a new suspicion.
+The consequence to know about: a sale already verified on a call, and so creditable, is held again when a new sale lands on its number and that number is not yet on the register, until the call centre confirms the number. On a number already confirmed, only the new sale is held. That is D23's rule, "the call is how a suspicion becomes a fact", applied to a new suspicion.
 
 On the read side:
 

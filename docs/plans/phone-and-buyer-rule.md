@@ -165,7 +165,7 @@ Each phase is one PR, proven on a preview branch, live before the next starts. A
   - All three writers (this, the import's commit, the call centre's confirm) take rows in sale id order. The register gives up on a lock after 5 s.
 - **The read.** Each row carries its kind; each number an open count and a same-customer flag. Open repeats are listed first and can be filtered to. The whole register is counted in the database.
 - **Needs a decision** has a line for the same customer twice that opens the register narrowed to repeats. It counts from those totals; it used to read the first 200 numbers, and a confirmed number that gained a sale looked closed.
-- **Consequence to know at release.** A sale already verified and creditable is held again when a new sale lands on its number, until the call centre confirms it. That is decision 1 applied to a new suspicion, and creditable counts will dip as field sales share numbers.
+- **Consequence to know at release.** A sale already verified and creditable is held again when a new sale lands on its number and that number is not yet on the register, until the call centre confirms it. On a number the call centre has already confirmed, only the new sale is held. That is decision 1 applied to a new suspicion, and creditable counts will dip as field sales share numbers.
 - **Results:**
   - `host-phone-buyer-register` passes 12 of 12. Against today's functions, the registration, kind, count and screen checks failed as predicted, and the no-write guard passed.
   - An independent review found no security problem. It found four defects, now fixed and tested: two first sales at once unregistered, a deadlock risk with the import, needless rewrites, and missing tests.
@@ -190,6 +190,8 @@ Each phase is one PR, proven on a preview branch, live before the next starts. A
 - **Independent review:** nothing that blocks a production run. Taken from it: the backfill locks its rows first, in sale id order like every register writer, so a row create-sale marks during the run is never snapshotted with a kind the backfill did not change; a correction of only whitespace is no correction; the corrected-phone cases above.
 - **Release step:** run the dry run, then the backfill, after the functions are deployed. From then on `create-sale` marks every new repeat itself.
 - What to do with the verified sales the register still holds **waits on decision 2**, now with the dry run's figures.
+
+**The release.** Phases 1 to 5 and decision 2 go to production together, in the order and with the checks and rollback points in [phone-and-buyer-rule-release.md](phone-and-buyer-rule-release.md). Written 2026-10-15; it runs on the operator's release word.
 
 **Phase 6. Brain-codes: phone app 1.0.19.** From the handoff, against the live server.
 
