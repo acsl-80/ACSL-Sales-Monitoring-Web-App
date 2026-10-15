@@ -127,13 +127,35 @@ Each phase is one PR, proven on a preview branch, live before the next starts. A
   - With groundwork, the server rule, `non-interference`, the Stove record, page loads and field parity, 76 of 76 pass.
 - An independent review found no serious defect. Its two points are fixed: the edit form loading, and the cap of 5 rows.
 
-**Phase 3. The phone app's list, and the handoff**
-- `get-end-user-phones` keeps `data` exactly as it is and adds `buyerKeys` and `buyerKeyRules`, with an ETag so an unchanged list costs nothing.
-- The handoff goes to Brain-codes the day this is live.
+**Phase 3. The phone app's list, and the handoff.** Built and tested 2026-10-15 on #146's test database (not released).
+- `get-end-user-phones` keeps `data` as phone app 1.0.18 reads it. Its content is the same; the list is now sorted and read in a fixed page order, so the same sales always give the same body.
+- Beside `data` it adds:
+  - `buyerKeys`: keys only, never names.
+  - `buyerKeyRules`: the served title list and its version.
+  - An ETag: an unchanged list costs a 304 and no download.
+- **The keys cover the live sales the signed-in account can read**, through `buyer_key_inputs` (migration `20261014120300`): security invoker, one JSON array, one round trip. This is the same scope as the Sell Stove check in Phase 2. A repeat of a customer the account cannot read is refused by `create-sale` at sync, with the message on the card.
+- **The gateway passes the ETag on as a weak tag** (`W/"..."`). The function accepts it in either form. Without that no phone would ever get a 304.
+- Speed on production data (5,740 live sales):
+  - the key read takes 11 ms warm;
+  - computing the keys takes 110 to 160 ms;
+  - the keys add about 109 KB, downloaded only when the list changed;
+  - today's call has a median of 1.7 s.
+- Results:
+  - `host-phone-buyer-list` passes 6 of 6. Against today's function, the data check passes (it pins the contract) and the keys, scope and ETag checks fail as predicted.
+  - With groundwork and `non-interference`, 17 of 17.
+- **The handoff** (`docs/contractor/sales-mobile-phone-buyer-rule.md`) was rewritten against sales-mobile `ff16cf6`, the newest code on both remotes. It covers every surface the app touches, file by file, and goes to Brain-codes when the server is live.
+- **What it found in the app:**
+  - The network layer drops an error body, so `code` never reaches the app.
+  - The live check ignores names.
+  - A refused queued sale retries forever and re-uploads its photos.
+  - Sync never adds a saved sale's number to the cache.
+  - The create and sync calls have no timeout.
+  - The in-memory phone set outlives a logout.
+- **Until 1.0.19:** 1.0.18 blocks any reused number on the device, so a family member's sale on a shared number is entered on the web.
 
 **Phase 4. The call centre sees the flag**
 - The import writes `kind = 'same_buyer'` for digitised repeats. "Needs a decision" counts same-buyer rows separately and opens them first; the shared-phone page shows the kind; agents tick confirmed with a note as today.
-- Shared numbers from Sell Stove and the phone app are registered (source `sales_app`), after the reply is sent so the seller never waits. **Waits on decision 1.**
+- Shared numbers from Sell Stove and the phone app are registered (source `sales_app`), after the reply is sent so the seller never waits. They hold crediting until a call confirms them, as digitised ones do (decision 1, settled 2026-10-15).
 
 **Phase 5. The existing repeats**
 - `kind` set to `same_buyer` on the existing register rows of the 188 groups, using corrected values where a call recorded them. A dry run reports the counts first; the operator runs it. This changes no crediting.
@@ -184,6 +206,6 @@ One test per behaviour, each watched failing on today's code first:
 
 ## Waiting on the operator
 
-1. **Do shared numbers from Sell Stove and the phone app wait for a call before they count as creditable?** Today every shared number in the register is held out of the creditable count until a call confirms it (decision D23: "the call is how a suspicion becomes a fact"). Registering field sales the same way keeps one rule; registering them as notes that do not hold crediting keeps their numbers moving. Proposal: hold them, like digitised ones.
+1. **Do shared numbers from Sell Stove and the phone app wait for a call before they count as creditable?** Today every shared number in the register is held out of the creditable count until a call confirms it (decision D23: "the call is how a suspicion becomes a fact"). Registering field sales the same way keeps one rule; registering them as notes that do not hold crediting keeps their numbers moving. Proposal: hold them, like digitised ones. **Decided 2026-10-15 by the operator: hold them.**
 2. **Calls that already verified the stoves.** 48 repeat-buyer groups are fully verified on every stove, and 291 verified sales across the register are held only because the register was never ticked. Ticking them would raise the creditable count. Proposal: decide after Phase 5's dry run shows exactly which sales would move.
 3. **The title list** and **what an agent is told about the other sale** (proposal: its transaction id only).
