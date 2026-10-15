@@ -858,7 +858,11 @@ Deno.serve(async (req) => {
      * and costs only the register row: the sale stands, the stove record
      * still shows the sharing, and the Phase 5 job can write it again.
      */
-    if (othersOnNumber.length > 0) {
+    // Asked after every save on a full number, not only when the lookup above
+    // found company: two first sales on a new number saved at the same moment
+    // each looked alone, and a failed lookup found nothing. The function
+    // writes nothing while fewer than two live sales hold the number.
+    if (phoneTail(phone)) {
       const sameBuyerIds = othersOnNumber.filter((o) => o.same_buyer).map((o) => o.id);
       const register = server
         .rpc("register_shared_phone", {

@@ -2917,6 +2917,9 @@ serve(async (req) => {
                              from public.sales s
                             where s.id = any($1::uuid[])
                               and length(regexp_replace(coalesce(s.phone, ''), '[^0-9]', '', 'g')) >= 10
+                            -- Sale id order, as register_shared_phone writes,
+                            -- so the two never take row locks in opposite order.
+                            order by s.id
                            on conflict (phone_tail, sale_id) do update
                               set stove_id = excluded.stove_id,
                                   phone_as_written = excluded.phone_as_written,

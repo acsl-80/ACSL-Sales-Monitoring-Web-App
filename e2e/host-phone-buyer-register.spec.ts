@@ -168,11 +168,17 @@ test.describe.serial("the call centre's register", () => {
 
   test("across partners: a partner who cannot see the other sale still registers both", async ({
     page,
+    browser,
   }) => {
     await signIn(page, USERS.admin);
     ids.ngozi = await sell(page, TWIN_A, "Ngozi", "Eze", num(3));
-    await signIn(page, USERS.partner);
-    ids.chika = await sell(page, PARTNER_ORG, "Chika", "Eze", num(3));
+    // A fresh context: the session lives in localStorage, so a second sign-in
+    // on the same page would land on the admin's dashboard instead.
+    const partnerContext = await browser.newContext();
+    const partnerPage = await partnerContext.newPage();
+    await signIn(partnerPage, USERS.partner);
+    ids.chika = await sell(partnerPage, PARTNER_ORG, "Chika", "Eze", num(3));
+    await partnerContext.close();
     const rows = await registered(num(3), 2);
     expect(rows.map((r) => r.sale_id).sort()).toEqual([ids.ngozi, ids.chika].sort());
   });
@@ -202,9 +208,19 @@ test.describe.serial("the call centre's register", () => {
     });
     expect(confirm.status, JSON.stringify(confirm.body)).toBe(200);
     expect(await held(ids.ngozi)).toBe(false);
+    const touched = async () =>
+      (
+        await branchSql<{ at: string }>(
+          `select updated_at::text as at from data_center.shared_phones
+            where sale_id = '${ids.ngozi}' and phone_tail = '${tail(num(3))}'`,
+        )
+      )[0].at;
+    const confirmedAt = await touched();
 
     ids.obi = await sell(page, TWIN_A, "Obi", "Eze", num(3));
     const rows = await registered(num(3), 3);
+    // A confirmed row is not rewritten by a later sale: its time stands.
+    expect(await touched()).toBe(confirmedAt);
     const by = Object.fromEntries(rows.map((r) => [r.sale_id, r]));
     expect(by[ids.ngozi].confirmed).toBe(true);
     expect(by[ids.chika].confirmed).toBe(true);
@@ -256,6 +272,106 @@ test.describe.serial("the call centre's register", () => {
     expect(left).toEqual([]);
     expect(await held(ids.moveA)).toBe(false);
     expect(await held(ids.moveB)).toBe(false);
+  });
+
+  test("a refused same customer writes nothing; one of three leaving keeps the other two open", async ({
+    page,
+  }) => {
+    await signIn(page, USERS.admin);
+    const before = await registered(num(2), 3);
+
+    // Sell Stove's own request for Aisha again: refused, nothing written.
+    const [o] = await branchSql<{ name: string }>(
+      `select partner_name as name from public.organizations where id = '${TWIN_A}'`,
+    );
+    const refused = await callEdgeFunction(page, "create-sale", {
+      transactionId: `${TAG}-${run}-refused`,
+      stoveSerialNo: await freeStove(TWIN_A),
+      organizationId: TWIN_A,
+      partnerName: o.name,
+      salesDate: "2026-10-01",
+      amount: 25000,
+      endUserFirstName: "Aisha",
+      endUserSurname: "Bello",
+      endUserName: "Aisha Bello",
+      phone: num(2),
+      contactPerson: "Spec Contact",
+      contactPhone: num(2),
+      termsAccepted: {
+        poaGoverned: true,
+        monitoring: true,
+        noResell: true,
+        emissionReductions: true,
+        noExport: true,
+        demonstration: true,
+      },
+      addressData: { fullAddress: `${TAG} Road`, state: "Kogi", city: "Lokoja" },
+    });
+    expect(refused.status).toBe(409);
+    await page.waitForTimeout(3_000);
+    expect(await registered(num(2), 0)).toHaveLength(before.length);
+
+    // Musa moves off the number; Aisha and her repeat still share it.
+    const moved = await callEdgeFunction(
+      page,
+      "update-sale",
+      {
+        endUserName: "Musa Bello",
+        endUserFirstName: "Musa",
+        endUserSurname: "Bello",
+        phone: num(7),
+        contactPerson: "Spec Contact",
+        contactPhone: num(7),
+      },
+      `?id=${ids.musa}`,
+    );
+    expect(moved.status, JSON.stringify(moved.body)).toBe(200);
+    let rows: Row[] = [];
+    for (let i = 0; i < 30; i++) {
+      rows = await registered(num(2), 0);
+      if (!rows.some((r) => r.sale_id === ids.musa)) break;
+      await new Promise((r) => setTimeout(r, 500));
+    }
+    expect(rows.map((r) => r.sale_id).sort()).toEqual([ids.aisha, ids.repeat].sort());
+    expect(await held(ids.aisha)).toBe(true);
+    expect(await held(ids.musa)).toBe(false);
+  });
+
+  test("an edit onto a shared number registers it, and holds the sale already there", async ({
+    page,
+  }) => {
+    await signIn(page, USERS.admin);
+    // Zainab was alone on her number; she moves onto Musa's new number.
+    const moved = await callEdgeFunction(
+      page,
+      "update-sale",
+      {
+        endUserName: "Zainab Lawal",
+        endUserFirstName: "Zainab",
+        endUserSurname: "Lawal",
+        phone: num(7),
+        contactPerson: "Spec Contact",
+        contactPhone: num(7),
+      },
+      `?id=${ids.alone}`,
+    );
+    expect(moved.status, JSON.stringify(moved.body)).toBe(200);
+    const rows = await registered(num(7), 2);
+    expect(rows.map((r) => r.sale_id).sort()).toEqual([ids.alone, ids.musa].sort());
+    for (const r of rows) expect(r).toMatchObject({ source: "sales_app", confirmed: false });
+    expect(await held(ids.musa)).toBe(true);
+  });
+
+  test("two first sales on a new number at the same moment are both registered", async ({
+    page,
+  }) => {
+    await signIn(page, USERS.admin);
+    const [a, b] = await Promise.all([
+      sell(page, TWIN_A, "Kemi", "Ade", num(8)),
+      sell(page, TWIN_A, "Tunde", "Ade", num(8)),
+    ]);
+    const rows = await registered(num(8), 2);
+    expect(rows.map((r) => r.sale_id).sort()).toEqual([a, b].sort());
   });
 
   test("the read counts the whole register, repeats first, and filters to them", async ({ page }) => {

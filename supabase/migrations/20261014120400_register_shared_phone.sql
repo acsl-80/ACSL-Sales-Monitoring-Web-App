@@ -22,6 +22,14 @@
 --      'shared_number'. A row already 'same_buyer' is never downgraded: the
 --      call centre clears a repeat by confirming it, not by a later sale.
 --
+--   Rows are written in sale id order, the same order data-center-import and
+--   data-center-write's confirm use, so two writers on one number queue
+--   behind each other instead of deadlocking; a lock not granted within 5 s
+--   fails this call (logged by the caller), never the other writer. A row is
+--   rewritten only when its kind, serial or number as written changed, so a
+--   confirmed number keeps its last-touched time and the audit stays quiet.
+--   The audit records p_actor as the person who acted.
+--
 --   Server only: execute is granted to service_role alone.
 
 set lock_timeout = '5s';
@@ -36,6 +44,7 @@ returns integer
 language plpgsql
 security definer
 set search_path = public, data_center
+set lock_timeout = '5s'
 as $$
 declare
   v_tail text;
@@ -45,6 +54,10 @@ declare
 begin
   if p_source not in ('sales_app', 'digitalisation') then
     raise exception 'register_shared_phone: source % is not allowed', p_source;
+  end if;
+  -- Who acted, for data_center.log_change (this transaction only).
+  if p_actor is not null then
+    perform set_config('data_center.actor', p_actor::text, true);
   end if;
 
   select right(regexp_replace(coalesce(s.phone, ''), '[^0-9]', '', 'g'), 10)
@@ -101,13 +114,20 @@ begin
     from public.sales s
    where s.is_archived is not true
      and right(regexp_replace(coalesce(s.phone, ''), '[^0-9]', '', 'g'), 10) = v_tail
+   order by s.id
   on conflict (phone_tail, sale_id) do update
      set kind = case when excluded.kind = 'same_buyer' then 'same_buyer'
                      else data_center.shared_phones.kind end,
          stove_id = excluded.stove_id,
          phone_as_written = excluded.phone_as_written,
          updated_at = now(),
-         updated_by = coalesce(excluded.updated_by, data_center.shared_phones.updated_by);
+         updated_by = coalesce(excluded.updated_by, data_center.shared_phones.updated_by)
+   where (case when excluded.kind = 'same_buyer' then 'same_buyer'
+               else data_center.shared_phones.kind end,
+          excluded.stove_id, excluded.phone_as_written)
+         is distinct from
+         (data_center.shared_phones.kind,
+          data_center.shared_phones.stove_id, data_center.shared_phones.phone_as_written);
   get diagnostics v_written = row_count;
   return v_written;
 end;

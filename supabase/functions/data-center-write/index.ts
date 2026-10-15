@@ -1417,6 +1417,8 @@ serve(async (req) => {
                     where s.is_archived is not true
                       and (s.id = $4::uuid
                            or right(regexp_replace(coalesce(s.phone, ''), '[^0-9]', '', 'g'), 10) = $1)
+                    -- Sale id order, as register_shared_phone writes.
+                    order by s.id
                    on conflict (phone_tail, sale_id) do update
                       set source = 'call_centre', confirmed = true,
                           note = coalesce(excluded.note, data_center.shared_phones.note),

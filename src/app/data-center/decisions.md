@@ -901,3 +901,28 @@ person with no grant costs exactly one.
 Rejected: clearing the cache from `AuthContext.signOut`. It would fix sign-out
 but not a session that ends or changes some other way, and it is a host file this
 module may not edit.
+
+## D65. Every shared number reaches the register, and is held until a call (2026-10-15)
+
+The phone and buyer rule (`docs/plans/phone-and-buyer-rule.md`) lets a number sit on several sales, because a family shares one phone. Before it, only digitisation could put a second sale on a number. That made the import the only writer of `shared_phones` besides the call centre's confirm. The import also learned which sales shared the number from `create-sale`'s reply, which named only the sales the typist could see.
+
+Decided by him on 15 October (decision 1 in the plan): a field sale on a shared number is held from the creditable count until a call confirms it, as a digitised one is.
+
+How it works:
+
+- **The writer is `create-sale`, for every door.** It already sees every live sale on the number across partners, so it registers after the reply, through `public.register_shared_phone`.
+  - The source is `sales_app` for Sell Stove and the phone app, and `digitalisation` for the import.
+  - Like the confirm and the import, it registers both ends. A new row is unconfirmed, so `compute_analysis` holds both sales.
+  - `update-sale` calls the same function when an edit changes the number.
+- **What a row already on the register keeps:** its source, its confirmed flag and its note.
+  - A confirmed number that gains a sale gains one unconfirmed row and is open again. The rows confirmed earlier stay confirmed.
+- **The kind.** `kind` is `same_buyer` for the same customer twice (only digitisation gets that far), and `shared_number` otherwise. A `same_buyer` row is never downgraded by a later sale: a repeat is cleared by a call, not by time.
+- **A sale that moves to another number** takes its unconfirmed row with it. A number left with one live sale is no longer shared, so its unconfirmed rows go too. Confirmed rows stay as history.
+- **The import still writes its rows in its commit transaction.** Both writers upsert on `(phone_tail, sale_id)`, and the kind only ever rises, so the two converge in either order.
+
+The consequence to know about: a sale already verified on a call, and so creditable, is held again when a new sale lands on its number, until the call centre confirms the number. That is D23's rule, "the call is how a suspicion becomes a fact", applied to a new suspicion.
+
+On the read side:
+
+- **Ordering and filtering.** `shared_phones` lists open repeats first, can filter to them, and counts the whole register in the database.
+- **Needs a decision.** It used to count the first 200 numbers it was sent (production has more), and it treated a number with any confirmed row as closed. It now has one line for the same customer twice and one for the rest.
