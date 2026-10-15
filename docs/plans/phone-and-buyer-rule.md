@@ -175,9 +175,20 @@ Each phase is one PR, proven on a preview branch, live before the next starts. A
     - two import-chain tests need 6 uncalled sales, and this database holds 7 sales in all.
     - None of those paths reads the register.
 
-**Phase 5. The existing repeats**
-- `kind` set to `same_buyer` on the existing register rows of the 188 groups, using corrected values where a call recorded them. A dry run reports the counts first; the operator runs it. This changes no crediting.
-- What happens to the 48 groups verified on every stove, and to the 291 verified-but-held sales, **waits on decision 2.**
+**Phase 5. The existing repeats.** Built and tested 2026-10-15 on #146's test database (not run on production).
+- **Three scripts in `supabase/scripts/`, run by hand.** They are not migrations because they are for the rows production already holds, and they must run after the Phase 4 functions are live, which is after the migrations.
+  - `phone-buyer-kind-backfill-dryrun.sql` reads only and counts what would change.
+  - `phone-buyer-kind-backfill.sql` keeps each row's kind in a snapshot table, then marks the repeats, in one statement. It is safe to run twice and leaves `updated_at` alone, so the list's order does not jump.
+  - `phone-buyer-kind-backfill-undo.sql` puts the snapshot back.
+- **Which rows.** A register row is marked when another row on its number belongs to a sale with the same buyer key, with the call's corrected phone or name in place of the written one. Archived sales are left out. It is a label only: no sale moves in or out of the creditable count.
+- **The key is written a second time, in SQL,** so the script picks its rows at the moment it runs instead of carrying a list that goes stale. On production all 5,740 live name keys agree with `buyerKey.ts`, and so do the 416 rows it would mark. The spec checks it against the shared vectors and against whitespace the vectors do not carry.
+- **Dry run on production, 2026-10-15, read only:**
+  - The key reproduces the 14 October baseline exactly, 188 groups and 474 sales, when archived sales are counted as that baseline counted them. Live sales alone: 185 groups, 467 sales.
+  - With the calls' corrections: 171 groups, 418 sales. Calls split 28 written groups (in 15 a phone was corrected to another number, in 8 a name on part of a pair, in 5 every name) and joined 6.
+  - To mark: 416 rows on 166 numbers, none of them confirmed. Two more repeat sales sit on no shared written number (only a correction joins them), so they have no register row and are left alone.
+- **Results:** `host-phone-buyer-backfill` passes 5 of 5 on the test database (marks repeats and only repeats across seven cases, the second run changes nothing, the undo restores everything). Broken on purpose twice, once ignoring corrections and once without the no-break space, it failed both times.
+- **Release step:** run the dry run, then the backfill, after the functions are deployed. From then on `create-sale` marks every new repeat itself.
+- What to do with the verified sales the register still holds **waits on decision 2**, now with the dry run's figures.
 
 **Phase 6. Brain-codes: phone app 1.0.19.** From the handoff, against the live server.
 
@@ -225,5 +236,8 @@ One test per behaviour, each watched failing on today's code first:
 ## Waiting on the operator
 
 1. **Do shared numbers from Sell Stove and the phone app wait for a call before they count as creditable?** Today every shared number in the register is held out of the creditable count until a call confirms it (decision D23: "the call is how a suspicion becomes a fact"). Registering field sales the same way keeps one rule; registering them as notes that do not hold crediting keeps their numbers moving. Proposal: hold them, like digitised ones. **Decided 2026-10-15 by the operator: hold them.**
-2. **Calls that already verified the stoves.** 48 repeat-buyer groups are fully verified on every stove, and 291 verified sales across the register are held only because the register was never ticked. Ticking them would raise the creditable count. Proposal: decide after Phase 5's dry run shows exactly which sales would move.
+2. **Calls that already verified the stoves.** 299 verified sales are held by the register today (291 on 14 October). For 147 of them the register is not the only thing in the way, mostly the household question, so ticking it would not make them creditable. The other 152 pass every other gate and would become creditable:
+   - 104 are different names on a shared number. Each stove was verified with its own holder.
+   - 48 are the same customer twice, in 34 groups. Every group has a different stove ID on each sale, so these are separate stoves, not one stove entered twice. In 22 of the 34 groups every call answered "only stove" in the household, which sits badly with one customer holding two.
+   - Proposal: after release, confirm the 104 on the register by script, the operator running it, with a dry run and an undo as in Phase 5. Leave the 48 for a call that asks about the second stove. Waiting on the operator.
 3. **The title list** and **what an agent is told about the other sale** (proposal: its transaction id only).
