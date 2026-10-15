@@ -926,3 +926,16 @@ On the read side:
 
 - **Ordering and filtering.** `shared_phones` lists open repeats first, can filter to them, and counts the whole register in the database.
 - **Needs a decision.** It used to count the first 200 numbers it was sent (production has more), and it treated a number with any confirmed row as closed. It now has one line for the same customer twice and one for the rest.
+
+## D66. A full verification call answers a family's shared number; a repeat still waits (2026-10-15)
+
+Before the phone and buyer rule, verifying a stove on a call never ticked the shared-number register. A sale that passed every gate of the creditable count could stay held for good because its number was shared, though the call had already reached the stove's holder on it. On 15 October that was 104 sales where the names on the number differ, and 48 where the same customer appears twice.
+
+Decided by him on 15 October (decision 2 in `docs/plans/phone-and-buyer-rule.md`):
+
+- **Different names on a number:** a full verification call answers the register's question. Those sales' open rows are confirmed once, by `supabase/scripts/phone-buyer-confirm-verified.sql`, after the release. The script has a dry run and an undo, and the operator runs it.
+- **The same customer twice:** a verification call about one stove does not say why the customer holds two. In most of those groups every call answered "only stove" in the household. Those rows stay open until a call asks about the second stove.
+
+The script uses the analysis's own gates and leaves a row's source and kind alone. Its note says the confirmation came from a verification call, not from an agent's confirm. Creditable counts rise by about the number it confirms at the next analysis run.
+
+This is a one-off for the backlog, not a standing rule. Ticking the register automatically when a call verifies a stove would be a change to the call form, and is not part of this.

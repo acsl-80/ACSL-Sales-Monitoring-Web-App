@@ -233,6 +233,8 @@ One test per behaviour, each watched failing on today's code first:
 
 - **Digitisation and one buyer with several stoves** (2026-10-14): digitisation records the repeat and does not refuse; the repeat is flagged for the call centre to confirm. Sell Stove and the phone app refuse.
 - **Order** (2026-10-14): here first, then the phone app.
+- **Field sales on shared numbers** (2026-10-15, decision 1): held until a call confirms them, like digitised ones. D65.
+- **Verified sales held only by the register** (2026-10-15, decision 2): confirm the different-name ones by script after release; the same customer twice waits for a call. D66.
 
 ## Waiting on the operator
 
@@ -240,5 +242,13 @@ One test per behaviour, each watched failing on today's code first:
 2. **Calls that already verified the stoves.** 299 verified sales are held by the register today (291 on 14 October). For 147 of them the register is not the only thing in the way, mostly the household question, so ticking it would not make them creditable. The other 152 pass every other gate and would become creditable:
    - 104 are different names on a shared number. Each stove was verified with its own holder.
    - 48 are the same customer twice, in 34 groups. Every group has a different stove ID on each sale, so these are separate stoves, not one stove entered twice. In 22 of the 34 groups every call answered "only stove" in the household, which sits badly with one customer holding two.
-   - Proposal: after release, confirm the 104 on the register by script, the operator running it, with a dry run and an undo as in Phase 5. Leave the 48 for a call that asks about the second stove. Waiting on the operator.
+   - Proposal: after release, confirm the 104 on the register by script, the operator running it, with a dry run and an undo as in Phase 5. Leave the 48 for a call that asks about the second stove. **Decided 2026-10-15 by the operator: as proposed** (D66).
+   - **Built and tested 2026-10-15 on #146's test database (not run on production).** Three scripts in `supabase/scripts/`:
+     - `phone-buyer-confirm-verified-dryrun.sql` reads only.
+     - `phone-buyer-confirm-verified.sql` snapshots each row, then confirms it.
+     - `phone-buyer-confirm-verified-undo.sql` restores the snapshot, leaving alone any row the call centre has confirmed since.
+   - **How it chooses.** It takes the open rows of sales that pass every other gate of the creditable count. It runs the analysis's own completeness rule, read from the database when it runs, so it carries no copy of it. It skips a repeat whether it carries the `same_buyer` label or is only found by the kind backfill's block. The confirmed row keeps its source and kind and gains a note that says why.
+   - **Dry run on production (read only):** 104 rows on 62 numbers. All 104 sales leave the hold, and 15 numbers close completely. They are the same 104 sales the analysis's reason ladder gives, one for one.
+   - **Tests:** `host-phone-buyer-confirm` passes 4 of 4 on the test database. It covers fourteen sales on seven numbers, one for each gate. Broken on purpose four ways (repeats not excluded, completeness ignored, the undo blind to a later call, the undo leaving the confirmation's time), it failed every time. An independent review found nothing blocking; its test points are in.
+   - **Release step:** after the kind backfill, the dry run, then this, then the next analysis run. Creditable counts rise by about 104.
 3. **The title list** and **what an agent is told about the other sale** (proposal: its transaction id only).
