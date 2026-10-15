@@ -156,6 +156,24 @@ Each phase is one PR, proven on a preview branch, live before the next starts. A
 **Phase 4. The call centre sees the flag**
 - The import writes `kind = 'same_buyer'` for digitised repeats. "Needs a decision" counts same-buyer rows separately and opens them first; the shared-phone page shows the kind; agents tick confirmed with a note as today.
 - Shared numbers from Sell Stove and the phone app are registered (source `sales_app`), after the reply is sent so the seller never waits. They hold crediting until a call confirms them, as digitised ones do (decision 1, settled 2026-10-15).
+- **Built and tested 2026-10-15 on #146's test database (not released).** Decision D65 in `src/app/data-center/decisions.md`.
+- **The writer.** `register_shared_phone` (migration `20261014120400`, server only) is called by `create-sale` after every save on a full number, and by `update-sale` when an edit changes the number.
+  - It registers every live sale on the number, both ends, unconfirmed when new.
+  - Sell Stove and the phone app register as `sales_app`; the import as `digitalisation`. The import no longer depends on what the typist can see, because `create-sale` reads every partner.
+  - `same_buyer` is never downgraded. Rows already there keep their source, confirmed flag and note, and are rewritten only when something changed.
+  - A sale that moves takes its open row with it, and a number left with one sale leaves the register.
+  - All three writers (this, the import's commit, the call centre's confirm) take rows in sale id order. The register gives up on a lock after 5 s.
+- **The read.** Each row carries its kind; each number an open count and a same-customer flag. Open repeats are listed first and can be filtered to. The whole register is counted in the database.
+- **Needs a decision** has a line for the same customer twice that opens the register narrowed to repeats. It counts from those totals; it used to read the first 200 numbers, and a confirmed number that gained a sale looked closed.
+- **Consequence to know at release.** A sale already verified and creditable is held again when a new sale lands on its number, until the call centre confirms it. That is decision 1 applied to a new suspicion, and creditable counts will dip as field sales share numbers.
+- **Results:**
+  - `host-phone-buyer-register` passes 12 of 12. Against today's functions, the registration, kind, count and screen checks failed as predicted, and the no-write guard passed.
+  - An independent review found no security problem. It found four defects, now fixed and tested: two first sales at once unregistered, a deadlock risk with the import, needless rewrites, and missing tests.
+  - Wide regression: 108 of 113. The five failures are the test database's fixtures, not this change:
+    - two pass with the suite's own setup;
+    - reassignment is refused for agent capacity after that setup;
+    - two import-chain tests need 6 uncalled sales, and this database holds 7 sales in all.
+    - None of those paths reads the register.
 
 **Phase 5. The existing repeats**
 - `kind` set to `same_buyer` on the existing register rows of the 188 groups, using corrected values where a call recorded them. A dry run reports the counts first; the operator runs it. This changes no crediting.

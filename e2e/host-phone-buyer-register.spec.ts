@@ -22,7 +22,12 @@ import { signIn, USERS, branchSql, callEdgeFunction } from "./helpers";
  *     confirmed, the new one is open, and the read says the number is open.
  *  7. An edit that moves a sale off a shared number clears its open row, and
  *     the number left with one sale is no longer on the register.
- *  8. The read counts the whole register, puts repeats first, and filters to
+ *  8. A refused same customer writes nothing; one of three sales leaving a
+ *     number keeps the other two open; an edit onto a shared number registers
+ *     it and holds the sale already there; a confirmed row is not rewritten by
+ *     a later sale; two first sales on a new number saved at the same moment
+ *     are both registered (from the independent review).
+ *  9. The read counts the whole register, puts repeats first, and filters to
  *     them; "Needs a decision" and the page show the repeat.
  * (Red on today's functions: nothing is registered for a field sale, there is
  * no kind and no count.)
