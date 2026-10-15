@@ -36,7 +36,13 @@ Plan: [phone-and-buyer-rule.md](phone-and-buyer-rule.md). Pull request: #146.
 1. **The branch is current with main.** `git fetch origin`, then `git rev-list --left-right --count origin/main...origin/feat/phone-buyer-rule` shows `0` on the left. If main has moved, merge main into the branch and rerun gate 2. On 2026-10-15 it was 0 behind, 21 ahead.
 2. **The suite is green on the release commit.** Use the PR's preview and its test database, with the repository's own Playwright config.
    - the seven `host-phone-buyer-*` specs and `non-interference`;
-   - then the whole suite. `call-import-chain` cannot pass on this test database: its seed has too few uncalled sales. Read any other red before the release.
+   - then the whole suite, on a test database reset to migrations and seed first (earlier runs use up its six seeded sales). Read any red not listed below before the release.
+   - Run on 2026-10-15 at `13accb09`: 532 passed, 28 failed, 3 skipped, 2 did not run. After a reset, the 15 failing files again: 78 passed, 10 failed. The 10, all in code this release does not touch:
+     - `host-sale-status-rule` (4): its sale is dated today and lacks fields the rules dated 11 September require. It fails the same way on the main-schema sandbox, without this release.
+     - `data-center-assignment` (3): it expects an editor and a call agent to land on a "Call Centre" heading. Since Phase 28 (11 September) they land on My calls.
+     - `data-center-settings` (1): it opens the first dropdown whose name contains "outcome", and more than one list does now.
+     - `data-center-write-paths` (1): moving a record between agents answers 409. Worked records stay with their agent since D50.
+     - `data-center-call-import-chain` (1): it needs 6 uncalled sales and the seed leaves 4 after global setup.
 3. **No new migration on main.** Production's newest applied migration was `20261005120000` on 2026-10-15. If a later-dated one has landed since, re-date this release's five files after it.
 4. **Nothing else will merge during the window.** Label any open `sync` pull request `hold`, so the hourly auto-merge leaves it alone until the release is done.
 5. **The field team message is ready** (see Step 7).
