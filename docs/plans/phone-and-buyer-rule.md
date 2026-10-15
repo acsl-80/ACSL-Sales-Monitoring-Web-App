@@ -107,11 +107,25 @@ Each phase is one PR, proven on a preview branch, live before the next starts. A
 - `non-interference` spec updated to the new rule; new specs for every case under "How it is proven".
 - Old phone app: still blocks any reused number before sending (stricter, safe); a refused sale shows the message above on its card; the batch carries on (each queued sale is synced on its own).
 
-**Phase 2. The web form and the screens that state the old rule**
-- Sell Stove's live check calls one small server check per typing pause (300 ms, as now) and shows a note for a shared number, an error for the same buyer. It replaces the browser's scope-limited read; no list is downloaded.
-- After a save on a shared number the success state says it was noted.
-- The Stove record page shows a second sale on a number in amber ("shared number") and keeps red for the same buyer.
-- The user guide, `STOVE-RECORD.md` and the API docs say the new rule.
+**Phase 2. The web form and the screens that state the old rule.** Built and tested 2026-10-14 on #146's test database (not released).
+- Sell Stove's live check makes one small read per typing pause (300 ms, as before) and shows a note for a shared number, an error for the same buyer. No list is downloaded.
+  - The read is `visible_sales_on_phone` (migration `20261014120200`). It is security invoker, so the caller's own row rules decide what it returns, and it reads `idx_sales_phone_tail` (EXPLAIN on production: bitmap index scan).
+  - The names are compared in the browser with `_shared/buyerKey.ts` itself, so the rule is written once.
+  - It shows nothing about sales the caller cannot see. A repeat on one of those is still refused by `create-sale` on save.
+  - Measured on the preview: median 308 ms, 253 to 567 ms over 8 lookups.
+- The result has its own state. The form no longer clears its error by matching the start of a message.
+- An edit is checked only when its number or name changes, and only once its original values have loaded.
+- After a save on a shared number, the Sell Stove confirmation names the other sales. It does not say "noted", because nothing is registered until Phase 4.
+- The Stove record lists up to 50 other sales on the number, oldest first, each marked `same_buyer` or not. A shared number is amber. A repeat of the same customer is red, with that row tagged.
+- The user guide, `STOVE-RECORD.md`, the app documentation and the API docs state the new rule.
+- Found while building the spec, and live today:
+  - Previous stove type is required by the field rules but shows no message, so a save the form refused looked like a button that did nothing.
+  - A refused save now lists what is missing in the banner, and the banner is scrolled into view.
+- Results:
+  - `host-phone-buyer-screens` passes 8 of 8. Each case was run against today's code first and failed as predicted.
+  - The case includes a partner saving a real sale through the screen, with the sale, its address and the sold stove checked.
+  - With groundwork, the server rule, `non-interference`, the Stove record, page loads and field parity, 76 of 76 pass.
+- An independent review found no serious defect. Its two points are fixed: the edit form loading, and the cap of 5 rows.
 
 **Phase 3. The phone app's list, and the handoff**
 - `get-end-user-phones` keeps `data` exactly as it is and adds `buyerKeys` and `buyerKeyRules`, with an ETag so an unchanged list costs nothing.
