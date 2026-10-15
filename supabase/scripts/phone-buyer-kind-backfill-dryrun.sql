@@ -11,7 +11,8 @@
 -- name reduced: brackets dropped, ASCII lower case, punctuation removed, titles
 -- from buyer-key-rules.json version 2026-10-14.1 dropped, words sorted), with
 -- the call centre's corrections applied: a corrected phone or name replaces the
--- written one, because the call is the fact. Archived sales are left out.
+-- written one, because the call is the fact. A correction that is only
+-- whitespace is no correction. Archived sales are left out.
 --
 -- The block between the >>> and <<< lines is repeated, character for character,
 -- in phone-buyer-kind-backfill.sql. e2e/host-phone-buyer-backfill.spec.ts checks
@@ -28,7 +29,7 @@ titles(t) as (values (array['mr', 'mrs', 'miss', 'ms', 'dr', 'alhaji', 'alhaja',
 live as (
   select s.id,
          s.end_user_first_name as f, s.end_user_surname as su, s.end_user_name as j,
-         nullif(btrim(cr.corrected_end_user_name), '') as cn,
+         cr.corrected_end_user_name as cn,
          regexp_replace(coalesce(s.phone, ''), '[^0-9]', '', 'g') as d_written,
          regexp_replace(coalesce(nullif(btrim(cr.corrected_phone), ''), ''), '[^0-9]', '', 'g') as d_corrected
     from public.sales s
@@ -40,7 +41,7 @@ raw as (
          case when length(l.d_corrected) >= 10 then right(l.d_corrected, 10)
               when length(l.d_written) >= 10 then right(l.d_written, 10)
          end as tail,
-         case when l.cn is not null then l.cn
+         case when regexp_replace(coalesce(l.cn, ''), w.c, '', 'g') <> '' then l.cn
               when regexp_replace(coalesce(l.f, ''), w.c, '', 'g') <> ''
                 or regexp_replace(coalesce(l.su, ''), w.c, '', 'g') <> ''
                 then concat_ws(' ',

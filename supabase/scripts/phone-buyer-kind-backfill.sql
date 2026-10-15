@@ -17,7 +17,8 @@
 --      snapshot table, so it lands whole or not at all. Its result row:
 --        rows_matched      should equal the dry run's rows_to_mark
 --        rows_marked       rows_matched less any create-sale already marked
---        rows_snapshotted  equal to rows_marked
+--        rows_snapshotted  equal to rows_marked (lower only when run again
+--                          after an undo: the first snapshot is kept)
 --   3. Proof it landed (expect rows_left = 0):
 --        with
 --        <the mark block below, from its >>> line to its <<< line>
@@ -59,7 +60,7 @@ titles(t) as (values (array['mr', 'mrs', 'miss', 'ms', 'dr', 'alhaji', 'alhaja',
 live as (
   select s.id,
          s.end_user_first_name as f, s.end_user_surname as su, s.end_user_name as j,
-         nullif(btrim(cr.corrected_end_user_name), '') as cn,
+         cr.corrected_end_user_name as cn,
          regexp_replace(coalesce(s.phone, ''), '[^0-9]', '', 'g') as d_written,
          regexp_replace(coalesce(nullif(btrim(cr.corrected_phone), ''), ''), '[^0-9]', '', 'g') as d_corrected
     from public.sales s
@@ -71,7 +72,7 @@ raw as (
          case when length(l.d_corrected) >= 10 then right(l.d_corrected, 10)
               when length(l.d_written) >= 10 then right(l.d_written, 10)
          end as tail,
-         case when l.cn is not null then l.cn
+         case when regexp_replace(coalesce(l.cn, ''), w.c, '', 'g') <> '' then l.cn
               when regexp_replace(coalesce(l.f, ''), w.c, '', 'g') <> ''
                 or regexp_replace(coalesce(l.su, ''), w.c, '', 'g') <> ''
                 then concat_ws(' ',
@@ -109,21 +110,28 @@ mark as (
                     and k2.name_key = k.name_key)
 )
 -- <<< mark
-, snap as (
-  insert into data_center.shared_phones_kind_backfill (id, kind_before)
+-- The rows to change, locked first, in sale id order as every register writer
+-- takes them. A row create-sale marks while this waits is re-read under the
+-- lock and drops out, so the snapshot never records a kind it did not change.
+, locked as (
   select sp.id, sp.kind
     from data_center.shared_phones sp
     join mark m on m.id = sp.id
    where sp.kind <> 'same_buyer'
+   order by sp.sale_id
+     for update of sp
+)
+, snap as (
+  insert into data_center.shared_phones_kind_backfill (id, kind_before)
+  select l.id, l.kind from locked l
   on conflict (id) do nothing
   returning id
 )
 , upd as (
   update data_center.shared_phones sp
      set kind = 'same_buyer'
-    from mark m
-   where sp.id = m.id
-     and sp.kind <> 'same_buyer'
+    from locked l
+   where sp.id = l.id
   returning sp.id
 )
 select (select count(*) from mark) as rows_matched,

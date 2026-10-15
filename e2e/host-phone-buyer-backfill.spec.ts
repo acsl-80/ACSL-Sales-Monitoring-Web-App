@@ -19,7 +19,10 @@ import { nameKey, phoneTail } from "../supabase/functions/_shared/buyerKey";
  *     one name apart splits a pair; a call that corrected a name together joins
  *     one; an archived twin leaves its live match alone; a confirmed number is
  *     marked without being confirmed again or touched in time; titles and
- *     brackets reduce as the key says. The result row counts what it did.
+ *     brackets reduce as the key says; a call that moved both sales to one
+ *     other number keeps them together, one that moved only one (the other's
+ *     correction too short to be a number) parts them; a correction of only
+ *     whitespace is no correction. The result row counts what it did.
  *  4. Run twice, it changes nothing the second time.
  *  5. The undo puts back exactly what was there.
  * (Red before the scripts existed: there was nothing to run.)
@@ -216,14 +219,18 @@ test.describe.serial("the kind backfill", () => {
     ids.conf2 = await sell(page, "Bala", "Tanko", num(6));
     ids.title1 = await sell(page, "Alhaji Musa (Baba)", "Danjuma", num(7));
     ids.title2 = await sell(page, "musa", "danjuma", num(7));
+    ids.moved1 = await sell(page, "Yusuf", "Abba", num(8));
+    ids.moved2 = await sell(page, "Yusuf", "Abba", num(8));
+    ids.parted1 = await sell(page, "Idris", "Lawan", num(9));
+    ids.parted2 = await sell(page, "Idris", "Lawan", num(9));
 
     // Wait for create-sale's register writes (after the reply), then put every
     // row back to how numbers registered before Phase 4 look: no kind named.
     for (let i = 0; i < 40; i++) {
-      if (Object.keys(await rows()).length >= 14) break;
+      if (Object.keys(await rows()).length >= 18) break;
       await page.waitForTimeout(500);
     }
-    expect(Object.keys(await rows())).toHaveLength(14);
+    expect(Object.keys(await rows())).toHaveLength(18);
     await branchSql(
       `update data_center.shared_phones set kind = 'shared_number' where sale_id in (${mine})`,
     );
@@ -231,6 +238,14 @@ test.describe.serial("the kind backfill", () => {
     await branchSql(`insert into data_center.call_records (sale_id, corrected_end_user_name)
       values ('${ids.split2}', 'Zainab Garba'), ('${ids.join2}', 'ALI garba'), ('${ids.join1}', '   ')
       on conflict (sale_id) do update set corrected_end_user_name = excluded.corrected_end_user_name`);
+    // A tab and a no-break space: still no correction, so the repeat holds.
+    await branchSql(`insert into data_center.call_records (sale_id, corrected_end_user_name)
+      values ('${ids.rep1}', chr(9) || chr(160))`);
+    // The phones: both moved to one other number (written two ways) stay
+    // together; one moved, the other's correction too short, parts them.
+    await branchSql(`insert into data_center.call_records (sale_id, corrected_phone)
+      values ('${ids.moved1}', '0803 555 0101'), ('${ids.moved2}', '+2348035550101'),
+             ('${ids.parted1}', '08035550199'), ('${ids.parted2}', '12345')`);
     await branchSql(`update public.sales set is_archived = true where id = '${ids.arch2}'`);
     await branchSql(`update data_center.shared_phones
                         set confirmed = true, updated_at = '2026-10-01T10:00:00Z'
@@ -265,6 +280,10 @@ test.describe.serial("the kind backfill", () => {
       conf2: "same_buyer",
       title1: "same_buyer",
       title2: "same_buyer",
+      moved1: "same_buyer",
+      moved2: "same_buyer",
+      parted1: "shared_number",
+      parted2: "shared_number",
     });
     // A label, not a call: still confirmed, and its time untouched.
     expect(r[ids.conf1]).toMatchObject({ confirmed: true });
@@ -276,7 +295,7 @@ test.describe.serial("the kind backfill", () => {
          join data_center.shared_phones sp on sp.id = b.id
         where sp.sale_id in (${mine})`,
     );
-    expect(snap).toEqual({ n: 8, before: ["shared_number"] });
+    expect(snap).toEqual({ n: 10, before: ["shared_number"] });
   });
 
   test("run twice, it changes nothing the second time", async () => {
@@ -292,7 +311,7 @@ test.describe.serial("the kind backfill", () => {
     const [res] = await branchSql<{ rows_restored: number }>(
       file("phone-buyer-kind-backfill-undo.sql"),
     );
-    expect(res.rows_restored).toBeGreaterThanOrEqual(8);
+    expect(res.rows_restored).toBeGreaterThanOrEqual(10);
     const r = await rows();
     for (const k of Object.keys(ids)) expect(r[ids[k]].kind, k).toBe("shared_number");
     expect(r[ids.conf1]).toMatchObject({ confirmed: true });
