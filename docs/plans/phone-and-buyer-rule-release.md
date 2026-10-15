@@ -88,10 +88,11 @@ Commands are for Windows PowerShell, run from a checkout of `feat/phone-buyer-ru
 $env:SUPABASE_ACCESS_TOKEN = Read-Host 'Supabase access token'
 $fns = 'create-sale','update-sale','get-end-user-phones','data-center-read','data-center-import','data-center-write'
 function Compare-Deployed {
+  param($ref = 'oeiwnpngbnkhcismhpgs')
   $dl = Join-Path $env:TEMP ('deployed-' + (Get-Date -Format 'yyyyMMddHHmmss'))
   New-Item -ItemType Directory "$dl\supabase" | Out-Null
   Copy-Item supabase\config.toml "$dl\supabase\"
-  foreach ($f in $fns) { npx supabase@2.121.0 functions download $f --project-ref oeiwnpngbnkhcismhpgs --use-api --workdir $dl | Out-Null }
+  foreach ($f in $fns) { npx supabase@2.121.0 functions download $f --project-ref $ref --use-api --workdir $dl | Out-Null }
   $root = (Resolve-Path "$dl\supabase\functions").Path
   foreach ($file in Get-ChildItem $root -Recurse -File) {
     $rel = $file.FullName.Substring($root.Length + 1)
@@ -104,12 +105,13 @@ function Compare-Deployed {
   'compared'
 }
 function Show-Functions {
-  $list = (npx supabase@2.121.0 functions list --project-ref oeiwnpngbnkhcismhpgs -o json | Out-String) | ConvertFrom-Json
+  param($ref = 'oeiwnpngbnkhcismhpgs')
+  $list = (npx supabase@2.121.0 functions list --project-ref $ref -o json | Out-String) | ConvertFrom-Json
   $list | Where-Object { $fns -contains $_.slug } | Format-Table slug, version, verify_jwt, ezbr_sha256
 }
 ```
 
-`Compare-Deployed` downloads what production runs for the six functions and compares every file with this checkout. It prints `compared` and nothing else when they match. Both helpers were tried in Windows PowerShell 5.1 on 2026-10-15. Run against the baseline download, the compare found the one known dictionary difference and nothing else.
+`Compare-Deployed` downloads what production runs (or another project, given its ref) for the six functions and compares every file with this checkout. It prints `compared` and nothing else when they match, apart from the CLI's warning that the `[inbucket]` config section is deprecated, once per function, which is harmless. Both helpers were tried in Windows PowerShell 5.1 on 2026-10-15. Run against the baseline download, the compare found the one known dictionary difference and nothing else.
 
 ### Step 0. Baseline
 
@@ -202,6 +204,15 @@ The web is still the old build at this point. It works against the new functions
    drop table data_center.shared_phones_kind_backfill;
    drop table data_center.shared_phones_confirm_backfill;
    ```
+
+### Step 9. A test environment for Brain-codes
+
+The handover promises Brain-codes a test environment for 1.0.19. This PR's test database is deleted at the merge, so the main-schema sandbox (`preview/main-schema`, ref `vgsotbftajnktwofzpnu`) becomes it. On 2026-10-15 it was at the 25 September main (`8bc87065`).
+
+1. Move `preview/main-schema` to the merge commit, then push it. That is a push the operator approves on the day. The Supabase integration applies the five migrations to the sandbox by itself.
+2. Deploy the six functions to the sandbox from the merge commit, with `--project-ref vgsotbftajnktwofzpnu`, then run `Show-Functions vgsotbftajnktwofzpnu` and `Compare-Deployed vgsotbftajnktwofzpnu`.
+3. Check the sandbox ledger ends at `20261014120400` and `phone-buyer-release-check.sql` there shows `migrations` 5 and `new_functions` 4.
+4. Brain-codes' checks (handover section 9) need two partners with a sales login each on the sandbox. Which logins they get is the operator's call; send them privately, never in the repository.
 
 ## Rollback
 
