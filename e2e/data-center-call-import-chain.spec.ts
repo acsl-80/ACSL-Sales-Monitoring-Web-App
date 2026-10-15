@@ -1,5 +1,5 @@
 import { test, expect, type Page } from "@playwright/test";
-import { signIn, USERS, callEdgeFunction } from "./helpers";
+import { signIn, USERS, callEdgeFunction, branchSql } from "./helpers";
 
 /**
  * The call import finishes itself, and the sheet can correct.
@@ -39,6 +39,53 @@ async function freeStoves(page: Page, want: number): Promise<string[]> {
     .map((r) => r.stove_serial_no)
     .filter(Boolean)
     .slice(0, want);
+}
+
+const OWN_TAG = "E2ECHAIN";
+
+/**
+ * Uncalled sales of the spec's own, so the chain does not depend on how many
+ * the seed has left once global setup and the specs before this one have
+ * called theirs (four, on a PR database). Each is a copy of a sale the signed
+ * in account can already see, so it lands in a partner they cover, with a
+ * serial and a phone of its own.
+ */
+async function ownUncalledSales(page: Page, want: number): Promise<string[]> {
+  // A failed run's leftovers go first, or the queue could offer one to copy.
+  await dropOwnSales();
+  const q = await callEdgeFunction(page, "data-center-read", { action: "call_queue", limit: 1 });
+  const seen = (q.body as { data?: { rows?: { stove_serial_no: string }[] } })?.data?.rows?.[0]?.stove_serial_no;
+  expect(seen, "the preview needs one sale this account can see, to copy").toBeTruthy();
+  const run = Date.now().toString().slice(-6);
+  const made = await branchSql<{ stove_serial_no: string }>(
+    `insert into public.sales (
+       transaction_id, stove_serial_no, sales_date, end_user_name, phone, contact_person,
+       contact_phone, partner_name, retailer_branch, state_backup, lga_backup, amount,
+       total_paid, is_installment, payment_status, organization_id, created_by, platform, address_id)
+     select '${OWN_TAG}-${run}-' || n, '${OWN_TAG}-${run}-S' || n, s.sales_date,
+            'E2E Chain Buyer ' || n, '0809${run}' || n, s.contact_person, s.contact_phone,
+            s.partner_name, s.retailer_branch, s.state_backup, s.lga_backup, s.amount,
+            s.total_paid, s.is_installment, s.payment_status, s.organization_id,
+            s.created_by, s.platform, s.address_id
+       from (select * from public.sales
+              where upper(btrim(stove_serial_no)) = upper(btrim('${seen}')) and is_archived is not true
+              order by id limit 1) s,
+            generate_series(1, ${want}) n
+     returning stove_serial_no`,
+  );
+  return made.map((r) => r.stove_serial_no);
+}
+
+/**
+ * The call records go first: a sale carrying a verdict refuses a hard delete
+ * (D56), and a run that failed between its commit and its undo leaves six.
+ */
+async function dropOwnSales() {
+  await branchSql(
+    `delete from data_center.call_records
+      where sale_id in (select id from public.sales where transaction_id like '${OWN_TAG}-%')`,
+  );
+  await branchSql(`delete from public.sales where transaction_id like '${OWN_TAG}-%'`);
 }
 
 async function stage(page: Page, rows: Json[], filename = "e2e-chain.csv") {
@@ -95,11 +142,8 @@ test.describe("one press, and the server finishes it", () => {
   }) => {
     await signIn(page, USERS.dataManager);
 
-    const stoves = await freeStoves(page, 6);
-    expect(
-      stoves.length,
-      `the preview needs 6 uncalled sales to prove a chain; it has ${stoves.length}`,
-    ).toBeGreaterThanOrEqual(6);
+    const stoves = await ownUncalledSales(page, 6);
+    expect(stoves.length, "six uncalled sales of the spec's own, to prove a chain").toBe(6);
 
     const staged = await stage(
       page,
@@ -140,10 +184,11 @@ test.describe("one press, and the server finishes it", () => {
     expect(done.state, "the chain should have finished the batch").toBe("committed");
     expect(done.committed_rows, "every row should have landed").toBe(stoves.length);
 
-    // Put the preview back: these are real call records on real sales.
+    // Put the preview back: take the call records off, then the sales.
     const back = await undo(page, batchId);
     expect(back.status, "undo should succeed").toBe(200);
     expect((back.body as { data: { reversed: number } }).data.reversed).toBe(stoves.length);
+    await dropOwnSales();
   });
 
   test("undo is refused while a chain holds the batch", async ({ page }) => {

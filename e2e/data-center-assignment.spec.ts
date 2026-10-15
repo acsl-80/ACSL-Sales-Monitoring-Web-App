@@ -1,5 +1,16 @@
-import { test, expect } from "@playwright/test";
+import { test, expect, type Page } from "@playwright/test";
 import { signIn, USERS, callEdgeFunction } from "./helpers";
+
+/**
+ * Somebody who records calls and hands out no work lands on My calls when
+ * they open the call centre (Phase 28, callCentreLayout), so wait for that
+ * page rather than the managers' Call Centre heading.
+ */
+async function openCallCentreAsAgent(page: Page) {
+  await page.goto("/data-center/call-centre");
+  await expect(page).toHaveURL(/\/data-center\/my-calls/, { timeout: 30_000 });
+  await expect(page.getByRole("heading", { name: "My calls" }).first()).toBeVisible({ timeout: 20_000 });
+}
 
 /**
  * The engine's levers and the feed that shows its work (Phase 26, C2 moved
@@ -32,8 +43,7 @@ test.describe("the control centre's levers and feed", () => {
 
   test("an editor gets the activity page, their own rows, and no levers", async ({ page }) => {
     await signIn(page, USERS.callCentre);
-    await page.goto("/data-center/call-centre");
-    await expect(page.getByRole("heading", { name: "Call Centre" }).first()).toBeVisible({ timeout: 20_000 });
+    await openCallCentreAsAgent(page);
     await expect(page.getByRole("button", { name: "Assign now" })).toHaveCount(0);
     await expect(page.getByRole("button", { name: "Reclaim quiet batches" })).toHaveCount(0);
     await page.goto("/data-center/call-centre/activity");
@@ -44,8 +54,7 @@ test.describe("the control centre's levers and feed", () => {
 
   test("the run lever is refused server-side for a non-admin", async ({ page }) => {
     await signIn(page, USERS.callCentre);
-    await page.goto("/data-center/call-centre");
-    await expect(page.getByRole("heading", { name: "Call Centre" }).first()).toBeVisible({ timeout: 20_000 });
+    await openCallCentreAsAgent(page);
     const refused = await callEdgeFunction(page, "data-center-assign", { action: "run" });
     expect(refused.status).toBe(403);
     const said = JSON.stringify(refused.body);
@@ -55,8 +64,7 @@ test.describe("the control centre's levers and feed", () => {
 
   test("a call agent can read their own batches", async ({ page }) => {
     await signIn(page, USERS.acslAgent);
-    await page.goto("/data-center/call-centre");
-    await expect(page.getByRole("heading", { name: "Call Centre" })).toBeVisible({ timeout: 20_000 });
+    await openCallCentreAsAgent(page);
     const mine = await callEdgeFunction(page, "data-center-assign", { action: "my_batches" });
     expect(mine.status).toBe(200);
     const items = (mine.body as { data?: { items: { partner_name: string }[] } })?.data?.items ?? [];
