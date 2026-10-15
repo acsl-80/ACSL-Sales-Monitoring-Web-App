@@ -2,9 +2,10 @@
 
 For Brain-codes, release 1.0.19. Canonical copy: `docs/contractor/sales-mobile-phone-buyer-rule.md` in the sales-web repo. The plan behind it is `docs/plans/phone-and-buyer-rule.md` in the same repo.
 
-- **Written:** 2026-10-14, revised 2026-10-15.
-- **Checked against:** sales-mobile `main` at `ff16cf6`, version 1.0.18+10018, which is the newest code on both `acsl-80` and `Brain-codes`.
-- **Server status:** the server side is built and tested but not live. We will send you the date it goes live and a test environment to build against. Every line number below is from `ff16cf6`.
+- **Written:** 2026-10-14, revised 2026-10-15 after an independent review against the app's code.
+- **Checked against:** sales-mobile `main` at `ff16cf6` (1.0.18+10018), the newest code on both `acsl-80` and `Brain-codes`. Every line number below is from that commit.
+- **Attached:** `buyer-key-vectors.json` (the test cases for section 3).
+- **Server status:** built and tested, not live yet. We will send you the date it goes live and a test environment to build against. Please do not release 1.0.19 before we confirm the server is live (section 8).
 
 ---
 
@@ -16,17 +17,17 @@ For Brain-codes, release 1.0.19. Canonical copy: `docs/contractor/sales-mobile-p
 
 | Case | What happens | Why |
 |---|---|---|
-| Same phone, **different** customer name | **Allowed.** The sale saves. The agent is told the number is already on another sale. | A family often shares one phone. |
+| Same phone, **different** customer name | **Allowed.** The sale saves, and the agent is told the number is already in use. | A family often shares one phone. |
 | Same phone, **same** customer name | **Refused.** | It is the same customer entered twice. |
 | Same name, different phone | Allowed, as today. | A name alone never refuses a sale. |
 
-"Same name" is decided by one rule, the **buyer key** (section 3). It ignores word order, capital letters, spaces, punctuation, titles such as Mrs or Alhaji, and a nickname in brackets. The server, the web app and the phone app must all compute it the same way. A test vectors file proves it.
+"Same name" is decided by one rule, the **buyer key** (section 3). It ignores word order, capital letters, spaces, punctuation, titles such as Mrs or Alhaji, and a nickname in brackets. The server, the web app and the phone app must compute it the same way. The attached test cases prove it.
 
 **What the agent sees after 1.0.19:**
 
-- **A shared number:** a yellow note under the phone field, and the sale saves. One confirmation appears before the preview.
-- **The same customer:** a red error under the phone field. The sale cannot be submitted, online or offline.
-- **A queued sale the server refuses:** the card says why in plain words and offers Edit. It stops retrying until the agent edits it.
+- **A number already in use:** a yellow note under the phone field. The sale can be saved, after one confirmation.
+- **The same customer:** a red error under the phone field. The sale cannot be submitted.
+- **A queued sale the server refuses:** the card says why in plain words and offers Edit. It is no longer retried by "sync all" until it is edited.
 
 **What stays the same:**
 
@@ -34,6 +35,8 @@ For Brain-codes, release 1.0.19. Canonical copy: `docs/contractor/sales-mobile-p
 - The transaction id logic.
 - How a sale that already saved is recognised.
 - The batch sync carrying on past a failed sale.
+
+**One thing to keep in mind throughout:** the device knows only part of the picture. The server is the final check. So the device may warn, but it never decides that a sale already sent is refused. Only the server's reply decides that.
 
 ---
 
@@ -46,7 +49,7 @@ Nothing here removes or renames a field. An app that ignores the new fields keep
 ```json
 {
   "success": true,
-  "data": ["8031234567", "7031234567"],
+  "data": ["7031234567", "8031234567"],
   "count": 2,
   "scanned": 2,
   "truncated": false,
@@ -58,21 +61,27 @@ Nothing here removes or renames a field. An app that ignores the new fields keep
 }
 ```
 
-- **`data`** is unchanged: every number on file as its last 10 digits, cancelled sales included. It is now sorted, but treat it as a set, as `LocalCacheService.saveEndUserPhones` already does.
+- **`data`** is unchanged: every number on file as its last 10 digits.
+  - It includes cancelled sales, as today.
+  - It is now sorted, but treat it as a set, as `LocalCacheService.saveEndUserPhones` already does.
 - **`buyerKeys`** (new) holds 16-character keys, one per customer and number. There are never any names.
-  - The keys cover the sales **the signed-in account can see**. For a partner agent, that is their own sales.
-  - A repeat of a customer the account cannot see is not in the list. The server refuses it when the sale is sent (2.2), and the card shows why.
+  - They cover the live (not cancelled) sales **the signed-in account can see in its own sales list**:
+    - a partner agent: their own sales;
+    - a partner: their partner's sales;
+    - an ACSL agent or manager: the partners they cover;
+    - a super admin: all.
+  - A repeat of a customer the account cannot see is not in the list. The server refuses it when the sale is sent (2.2), and the agent sees why.
 - **`buyerKeyRules`** (new) is the title list the key drops, plus its version. It can change without an app release.
-- **Either new field can be missing** if the server could not build it. Then keep what you have cached, and don't wipe it.
-- **`ETag` header** (new). Send it back on the next refresh as `If-None-Match`. If nothing changed, the answer is **`304` with no body**: keep the cache.
-  - The tag may arrive weak, as `W/"9a107dfa8625a259"`. Store the header value exactly as received and send it back exactly as stored. The server accepts both forms.
-- **`truncated: true`** means the list is partial. Keep today's handling: ignore that download and keep the cache. That applies to the keys too.
+- **`buyerKeys` and `buyerKeyRules` come together or not at all.** They are absent only when the server could not build them. Then keep what is cached, and don't wipe it.
+- **`ETag` header** (new). Send it back on the next refresh as `If-None-Match`. When nothing changed, the answer is **`304` with no body**: keep the cache.
+  - The tag may arrive weak, as `W/"9a107dfa8625a259"`. Store the header value exactly as received and send it back exactly as stored.
+- **`truncated: true`** means the list is partial. Keep today's handling: ignore that download and keep the cache. This applies to the keys too, and the ETag of a truncated reply is never stored.
 
 ### 2.2 `POST create-sale`
 
 The request body is unchanged.
 
-**Saved, number shared** (HTTP 200). The usual body, plus:
+**Saved, number in use elsewhere** (HTTP 200). The usual body, plus:
 
 ```json
 "shares_phone_with": [
@@ -80,7 +89,8 @@ The request body is unchanged.
 ]
 ```
 
-- Present only when the number is on other live sales that the account can see.
+- Present only when the number is on other live sales the account can see.
+- It can list several sales, and `transaction_id` can be `null`.
 - From the phone app, `same_buyer` is always `false`, because the same customer is refused.
 
 **Refused, same customer** (HTTP 409):
@@ -94,10 +104,10 @@ The request body is unchanged.
 }
 ```
 
-- When the other sale is not one the account can see, `transactionId` is `null` and the message says "another sale" instead of the transaction id.
-- The message never contains "transaction id", so `_alreadyCreated` cannot mistake it for an already-saved sale. Still, decide on `code`, not on the words.
+- When the other sale is not one the account can see, `transactionId` is `null` and the message says "another sale" in place of the transaction id.
+- The message never contains "transaction id", so `_alreadyCreated` cannot mistake it for an already-saved sale. Decide on `code`, not on the words.
 
-**Already saved** (HTTP 409, unchanged). A retry of a sale that did save gets the same refusal as today ("A sale with transaction ID ... already exists"), and `_alreadyCreated` reads it as saved.
+**Already saved** (HTTP 409, unchanged). A retry of a sale that did save gets the same refusal as today: `A sale with transaction ID "TR-8C94F1" already exists`. `_alreadyCreated` reads it as saved.
 
 - **Changed on the server, nothing for you to do:** this check now runs first. Before, a retried sale that had saved could be refused as a duplicate phone and stay queued forever.
 
@@ -105,11 +115,14 @@ Every other refusal (stove taken, missing field, and so on) is unchanged.
 
 ### 2.3 `POST update-sale?id=…`
 
-The same rule as `create-sale`, applied only when the phone or the customer's name changes. A sale is never compared with itself. The refusal is the same 409 body with `code: "SAME_BUYER_SAME_PHONE"`, with slightly shorter wording.
+- **When it checks:** only when the phone or the customer's name changes. A sale is never compared with itself.
+- **The refusal:** a 409 with `code: "SAME_BUYER_SAME_PHONE"`. The wording is slightly shorter than create-sale's.
+- **What it never sends:** `shares_phone_with`.
+- **Naming the other sale:** it names it for a super admin, and for anyone but a partner agent when the other sale belongs to the same partner. Otherwise it says "another sale".
 
 ### 2.4 Nothing to send for "noted"
 
-The server records shared numbers for the call centre itself. The app does not send anything extra.
+The server records shared numbers for the call centre itself. The app sends nothing extra.
 
 ---
 
@@ -117,30 +130,58 @@ The server records shared numbers for the call centre itself. The app does not s
 
 The app never receives names. It computes the key for the sale on screen and looks it up in `buyerKeys`.
 
-**Steps**
+**Add the dependency:** `crypto: ^3.0.3` in `pubspec.yaml`. Today it is only a transitive dependency (`pubspec.lock:220`).
 
-1. **Phone tail.** Exactly `PhoneUtils.normalizePhone` today (`lib/core/utils/phone_utils.dart:27-32`): digits only; fewer than 10 means no tail; otherwise the last 10.
-2. **Name source.** First name and surname joined with one space, when either is filled. Otherwise the joined name (`endUserName`). The alias (`aka`) is never used.
-3. **Name key**, in this order:
-   1. Remove text in square or round brackets, brackets included.
-   2. Lower-case A to Z (ASCII only).
-   3. Turn every run of whitespace, commas and slashes into one space.
-   4. Delete every character that is not `a` to `z` or a space.
-   5. Split on spaces, drop empty words and any word in `buyerKeyRules.titles`, sort the words alphabetically, and join them with one space.
-4. **Buyer key.** The first 16 hex characters (lower case) of SHA-256 over the UTF-8 text `<tail>|<name key>`. In Dart: `sha256.convert(utf8.encode('$tail|$nameKey')).toString().substring(0, 16)` with `package:crypto`.
-5. **No key** when the tail or the name key is empty. Then only the shared-number note can apply.
+**The function.** This is the server's logic (`supabase/functions/_shared/buyerKey.ts`) written in Dart. Dart's regular expressions follow the same rules for `\s` and `\D`, so this is exact:
 
-**Titles come from the server, never from the app's code.** Before the first successful fetch, use an empty list. The server is the final check, and a mismatch always falls on the safe side.
+```dart
+import 'dart:convert';
+import 'package:crypto/crypto.dart';
+
+String phoneTail(String? phone) {            // = PhoneUtils.normalizePhone today
+  final digits = (phone ?? '').replaceAll(RegExp(r'\D'), '');
+  return digits.length < 10 ? '' : digits.substring(digits.length - 10);
+}
+
+String nameKey(String? first, String? surname, String? joined, List<String> titles) {
+  final parts = [first, surname].map((s) => (s ?? '').trim()).where((s) => s.isNotEmpty).toList();
+  var s = parts.isNotEmpty ? parts.join(' ') : (joined ?? '');
+  s = s.replaceAll(RegExp(r'\[[^\]]*\]|\([^)]*\)'), ' ');   // brackets become a space
+  s = s.replaceAllMapped(RegExp(r'[A-Z]'), (m) => m[0]!.toLowerCase());
+  s = s.replaceAll(RegExp(r'[\s,/]+'), ' ');
+  s = s.replaceAll(RegExp(r'[^a-z ]'), '');
+  final words = s.split(' ').where((w) => w.isNotEmpty && !titles.contains(w)).toList()..sort();
+  return words.join(' ');
+}
+
+String buyerKey(String? phone, String? first, String? surname, String? joined, List<String> titles) {
+  final tail = phoneTail(phone);
+  final name = nameKey(first, surname, joined, titles);
+  if (tail.isEmpty || name.isEmpty) return '';  // no key: only the note can apply
+  return sha256.convert(utf8.encode('$tail|$name')).toString().substring(0, 16);
+}
+```
+
+**In words:**
+
+- **Which name.** Trim the first name and the surname. If either is still filled, use them, joined with one space. Otherwise use the joined name (`endUserName`). The alias (`aka`) is never used.
+- **Brackets.** Text in square or round brackets is replaced by a space, brackets included. An unmatched bracket is left in place and then deleted as punctuation.
+- **Letters.** Only A to Z are lower-cased, in ASCII. Everything that is not `a` to `z` or a space is deleted.
+- **Words.** Titles from the served list are dropped. Repeated words are kept. The remaining words are sorted alphabetically.
+
+**Titles come from the server, never from the app's code.** Before the first successful fetch, use an empty list.
+
+**Never store a computed key on a queue row.** Compute it when it is needed, with the current titles. A change to the title list then needs no migration.
 
 ### Test vectors
 
-Your code must reproduce every row, with the title list `mr mrs miss ms dr alhaji alhaja hajia hajiya malam mallam chief madam`. The same rows are in `supabase/functions/_shared/buyer-key-vectors.json` in the sales-web repo, for a Dart test to read directly.
+The attached `buyer-key-vectors.json` is the authority: 18 cases, read it directly in the Dart test. The table is for reading. In row 3, the spaces inside the names matter, and the JSON has them exactly.
 
 | First name | Surname | Joined name | Phone | Tail | Name key | Buyer key |
 |---|---|---|---|---|---|---|
 | Aisha | Bello | | 08031234567 | 8031234567 | aisha bello | a98b6aac661bef64 |
 | BELLO | aisha | | +2348031234567 | 8031234567 | aisha bello | a98b6aac661bef64 |
-| `  Aisha ` | ` Bello` | | 234 803 123 4567 | 8031234567 | aisha bello | a98b6aac661bef64 |
+| "  Aisha " | " Bello" | | 234 803 123 4567 | 8031234567 | aisha bello | a98b6aac661bef64 |
 | | | Aisha Bello | 8031234567 | 8031234567 | aisha bello | a98b6aac661bef64 |
 | | | Bello, Aisha | 0803-123-4567 | 8031234567 | aisha bello | a98b6aac661bef64 |
 | Mrs Aisha | Bello | | 08031234567 | 8031234567 | aisha bello | a98b6aac661bef64 |
@@ -153,6 +194,9 @@ Your code must reproduce every row, with the title list `mr mrs miss ms dr alhaj
 | (empty) | (empty) | (empty) | 08031234567 | 8031234567 | (empty) | (none) |
 | Mrs | (empty) | | 08031234567 | 8031234567 | (empty) | (none) |
 | Aisha | Bello | | 803123 | (none) | aisha bello | (none) |
+| Bello[Mama]Ade | | | 08031234567 | 8031234567 | ade bello | 3adb0b2d704ecd20 |
+| "   " (spaces only) | | Aisha Bello | 08031234567 | 8031234567 | aisha bello | a98b6aac661bef64 |
+| Aisha Aisha | Bello | | 08031234567 | 8031234567 | aisha aisha bello | c15d8f837d1d7e2c |
 
 ---
 
@@ -160,23 +204,26 @@ Your code must reproduce every row, with the title list `mr mrs miss ms dr alhaj
 
 | # | Surface | Today (1.0.18) | After (1.0.19) |
 |---|---|---|---|
-| A | Network layer: an error reply | Keeps only `message` and the status; the body is dropped | Also keeps `code` and `transactionId` |
+| A | Network layer: an error reply | Keeps only `message` and the status; the body is dropped | Also keeps `errorCode` and `errorTransactionId` |
 | B | Phone list refresh | Full download every time; only `data` is read | Sends `If-None-Match`; also stores `buyerKeys`, `buyerKeyRules` and the ETag |
-| C | Cache on logout | Storage is erased, but the in-memory phone set survives | Phones, keys, rules and ETag are all cleared, in memory too |
+| C | A different user signs in | Storage is erased (`wipeAllData`), but the in-memory phone set survives | Phones, keys, rules and ETag are all cleared, in memory too |
 | D | Sell form, live check | Phone only; re-runs only when the phone changes | Phone and name; re-runs when the phone, first name or surname changes |
-| E | Sell form, shared number | Red error, cannot submit | Yellow note, can submit, one confirmation |
-| F | Sell form, same customer | Red error (as a duplicate phone) | Red error with the new wording, cannot submit |
-| G | Offline: two queued sales of one customer | Caught by phone | Caught by buyer key; two family members on one number are allowed |
-| H | Online submit refused (409) | Server message in a 4-second toast | The error under the phone field, plus a dialog that stays until closed |
-| I | Online submit saved, number shared | The usual success toast | The same toast, adding which sale shares the number (S1) |
+| E | Sell form, number in use | Red error, cannot submit | Yellow note, can submit after one confirmation |
+| F | Sell form, same customer | Red error, as a duplicate phone | Red error with the new wording, cannot submit |
+| G | Offline: two queued sales on one number | Second is blocked | Blocked only when it is the same customer; two family members both queue |
+| H | Online submit refused (409, same customer) | Server message in a 4-second toast | Error under the phone field, plus a dialog that stays until closed |
+| I | Online submit saved, number in use | The usual success toast | The same toast, adding which sale shares the number (S1) |
 | J | After an online save | Phone added to the cache | Phone and buyer key added |
-| K | Sync: a queued sale refused | Card shows the error; retried on every sync, photos re-uploaded each time | Card shows the reason and Edit; not retried until edited; photo ids reused |
-| L | Sync: a queued sale saved | Removed from the queue; the phone is not added to the cache | Phone and buyer key added to the cache |
+| K | Sync: a queued sale refused | Card shows the error; retried on every sync; photos re-uploaded each time | Card shows the reason and Edit; skipped by "sync all" until edited; photo ids reused |
+| L | Sync: a queued sale saved | Marked `synced = 1`; the phone is not added to the cache | Phone and buyer key added to the cache |
 | M | Sync: a hung request | No timeout; it can hold the batch | Timeouts; the batch moves on |
-| N | After a list refresh | Nothing | Queued sales are re-checked against the new keys and marked before any upload |
+| N | After a list refresh | Nothing | Queued sales that match a known customer get a warning on their card |
 | O | Edit a synced sale (online) | Phone-only check; server message in a toast | Phone and name check; never matches itself; error under the field |
-| P | Edit a queued sale | Phone-only check | Phone and name check; never matches itself |
-| Q | `docs/memory.md` | Describes one number, one sale | Describes the new rule |
+| P | Edit a queued sale | Phone-only check | Phone and name check; never matches itself or its own row |
+| Q | Offline cache debug screen | Phone count | Also the key count and the rules version |
+| R | `docs/memory.md` | Describes one number, one sale | Describes this rule |
+
+These are all the places that create, edit or send a sale. `create-sale` and `update-sale` have no other callers in the app. There is no bulk import and no other screen that writes a sale.
 
 ---
 
@@ -186,239 +233,277 @@ Each step is small. They can land in separate commits, and none breaks the one b
 
 ### Step 1. Keep the error code (surface A)
 
-`lib/core/services/supabase_service.dart:139-150` parses an error body for `message` and returns `SupabaseApiResponse.error(errorMsg, code: response.statusCode)`; the rest of the body is lost (`lib/core/model/supabase_api_response.dart:51-58`).
+`lib/core/services/supabase_service.dart:139-150` parses an error body for `message` only, and returns `SupabaseApiResponse.error(errorMsg, code: response.statusCode)`. The rest of the body is lost (`lib/core/model/supabase_api_response.dart:51-58`).
 
-- Keep the parsed body on the error response, for example in `data`, or as two new fields `errorCode` and `errorTransactionId`.
+- Add two fields to `SupabaseApiResponse`: `errorCode` (the body's `code`) and `errorTransactionId` (the body's `transactionId`). Fill them in that same `catch` block.
 - No caller changes behaviour from this step alone.
 
-**Done when:** a 409 from `create-sale` gives the caller `code == "SAME_BUYER_SAME_PHONE"` and `transactionId`.
+**Done when:** a 409 from `create-sale` gives the caller `errorCode == "SAME_BUYER_SAME_PHONE"`.
 
-### Step 2. Cache the keys, the rules and the ETag (surfaces B and C)
+### Step 2. Cache the keys, the rules and the ETag (surfaces B, C and Q)
 
 **`lib/core/services/data_refresh_service.dart:422-450`, `_refreshEndUserPhones()`**
 
-- Send the stored ETag as `If-None-Match`, with `returnHeaders: true`. This is the same pattern as `lib/core/services/sale_dictionary_service.dart:102-118`.
+- Send the stored ETag as `If-None-Match`, with `returnHeaders: true`. The pattern is `lib/core/services/sale_dictionary_service.dart:102-118`.
+- Send it **only when the phones and the keys are both in storage**. Otherwise send no ETag, and get the full list.
 - On `304`, keep everything and return.
 - On `200`:
-  - Save `data` as today.
-  - Save `buyerKeys` and `buyerKeyRules` when present; when absent, keep the old ones.
+  - If `truncated` is true, keep today's behaviour: ignore the download, and store nothing, including the ETag.
+  - Otherwise, save `data` as today.
+  - When `buyerKeys` is present, save it together with `buyerKeyRules`. When it is absent, keep the old pair.
   - Save the `ETag` header exactly as received.
-- `truncated: true`: keep today's behaviour (ignore the download), for all of it.
 
 **`lib/core/services/local_cache_service.dart`**
 
 - Add keys beside `cache_end_user_phones` (:20-21). For example: `cache_buyer_keys`, `cache_buyer_key_rules`, `cache_end_user_phones_etag`.
-- Add a set in memory for the keys, like `_phoneSetCache` (:174), plus `getBuyerKeys()`, `addBuyerKey(key)`, `getBuyerKeyTitles()`.
-- Add one `clear()` that empties every in-memory set.
+- Add an in-memory set for the keys, like `_phoneSetCache` (:174), with `getBuyerKeys()`, `addBuyerKey(key)` and `getBuyerKeyTitles()`.
+- Add `clear()`, which empties every in-memory set.
 
-**`lib/core/services/auth_service.dart:102`**
+**`lib/core/services/auth_service.dart`**
 
-- After `GetStorage().erase()`, call that `clear()`.
-- **This matters now:** the keys depend on who is signed in, and today the in-memory phone set outlives a logout.
+- `signOut` (:78-89) keeps the caches on purpose. Leave it.
+- In `wipeAllData` (:95-105), which runs when a different user signs in (`login_controller.dart:60`), call `clear()` after `GetStorage().erase()`.
+- **This matters now:** the keys depend on who is signed in, and the in-memory set outlives the wipe.
+
+**`lib/features/profile/offline_cache_debug_screen.dart:150`:** beside the phone count, show the key count and `buyerKeyRules.version`.
 
 **Done when:**
-- A second refresh with nothing changed gets a 304 and downloads nothing.
-- Logging out and in as another user shows that user's keys only.
+- A second refresh with nothing changed is a 304 and downloads nothing.
+- Signing in as another user shows that user's keys only.
 
 ### Step 3. The key function and its test
 
-- Add one function, for example `PhoneUtils.buyerKey(phone, firstName, surname, joinedName, titles)`, and `PhoneUtils.nameKey(...)`, following section 3.
-- Add `test/buyer_key_test.dart`. It reads every row of `buyer-key-vectors.json` (copy the file into `test/fixtures/`) and checks the name key and the buyer key.
+- Put the section 3 code in `lib/core/utils/phone_utils.dart`, beside `normalizePhone`.
+- Add `test/buyer_key_test.dart`. It reads every case of `buyer-key-vectors.json` (copy it to `test/fixtures/`) and checks `phoneTail`, `nameKey` and `buyerKey`, with the file's `titles`.
 
-**Done when:** every vector passes.
+**Done when:** all 18 cases pass.
 
 ### Step 4. The live check (surfaces D, E and F)
 
 **`lib/features/sales/create/create_sale_controller.dart`**
 
-- **`onEndUserPhoneChanged` (:155-169):** keep the 300 ms debounce and the under-6-characters skip.
+- **`onEndUserPhoneChanged` (:155-169):** keep the 300 ms debounce and the skip under 6 characters.
 - **`onEndUserIdentityChanged` (:118-127):** it only mirrors the contact fields today. Make it also restart the same debounced check, so typing a name re-checks.
-- **`checkEndUserPhoneDuplicate` (:172-197):** compute the tail and the buyer key, then pick one of three outcomes.
+- **`checkEndUserPhoneDuplicate` (:172-197):** compute the tail and the buyer key, then:
 
 | Found | Show | Blocks submit? |
 |---|---|---|
-| Buyer key in the cached keys **or** the pending queue (step 5) | Red error (message E1, section 6) | Yes: keep it in `phoneDuplicateError`, which `validateAll()` reads at :1899-1904 |
-| Only the tail, in the cached phones or the pending queue | Yellow note (message N1) in a new observable, for example `phoneSharedNote` | No: never added to `validateAll()` |
+| The buyer key, in the cached keys **or** the pending keys (step 5) | Red error E1, in `phoneDuplicateError` | Yes: `validateAll()` already reads it at :1899-1904 |
+| Only the tail, in the cached phones **or** the pending phones | Yellow note N1, in a new observable `phoneSharedNote` | No: never added to `validateAll()` |
 | Neither | Nothing | No |
+
+**When editing (steps 8 and 5):**
+- Show nothing while the key equals the original key.
+- Skip the note while the tail equals the original tail. The sale's own number is in the cache, so it would otherwise always say "in use".
 
 **`lib/features/sales/create/create_sale_screen.dart:684-694`**
 
 - Under the phone field, show the error as today (`_FieldMessage(isError: true)`).
-- Show the note with `isError: false`, styled as a warning.
+- Show the note as a warning. `_FieldMessage` has no warning style yet: add one using `AppColors.warning` (`lib/core/constants/app_colors.dart:34`).
+
+**Why the note says "If this is a different person":** the device cannot always know the name on the other sale. `data` includes cancelled sales and the sales of other partners, but the keys do not. So a number in use may still turn out to be the same customer, and the server then refuses it.
 
 **Done when:**
-- Typing a known customer's name and number shows the red error.
-- Changing the first name to a different name turns the error into the note, without touching the phone field.
+- A known customer's name and number show the red error.
+- Changing the first name to another name turns the error into the note, without touching the phone field.
 
 ### Step 5. The pending queue (surface G)
 
 `lib/core/services/offline_queue_service.dart:231-246`, `getPendingEndUserPhones()`, returns the phones of unsynced rows.
 
-- Add `getPendingBuyerKeys()`: the same rows, with the key computed from each payload's `phone`, `endUserFirstName`, `endUserSurname` and `endUserName`.
-- Use it in step 4 beside the cached keys. When editing a queued sale, leave out that sale's own row.
+- Add `getPendingBuyerKeys()`: the same rows, with the key computed (now, with the current titles) from each payload's `phone`, `endUserFirstName`, `endUserSurname` and `endUserName`.
+- Give both functions an `excludeId` parameter. When editing a queued sale, pass its id, so its own row is left out of both the phones and the keys.
 
 **Done when:**
-- Two offline sales of the same customer: the second is blocked before it is queued.
+- Two offline sales of one customer: the second is blocked before it is queued.
 - Two offline sales of different people on one number: both queue.
 
-### Step 6. One confirmation for a shared number (surface E)
+### Step 6. One confirmation when the number is in use (surface E)
 
-- The submit path shows `_SaleValidationSheet`, then `_SalePreviewSheet` (`create_sale_screen.dart:314-329`).
-- When the note applies, show a short dialog between the two, in the manner of `_confirmExit`:
-  - Text: message N2.
-  - Buttons: "Check again" (back to the form) and "Continue".
+`_handleSubmitRequest` (`create_sale_screen.dart:314-329`) shows **either** the validation sheet (when `validateAll()` returns errors) **or** the preview.
+
+- When there are no errors **and** the note is showing, show a short dialog first, in the manner of `_confirmExit` (:119):
+  - Text: N2.
+  - Buttons: "Check again" (closes the dialog, back to the form) and "Continue" (opens the preview).
 
 ### Step 7. Online submit (surfaces H, I and J)
 
-**`create_sale_controller.dart:2233-2258`**
+**`create_sale_controller.dart:2232-2258`** (the call at :2232; success at :2233-2244; failure at :2245-2246)
 
-- **Saved (:2233-2244):**
-  - Keep adding the phone to the cache.
-  - Also add the buyer key (`addBuyerKey`).
-  - If the body has `shares_phone_with`, extend the success text: message S1.
-- **Refused with `code == "SAME_BUYER_SAME_PHONE"` (:2245-2246):**
+- **Saved:**
+  - Keep adding the phone to the cache, and also add the buyer key (`addBuyerKey`).
+  - If `shares_phone_with` names one or more sales (non-null `transaction_id`), extend the success text with S1, listing the named ids. Leave S1 out when none is named.
+- **Refused with `errorCode == "SAME_BUYER_SAME_PHONE"`:**
   - Set `phoneDuplicateError` to the server's `message`, so it shows under the field and blocks a resubmit until the phone or name changes.
-  - Show it in a dialog with an OK button, not the 4-second toast (`_showError`, :2444-2446). The message is long and the agent must read it.
+  - Show the same message in a dialog with an OK button, not the 4-second toast (`_showError`, :2444-2446). The message is long and the agent must read it.
+  - Open the dialog with `showDialog` on `rootNavigatorKey.currentContext`, as `_showCameraBlockedDialog` does (:2451-2454). `Get.dialog` has no navigator in this app.
   - **Do not queue the sale.**
+  - **If this was a queued sale being edited** (`_editingQueueId` set): leave that queue row as it was, neither deleted nor changed. The agent fixes the name or phone and submits again, or goes back.
 - **Any other refusal:** as today.
 
 **`lib/features/sales/create/create_sale_service.dart:107-109`**
 
-- The `create-sale` call has no timeout (`supabase_service.dart:91-103`). Add `.timeout(const Duration(seconds: 30))`.
-- A timeout goes to the existing exception path, which queues the sale. That is safe: the server recognises the retry by its transaction id.
+- The call has no timeout (`supabase_service.dart:91-103`). Add `.timeout(const Duration(seconds: 30))`.
+- A timeout goes to the existing exception path, which queues the sale. That is safe: the server recognises a retry by its transaction id.
 
 ### Step 8. Editing (surfaces O and P)
 
-- **The original key:** beside `_editingOriginalPhoneKey` (set at :1006 for a queued sale and :1169 for a synced sale, cleared in `resetForm` at :967), keep `_editingOriginalBuyerKey`, computed from the values the form was filled with. When the current key equals it, show nothing, as the phone check does today at :180.
-- **A gap to watch:** `SaleModel.toJson` (`sale_model.dart:273`) writes only `end_user_name`. Make sure a synced sale opened for editing fills the first name and surname from `end_user_first_name` and `end_user_surname` (read at :176-179). Otherwise the original key is computed from the joined name. That still gives the same key, but only if the parts were not dropped along the way.
-- **`update-sale` refused** with `code == "SAME_BUYER_SAME_PHONE"` (controller :2301): handle it as step 7 does. Error under the field, a dialog, nothing saved.
+- **The original key:** beside `_editingOriginalPhoneKey` (set at :1006 for a queued sale and :1169 for a synced sale, cleared in `resetForm` at :967), keep `_editingOriginalBuyerKey` and `_editingOriginalTail`. Compute them from the values the form was filled with.
+- **The name parts:** `SaleModel` reads `end_user_first_name` and `end_user_surname` (`sale_model.dart:176-179`). Make sure `hydrateFromSale` (:1117) fills both fields from them. Otherwise the original key is computed from the joined name alone.
+- **`update-sale` refused** with `errorCode == "SAME_BUYER_SAME_PHONE"` (failure at :2301): handle it as step 7 does. Error under the field, a dialog, nothing saved.
 
 ### Step 9. Sync: a refused sale (surface K)
 
+**The queue table (`offline_queue_service.dart:18-34`)**
+
+- Raise `openDatabase` to version 3 (it is 2 at :21).
+- Add `refused INTEGER NOT NULL DEFAULT 0`, in `onCreate` and under `oldVersion < 3`.
+- Sales queued under 1.0.18 get 0 and sync as normal.
+
 **`lib/core/services/sync_service.dart`**
 
-- At :125-136, a 409 with `code == "SAME_BUYER_SAME_PHONE"`:
-  - `markError(id, message)` with the server's message.
-  - Also mark the row **refused**: a new column `refused INTEGER DEFAULT 0` on `offline_sales` (schema at `offline_queue_service.dart:18-34`; add a migration).
-- **`_alreadyCreated` (:174-178):** add `if (resp.code == 409 && resp.errorCode == "SAME_BUYER_SAME_PHONE") return false;` at the top. This is belt and braces; the wording already cannot match.
-- **`getPending()`:** skip rows marked refused in "sync all" runs.
-- **`updateQueued` (:98-131):** clears `error`; make it clear `refused` too, so an edited sale is sent again.
+- **At :125-136**, a 409 with `errorCode == "SAME_BUYER_SAME_PHONE"`:
+  - Call `markError(id, message)` with the server's message.
+  - Set `refused = 1`.
+- **`_alreadyCreated` (:174-178):** add `if (resp.errorCode == "SAME_BUYER_SAME_PHONE") return false;` at the top. The wording already cannot match, so this is a second safeguard.
+- **Do not change `getPending()`.** The sales list is built from it (`sales_list_controller.dart:195-198`), so filtering there would hide the refused cards.
+- **In `syncPendingSales` (:23):** when `onlyIds == null` ("sync all"), leave out rows with `refused = 1`.
+  - "Synchronize this sale" (`sales_list_screen.dart:590`) and multi-select sync (:205) still send a refused row, if the agent asks.
+- **`updateQueued` (:98-131):** clears `error`. Make it clear `refused` too, so an edited sale is sent again.
 - **Network errors and 5xx keep retrying** as today. Only a definite refusal stops.
+- **The counts:** count refused rows apart from `pendingCount` (`offline_queue_service.dart:249-251`), the way `needsResolutionCount` is counted.
+- **The toast** at `sync_service.dart:226-231`: say "N not saved (same customer)" for refused rows, not "will retry".
 - **The card** (`sales_list_screen.dart:385`, :399-411) and the detail sheet (:501-511):
-  - Show the refusal reason. Keep the server message in the detail sheet.
-  - On the card, use message R1, which fits two lines.
-  - The Edit button (:600-608) stays.
+  - Pass `refused` through `_loadPendingSales` (`sales_list_controller.dart:195`) into the card model.
+  - On the card, show R1 (it fits two lines). Keep the server's full message in the detail sheet. Keep the Edit button (:600-608).
+- **A refused row still holds its stove and its phone on the device** (`getPendingStoveIds` at :210, `getPendingEndUserPhones`) until it is edited or deleted.
 - **The batch must still carry on past a refused sale.** It does today (each row has its own try), and it must stay that way.
 
 ### Step 10. Sync: a saved sale (surface L)
 
-When `markSynced` runs (after a 200 or `_alreadyCreated`), add the phone and the buyer key to the cache. Today they drop out of `getPendingEndUserPhones` on sync and look free until the next full refresh.
+When `markSynced` runs (after a 200 or `_alreadyCreated`), add the phone and the buyer key to the cache. Today a synced row (`synced = 1`) drops out of `getPendingEndUserPhones`, and its number looks free until the next full refresh.
 
 ### Step 11. Sync: keep uploaded photo ids (surface K)
 
-- `sync_service.dart:65-123` re-uploads every image from base64 on every attempt. The returned ids live only in memory.
-- After each successful upload, store the id on the queue row (for example in the payload as `stoveImageId` or `agreementImageId`), and skip that upload next time.
+- `sync_service.dart:65-123` re-uploads every image from base64 on every attempt, and keeps the returned ids only in memory.
+- After each successful upload, store the id on the queue row (in the payload as `stoveImageId`, `agreementImageId` or `initialPaymentProofImageId`), and skip that upload next time.
+- In `updateQueued`, keep the stored ids unless that photo was replaced in the edit. `_buildPayload` does not carry them.
 
-**Done when:** a refused sale that is retried uploads nothing the second time.
+**Done when:** a refused sale that is sent again uploads nothing.
 
 ### Step 12. Sync: time limits (surface M)
 
-The upload calls and `create-sale` inside the sync loop have no timeout. Use 45 seconds for an upload, as the online path already does (controller :2342), and 30 seconds for the sale, as in step 7. A timeout counts as a network failure: mark the error and move on to the next row.
+The uploads and `create-sale` inside the sync loop have no timeout.
 
-### Step 13. Re-check the queue after a refresh (surface N)
+- An upload gets 45 seconds, as the online path already uses (controller :2342).
+- The sale gets 30 seconds, as in step 7.
+- A timeout counts as a network failure: mark the error, keep the row for the next sync, and move on to the next row.
 
-- At the end of a successful `_refreshEndUserPhones` (200, not truncated), run the buyer-key check over every unsynced, not-refused row.
-- A row whose key is now in `buyerKeys`:
-  - Mark it refused, with message R2.
-  - Do this before any upload, so the agent learns while still near the customer and no photos are spent on a sale that will be refused.
-- Rows whose number only is shared are left alone.
+### Step 13. A warning after a refresh (surface N)
+
+- At the end of a successful `_refreshEndUserPhones` (200, not truncated), compute the key of every unsynced, not-refused row.
+- When a key is now in `buyerKeys`, show R2 on that row's card as a **warning only**.
+  - **Never set `refused` from this check, and never skip the row in a sync.** The server decides.
+  - If the reply to a sale that did save was lost, that sale's own key is now in the list. The server will answer "already exists" and the row clears normally.
 
 ### Step 14. Messages in one place
 
 Put the texts of section 6 in one file of constants, so they read the same everywhere.
 
-### Step 15. Tests (none exist today beyond `test/phone_utils_test.dart`)
+### Step 15. Tests
 
-- `test/buyer_key_test.dart`: the vectors (step 3).
-- **`_alreadyCreated`** returns `true` for each of these:
-  - 409 "Transaction ID TR-1 already exists"
-  - and `false` for each of these:
-  - 409 with `code: "SAME_BUYER_SAME_PHONE"` and its message
-  - 409 with any other message
-  - 500
-- **The error parsing (step 1):** `code` and `transactionId` survive.
-- **The live check (step 4):** each row of its table, with a fake cache.
-- **Pending keys (step 5):** two rows of one customer, and two rows of a family.
+Today there is `test/phone_utils_test.dart`, plus an empty `test/widget_test.dart`. Add:
 
-### Step 16. `docs/memory.md:498-530`
+- **`test/buyer_key_test.dart`:** the vectors (step 3).
+- **`_alreadyCreated`:**
+  - returns `true` for a 409 with `A sale with transaction ID "TR-1" already exists`;
+  - returns `false` for a 409 with `errorCode: "SAME_BUYER_SAME_PHONE"` and its message;
+  - returns `false` for any other 409, and for a 500.
+- **The error parsing (step 1):** `errorCode` and `errorTransactionId` survive.
+- **The live check (step 4):** each row of its table, with a fake cache, plus the two editing cases.
+- **Pending keys (step 5):** two rows of one customer; two rows of a family; the edited row left out.
+- **The queue migration (step 9):** a version 2 database opens as version 3, with its rows intact and `refused = 0`.
 
-Replace the one-number, one-sale description with this rule, and link to this document.
+### Step 16. `docs/memory.md:491-542`
+
+Replace the section "End-user phone: unique, offline (Jul 2026)" with this rule, and link to this document.
 
 ---
 
 ## 6. The messages
 
-Use these words. They match the web app.
+Use these words, so every agent reads the same thing.
 
 | Id | Where | Text |
 |---|---|---|
-| N1 | Note under the phone field | This number is already on another sale under a different name. A family can share one phone, so this sale can still be saved. |
-| N2 | Confirmation before the preview | This phone number is already on another sale. Check it is the customer's own number, then continue. |
-| E1 | Error under the phone field (from the device's own check) | This customer (same name and phone number) is already registered. The same customer cannot be recorded twice. |
-| E2 | Error and dialog from the server (409 `SAME_BUYER_SAME_PHONE`) | Show the server's `message` as sent. |
-| S1 | Added to the success text | This number is also on sale TR-X under a different name. |
+| N1 | Note under the phone field | This number is already on another sale. If this is a different person, a family can share one phone and the sale can be saved. |
+| N2 | Confirmation before the preview | This phone number is already on another sale. Check it is the right number for this customer, then continue. |
+| E1 | Error under the phone field (the device's own check) | This customer (same name and phone number) is already registered. The same customer cannot be recorded twice. |
+| E2 | Error and dialog from the server (409 `SAME_BUYER_SAME_PHONE`) | The server's `message`, exactly as sent. |
+| S1 | Added to the success text | This number is also on sale TR-X. (List each named id.) |
 | R1 | Card of a refused queued sale (two lines) | Not saved: this customer is already registered. Tap to see why, or Edit. |
-| R2 | Card of a queued sale caught after a refresh | Will not save: this customer is already registered. Check the name and phone, or delete this sale. |
+| R2 | Card warning after a refresh | This customer may already be registered. Check the name and phone before syncing. |
+| T1 | Sync toast, refused rows | N not saved (same customer) |
 
 ---
 
 ## 7. What the agent must never experience
 
 - A sale that sits in the queue and silently retries forever.
-- A refusal they cannot read: a toast that vanishes, or a card cut off with no detail.
+- A refusal they cannot read: a toast that vanishes, or a card cut off with no way to see more.
 - A sale refused because of a family member's sale.
 - A whole batch stopped by one sale.
 - Photos uploaded again for a sale that was refused.
+- A refused sale disappearing from the list.
+- A sale that already saved being marked refused.
 
 ---
 
 ## 8. Rollout and compatibility
 
-**1.0.18 against the new server keeps working.** Its own offline check stays stricter than the rule: it blocks every reused number. So until 1.0.19 is installed:
+**1.0.18 against the new server keeps working.** Its own check stays stricter than the rule: it blocks every reused number. So until 1.0.19 is installed:
 
-- **A family member's sale on a shared number cannot be entered in the phone app.** The agent uses the web Sell Stove page for those. We tell the field team.
-- **A same-customer sale** that reaches the server is refused with the full message on its card.
+- **A family member's sale on a number already in use cannot be entered in the phone app.** The agent uses the web Sell Stove page for those. We tell the field team.
+- **A same-customer sale** that reaches the server is refused, with the full message on its card. On 1.0.18 it is retried on every sync, and its photos are re-uploaded each time, until the agent edits or deletes it.
 
 **1.0.19 against the old server, before ours is live:**
 
-- The new fields are absent, so the app keeps its cached keys (none), and `code` is never set.
-- The app then behaves exactly like 1.0.18, except that a shared number shows the note instead of the error, and the old server refuses it with "This end user phone is already used on sale TR-X. Each sale must have a unique end user phone number."
+- The new fields are absent and `errorCode` is never set.
+- The app behaves like 1.0.18, except that a number in use shows the note instead of the error. The old server then refuses it with "This end user phone is already used on sale TR-X. Each sale must have a unique end user phone number."
 - **So please hold the release until we confirm the server is live.**
+
+**Device edge cases:**
+
+- **First install while offline:** no phones and no keys, so there is no check on the device. The server decides at sync, and R1 shows any refusal.
+- **Offline for days:** the keys go stale. The server's refusal and R1 cover what the device missed.
+- **Sales queued under 1.0.18, then the app updated to 1.0.19:** they sync normally (`refused = 0`), and the step 13 warning applies after the first refresh.
 
 **Release:**
 
 - We publish 1.0.19 through `app_releases` (`manage-app-release`).
-- Today the update prompt shows only on pull-to-refresh of the dashboard or profile (`dashboard_screen.dart:79`, `profile_screen.dart:30`), and `checkAndShowUpdatePrompt` is never called.
+- Today the update prompt shows only on pull-to-refresh of the dashboard or profile (`dashboard_screen.dart:79`, `profile_screen.dart:30`), and `checkAndShowUpdatePrompt` (`update_prompt_sheet.dart:69`) is never called.
 - **Please call it once on app start when online**, so agents learn of 1.0.19 without hunting for it. We will decide with ACSL whether to set `is_force_update`.
 
 ---
 
 ## 9. How we check it together
 
-Against the test environment we send you, with two test partners, on a real phone:
+On a real phone, against the test environment we send you, with two test partners:
 
-1. The Dart tests pass, including every vector.
-2. **Same phone, different name, another partner:** the note, the confirmation, and the sale saves. Do this online and offline (queued, then synced).
+1. The Dart tests pass, including all 18 vectors.
+2. **Same phone, different name, same partner:** the note, the confirmation, and the sale saves with S1 naming the other sale. Do this online and offline (queued, then synced).
 3. **Same name and phone, written differently** (`+234` against `080`, names swapped, "Mrs" added): blocked on the device, online and offline.
 4. **Two offline sales of one customer:** the second is blocked before it is queued. Two family members on one number: both queue and sync.
-5. **The same customer recorded by another partner** (not in this account's keys): queues offline, then sync shows R1 on the card and the server message in the detail sheet. It stops retrying. Edit it to a different name, and it syncs.
-6. **A batch of three queued sales with the middle one refused:** the first and third save.
-7. **A refused sale retried:** no photo is uploaded again.
-8. **Refresh twice with nothing changed:** the second is a 304 (visible in the debug log).
-9. **Log out, log in as the other partner:** that partner's keys only.
-10. **Edit a sale** without changing the phone or name: saves. Change the name to match another sale on that number: refused, error under the field.
-11. **Airplane mode during a sync:** the batch finishes with the rest marked as network errors, and nothing hangs.
-12. **1.0.18 on the same environment:** unchanged behaviour.
+5. **The same customer from another partner, online:** the note shows, then the refusal dialog with "another sale". Nothing is queued.
+6. **The same customer from another partner, offline:** it queues, then sync shows R1 on the card and the server's message in the detail sheet. "Sync all" skips it afterwards. Edit it to a different name, and it syncs.
+7. **A batch of three queued sales with the middle one refused:** the first and third save, and the toast says "1 not saved (same customer)".
+8. **A refused sale sent again with "Synchronize this sale":** no photo is uploaded again.
+9. **Refresh twice with nothing changed:** the second is a 304. The debug screen shows the key count and the rules version.
+10. **Sign in as the other partner on the same phone:** that partner's keys only.
+11. **Edit a sale** without changing the phone or name: no note, and it saves. Change the name to match another sale on that number: refused, with the error under the field.
+12. **Airplane mode during a sync:** the batch finishes with the rest marked as network errors, and nothing hangs.
+13. **A sale whose reply was lost** (turn data off just after tapping submit, then on): it ends up saved once, and is never marked refused.
+14. **1.0.18 on the same environment:** unchanged behaviour.
 
 ---
 
@@ -427,8 +512,9 @@ Against the test environment we send you, with two test partners, on a real phon
 - The PR link and the APK version (1.0.19 and its build number).
 - The output of the Dart tests.
 - Screenshots of these screens:
-  - the note and the confirmation
-  - the red error from the device
-  - the server refusal dialog online
-  - a refused queued sale on its card and in its detail sheet
+  - the note and the confirmation;
+  - the red error from the device;
+  - the server's refusal dialog online;
+  - a refused queued sale on its card and in its detail sheet;
+  - the debug screen with the key count.
 - A note of anything here that did not match the code you found. Line numbers drift, and we would rather fix this document than have you guess.
