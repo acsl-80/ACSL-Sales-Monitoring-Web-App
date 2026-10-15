@@ -8,11 +8,12 @@ import { metricValue } from "../../../lib/metricValue";
 import { plural } from "../../../lib/plural";
 
 /**
- * Needs a decision (Phase 26, C2). Five lines, each a count and the verb
+ * Needs a decision (Phase 26, C2). Six lines, each a count and the verb
  * that clears it, in the colour of the verb. Collapsed to counts on purpose:
  * the work happens on the page each verb opens, and this card exists so a
  * manager sees in one glance whether anything is waiting on them.
  *
+ *   Same customer twice, unconfirmed    Review   the register, narrowed to repeats
  *   Shared phone numbers, unconfirmed   Review   the register on this page
  *   Fixed by Sales, awaiting review      Review   the corrections list
  *   Stuck at the call limit              Open     the queue, exhausted preset
@@ -51,14 +52,22 @@ export default function NeedsDecision({ board, agentsMeta, metrics, waiting, can
 
   useEffect(() => {
     let alive = true;
+    // The server counts the whole register. Counting a page of rows here
+    // stopped at 200 numbers, and a confirmed number that gained a new,
+    // unconfirmed sale was missed.
     dataCenterClient
-      .sharedPhones({ limit: 200 })
+      .sharedPhones({ limit: 1 })
       .then((r) => {
         if (!alive) return;
-        const open = (r.rows ?? []).filter((g) => !g.any_confirmed);
-        setPhones({ numbers: open.length, stoves: open.reduce((n, g) => n + (g.stoves?.length ?? 0), 0) });
+        const c = r.counts ?? { open_numbers: 0, open_stoves: 0, same_buyer_numbers: 0, same_buyer_stoves: 0 };
+        setPhones({
+          sameNumbers: c.same_buyer_numbers,
+          sameStoves: c.same_buyer_stoves,
+          numbers: c.open_numbers - c.same_buyer_numbers,
+          stoves: c.open_stoves - c.same_buyer_stoves,
+        });
       })
-      .catch(() => alive && setPhones({ numbers: 0, stoves: 0 }));
+      .catch(() => alive && setPhones({ sameNumbers: 0, sameStoves: 0, numbers: 0, stoves: 0 }));
     return () => { alive = false; };
   }, [board?.day]);
 
@@ -106,8 +115,14 @@ export default function NeedsDecision({ board, agentsMeta, metrics, waiting, can
       {error && <p className="mx-4 mt-3 rounded-md bg-red-50 px-3 py-2 text-xs text-red-700">{error}</p>}
       <ul className="divide-y divide-gray-100">
         <Row
+          label="Same customer recorded twice, unconfirmed"
+          sub={phones ? `${plural(phones.sameNumbers, "number")} on ${plural(phones.sameStoves, "stove")}, one name entered more than once` : "reading the register"}
+          count={phones?.sameNumbers}
+          action={{ tone: "review", text: "Review", href: "/data-center/call-centre/shared-phones?only=same-buyer" }}
+        />
+        <Row
           label="Shared phone numbers, unconfirmed"
-          sub={phones ? `${plural(phones.numbers, "number")} on ${plural(phones.stoves, "stove")}, nobody has rung them yet` : "reading the register"}
+          sub={phones ? `${plural(phones.numbers, "number")} on ${plural(phones.stoves, "stove")}, different names, nobody has rung them yet` : "reading the register"}
           count={phones?.numbers}
           action={{ tone: "review", text: "Review", href: "/data-center/call-centre/shared-phones" }}
         />

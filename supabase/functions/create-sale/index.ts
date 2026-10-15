@@ -585,6 +585,9 @@ Deno.serve(async (req) => {
     // A failed lookup lets the sale through, as before: refusing every sale when
     // the lookup hiccups would be worse than missing a rare repeat.
     let sharesPhoneWith: { id: string; transaction_id: string | null; same_buyer: boolean }[] = [];
+    // Every live sale on the number, whoever may see it: what the register
+    // is written from once the sale has saved (Phase 4).
+    let othersOnNumber: { id: string; same_buyer: boolean }[] = [];
     {
       const tail = phoneTail(phone);
       if (tail) {
@@ -629,6 +632,7 @@ Deno.serve(async (req) => {
             });
           }
           sharesPhoneWith = marked.filter((m) => visible.has(m.id));
+          othersOnNumber = marked.map((m) => ({ id: m.id, same_buyer: m.same_buyer }));
         }
       }
     }
@@ -841,6 +845,35 @@ Deno.serve(async (req) => {
       } else {
         console.log("✅ Initial installment payment recorded");
       }
+    }
+
+    /*
+     * The call centre's register (Phase 4, decision 1 of 2026-10-15). A sale
+     * on a number other live sales hold goes on data_center.shared_phones with
+     * every other sale on it, both ends, unconfirmed, so it is held from the
+     * creditable count until a call confirms it. The same customer twice
+     * (only digitisation gets that far) is marked same_buyer on both sides.
+     *
+     * After the reply, so the seller never waits for it. A failure is logged
+     * and costs only the register row: the sale stands, the stove record
+     * still shows the sharing, and the Phase 5 job can write it again.
+     */
+    if (othersOnNumber.length > 0) {
+      const sameBuyerIds = othersOnNumber.filter((o) => o.same_buyer).map((o) => o.id);
+      const register = server
+        .rpc("register_shared_phone", {
+          p_sale_id: saleId,
+          p_same_buyer_ids: sameBuyerIds.length > 0 ? [saleId, ...sameBuyerIds] : [],
+          p_source: allowSharedPhone ? "digitalisation" : "sales_app",
+          p_actor: userId,
+        })
+        .then(({ error }) => {
+          if (error) console.error("Shared-phone register failed:", error.message);
+        });
+      // deno-lint-ignore no-explicit-any
+      const runtime = (globalThis as any).EdgeRuntime;
+      if (runtime?.waitUntil) runtime.waitUntil(register);
+      else await register;
     }
 
     return withCors(

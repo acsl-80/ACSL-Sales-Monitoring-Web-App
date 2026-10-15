@@ -23,6 +23,11 @@ import {
 
 const dateOf = (v) => (v ? new Date(v).toLocaleDateString() : "-");
 
+const KIND_LABEL = {
+  same_buyer: "same customer twice",
+  shared_number: "different people",
+};
+
 const SOURCE_LABEL = {
   digitalisation: "flagged while typing up",
   call_centre: "confirmed on a call",
@@ -38,6 +43,7 @@ const EXPORT_COLUMNS = [
   { key: "lga", label: "LGA" },
   { key: "sales_date", label: "Sales date" },
   { key: "phone_as_written", label: "Number as written" },
+  { key: "kind", label: "Kind" },
   { key: "source", label: "How it was found" },
   { key: "confirmed", label: "Confirmed" },
   { key: "recorded_by", label: "Recorded by" },
@@ -79,19 +85,31 @@ function Group({ group }) {
         <span className="rounded-full bg-amber-100 px-2 py-0.5 text-xs font-medium text-amber-800">
           {plural(group.stove_count, "stove")}
         </span>
-        {group.any_confirmed ? (
+        {group.any_same_buyer && (
+          <span
+            data-testid="same-buyer-tag"
+            className="rounded-full bg-red-100 px-2 py-0.5 text-xs font-semibold text-red-800"
+          >
+            same customer twice
+          </span>
+        )}
+        {group.open_count === 0 ? (
           <span className="inline-flex items-center gap-1 rounded-full bg-(--dc-accent-soft) px-2 py-0.5 text-xs font-medium text-(--dc-accent-strong)">
             <Check className="h-3 w-3" /> confirmed on a call
           </span>
         ) : (
           <span className="rounded-full bg-gray-100 px-2 py-0.5 text-xs text-gray-600">
-            not confirmed yet
+            {group.open_count === group.stove_count
+              ? "not confirmed yet"
+              : `${plural(group.open_count, "stove")} not confirmed yet`}
           </span>
         )}
         <span className="text-xs text-gray-600">
-          {looksLikeHousehold
-            ? "same name, same state — reads like one household"
-            : "different names or places — worth checking for a mistyped digit"}
+          {group.any_same_buyer
+            ? "the same name on one number: ring to find out which stove this customer has"
+            : looksLikeHousehold
+              ? "same name, same state: reads like one household"
+              : "different names or places: worth checking for a mistyped digit"}
         </span>
         <span className="ml-auto text-xs text-gray-500">{dateOf(group.last_touched)}</span>
       </button>
@@ -119,7 +137,14 @@ function Group({ group }) {
                       {s.stove_id ?? "-"}
                     </Link>
                   </td>
-                  <td className="py-1.5 pr-3 font-medium text-gray-900">{s.buyer ?? "-"}</td>
+                  <td className="py-1.5 pr-3 font-medium text-gray-900">
+                    {s.buyer ?? "-"}
+                    {s.kind === "same_buyer" && (
+                      <span className="ml-2 rounded bg-red-100 px-1.5 py-0.5 text-xs font-semibold text-red-800">
+                        same customer
+                      </span>
+                    )}
+                  </td>
                   <td className="py-1.5 pr-3 text-gray-700">{s.partner ?? "-"}</td>
                   <td className="py-1.5 pr-3 text-gray-700">{s.address ?? "-"}</td>
                   <td className="py-1.5 pr-3 text-gray-700">{s.lga ?? "-"}</td>
@@ -139,8 +164,11 @@ function Group({ group }) {
   );
 }
 
-export default function SharedPhones() {
+export default function SharedPhones({ initialSameBuyerOnly = false }) {
   const [groups, setGroups] = useState(null);
+  const [counts, setCounts] = useState(null);
+  // Show all, then let the toggle narrow it; "Needs a decision" opens it narrowed.
+  const [sameBuyerOnly, setSameBuyerOnly] = useState(initialSameBuyerOnly);
   const [error, setError] = useState(null);
   const [search, setSearch] = useState("");
   const [applied, setApplied] = useState("");
@@ -152,9 +180,10 @@ export default function SharedPhones() {
 
   const load = useCallback(() => {
     dataCenterClient
-      .sharedPhones({ search: applied || undefined })
+      .sharedPhones({ search: applied || undefined, sameBuyerOnly: sameBuyerOnly || undefined })
       .then((r) => {
         setGroups(r.rows ?? []);
+        setCounts(r.counts ?? null);
         setError(null);
       })
       .catch((err) =>
@@ -162,13 +191,18 @@ export default function SharedPhones() {
           err instanceof DataCenterError ? err.message : "Could not load the register.",
         ),
       );
-  }, [applied]);
+  }, [applied, sameBuyerOnly]);
 
   useEffect(load, [load]);
 
   const flat = () =>
     (groups ?? []).flatMap((g) =>
-      g.stoves.map((s) => ({ ...s, phone_tail: g.phone_tail, confirmed: s.confirmed ? "yes" : "no" })),
+      g.stoves.map((s) => ({
+        ...s,
+        phone_tail: g.phone_tail,
+        kind: KIND_LABEL[s.kind] ?? s.kind,
+        confirmed: s.confirmed ? "yes" : "no",
+      })),
     );
 
   return (
@@ -181,6 +215,21 @@ export default function SharedPhones() {
             {plural(groups.length, "number")}
           </span>
         )}
+        {counts && (
+          <span data-testid="shared-phone-counts" className="text-xs text-gray-600">
+            {plural(counts.open_numbers, "number")} waiting for a call,{" "}
+            {counts.same_buyer_numbers} with the same customer twice
+          </span>
+        )}
+        <label className="inline-flex cursor-pointer items-center gap-1.5 text-xs text-gray-700">
+          <input
+            type="checkbox"
+            checked={sameBuyerOnly}
+            onChange={(e) => setSameBuyerOnly(e.target.checked)}
+            className="h-3.5 w-3.5"
+          />
+          Same customer twice only
+        </label>
         <div className="flex w-full flex-wrap items-center gap-2 sm:ml-auto sm:w-auto">
           <div className="relative w-full min-w-0 sm:w-56">
             <Search className="pointer-events-none absolute left-2.5 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-400" />
@@ -218,7 +267,9 @@ export default function SharedPhones() {
         <p className="m-4 rounded-lg border border-dashed border-(--dc-accent)/30 p-6 text-center text-sm text-gray-500">
           {applied
             ? "No number here matches that."
-            : "No number is carrying more than one stove. Numbers land here when a sheet is typed up with one repeated, or when an agent confirms on a call that a household has two."}
+            : sameBuyerOnly
+              ? "No number holds the same customer twice."
+              : "No number is carrying more than one stove. Numbers land here when a sale is entered on a number another sale holds (in the sales app or while typing up), or when an agent confirms on a call that a household has two."}
         </p>
       ) : (
         <ul>

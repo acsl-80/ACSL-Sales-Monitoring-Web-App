@@ -723,8 +723,14 @@ export const dataCenterClient = {
    * from a typo and the whole point of the surface is that somebody decides
    * which it is.
    */
-  sharedPhones: (params: { search?: string; confirmedOnly?: boolean; limit?: number } = {}) =>
-    call<{ rows: SharedPhoneGroup[] }>("data-center-read", "shared_phones", params),
+  sharedPhones: (
+    params: { search?: string; confirmedOnly?: boolean; sameBuyerOnly?: boolean; limit?: number } = {},
+  ) =>
+    call<{ rows: SharedPhoneGroup[]; counts: SharedPhoneCounts | null }>(
+      "data-center-read",
+      "shared_phones",
+      params,
+    ),
 
   /**
    * The earliest date the module knows about, so the period control offers
@@ -890,10 +896,22 @@ export type StoveSearchResult = {
 };
 
 /** One phone number and every stove recorded against it. */
+/** The whole register's open work, counted by the server, not from a page. */
+export type SharedPhoneCounts = {
+  open_numbers: number;
+  open_stoves: number;
+  same_buyer_numbers: number;
+  same_buyer_stoves: number;
+};
+
 export type SharedPhoneGroup = {
   phone_tail: string;
   stove_count: number;
   any_confirmed: boolean;
+  /** Rows not yet confirmed on a call. A confirmed number that gains a sale is open again. */
+  open_count: number;
+  /** The same customer recorded twice is among these stoves (phone and buyer rule). */
+  any_same_buyer: boolean;
   first_seen: string;
   last_touched: string;
   stoves: {
@@ -901,6 +919,7 @@ export type SharedPhoneGroup = {
     stove_id: string | null;
     phone_as_written: string | null;
     source: "digitalisation" | "call_centre" | "sales_app";
+    kind: "shared_number" | "same_buyer";
     confirmed: boolean;
     note: string | null;
     buyer: string | null;

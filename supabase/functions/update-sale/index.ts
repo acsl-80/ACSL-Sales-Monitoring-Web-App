@@ -487,6 +487,31 @@ Deno.serve(async (req) => {
       return jsonError("Failed to update sale", 500);
     }
 
+    /*
+     * The call centre's register (Phase 4). When the edit moved the sale to
+     * another number, the register follows it: unconfirmed rows for the number
+     * it left are cleared (and that number's rest, if it is no longer shared),
+     * and if the new number is shared, every sale on it is registered and held
+     * until a call. After the reply, so the editor never waits; a failure is
+     * logged and costs only the register row.
+     */
+    if (phoneTail(phone) !== phoneTail(sale.phone)) {
+      const register = supabase
+        .rpc("register_shared_phone", {
+          p_sale_id: saleId,
+          p_same_buyer_ids: [],
+          p_source: "sales_app",
+          p_actor: userId,
+        })
+        .then(({ error }) => {
+          if (error) console.error("Shared-phone register failed:", error.message);
+        });
+      // deno-lint-ignore no-explicit-any
+      const runtime = (globalThis as any).EdgeRuntime;
+      if (runtime?.waitUntil) runtime.waitUntil(register);
+      else await register;
+    }
+
     return withCors(
       new Response(
         JSON.stringify({ success: true, message: "Sale updated", status: (updated as { status?: string }).status ?? null, data: { id: saleId } }),

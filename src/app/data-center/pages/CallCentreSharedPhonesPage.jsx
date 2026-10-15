@@ -1,3 +1,4 @@
+import { useSearch } from "@tanstack/react-router";
 import Link from "@/compat/Link";
 import { ArrowLeft } from "lucide-react";
 import DataCentreShell from "../components/DataCentreShell";
@@ -13,16 +14,17 @@ import { DATA_CENTER_FEATURES } from "../lib/features";
  * on it. The register itself is the component that already existed.
  */
 function Inner() {
+  const search = useSearch({ from: "/data-center/call-centre_/shared-phones" });
   return (
     <div className="space-y-4">
       <Link href="/data-center/call-centre" className="inline-flex items-center gap-1 rounded-md border border-gray-300 px-2.5 py-1 text-xs font-semibold text-gray-700 hover:border-(--dc-accent)">
         <ArrowLeft className="h-3.5 w-3.5" /> Control centre
       </Link>
       <p className="max-w-3xl rounded-lg border border-(--dc-brief-place) bg-white px-4 py-3 text-sm text-gray-800 shadow-[inset_0_0_0_3px_var(--dc-brief-place-soft)]">
-        A number on two stoves is rung once, and the call decides. A number flagged at digitisation is a guess; one confirmed on a call is a fact. Confirm records that one buyer holds both stoves. A number that turns out wrong goes back to Sales from the call form, with the reason filled in.
+        A number on two stoves is rung once, and the call decides. Different names on one number are usually a family sharing a phone. The same name on one number is the same customer recorded twice, which only digitisation can do: those are listed first. Every one stays out of the creditable count until a call confirms it. Confirm records that the stoves are right as they are. A number that turns out wrong goes back to Sales from the call form, with the reason filled in.
       </p>
       <div id="shared-phones">
-        <SharedPhones />
+        <SharedPhones initialSameBuyerOnly={search.only === "same-buyer"} />
       </div>
     </div>
   );

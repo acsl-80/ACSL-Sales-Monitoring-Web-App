@@ -2897,16 +2897,31 @@ serve(async (req) => {
           return json({ error: "Not permitted", code: "no_feature" }, 403, cors);
         }
 
-        const b = body as { search?: string; confirmedOnly?: boolean; limit?: number };
+        const b = body as {
+          search?: string;
+          confirmedOnly?: boolean;
+          sameBuyerOnly?: boolean;
+          limit?: number;
+        };
         const limit = Math.min(Math.max(Number(b.limit) || 100, 1), 500);
         const term = String(b.search ?? "").trim().slice(0, 100);
 
         return await withReadConnection(async (connection) => {
+          /*
+           * Since the phone and buyer rule (Phase 4) each row carries its kind:
+           * 'same_buyer' is the same customer recorded twice (only digitisation
+           * can), 'shared_number' different people on one number. A number
+           * holding a repeat comes first, then the most recently touched.
+           * `open_count` is the rows still unconfirmed: a confirmed number that
+           * gains a new sale is open again, which `any_confirmed` alone hid.
+           */
           const rows = await connection.queryObject({
             text: `with grouped as (
                      select sp.phone_tail,
                             count(*)::int as stove_count,
                             bool_or(sp.confirmed) as any_confirmed,
+                            (count(*) filter (where sp.confirmed is false))::int as open_count,
+                            bool_or(sp.kind = 'same_buyer') as any_same_buyer,
                             min(sp.created_at) as first_seen,
                             max(sp.updated_at) as last_touched,
                             json_agg(json_build_object(
@@ -2914,6 +2929,7 @@ serve(async (req) => {
                               'stove_id', sp.stove_id,
                               'phone_as_written', sp.phone_as_written,
                               'source', sp.source,
+                              'kind', sp.kind,
                               'confirmed', sp.confirmed,
                               'note', sp.note,
                               'buyer', s.end_user_name,
@@ -2934,11 +2950,34 @@ serve(async (req) => {
                     where ($1::text = '' or phone_tail like '%' || $1 || '%'
                            or stoves::text ilike '%' || $1 || '%')
                       and ($2::boolean is not true or any_confirmed)
-                    order by last_touched desc
+                      and ($4::boolean is not true or any_same_buyer)
+                    order by (any_same_buyer and open_count > 0) desc, last_touched desc
                     limit $3`,
-            args: [term, b.confirmedOnly === true, limit],
+            args: [term, b.confirmedOnly === true, limit, b.sameBuyerOnly === true],
           });
-          return json({ data: { rows: rows.rows } }, 200, cors);
+          /*
+           * The whole register's open work, counted in the database rather than
+           * from the page of rows above, which stops at `limit` (production
+           * holds more numbers than "Needs a decision" used to read).
+           */
+          const counts = await connection.queryObject({
+            text: `with grouped as (
+                     select phone_tail,
+                            (count(*) filter (where confirmed is false))::int as open_count,
+                            bool_or(kind = 'same_buyer') as any_same_buyer
+                       from data_center.shared_phones
+                      group by phone_tail
+                     having count(*) > 1
+                   )
+                   select (count(*) filter (where open_count > 0))::int as open_numbers,
+                          coalesce(sum(open_count), 0)::int as open_stoves,
+                          (count(*) filter (where open_count > 0 and any_same_buyer))::int
+                            as same_buyer_numbers,
+                          coalesce(sum(open_count) filter (where any_same_buyer), 0)::int
+                            as same_buyer_stoves
+                     from grouped`,
+          });
+          return json({ data: { rows: rows.rows, counts: counts.rows[0] ?? null } }, 200, cors);
         });
       }
 
