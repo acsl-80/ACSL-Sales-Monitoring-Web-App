@@ -198,7 +198,8 @@ test.describe.serial("the phone app's list", () => {
   test("an unchanged list costs a 304; a new sale changes the tag", async ({ page }) => {
     await signIn(page, USERS.partner);
     const first = await fetchList(page);
-    expect(first.etag).toMatch(/^"[0-9a-f]{16}"$/);
+    // Weak or strong: the gateway may mark it weak on the way out.
+    expect(first.etag).toMatch(/^(W\/)?"[0-9a-f]{16}"$/);
     const again = await fetchList(page);
     expect(again.etag).toBe(first.etag);
 

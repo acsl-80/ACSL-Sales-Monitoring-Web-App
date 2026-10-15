@@ -156,7 +156,13 @@ serve(async (req) => {
     });
     const etag = await etagOf(body);
     const headers = { ...corsHeaders, "Content-Type": "application/json", ETag: etag };
-    if (req.headers.get("If-None-Match") === etag) {
+    // The gateway may hand the tag on as a weak one (W/"..."), and a client
+    // sends back what it was given, so the W/ prefix is ignored, and a list
+    // of tags is accepted.
+    const sentBack = (req.headers.get("If-None-Match") ?? "")
+      .split(",")
+      .map((t) => t.trim().replace(/^W\//, ""));
+    if (sentBack.includes(etag)) {
       return new Response(null, { status: 304, headers });
     }
     return new Response(body, { status: 200, headers });
