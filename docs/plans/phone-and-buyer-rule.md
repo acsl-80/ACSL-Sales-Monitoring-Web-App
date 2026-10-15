@@ -237,6 +237,7 @@ One test per behaviour, each watched failing on today's code first:
 - **Order** (2026-10-14): here first, then the phone app.
 - **Field sales on shared numbers** (2026-10-15, decision 1): held until a call confirms them, like digitised ones. D65.
 - **Verified sales held only by the register** (2026-10-15, decision 2): confirm the different-name ones by script after release; the same customer twice waits for a call. D66.
+- **The title list and the refusal's wording** (2026-10-15, item 3): both as built. The list is server configuration, so a later change needs no app release.
 
 ## Waiting on the operator
 
@@ -253,4 +254,4 @@ One test per behaviour, each watched failing on today's code first:
    - **Dry run on production (read only):** 104 rows on 62 numbers. All 104 sales leave the hold, and 15 numbers close completely. They are the same 104 sales the analysis's reason ladder gives, one for one.
    - **Tests:** `host-phone-buyer-confirm` passes 4 of 4 on the test database. It covers fourteen sales on seven numbers, one for each gate. Broken on purpose four ways (repeats not excluded, completeness ignored, the undo blind to a later call, the undo leaving the confirmation's time), it failed every time. An independent review found nothing blocking; its test points are in.
    - **Release step:** after the kind backfill, the dry run, then this, then the next analysis run. Creditable counts rise by about 104.
-3. **The title list** and **what an agent is told about the other sale** (proposal: its transaction id only).
+3. **The title list** and **what an agent is told about the other sale** (proposal: its transaction id only). **Decided 2026-10-15 by the operator: both as built.** The list is the 13 titles under The buyer key, with Mama and Baba kept as names. A refusal names the other sale's transaction id when the seller may see that sale, and says "another sale" otherwise.
