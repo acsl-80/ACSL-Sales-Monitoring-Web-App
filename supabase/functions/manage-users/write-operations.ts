@@ -15,6 +15,24 @@ import {
   CallerScope,
 } from "./scope.ts";
 
+// Roles that belong to one partner. create-sale refuses a caller with no
+// organisation, so a login in one of these without a real partner can never sell.
+const ROLES_NEEDING_PARTNER = ["partner", ...ORG_USER_ROLES];
+
+async function assertPartnerFor(supabase: any, role: string, organizationId: string | null) {
+  if (!ROLES_NEEDING_PARTNER.includes(role)) return;
+  if (!organizationId) {
+    throw new Error(`validation: A partner must be chosen for a ${role} user`);
+  }
+  const { data, error } = await supabase
+    .from("organizations")
+    .select("id")
+    .eq("id", organizationId)
+    .maybeSingle();
+  if (error) throw new Error(`Database error: ${error.message}`);
+  if (!data) throw new Error("validation: The chosen partner does not exist");
+}
+
 export async function createUser(
   supabase: any,
   userData: any,
@@ -41,6 +59,8 @@ export async function createUser(
         throw new Error("validation: Your account has no organization to assign agents to");
       }
     }
+
+    await assertPartnerFor(supabase, validatedData.role, validatedData.organization_id);
 
     // Managers can only bind org-scoped users to partners assigned to them.
     if (
@@ -241,6 +261,16 @@ export async function updateUser(
           validatedData.organization_id = caller.organizationId;
         }
       }
+    }
+
+    // Checked only when the request names a role or a partner, so a status
+    // change still reaches a login that already lacks one.
+    if (validatedData.role !== undefined || validatedData.organization_id !== undefined) {
+      await assertPartnerFor(
+        supabase,
+        validatedData.role ?? existingUser.role,
+        validatedData.organization_id !== undefined ? validatedData.organization_id : existingUser.organization_id,
+      );
     }
 
     console.log("🔍 User found, proceeding with update");

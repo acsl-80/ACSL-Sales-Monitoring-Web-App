@@ -50,6 +50,7 @@ Legend: **Full access** = complete module access • **No Access / Hidden** = me
 - **Partners and Partner Agents**: no access to Partner Management or Agent Management.
 - **Partners**: no access to the ACSL Agents Performance Report tab.
 - **Partners**: in User Management, can create **only** Partner Agent users; the role dropdown is locked to "Partner Agent" and the partner's own organization is preselected in the form (no picker choice).
+- **Partner, Partner Agent and Agent logins belong to exactly one partner.** The User Manager form asks for it when creating one or moving a user into one of these groups, and `manage-users` refuses either without a partner that exists. `create-sale` refuses a caller with no organization, so a login saved without one can never sell.
 - **Only Super Admin** has access to: User Groups, Map, Settings.
 - **ACSL Agent Managers**: can access records for ACSL agents and partners assigned to them (their own scope), plus records for partners assigned to those partners.
 - **Partner Agent and (plain) ACSL Agent dashboard scope is split by data type, not a single blanket rule** — both are "created under" a scope-owner (a partner org, or a set of assigned partners) and inherit that owner's stove ledger, but their own sales stay personal:
