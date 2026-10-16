@@ -52,6 +52,15 @@ function parseStoveCSV(text) {
 
 const emptyStove = () => ({ stove_id: "", factory: "", sales_reference: "" });
 
+// The shared Modal has no footer slot: its children scroll inside px-6 pb-6.
+// This bar pins to the bottom of that scroll area so the actions stay in view
+// on a short screen.
+const ModalFooter = ({ children }) => (
+  <div className="sticky bottom-0 -mx-6 -mb-6 mt-5 px-6 py-4 bg-white border-t flex justify-end gap-2">
+    {children}
+  </div>
+);
+
 export default function AddPartnerModal({ isOpen, onClose, onSuccess }) {
   const { supabase } = useAuth();
   const { toast } = useToast();
@@ -214,15 +223,10 @@ export default function AddPartnerModal({ isOpen, onClose, onSuccess }) {
     return (
       <Modal
         open={isOpen}
-        onClose={handleClose}
+        onOpenChange={(open) => !open && handleClose()}
         size="lg"
         title={result.organization?.action === "updated" ? "Partner updated" : "Partner created"}
-        subtitle={`${result.organization?.partner_name} (${result.organization?.partner_id})`}
-        footer={
-          <div className="flex justify-end">
-            <Button onClick={handleClose} className="bg-green-600 hover:bg-green-700 text-white min-w-[120px]">Done</Button>
-          </div>
-        }
+        description={`${result.organization?.partner_name} (${result.organization?.partner_id})`}
       >
         <div className="space-y-4 py-1">
           {login ? (
@@ -261,6 +265,9 @@ export default function AddPartnerModal({ isOpen, onClose, onSuccess }) {
             )}
           </div>
         </div>
+        <ModalFooter>
+          <Button onClick={handleClose} className="bg-green-600 hover:bg-green-700 text-white min-w-[120px]">Done</Button>
+        </ModalFooter>
       </Modal>
     );
   }
@@ -268,18 +275,10 @@ export default function AddPartnerModal({ isOpen, onClose, onSuccess }) {
   return (
     <Modal
       open={isOpen}
-      onClose={handleClose}
+      onOpenChange={(open) => !open && !submitting && handleClose()}
       size="3xl"
       title="Add Partner"
-      subtitle="Creates partner account, credentials, and assigns stove IDs"
-      footer={
-        <div className="flex justify-end gap-2">
-          <Button variant="outline" onClick={handleClose} disabled={submitting}>Cancel</Button>
-          <Button onClick={handleSubmit} disabled={submitting} className="bg-green-600 hover:bg-green-700 text-white min-w-[120px]">
-            {submitting ? <><Loader2 className="h-4 w-4 animate-spin mr-2" />Creating...</> : "Create Partner"}
-          </Button>
-        </div>
-      }
+      description="Creates partner account, credentials, and assigns stove IDs"
     >
       <div className="space-y-5 py-1">
 
@@ -424,6 +423,12 @@ export default function AddPartnerModal({ isOpen, onClose, onSuccess }) {
         </div>
 
       </div>
+      <ModalFooter>
+        <Button variant="outline" onClick={handleClose} disabled={submitting}>Cancel</Button>
+        <Button onClick={handleSubmit} disabled={submitting} className="bg-green-600 hover:bg-green-700 text-white min-w-[120px]">
+          {submitting ? <><Loader2 className="h-4 w-4 animate-spin mr-2" />Creating...</> : "Create Partner"}
+        </Button>
+      </ModalFooter>
     </Modal>
   );
 }

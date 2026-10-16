@@ -25,8 +25,15 @@ test("a super admin creates a partner with two stove IDs and sees its login", as
   await signIn(page, USERS.admin);
   await page.goto("/partners");
 
-  await page.getByRole("button", { name: "Add Partner" }).click();
   const dialog = page.getByRole("dialog");
+  // The form closes. It used to hand the shared Modal an onClose it never
+  // reads, so Escape and the X did nothing.
+  await page.getByRole("button", { name: "Add Partner" }).click();
+  await expect(dialog.getByText("Partner Information")).toBeVisible();
+  await page.keyboard.press("Escape");
+  await expect(dialog).toBeHidden();
+
+  await page.getByRole("button", { name: "Add Partner" }).click();
   await expect(dialog.getByText("Partner Information")).toBeVisible();
 
   await dialog.getByPlaceholder("e.g. Acme Stoves Ltd").fill(NAME);
