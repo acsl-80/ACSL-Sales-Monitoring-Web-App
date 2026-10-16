@@ -71,7 +71,8 @@ test("a super admin creates a partner with two stove IDs and sees its login", as
   const profiles = await branchSql<{ role: string }>(
     `select role from profiles where organization_id = '${org.id}'`,
   );
-  expect(profiles.map((p) => p.role)).toEqual(["admin"]);
+  // external-sync asks for "admin"; a profiles trigger stores it as "partner".
+  expect(profiles.map((p) => p.role)).toEqual(["partner"]);
 
   const creds = await branchSql<{ n: number }>(
     `select count(*)::int as n from credentials where organization_id = '${org.id}' and password = '${password.replace(/'/g, "''")}'`,
