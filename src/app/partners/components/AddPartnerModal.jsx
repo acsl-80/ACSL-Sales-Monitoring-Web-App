@@ -12,7 +12,7 @@ import {
 } from "@/components/ui/select";
 import Modal from "@/components/ui/modal";
 import { FormGrid, FormFieldWrapper } from "@/components/ui/form-grid";
-import { Plus, Trash2, Upload, X, Loader2 } from "lucide-react";
+import { Plus, Trash2, Upload, X, Loader2, Copy, CheckCircle2 } from "lucide-react";
 import { lgaAndStates } from "../../constants";
 import { useAuth } from "../../contexts/useAuth";
 import { useToast } from "@/components/ui/toast";
@@ -52,6 +52,15 @@ function parseStoveCSV(text) {
 
 const emptyStove = () => ({ stove_id: "", factory: "", sales_reference: "" });
 
+// The shared Modal has no footer slot: its children scroll inside px-6 pb-6.
+// This bar pins to the bottom of that scroll area so the actions stay in view
+// on a short screen.
+const ModalFooter = ({ children }) => (
+  <div className="sticky bottom-0 -mx-6 -mb-6 mt-5 px-6 py-4 bg-white border-t flex justify-end gap-2">
+    {children}
+  </div>
+);
+
 export default function AddPartnerModal({ isOpen, onClose, onSuccess }) {
   const { supabase } = useAuth();
   const { toast } = useToast();
@@ -59,6 +68,9 @@ export default function AddPartnerModal({ isOpen, onClose, onSuccess }) {
 
   const [submitting, setSubmitting] = useState(false);
   const [csvError, setCsvError] = useState("");
+  // What external-sync sent back. The password is shown here once; the
+  // credentials page keeps it afterwards.
+  const [result, setResult] = useState(null);
 
   const [form, setForm] = useState({
     partner_id: "",
@@ -120,7 +132,17 @@ export default function AddPartnerModal({ isOpen, onClose, onSuccess }) {
     setForm({ partner_id: "", partner_name: "", partner_type: "partner", email: "", contact_person: "", contact_phone: "", alternative_phone: "", address: "", state: "", branch: "" });
     setStoveRows([emptyStove()]);
     setCsvError("");
+    setResult(null);
     onClose();
+  };
+
+  const copy = async (text) => {
+    try {
+      await navigator.clipboard.writeText(text);
+      toast({ variant: "success", title: "Copied" });
+    } catch {
+      toast({ variant: "error", title: "Could not copy", description: "Select the text and copy it by hand." });
+    }
   };
 
   const handleSubmit = async () => {
@@ -130,6 +152,16 @@ export default function AddPartnerModal({ isOpen, onClose, onSuccess }) {
     }
     if (!form.partner_id.trim()) {
       toast({ variant: "error", title: "Partner ID is required" });
+      return;
+    }
+    // organizations.state and organizations.contact_phone are NOT NULL, so
+    // external-sync refuses a partner without them.
+    if (!form.state) {
+      toast({ variant: "error", title: "State is required" });
+      return;
+    }
+    if (!form.contact_phone.trim()) {
+      toast({ variant: "error", title: "Phone is required" });
       return;
     }
 
@@ -175,15 +207,7 @@ export default function AddPartnerModal({ isOpen, onClose, onSuccess }) {
         throw new Error(data.message || "Failed to create partner");
       }
 
-      const action = data.data?.organization?.action;
-      const stovesCreated = data.data?.summary?.stove_ids_created ?? 0;
-      toast({
-        variant: "success",
-        title: action === "updated" ? "Partner updated" : "Partner created",
-        description: stovesCreated > 0 ? `${stovesCreated} stove ID(s) assigned` : undefined,
-      });
-
-      handleClose();
+      setResult({ ...data.data, requested: payload.stove_ids.length });
       onSuccess?.();
     } catch (err) {
       toast({ variant: "error", title: "Error", description: err.message });
@@ -194,21 +218,83 @@ export default function AddPartnerModal({ isOpen, onClose, onSuccess }) {
 
   const filledStoves = stoveRows.filter((r) => r.stove_id.trim()).length;
 
+  if (result) {
+    const created = result.summary?.stove_ids_created ?? 0;
+    const skipped = result.summary?.stove_ids_skipped ?? 0;
+    const missed = Math.max(0, result.requested - created - skipped);
+    const login = result.user?.created ? result.user : null;
+    const fields = login
+      ? [
+          { label: "Login", value: login.login_identifier },
+          { label: "Password", value: login.password, mono: true },
+        ]
+      : [];
+
+    return (
+      <Modal
+        open={isOpen}
+        onOpenChange={(open) => !open && handleClose()}
+        size="lg"
+        title={result.organization?.action === "updated" ? "Partner updated" : "Partner created"}
+        description={`${result.organization?.partner_name} (${result.organization?.partner_id})`}
+      >
+        <div className="space-y-4 py-1">
+          {login ? (
+            <div className="p-4 bg-green-50 border border-green-200 rounded-lg space-y-3">
+              <div className="flex items-center gap-2 text-sm font-semibold text-green-800">
+                <CheckCircle2 className="h-4 w-4" />
+                Partner login
+              </div>
+              {fields.map((f) => (
+                <div key={f.label} className="flex items-center justify-between gap-3 p-2 bg-white rounded border">
+                  <div className="min-w-0">
+                    <Label className="text-xs text-gray-600">{f.label}</Label>
+                    <p className={`text-sm break-all ${f.mono ? "font-mono" : "font-medium"}`}>{f.value}</p>
+                  </div>
+                  <Button type="button" variant="outline" size="sm" className="h-8 shrink-0" onClick={() => copy(f.value)}>
+                    <Copy className="h-3.5 w-3.5 mr-1" />Copy
+                  </Button>
+                </div>
+              ))}
+              <p className="text-xs text-green-800">
+                Share these with the partner. The password also stays on the Credentials page under Settings.
+              </p>
+            </div>
+          ) : result.organization?.action === "created" ? (
+            // external-sync makes a login only for a new partner, so a retry
+            // with the same Partner ID will not make one either.
+            <div className="p-4 bg-red-50 border border-red-200 rounded-lg text-sm text-red-800">
+              The partner was made, but its login was not. Adding it again will not make one; ask a developer to check the external-sync log.
+            </div>
+          ) : (
+            <div className="p-4 bg-amber-50 border border-amber-200 rounded-lg text-sm text-amber-900">
+              This Partner ID already existed, so its details were updated and no new login was made. The existing login is on the Credentials page under Settings.
+            </div>
+          )}
+
+          <div className="p-4 bg-muted/30 border border-border/50 rounded-lg text-sm space-y-1">
+            <p><span className="font-semibold">{created}</span> stove ID(s) added to this partner{skipped > 0 && <>, <span className="font-semibold">{skipped}</span> already there</>}.</p>
+            {missed > 0 && (
+              <p className="text-red-700">
+                {missed} stove ID(s) could not be saved. Add Partner again with the same Partner ID retries them without making a second partner.
+              </p>
+            )}
+          </div>
+        </div>
+        <ModalFooter>
+          <Button onClick={handleClose} className="bg-green-600 hover:bg-green-700 text-white min-w-[120px]">Done</Button>
+        </ModalFooter>
+      </Modal>
+    );
+  }
+
   return (
     <Modal
       open={isOpen}
-      onClose={handleClose}
+      onOpenChange={(open) => !open && !submitting && handleClose()}
       size="3xl"
       title="Add Partner"
-      subtitle="Creates partner account, credentials, and assigns stove IDs"
-      footer={
-        <div className="flex justify-end gap-2">
-          <Button variant="outline" onClick={handleClose} disabled={submitting}>Cancel</Button>
-          <Button onClick={handleSubmit} disabled={submitting} className="bg-green-600 hover:bg-green-700 text-white min-w-[120px]">
-            {submitting ? <><Loader2 className="h-4 w-4 animate-spin mr-2" />Creating...</> : "Create Partner"}
-          </Button>
-        </div>
-      }
+      description="Creates partner account, credentials, and assigns stove IDs"
     >
       <div className="space-y-5 py-1">
 
@@ -241,7 +327,7 @@ export default function AddPartnerModal({ isOpen, onClose, onSuccess }) {
                 </SelectContent>
               </Select>
             </FormFieldWrapper>
-            <FormFieldWrapper label="State">
+            <FormFieldWrapper label="State *">
               <Select value={form.state} onValueChange={(v) => setField("state", v)}>
                 <SelectTrigger><SelectValue placeholder="Select state" /></SelectTrigger>
                 <SelectContent>
@@ -272,7 +358,7 @@ export default function AddPartnerModal({ isOpen, onClose, onSuccess }) {
             <FormFieldWrapper label="Email">
               <Input type="email" value={form.email} onChange={(e) => setField("email", e.target.value)} placeholder="admin@partner.com" />
             </FormFieldWrapper>
-            <FormFieldWrapper label="Phone">
+            <FormFieldWrapper label="Phone *">
               <Input value={form.contact_phone} onChange={(e) => setField("contact_phone", e.target.value)} placeholder="+234..." />
             </FormFieldWrapper>
             <FormFieldWrapper label="Alternative Phone">
@@ -353,6 +439,12 @@ export default function AddPartnerModal({ isOpen, onClose, onSuccess }) {
         </div>
 
       </div>
+      <ModalFooter>
+        <Button variant="outline" onClick={handleClose} disabled={submitting}>Cancel</Button>
+        <Button onClick={handleSubmit} disabled={submitting} className="bg-green-600 hover:bg-green-700 text-white min-w-[120px]">
+          {submitting ? <><Loader2 className="h-4 w-4 animate-spin mr-2" />Creating...</> : "Create Partner"}
+        </Button>
+      </ModalFooter>
     </Modal>
   );
 }

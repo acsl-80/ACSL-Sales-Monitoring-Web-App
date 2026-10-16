@@ -46,6 +46,7 @@ import PageHeader from "../../components/PageHeader";
 import {
   Search,
   X,
+  Plus,
   Building2,
   Loader2,
   Edit,
@@ -1509,6 +1510,12 @@ export default function PartnersContent() {
           <PageHeader
             icon={Building2}
             title="Track Performance"
+            right={isSuperAdmin && (
+              <Button onClick={() => setShowAddPartnerModal(true)} size="sm" className="bg-green-600 hover:bg-green-700 text-white flex items-center gap-1.5">
+                <Plus className="h-4 w-4" />
+                Add Partner
+              </Button>
+            )}
           />
 
 
