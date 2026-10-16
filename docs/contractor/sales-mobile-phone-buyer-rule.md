@@ -5,7 +5,7 @@ For Brain-codes, release 1.0.19. Canonical copy: `docs/contractor/sales-mobile-p
 - **Written:** 2026-10-14, revised 2026-10-15 after an independent review against the app's code.
 - **Checked against:** sales-mobile `main` at `ff16cf6` (1.0.18+10018), the newest code on both `acsl-80` and `Brain-codes`. Every line number below is from that commit.
 - **Attached:** `buyer-key-vectors.json` (the test cases for section 3).
-- **Server status:** built and tested, not live yet. We will send you the date it goes live and a test environment to build against. Please do not release 1.0.19 before we confirm the server is live (section 8).
+- **Server status:** live on production since 2026-10-16 (sales-web `38a61329`). The test environment to build against runs the same code; its address, key and logins come to you privately. Release 1.0.19 once the section 9 checks have passed with us.
 
 ---
 
