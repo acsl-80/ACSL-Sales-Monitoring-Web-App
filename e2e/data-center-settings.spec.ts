@@ -47,12 +47,17 @@ test.describe("the call form is editable", () => {
     await page.getByRole("combobox", { name: "Dropdown" }).click();
     await page
       .getByRole("listbox")
-      .getByRole("option", { name: /outcome/i })
-      .first()
+      .getByRole("option", { name: "Call Outcome", exact: true })
       .click();
+    // The list pages at ten choices and now holds more than ten, with this one
+    // sorted last, so show the whole list before looking for it. Settings has
+    // a pager per table; the choices one is the one counting choices.
+    const choicesPager = page.locator("div").filter({ has: page.getByText(/ of \d+ choices?$/) }).last();
+    await choicesPager.getByLabel("Per page").selectOption("100");
 
-    // The nine seeded outcomes came from a closed list. This is the tenth, and
-    // it exists so an agent stops inventing one in a constrained column.
+    // The nine seeded outcomes came from a closed list. This one was added
+    // after them, and exists so an agent stops inventing one in a constrained
+    // column.
     await expect(page.getByText("Something else (say what)")).toBeVisible();
   });
 
