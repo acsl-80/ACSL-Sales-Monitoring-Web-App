@@ -103,6 +103,8 @@ test("a super admin creates a partner with two stove IDs and sees its login", as
 test("the button is for super admins only", async ({ page }) => {
   await signIn(page, USERS.acslAgent);
   await page.goto("/partners");
-  await expect(page.getByText("Track Performance").first()).toBeVisible({ timeout: 45_000 });
+  // The loading view shares the page title; the search box only renders once
+  // the page and the role have resolved, which is when the header is decided.
+  await expect(page.getByPlaceholder("Search by name, ID, branch...")).toBeVisible({ timeout: 45_000 });
   await expect(page.getByRole("button", { name: "Add Partner" })).toHaveCount(0);
 });

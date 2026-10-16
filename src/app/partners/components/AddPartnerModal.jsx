@@ -260,9 +260,15 @@ export default function AddPartnerModal({ isOpen, onClose, onSuccess }) {
                 Share these with the partner. The password also stays on the Credentials page under Settings.
               </p>
             </div>
+          ) : result.organization?.action === "created" ? (
+            // external-sync makes a login only for a new partner, so a retry
+            // with the same Partner ID will not make one either.
+            <div className="p-4 bg-red-50 border border-red-200 rounded-lg text-sm text-red-800">
+              The partner was made, but its login was not. Adding it again will not make one; ask a developer to check the external-sync log.
+            </div>
           ) : (
             <div className="p-4 bg-amber-50 border border-amber-200 rounded-lg text-sm text-amber-900">
-              No new login was made: {result.user?.reason || "the partner already has one"}. The existing login is on the Credentials page under Settings.
+              This Partner ID already existed, so its details were updated and no new login was made. The existing login is on the Credentials page under Settings.
             </div>
           )}
 
