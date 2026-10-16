@@ -170,12 +170,17 @@ test.describe("reassignment moves work between agents", () => {
     const other = enabled.find((a) => a.agent_id !== item.agent_id);
     test.skip(!other, "the preview has only one enabled agent, so there is nowhere to move it");
 
+    // Global setup hands every seeded sale out, so each agent already holds
+    // their capacity of open batches and a move needs the supervisor's reason
+    // (D22, the receiving-agent rule), in both directions.
+    const overrideReason = "e2e: moving one record and back";
     const moved = await callEdgeFunction(page, "data-center-assign", {
       action: "reassign",
       toAgentId: other!.agent_id,
       saleIds: [item.sale_id],
+      overrideReason,
     });
-    expect(moved.status).toBe(200);
+    expect(moved.status, JSON.stringify(moved.body)).toBe(200);
     const result = (moved.body as { data: { moved: number; toAgentId: string } }).data;
     expect(result.moved).toBe(1);
     expect(result.toAgentId).toBe(other!.agent_id);
@@ -194,8 +199,9 @@ test.describe("reassignment moves work between agents", () => {
       action: "reassign",
       toAgentId: item.agent_id!,
       saleIds: [item.sale_id],
+      overrideReason,
     });
-    expect(back.status).toBe(200);
+    expect(back.status, JSON.stringify(back.body)).toBe(200);
   });
 });
 
