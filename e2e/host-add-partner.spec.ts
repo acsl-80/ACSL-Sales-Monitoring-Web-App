@@ -39,6 +39,11 @@ test("a super admin creates a partner with two stove IDs and sees its login", as
   await dialog.getByPlaceholder("e.g. Acme Stoves Ltd").fill(NAME);
   const idField = dialog.getByPlaceholder("Auto-generated from name");
   await idField.fill(PARTNER_ID);
+  // State and phone are NOT NULL on organizations; the first run without them
+  // came back 500 from external-sync.
+  await dialog.getByRole("combobox").filter({ hasText: "Select state" }).click();
+  await page.getByRole("option", { name: "Lagos", exact: true }).click();
+  await dialog.getByPlaceholder("+234...").first().fill("08030000000");
 
   await dialog.getByPlaceholder("STK-0001").first().fill(STOVES[0]);
   await dialog.getByRole("button", { name: "Add Row" }).click();

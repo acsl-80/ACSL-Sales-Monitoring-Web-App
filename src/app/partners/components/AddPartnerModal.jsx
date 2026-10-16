@@ -154,6 +154,16 @@ export default function AddPartnerModal({ isOpen, onClose, onSuccess }) {
       toast({ variant: "error", title: "Partner ID is required" });
       return;
     }
+    // organizations.state and organizations.contact_phone are NOT NULL, so
+    // external-sync refuses a partner without them.
+    if (!form.state) {
+      toast({ variant: "error", title: "State is required" });
+      return;
+    }
+    if (!form.contact_phone.trim()) {
+      toast({ variant: "error", title: "Phone is required" });
+      return;
+    }
 
     const validStoves = stoveRows.filter((r) => r.stove_id.trim());
 
@@ -311,7 +321,7 @@ export default function AddPartnerModal({ isOpen, onClose, onSuccess }) {
                 </SelectContent>
               </Select>
             </FormFieldWrapper>
-            <FormFieldWrapper label="State">
+            <FormFieldWrapper label="State *">
               <Select value={form.state} onValueChange={(v) => setField("state", v)}>
                 <SelectTrigger><SelectValue placeholder="Select state" /></SelectTrigger>
                 <SelectContent>
@@ -342,7 +352,7 @@ export default function AddPartnerModal({ isOpen, onClose, onSuccess }) {
             <FormFieldWrapper label="Email">
               <Input type="email" value={form.email} onChange={(e) => setField("email", e.target.value)} placeholder="admin@partner.com" />
             </FormFieldWrapper>
-            <FormFieldWrapper label="Phone">
+            <FormFieldWrapper label="Phone *">
               <Input value={form.contact_phone} onChange={(e) => setField("contact_phone", e.target.value)} placeholder="+234..." />
             </FormFieldWrapper>
             <FormFieldWrapper label="Alternative Phone">
