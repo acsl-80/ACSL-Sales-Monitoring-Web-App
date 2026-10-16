@@ -512,6 +512,9 @@ const UserManagementPage = () => {
   // - acsl_agent_manager: States → Partners in those states (auto-checked)
   const isStandaloneAgentRole = (role) => role === "agent" || role === "agent_user";
   const isOrganizationBoundAgentRole = (role) => role === "partner_agent" || isStandaloneAgentRole(role);
+  // A Partner login belongs to one partner just as their agents do; create-sale
+  // refuses anyone without one.
+  const isOrganizationBoundRole = (role) => role === "partner" || isOrganizationBoundAgentRole(role);
   const needsPartnerAssignment = (role) => role === "partner_agent" || role === "partner" || isStandaloneAgentRole(role);
   const needsAcslAgentCascade = (role) => role === "acsl_agent";
   const needsStateAndPartnerAssignment = (role) => role === "acsl_agent_manager";
@@ -775,7 +778,9 @@ const UserManagementPage = () => {
     if (!userForm.email.trim()) errors.email = "Email is required";
     else if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(userForm.email)) errors.email = "Invalid email format";
     if (!userForm.role) errors.role = "User Group is required";
-    if (isOrganizationBoundAgentRole(userForm.role) && selectedPartnerIds.size !== 1) errors.partner = "Select exactly one Partner for this agent";
+    if (isOrganizationBoundRole(userForm.role) && selectedPartnerIds.size !== 1) {
+      errors.partner = userForm.role === "partner" ? "Select exactly one Partner for this login" : "Select exactly one Partner for this agent";
+    }
     if (formMode === "create") {
       if (!userForm.auto_generate_password && !userForm.password) errors.password = "Password is required";
       else if (!userForm.auto_generate_password && userForm.password.length < 8) errors.password = "Password must be at least 8 characters";
@@ -835,9 +840,9 @@ const UserManagementPage = () => {
       const directOrgIds = normalizeOrgIds(assignmentRows);
       let orgIds = directOrgIds.length > 0 ? directOrgIds : (scope?.organization_ids || []);
 
-      // Partner Agents are bound to a single partner via profile.organization_id;
-      // fall back to that value when no relational rows exist.
-      if (isOrganizationBoundAgentRole(role) && orgIds.length === 0 && user.organization_id) {
+      // Partners and their agents are bound to a single partner via
+      // profile.organization_id; fall back to that value when no relational rows exist.
+      if (isOrganizationBoundRole(role) && orgIds.length === 0 && user.organization_id) {
         orgIds = [user.organization_id];
       }
 
@@ -878,9 +883,9 @@ const UserManagementPage = () => {
     try {
       const { data: { session } } = await supabase.auth.getSession();
       const targetRole = getStoredAgentRole(userForm.role);
-      const needsOrgBinding = isOrganizationBoundAgentRole(userForm.role);
+      const needsOrgBinding = isOrganizationBoundRole(userForm.role);
       const partnerId = needsOrgBinding ? (Array.from(selectedPartnerIds)[0] || null) : null;
-      if (needsOrgBinding && !partnerId) throw new Error("A partner must be selected for this agent");
+      if (needsOrgBinding && !partnerId) throw new Error("A partner must be selected for this user");
 
       const basePayload = {
         full_name: userForm.full_name.trim(),
@@ -970,9 +975,9 @@ const UserManagementPage = () => {
     try {
       const role = getStoredAgentRole(userForm.role);
 
-      const isOrgBound = isOrganizationBoundAgentRole(role);
+      const isOrgBound = isOrganizationBoundRole(role);
       const partnerId = isOrgBound ? (Array.from(selectedPartnerIds)[0] || null) : null;
-      if (isOrgBound && !partnerId) throw new Error("A partner must be selected for this agent");
+      if (isOrgBound && !partnerId) throw new Error("A partner must be selected for this user");
 
       const { data: { session } } = await supabase.auth.getSession();
 
@@ -2027,7 +2032,7 @@ const UserManagementPage = () => {
 
               {/* Partner Assignment — shown for Partner and Partner Agent */}
               {needsPartnerAssignment(userForm.role) && (() => {
-                const isSingleSelect = userForm.role === "partner" || isOrganizationBoundAgentRole(userForm.role);
+                const isSingleSelect = isOrganizationBoundRole(userForm.role);
                 const isPartnerAgentRole = userForm.role === "partner_agent";
                 // Partner callers can only create agents under their own org —
                 // the picker is preselected and locked (no add/remove/search).
@@ -2056,7 +2061,7 @@ const UserManagementPage = () => {
                     <Label className="text-sm font-semibold text-[#4a5d0f]">
                       {isPartnerAgentRole ? "Assign Partner" : "Assign Partners"}{" "}
                       <span className="text-gray-400 font-normal text-xs">
-                        {lockedToCallerOrg ? "(your organization)" : "(optional)"}
+                        {lockedToCallerOrg ? "(your organization)" : isSingleSelect ? "(required)" : "(optional)"}
                       </span>
                     </Label>
 
@@ -2165,6 +2170,7 @@ const UserManagementPage = () => {
                         {isSingleSelect ? "1 partner selected" : `${selectedPartnerIds.size} partner${selectedPartnerIds.size > 1 ? "s" : ""} selected`}
                       </p>
                     )}
+                    {formErrors.partner && <p className="text-xs text-red-600">{formErrors.partner}</p>}
                   </div>
                 );
               })()}
