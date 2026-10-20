@@ -83,15 +83,19 @@ export async function resolveAssignedOrgIds(
    * state coverage may still hold named rows that are not contributing, and a
    * log line that hid that would be the confusing kind.
    *
-   * The role filter on subordinates is unchanged. It is what stops a manager
-   * inheriting another manager's whole tree.
+   * The team comes from public.acsl_agent_team, not from profiles. Several
+   * callers pass a client wearing the user's token, and a user can read only
+   * their own profile row, so a profiles read returned no team for them and a
+   * manager lost every partner inherited from it (Sales Records, Sell Stove).
+   * The function keeps the acsl_agent role filter, which is what stops a
+   * manager inheriting another manager's whole tree.
    */
   const [
     { data: subordinates, error: subError },
     { data: directRows, error: directError },
     { data: stateRows, error: stateError },
   ] = await Promise.all([
-    supabase.from("profiles").select("id").eq("manager_id", agentId).eq("role", "acsl_agent"),
+    supabase.rpc("acsl_agent_team", { p_manager: agentId }),
     supabase.from("acsl_agent_organizations").select("organization_id").eq("agent_id", agentId),
     supabase.from("acsl_agent_states").select("state").eq("agent_id", agentId),
   ]);

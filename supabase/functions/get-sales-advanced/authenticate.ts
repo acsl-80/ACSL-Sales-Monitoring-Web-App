@@ -79,11 +79,12 @@ export async function authenticateUser(supabase: any): Promise<AuthResult> {
   // team's agent IDs to match sales by attribution (sold_on_behalf_of).
   let teamAgentIds: string[] | undefined;
   if (userRole === "acsl_agent_manager") {
-    const { data: subordinates } = await supabase
-      .from("profiles")
-      .select("id")
-      .eq("manager_id", userData.user.id)
-      .eq("role", "acsl_agent");
+    // From acsl_agent_team, not profiles: this client wears the user's token,
+    // and a user reads only their own profile row, so the team came back empty.
+    const { data: subordinates, error: teamError } = await supabase.rpc("acsl_agent_team", {
+      p_manager: userData.user.id,
+    });
+    if (teamError) throw new Error(`Could not read the manager's team: ${teamError.message}`);
     teamAgentIds = [userData.user.id, ...(subordinates || []).map((s: any) => s.id)];
     console.log(`✅ Manager team: ${teamAgentIds.length} agents (self + subordinates)`);
   }
