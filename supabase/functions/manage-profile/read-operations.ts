@@ -1,5 +1,5 @@
 // Read operations for manage-profile edge function
-import { SupabaseClient } from "https://esm.sh/@supabase/supabase-js@2.39.3";
+import { SupabaseClient, createClient } from "https://esm.sh/@supabase/supabase-js@2.39.3";
 
 /**
  * Get complete user profile with organization details
@@ -91,8 +91,15 @@ export async function getUserProfile(
       response.organization = null;
     }
 
-    // Get credential info (if exists)
-    const { data: credential, error: credError } = await supabase
+    // Get credential info (if exists). Read as the server: signed-in users
+    // hold no rights on public.credentials. Only the caller's own row, and
+    // no password column, is read.
+    const server = createClient(
+      Deno.env.get("SUPABASE_URL")!,
+      Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!,
+      { auth: { autoRefreshToken: false, persistSession: false } },
+    );
+    const { data: credential, error: credError } = await server
       .from("credentials")
       .select("partner_id, partner_name, role, is_dummy_email")
       .eq("user_id", userId)

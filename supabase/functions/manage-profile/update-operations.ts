@@ -41,7 +41,6 @@ export async function updateUserProfile(
     console.log("  - new_password:", request.new_password ? `[PROVIDED - ${request.new_password.length} chars]` : "[NOT PROVIDED]");
     console.log("  - new_contact_phone:", request.new_contact_phone || "[NOT PROVIDED]");
     console.log("  - new_alternative_phone:", request.new_alternative_phone || "[NOT PROVIDED]");
-    console.log("📋 Full request object:", JSON.stringify(request, null, 2));
 
     const {
       current_password,

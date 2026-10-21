@@ -1,5 +1,6 @@
 // Main entry point for manage-credentials edge function
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
+import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { corsHeaders, withCors } from "./cors.ts";
 import { authenticateSuperAdmin } from "./authenticate.ts";
 import { handleRequest } from "./route-handler.ts";
@@ -52,11 +53,18 @@ serve(async (req) => {
     console.log(`✅ User ID: ${authResult.user.id}`);
     console.log(`✅ Role: ${authResult.user.role}`);
 
-    // Handle the request
+    // Handle the request. The caller is a verified super admin; the handlers
+    // work as the server, because public.credentials is read and written by
+    // the server only (signed-in users hold no rights on it).
     console.log("📨 Processing request...");
+    const serverClient = createClient(
+      Deno.env.get("SUPABASE_URL")!,
+      Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!,
+      { auth: { autoRefreshToken: false, persistSession: false } },
+    );
     const response = await handleRequest(
       req,
-      authResult.supabase,
+      serverClient,
       authResult.user
     );
     console.log("✅ Request processed successfully");

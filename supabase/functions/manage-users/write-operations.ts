@@ -388,6 +388,12 @@ export async function updateUser(
         throw new Error(`Failed to update password: ${pwError.message}`);
       }
       console.log("🔑 Password updated for user:", userId);
+      // Never stored: clear any copy kept from before passwords stopped being stored.
+      const { error: credClearError } = await supabase
+        .from("credentials")
+        .update({ password: null, updated_at: new Date().toISOString() })
+        .eq("user_id", userId);
+      if (credClearError) console.warn("⚠️ Could not clear the stored password:", credClearError.message);
     }
 
 
