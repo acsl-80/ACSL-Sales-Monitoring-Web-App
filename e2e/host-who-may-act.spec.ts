@@ -86,20 +86,20 @@ test("a disabled account is refused at sign-in and on every sale write, even wit
   await branchSql(`update public.profiles set status = 'disabled' where email = '${USERS.agent}'`);
   try {
     const sale = await callEdgeFunction(page, "create-sale", saleBody(own, `${TAG}-${Date.now()}`, `0803${String(Date.now()).slice(-7)}`));
-    expect(sale.status, JSON.stringify(sale.body)).toBe(403);
-    expect((sale.body as Reply).message ?? "", "a message the phone can show").toMatch(/disabled/i);
-    expect((sale.body as Reply).message ?? "", "never read by the phone as already saved").not.toMatch(/transaction id/i);
+    expect.soft(sale.status, JSON.stringify(sale.body)).toBe(403);
+    expect.soft((sale.body as Reply).message ?? "", "a message the phone can show").toMatch(/disabled/i);
+    expect.soft((sale.body as Reply).message ?? "", "never read by the phone as already saved").not.toMatch(/transaction id/i);
 
     const edit = await callEdgeFunction(page, "update-sale", { amount: 1 }, "?id=00000000-0000-4000-8000-000000000000");
-    expect(edit.status, JSON.stringify(edit.body)).toBe(403);
+    expect.soft(edit.status, JSON.stringify(edit.body)).toBe(403);
 
     const del = await callEdgeFunction(page, "delete-sale", { saleId: "00000000-0000-4000-8000-000000000000" });
-    expect(del.status, JSON.stringify(del.body)).not.toBe(200);
-    expect(JSON.stringify(del.body)).toMatch(/not active/i);
+    expect.soft(del.status, JSON.stringify(del.body)).not.toBe(200);
+    expect.soft(JSON.stringify(del.body)).toMatch(/not active/i);
 
     const login = await signInDirect(page, USERS.agent);
-    expect(login.status, JSON.stringify(login.body)).toBe(403);
-    expect(JSON.stringify(login.body)).toMatch(/disabled/i);
+    expect.soft(login.status, String(login.body?.error ?? "signed in")).toBe(403);
+    expect.soft(String(login.body?.error ?? "")).toMatch(/disabled/i);
   } finally {
     await branchSql(`update public.profiles set status = 'active' where email = '${USERS.agent}'`);
   }
@@ -161,4 +161,21 @@ test("the shared-phone flag from someone who may not commit imports is ignored",
   );
   expect(second.status, JSON.stringify(second.body)).toBe(409);
   expect(JSON.stringify(second.body)).toMatch(/same name and phone number/i);
+});
+
+test("the shared-phone flag from someone who may commit imports is still honoured", async ({ page }) => {
+  await signIn(page, USERS.dataManager);
+  const seed = Date.now();
+  const phone = `0805${String(seed).slice(-7)}`;
+
+  const first = await callEdgeFunction(page, "create-sale", saleBody(await ownOrgAndStove(USERS.partner), `${TAG}-${seed}`, phone));
+  expect([200, 201], `first sale: ${first.status} ${JSON.stringify(first.body)}`).toContain(first.status);
+
+  // The same buyer again from the import's own caller: saved, as digitalisation.
+  const second = await callEdgeFunction(
+    page,
+    "create-sale",
+    saleBody(await ownOrgAndStove(USERS.partner), `${TAG}-${seed + 1}`, phone, { allowSharedPhone: true }),
+  );
+  expect([200, 201], `second sale: ${second.status} ${JSON.stringify(second.body)}`).toContain(second.status);
 });

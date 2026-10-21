@@ -48,9 +48,15 @@ function sameBuyerMessage(otherTransactionId: string | null): string {
  * applies to itself (an access level plus direct grants, import.commit never
  * implied). Only the import's digitalisation path may share a phone number.
  */
+const importerCache = new Map<string, { may: boolean; until: number }>();
+
 async function mayCommitImports(userId: string): Promise<boolean> {
+  // An import sends every row through here, so the answer is kept for a minute
+  // rather than opening a database connection per row.
+  const cached = importerCache.get(userId);
+  if (cached && cached.until > Date.now()) return cached.may;
   try {
-    return await withReadConnection(async (conn) => {
+    const may = await withReadConnection(async (conn) => {
       const r = await conn.queryObject<{ access_role: string | null; keys: string[] | null }>({
         text: `select
                  (select access_role from data_center.module_access where user_id = $1) as access_role,
@@ -62,6 +68,8 @@ async function mayCommitImports(userId: string): Promise<boolean> {
       if (!accessRole) return false;
       return featuresFor(accessRole, r.rows[0]?.keys ?? []).includes("import.commit");
     });
+    importerCache.set(userId, { may, until: Date.now() + 60_000 });
+    return may;
   } catch (err) {
     console.error("❌ Import permission check failed:", err);
     return false;
