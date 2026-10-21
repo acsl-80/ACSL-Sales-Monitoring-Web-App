@@ -137,11 +137,11 @@ test("a taken ID: a retry is answered as saved, a different stove saves under a 
   const clash = await callEdgeFunction(page, "create-sale", bodyB);
   expect([200, 201], `clash: ${clash.status} ${JSON.stringify(clash.body)}`).toContain(clash.status);
   const reply = clash.body as Reply;
+  if (reply.transaction_id) issued.add(reply.transaction_id);
   expect(reply.data?.id, "the clash saved a sale").toBeTruthy();
   expect(reply.transaction_id_sent, "the reply names the ID that was sent").toBe(taken);
   expect(reply.transaction_id, "and the fresh one it saved under").toMatch(/^[A-Z0-9]{6}$/);
   expect(reply.transaction_id).not.toBe(taken);
-  issued.add(reply.transaction_id!);
 
   expect(await salesUnder(taken), "the taken ID still holds one sale").toBe(1);
   expect(await salesUnder(reply.transaction_id!), "the fresh ID holds the second").toBe(1);
@@ -157,4 +157,41 @@ test("a taken ID: a retry is answered as saved, a different stove saves under a 
   expect((resend.body as Reply).message ?? "").toMatch(/transaction id/i);
   expect((resend.body as Reply).message ?? "").toMatch(/already exists/i);
   expect(await salesOfStove(stoveB), "the resend saved nothing").toBe(1);
+});
+
+test("a clash with another partner's sale, which the seller cannot see, still gets a fresh ID", async ({ page }) => {
+  // Under the seller's own row rules the other partner's sale is invisible, so
+  // the old lookup missed it and the sale saved with a duplicate ID.
+  test.setTimeout(120_000);
+  const seed = Date.now();
+  const taken = `${TAG}-${seed}`;
+
+  // The admin's sale for the twin partner takes the ID.
+  await signIn(page, USERS.admin);
+  const stoveA = await freeStove(page);
+  const first = await callEdgeFunction(
+    page, "create-sale", saleBody(stoveA, await partnerName(), taken, phoneFor(seed + 2), "Other"),
+  );
+  expect([200, 201], `holder: ${first.status} ${JSON.stringify(first.body)}`).toContain(first.status);
+
+  // The seeded partner account sells one of its own stoves under the same ID.
+  const [own] = await branchSql<{ org: string; name: string; stove: string | null }>(
+    `select o.id::text as org, o.partner_name as name,
+            (select s.stove_id from public.stove_ids_base s
+              where s.organization_id = o.id and s.status = 'available' and s.sale_id is null
+              order by s.stove_id limit 1) as stove
+       from public.profiles p join public.organizations o on o.id = p.organization_id
+      where p.email = '${USERS.partner}'`,
+  );
+  expect(own?.stove, "the partner account has a free stove of its own").toBeTruthy();
+  spent.add(own.stove!);
+
+  await signIn(page, USERS.partner);
+  const body = { ...saleBody(own.stove!, own.name, taken, phoneFor(seed + 3), "Hidden"), organizationId: own.org };
+  const clash = await callEdgeFunction(page, "create-sale", body);
+  const reply = clash.body as Reply;
+  if (reply.transaction_id) issued.add(reply.transaction_id);
+  expect([200, 201], `clash: ${clash.status} ${JSON.stringify(clash.body)}`).toContain(clash.status);
+  expect(reply.transaction_id, "saved under a fresh ID").not.toBe(taken);
+  expect(await salesUnder(taken), "the taken ID still holds only the other partner's sale").toBe(1);
 });

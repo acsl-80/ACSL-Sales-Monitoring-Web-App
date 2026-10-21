@@ -355,7 +355,7 @@ Deno.serve(async (req) => {
     let saleTransactionId = String(transactionId);
     const { data: holders, error: txnLookupError } = await server
       .from("sales")
-      .select("stove_serial_no")
+      .select("stove_serial_no, is_archived")
       .eq("transaction_id", saleTransactionId)
       .limit(10);
     if (txnLookupError) {
@@ -363,8 +363,12 @@ Deno.serve(async (req) => {
       return jsonError("Could not verify transaction ID uniqueness", 500);
     }
     if (holders && holders.length > 0) {
+      // A cancelled sale (is_archived) is not a retry target: its stove may
+      // have been released and genuinely sold again.
       const sameStove = holders.some(
-        (h) => String(h.stove_serial_no ?? "").trim() === String(stoveSerialNo).trim(),
+        (h) =>
+          h.is_archived !== true &&
+          String(h.stove_serial_no ?? "").trim() === String(stoveSerialNo).trim(),
       );
       // The resend of a sale that an earlier clash saved under a fresh ID: the
       // same stove, sold by the same account to the same phone number. It gets
@@ -378,6 +382,7 @@ Deno.serve(async (req) => {
           .eq("stove_serial_no", stoveSerialNo)
           .eq("created_by", userId)
           .eq("phone", phone)
+          .or("is_archived.is.null,is_archived.eq.false")
           .limit(1);
         if (earlierError) {
           console.error("❌ Earlier-save lookup failed:", earlierError.message);
