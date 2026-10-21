@@ -65,12 +65,22 @@ export async function deleteSale(
   }
 
   // Release the stove back to available before deleting the sale
-  // (stove_ids.sale_id has a check constraint that blocks deleting a referenced sale)
+  // (stove_ids.sale_id has a check constraint that blocks deleting a referenced sale).
+  //
+  // Only this sale's stock row. One serial can sit at two partners, and the
+  // serial alone released the other partner's stove too, sold or not. The
+  // row this sale is linked to, or, where the link was never written (older
+  // rows), the serial within the sale's own partner: the rule cancel_sale
+  // uses (20260903020000_cancel_sale_in_one_transaction.sql).
+  const ownStockRow = sale.organization_id
+    ? `sale_id.eq.${saleId},and(sale_id.is.null,organization_id.eq.${sale.organization_id})`
+    : `sale_id.eq.${saleId}`;
   if (sale.stove_serial_no) {
     const { error: stoveResetError } = await supabase
       .from("stove_ids")
       .update({ sale_id: null, status: "available" })
-      .eq("stove_id", sale.stove_serial_no);
+      .eq("stove_id", sale.stove_serial_no)
+      .or(ownStockRow);
 
     if (stoveResetError) {
       console.warn("⚠️ Could not reset stove status:", stoveResetError.message);
@@ -92,6 +102,7 @@ export async function deleteSale(
         .from("stove_ids")
         .update({ sale_id: saleId, status: "sold" })
         .eq("stove_id", sale.stove_serial_no)
+        .eq("organization_id", sale.organization_id)
         .is("sale_id", null);
     }
     throw new Error(`Failed to delete sale: ${deleteError.message}`);
