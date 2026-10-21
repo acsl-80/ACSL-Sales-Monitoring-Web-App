@@ -105,6 +105,46 @@ test("a disabled account is refused at sign-in and on every sale write, even wit
   }
 });
 
+test("disabling through the User Manager bans the login, and enabling lifts it", async ({ page }) => {
+  await signIn(page, USERS.admin);
+  const [agent] = await branchSql<{ id: string }>(`select id::text as id from public.profiles where email = '${USERS.agent}'`);
+  expect(agent?.id, "the seeded partner agent").toBeTruthy();
+
+  const banned = async () => {
+    const [row] = await branchSql<{ banned: boolean }>(
+      `select coalesce(banned_until > now(), false) as banned from auth.users where id = '${agent.id}'`,
+    );
+    return row?.banned;
+  };
+
+  const patch = (status: string) =>
+    page.evaluate(async ({ id, status }) => {
+      const key = Object.keys(window.localStorage).find((k) => k.startsWith("sb-") && k.endsWith("-auth-token"));
+      const stored = JSON.parse(window.localStorage.getItem(key ?? "") ?? "{}");
+      const token = stored.access_token ?? stored?.currentSession?.access_token;
+      const ref = (key ?? "").replace(/^sb-/, "").replace(/-auth-token$/, "");
+      const res = await fetch(`https://${ref}.supabase.co/functions/v1/manage-users/${id}`, {
+        method: "PATCH",
+        headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
+        body: JSON.stringify({ status }),
+      });
+      return { status: res.status, body: await res.json().catch(() => null) };
+    }, { id: agent.id, status });
+
+  try {
+    const off = await patch("disabled");
+    expect(off.status, JSON.stringify(off.body)).toBe(200);
+    expect(await banned(), "the login is banned").toBe(true);
+
+    const on = await patch("active");
+    expect(on.status, JSON.stringify(on.body)).toBe(200);
+    expect(await banned(), "and the ban is lifted").toBe(false);
+  } finally {
+    await branchSql(`update public.profiles set status = 'active' where id = '${agent.id}'`);
+    await branchSql(`update auth.users set banned_until = null where id = '${agent.id}'`);
+  }
+});
+
 test("the shared-phone flag from someone who may not commit imports is ignored", async ({ page }) => {
   await signIn(page, USERS.partner);
   const seed = Date.now();

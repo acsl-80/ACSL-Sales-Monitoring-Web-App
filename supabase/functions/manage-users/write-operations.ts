@@ -378,6 +378,18 @@ export async function updateUser(
       }
     }
 
+    // Disabling bans the login, so every session and every way of signing in
+    // stops at once; enabling lifts the ban. Same rule as super-admin-agents.
+    if (profileUpdates.status === "disabled" || profileUpdates.status === "active") {
+      const { error: banError } = await supabase.auth.admin.updateUserById(userId, {
+        ban_duration: profileUpdates.status === "disabled" ? "87600h" : "none",
+      });
+      if (banError) {
+        console.error("❌ Failed to update the login ban:", banError.message);
+        throw new Error(`Status saved, but the login ban failed: ${banError.message}`);
+      }
+    }
+
     // If password was provided, update it in Auth
     if (newPassword) {
       const { error: pwError } = await supabase.auth.admin.updateUserById(userId, {
