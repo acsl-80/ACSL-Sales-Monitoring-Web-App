@@ -1,5 +1,5 @@
 import { test, expect, type Page } from "@playwright/test";
-import { signIn, USERS, branchSql, callEdgeFunction, getEdgeFunction } from "./helpers";
+import { signIn, USERS, PREVIEW_PASSWORD, branchSql, callEdgeFunction, getEdgeFunction } from "./helpers";
 
 /**
  * Passwords are shown once and never stored.
@@ -103,6 +103,31 @@ test("reset shows the new password once, stores none, and asks for a change at s
     `select has_changed_password as changed from public.profiles where id = '${id}'`,
   );
   expect(profile?.changed, "the user picks their own password at next sign-in").toBe(false);
+});
+
+test("a partner's Reset (the first-password path) shows it once and stores none", async ({ page }) => {
+  // Partners from ERP transfers get their first password this way: a super
+  // admin presses Reset on the partner. The route looks the login up by
+  // partner_id, so the new account is given one.
+  await signIn(page, USERS.admin);
+  const { id } = await createAgent(page);
+  const partnerId = `E2EP${String(Date.now()).slice(-6)}`;
+  await branchSql(`update public.credentials set partner_id = '${partnerId}' where user_id = '${id}'`);
+  await branchSql(`update public.profiles set has_changed_password = true where id = '${id}'`);
+
+  const reset = await sendEdgeFunction(page, "PUT", "manage-credentials/update-password", {
+    partner_id: partnerId,
+    super_admin_password: PREVIEW_PASSWORD,
+  });
+  expect(reset.status, JSON.stringify(reset.body)).toBe(200);
+  const issued = (reset.body as { newPassword?: string }).newPassword;
+  expect(issued, "the reply carries the new password, once").toBeTruthy();
+
+  expect(await storedPassword(id), "nothing readable is kept").toBeNull();
+  const [profile] = await branchSql<{ changed: boolean | null }>(
+    `select has_changed_password as changed from public.profiles where id = '${id}'`,
+  );
+  expect(profile?.changed, "the partner picks their own password at next sign-in").toBe(false);
 });
 
 test("the credentials screens say the password is not stored", async ({ page }) => {
