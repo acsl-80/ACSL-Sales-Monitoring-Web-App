@@ -159,7 +159,7 @@ test("a taken ID: a retry is answered as saved, a different stove saves under a 
   expect(await salesOfStove(stoveB), "the resend saved nothing").toBe(1);
 });
 
-test("a clash with another partner's sale, which the seller cannot see, still gets a fresh ID", async ({ page }) => {
+test("a clash with another partner's sale, which the seller cannot see, still gets a fresh ID", async ({ page, browser }) => {
   // Under the seller's own row rules the other partner's sale is invisible, so
   // the old lookup missed it and the sale saved with a duplicate ID.
   test.setTimeout(120_000);
@@ -186,9 +186,18 @@ test("a clash with another partner's sale, which the seller cannot see, still ge
   expect(own?.stove, "the partner account has a free stove of its own").toBeTruthy();
   spent.add(own.stove!);
 
-  await signIn(page, USERS.partner);
-  const body = { ...saleBody(own.stove!, own.name, taken, phoneFor(seed + 3), "Hidden"), organizationId: own.org };
-  const clash = await callEdgeFunction(page, "create-sale", body);
+  // A browser of its own: this page still holds the admin's session.
+  // A bare newContext() does not inherit the project's options, baseURL included.
+  const partnerContext = await browser.newContext({ ...test.info().project.use });
+  const partnerPage = await partnerContext.newPage();
+  let clash: { status: number; body: unknown };
+  try {
+    await signIn(partnerPage, USERS.partner);
+    const body = { ...saleBody(own.stove!, own.name, taken, phoneFor(seed + 3), "Hidden"), organizationId: own.org };
+    clash = await callEdgeFunction(partnerPage, "create-sale", body);
+  } finally {
+    await partnerContext.close();
+  }
   const reply = clash.body as Reply;
   if (reply.transaction_id) issued.add(reply.transaction_id);
   expect([200, 201], `clash: ${clash.status} ${JSON.stringify(clash.body)}`).toContain(clash.status);
