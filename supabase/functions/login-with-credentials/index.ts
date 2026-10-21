@@ -137,6 +137,22 @@ serve(async (req) => {
       );
     }
 
+    // A disabled account does not sign in. The session the password check just
+    // opened is closed again so nothing can use it.
+    if (userProfile.status !== "active") {
+      await adminClient.auth.admin.signOut(authData.session.access_token).catch(() => {});
+      return new Response(
+        JSON.stringify({
+          success: false,
+          error: "This account is disabled. Ask your partner admin.",
+        }),
+        {
+          status: 403,
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+        }
+      );
+    }
+
     // ============================================
     // STEP 4: Return session with user data
     // ============================================

@@ -75,10 +75,6 @@ Deno.serve(async (req) => {
       if (profile?.role === "super_admin") isSuperAdmin = true;
     }
 
-    if (!isSuperAdmin && userData.user.email === "superadmin@mail.com") {
-      isSuperAdmin = true;
-    }
-
     if (!isSuperAdmin) {
       return json(403, { success: false, error: "Super admin access required" });
     }

@@ -2,6 +2,8 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { loadSaleOptions, normalizeChoice } from "../_shared/sale-options.ts";
 import { resolveAssignedOrgIds } from "../_shared/resolveAssignedOrgIds.ts";
 import { buyerKey, phoneTail } from "../_shared/buyerKey.ts";
+import { withReadConnection } from "../_shared/data-center-db.ts";
+import { featuresFor } from "../_shared/data-center-roles.ts";
 
 function withCors(res: Response): Response {
   res.headers.set("Access-Control-Allow-Origin", "*");
@@ -39,6 +41,31 @@ function sameBuyerMessage(otherTransactionId: string | null): string {
     "The same customer cannot be recorded twice. Check the name and phone number. " +
     "If they are correct, this sale is a duplicate and does not need to be saved."
   );
+}
+
+/**
+ * Whether this user may commit Data Center imports: the same rule the import
+ * applies to itself (an access level plus direct grants, import.commit never
+ * implied). Only the import's digitalisation path may share a phone number.
+ */
+async function mayCommitImports(userId: string): Promise<boolean> {
+  try {
+    return await withReadConnection(async (conn) => {
+      const r = await conn.queryObject<{ access_role: string | null; keys: string[] | null }>({
+        text: `select
+                 (select access_role from data_center.module_access where user_id = $1) as access_role,
+                 (select coalesce(array_agg(feature_key), '{}')
+                    from data_center.feature_grants where user_id = $1) as keys`,
+        args: [userId],
+      });
+      const accessRole = r.rows[0]?.access_role ?? null;
+      if (!accessRole) return false;
+      return featuresFor(accessRole, r.rows[0]?.keys ?? []).includes("import.commit");
+    });
+  } catch (err) {
+    console.error("❌ Import permission check failed:", err);
+    return false;
+  }
 }
 
 /** The characters every sale's transaction ID is made of. */
@@ -168,7 +195,9 @@ Deno.serve(async (req) => {
      * report, so the caller learns which sales already hold the number and can
      * record the sharing rather than discovering it later.
      */
-    const allowSharedPhone = body.allowSharedPhone === true;
+    // Honoured only for a caller who may commit Data Center imports (checked
+    // below, once the caller is known). From anyone else it is ignored.
+    let allowSharedPhone = body.allowSharedPhone === true;
 
     // ── Authenticate ─────────────────────────────────────────────────────────
     const anonClient = createClient(
@@ -192,13 +221,27 @@ Deno.serve(async (req) => {
     // ── Resolve organization_id ───────────────────────────────────────────────
     const { data: profile, error: profileError } = await supabase
       .from("profiles")
-      .select("organization_id, role, full_name")
+      .select("organization_id, role, full_name, status")
       .eq("id", userId)
       .maybeSingle();
 
     if (profileError) {
       console.error("❌ Profile fetch failed:", profileError.message);
       return jsonError("Profile lookup failed", 500);
+    }
+
+    // A disabled account sells nothing. The phone app shows this message on
+    // the queued sale, so it says what to do.
+    if (profile && profile.status !== "active") {
+      return jsonError(
+        "Not saved: this account is disabled. Ask your partner admin to record the sale.",
+        403,
+      );
+    }
+
+    if (allowSharedPhone && profile?.role !== "super_admin") {
+      allowSharedPhone = await mayCommitImports(userId);
+      if (!allowSharedPhone) console.warn("⚠️ allowSharedPhone ignored: caller may not commit imports");
     }
 
     let organizationId: string | null = profile?.organization_id ?? null;

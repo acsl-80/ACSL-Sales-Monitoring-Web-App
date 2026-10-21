@@ -12,24 +12,19 @@ export async function authenticateUser(supabase) {
   console.log("✅ User authenticated:", userData.user.email);
   let userRole;
   let userOrgId = null;
-  // Check if user email is super admin first (simpler approach)
-  if (userData.user.email === "superadmin@mail.com") {
-    console.log("✅ Super admin identified by email");
-    userRole = "super_admin";
-    userOrgId = null;
-  } else {
-    // For non-super admin, try to get profile without RLS dependency
-    console.log("� Fetching user profile from profiles table...");
-    // Use the same supabase client (already configured with service role)
-    const { data: profile, error: profileError } = await supabase.from("profiles").select("role, organization_id").eq("id", userData.user.id).single();
-    if (profileError || !profile) {
-      console.log("❌ Profile fetch failed:", profileError?.message);
-      throw new Error("Profile not found and not super admin email");
-    }
-    console.log("✅ Profile fetched successfully");
-    userRole = profile.role;
-    userOrgId = profile.organization_id;
+  // The role comes from the profile, never from an email address.
+  console.log("🔍 Fetching user profile from profiles table...");
+  const { data: profile, error: profileError } = await supabase.from("profiles").select("role, organization_id, status").eq("id", userData.user.id).single();
+  if (profileError || !profile) {
+    console.log("❌ Profile fetch failed:", profileError?.message);
+    throw new Error("Profile not found");
   }
+  if (profile.status !== "active") {
+    throw new Error("Account is not active");
+  }
+  console.log("✅ Profile fetched successfully");
+  userRole = profile.role;
+  userOrgId = profile.organization_id;
   console.log("✅ User role determined:", {
     userRole,
     userOrgId

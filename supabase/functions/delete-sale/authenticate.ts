@@ -20,12 +20,16 @@ export async function authenticate(supabase: any, authHeader: string) {
 
   const { data: profile, error: profileError } = await supabase
     .from("profiles")
-    .select("id, role, organization_id")
+    .select("id, role, organization_id, status")
     .eq("id", userData.user.id)
     .single();
 
   if (profileError || !profile) {
     throw new Error("Unauthorized: User profile not found");
+  }
+
+  if (profile.status !== "active") {
+    throw new Error("Unauthorized: Account is not active");
   }
 
   if (!["partner", "partner_agent", "admin", "super_admin"].includes(profile.role)) {

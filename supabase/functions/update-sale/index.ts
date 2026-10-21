@@ -81,10 +81,13 @@ Deno.serve(async (req) => {
 
     const { data: profile, error: profileError } = await supabase
       .from("profiles")
-      .select("id, role, organization_id")
+      .select("id, role, organization_id, status")
       .eq("id", userId)
       .maybeSingle();
     if (profileError || !profile) return jsonError("Profile not found", 403);
+    if (profile.status !== "active") {
+      return jsonError("Not saved: this account is disabled. Ask your partner admin.", 403);
+    }
 
     const ALLOWED = [
       "super_admin",
