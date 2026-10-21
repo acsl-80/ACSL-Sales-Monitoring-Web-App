@@ -41,6 +41,16 @@ function sameBuyerMessage(otherTransactionId: string | null): string {
   );
 }
 
+/** The characters every sale's transaction ID is made of. */
+const TXN_ALPHABET = "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789";
+
+/** Six random characters, the same shape as every transaction ID on file. */
+function randomTransactionId(): string {
+  const bytes = new Uint8Array(6);
+  crypto.getRandomValues(bytes);
+  return Array.from(bytes, (b) => TXN_ALPHABET[b % TXN_ALPHABET.length]).join("");
+}
+
 /** An account id is a uuid or it is not an account id. */
 const UUID_RE =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -329,20 +339,75 @@ Deno.serve(async (req) => {
     // saved" (409, "transaction ID ... already exists") and clears from its
     // queue. With the phone checked first, the retry was refused as a duplicate
     // customer instead and stayed queued on the device for good.
-    const { data: existingTxn, error: txnLookupError } = await supabase
+    //
+    // A retry is the same stove sent again. A different stove under an ID that
+    // is already taken is a clash, not a retry: the phone app's IDs repeat
+    // (they come from the clock alone), and a clash answered with this 409 is
+    // read by the app as "already saved" and dropped from its queue, so the
+    // sale was lost. A clash now saves under a fresh ID, returned in the reply
+    // as transaction_id. A resend of that sale with its old ID clashes again
+    // and is then refused by the stove-already-sold check below, so it cannot
+    // save twice.
+    //
+    // Looked up with the server client: under the caller's row policies a
+    // clash with another partner's sale was invisible, and the sale saved
+    // with a duplicate ID.
+    let saleTransactionId = String(transactionId);
+    const { data: holders, error: txnLookupError } = await server
       .from("sales")
-      .select("id")
-      .eq("transaction_id", transactionId)
-      .maybeSingle();
+      .select("stove_serial_no")
+      .eq("transaction_id", saleTransactionId)
+      .limit(10);
     if (txnLookupError) {
       console.error("❌ Transaction ID lookup failed:", txnLookupError.message);
       return jsonError("Could not verify transaction ID uniqueness", 500);
     }
-    if (existingTxn) {
-      return jsonError(
-        `A sale with transaction ID "${transactionId}" already exists`,
-        409
+    if (holders && holders.length > 0) {
+      const sameStove = holders.some(
+        (h) => String(h.stove_serial_no ?? "").trim() === String(stoveSerialNo).trim(),
       );
+      // The resend of a sale that an earlier clash saved under a fresh ID: the
+      // same stove, sold by the same account to the same phone number. It gets
+      // the same "already exists" answer, so the phone app clears it from its
+      // queue instead of showing "stove already sold" for a sale that saved.
+      let savedEarlier = false;
+      if (!sameStove) {
+        const { data: earlier, error: earlierError } = await server
+          .from("sales")
+          .select("id")
+          .eq("stove_serial_no", stoveSerialNo)
+          .eq("created_by", userId)
+          .eq("phone", phone)
+          .limit(1);
+        if (earlierError) {
+          console.error("❌ Earlier-save lookup failed:", earlierError.message);
+          return jsonError("Could not verify transaction ID uniqueness", 500);
+        }
+        savedEarlier = !!earlier && earlier.length > 0;
+      }
+      if (sameStove || savedEarlier) {
+        return jsonError(
+          `A sale with transaction ID "${saleTransactionId}" already exists`,
+          409
+        );
+      }
+      let fresh: string | null = null;
+      for (let attempt = 0; attempt < 5 && !fresh; attempt++) {
+        const candidate = randomTransactionId();
+        const { data: taken, error: takenError } = await server
+          .from("sales")
+          .select("id")
+          .eq("transaction_id", candidate)
+          .limit(1);
+        if (takenError) {
+          console.error("❌ Fresh transaction ID lookup failed:", takenError.message);
+          return jsonError("Could not verify transaction ID uniqueness", 500);
+        }
+        if (!taken || taken.length === 0) fresh = candidate;
+      }
+      if (!fresh) return jsonError("Could not issue a free transaction ID; try again", 500);
+      console.warn(`⚠️ Transaction ID ${saleTransactionId} is taken by another stove; saving under ${fresh}`);
+      saleTransactionId = fresh;
     }
 
     // A number too short to be a phone is refused here; the shared-number and
@@ -680,7 +745,7 @@ Deno.serve(async (req) => {
       .from("sales")
       .insert([
         {
-          transaction_id: transactionId,
+          transaction_id: saleTransactionId,
           stove_serial_no: stoveSerialNo,
           sales_date: salesDate,
           contact_person: contactPerson,
@@ -888,6 +953,12 @@ Deno.serve(async (req) => {
           status: saleStatus,
           sale_id: saleId,
           data: { id: saleId },
+          // The ID the sale was saved under. It differs from the one sent only
+          // when that one was already taken by another stove (see above).
+          transaction_id: saleTransactionId,
+          ...(saleTransactionId !== String(transactionId)
+            ? { transaction_id_sent: String(transactionId) }
+            : {}),
           /*
             Named only when the number is on other live sales: the sales it is
             shared with, and whether each is the same buyer (only possible for
