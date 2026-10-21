@@ -1,5 +1,5 @@
 import { test, expect, type Page } from "@playwright/test";
-import { signIn, USERS, branchSql, callEdgeFunction } from "./helpers";
+import { signIn, USERS, branchSql, callEdgeFunction, getEdgeFunction } from "./helpers";
 
 /**
  * Instalment payments recorded at the same moment all count.
@@ -74,7 +74,7 @@ async function installmentSale(page: Page, first: number): Promise<string> {
 }
 
 /** Posts several payments to one sale at the same moment, from the page. */
-async function payAtOnce(page: Page, saleId: string, amounts: number[]): Promise<number[]> {
+async function payAtOnce(page: Page, saleId: string, amounts: number[]): Promise<{ status: number; message?: string }[]> {
   return page.evaluate(
     async ({ saleId, amounts }) => {
       const key = Object.keys(window.localStorage).find(
@@ -92,7 +92,9 @@ async function payAtOnce(page: Page, saleId: string, amounts: number[]): Promise
           }),
         ),
       );
-      return responses.map((r) => r.status);
+      return Promise.all(
+        responses.map(async (r) => ({ status: r.status, message: (await r.json().catch(() => ({}))).message })),
+      );
     },
     { saleId, amounts },
   );
@@ -122,29 +124,36 @@ test.beforeEach(async ({ page }) => {
   await signIn(page, USERS.admin);
 });
 
-test("four payments at the same moment all count in total_paid", async ({ page }) => {
+test("eight payments at the same moment all count in total_paid", async ({ page }) => {
   test.setTimeout(90_000);
   const saleId = await installmentSale(page, 2000);
-  const statuses = await payAtOnce(page, saleId, [1000, 1000, 1000, 1000]);
-  expect(statuses, "every payment accepted").toEqual([200, 200, 200, 200]);
+  // A warm function first, so the eight arrive together rather than spread
+  // out behind a cold start.
+  await getEdgeFunction(page, `installment-payments/${saleId}`);
+  const statuses = (await payAtOnce(page, saleId, Array(8).fill(1000))).map((r) => r.status);
+  expect(statuses, "every payment accepted").toEqual(Array(8).fill(200));
   const after = await ledger(saleId);
-  expect(after.rows, "the first payment and four more on the ledger").toBe(5);
-  expect(Number(after.ledger)).toBe(6000);
-  expect(Number(after.total_paid), "total_paid agrees with the ledger").toBe(6000);
+  expect(after.rows, "the first payment and eight more on the ledger").toBe(9);
+  expect(Number(after.ledger)).toBe(10000);
+  expect(Number(after.total_paid), "total_paid agrees with the ledger").toBe(10000);
   expect(after.status).toBe("partially_paid");
 });
 
 test("two payments that each fit the balance cannot both be taken", async ({ page }) => {
   test.setTimeout(90_000);
-  // 42,000 less 40,000 leaves 2,000: either payment fits, both do not.
+  // 42,000 less 40,000 leaves 2,000: either 1,500 fits, both do not. The
+  // second is refused under the lock, against the 500 the first one left.
   const saleId = await installmentSale(page, 40000);
-  const statuses = await payAtOnce(page, saleId, [2000, 2000]);
+  await getEdgeFunction(page, `installment-payments/${saleId}`);
+  const replies = await payAtOnce(page, saleId, [1500, 1500]);
+  const statuses = replies.map((r) => r.status);
   expect(statuses.filter((s) => s === 200).length, `one accepted: ${statuses}`).toBe(1);
   expect(statuses.filter((s) => s === 400).length, `one refused: ${statuses}`).toBe(1);
+  expect(replies.find((r) => r.status === 400)?.message ?? "").toMatch(/exceeds remaining balance (500)/);
   const after = await ledger(saleId);
-  expect(Number(after.total_paid)).toBe(42000);
-  expect(Number(after.ledger)).toBe(42000);
-  expect(after.status).toBe("fully_paid");
+  expect(Number(after.total_paid)).toBe(41500);
+  expect(Number(after.ledger)).toBe(41500);
+  expect(after.status).toBe("partially_paid");
 });
 
 test("a single payment still records and answers as before", async ({ page }) => {
