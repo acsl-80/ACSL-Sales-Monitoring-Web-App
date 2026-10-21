@@ -1,6 +1,7 @@
 -- Proof that 20261022090000_create_sale_in_one_transaction landed. Read-only.
 -- Expected: 2 rows, both with anon_exec false and auth_exec false;
--- create_sale_tx with service_exec true; both with search_path=public.
+-- create_sale_tx with service_exec true and definer true, _insert_row_from_json
+-- with service_exec false and definer false; both with search_path=public.
 -- Then one ledger row.
 
 select p.proname,

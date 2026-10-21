@@ -43,11 +43,13 @@
 set local lock_timeout = '5s';
 
 -- Inserts one row from a JSON object, the keys naming the columns. Returns the
--- new row as JSON. Internal to create_sale_tx.
+-- new row as JSON. An empty object inserts a row of defaults, as the REST API
+-- did. Internal to create_sale_tx: it runs with the rights of its caller, and
+-- nobody may call it directly.
 create or replace function public._insert_row_from_json(_table regclass, _row jsonb)
 returns jsonb
 language plpgsql
-security definer
+security invoker
 set search_path to 'public'
 as $function$
 declare
@@ -73,7 +75,8 @@ begin
    where a.attrelid = _table and a.attnum > 0 and not a.attisdropped
      and _row ? a.attname;
   if _cols is null then
-    raise exception 'Nothing to insert into %', _table;
+    execute format('insert into %1$s default values returning to_jsonb(%1$s.*)', _table) into _out;
+    return _out;
   end if;
 
   execute format(
@@ -157,6 +160,6 @@ $function$;
 comment on function public.create_sale_tx(jsonb, jsonb, jsonb) is
   'Saves a sale in one transaction: address, sale, stove claim and first instalment. Service role only; called by create-sale.';
 
-revoke execute on function public._insert_row_from_json(regclass, jsonb) from public, anon, authenticated;
+revoke execute on function public._insert_row_from_json(regclass, jsonb) from public, anon, authenticated, service_role;
 revoke execute on function public.create_sale_tx(jsonb, jsonb, jsonb) from public, anon, authenticated;
 grant execute on function public.create_sale_tx(jsonb, jsonb, jsonb) to service_role;

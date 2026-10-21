@@ -198,6 +198,32 @@ test("a first payment the database refuses fails the whole sale", async ({ page 
   expect(await leftBehind(seed, serial)).toEqual({ sales: 0, addresses: 0, payments: 0, stove: "available" });
 });
 
+test("the payment labels older phone builds send are placed on the ledger's methods", async ({ page }) => {
+  // Builds from before July 2026 sent the picker's labels. The old path saved
+  // the sale and dropped the payment the ledger refused; now the payment is
+  // part of the sale, so the labels are mapped rather than refused.
+  test.setTimeout(120_000);
+  for (const [sent, stored] of [["Cash", "cash"], ["Bank Transfer", "transfer"], ["Mobile Money", "transfer"], ["POS", "pos"]]) {
+    const seed = Date.now();
+    const serial = await freeStove(page);
+    const made = await callEdgeFunction(page, "create-sale", saleBody(serial, await partnerName(), seed, {
+      isInstallment: true,
+      paymentModelId: await modelId(),
+      amountReceived: 5000,
+      initialPaymentAmount: 5000,
+      initialPaymentMethod: sent,
+    }));
+    expect(made.status, `${sent}: ${JSON.stringify(made.body)}`).toBe(200);
+    const [p] = await branchSql<{ method: string }>(
+      `select ip.payment_method as method from public.installment_payments ip
+         join public.sales s on s.id = ip.sale_id where s.transaction_id = '${TAG}-${seed}'`,
+    );
+    expect(p?.method, `${sent} is recorded as ${stored}`).toBe(stored);
+  }
+});
+
+// The address case passes on the old path too (it wrote nothing either); it
+// stays as a regression check. The other three left rows behind before.
 for (const step of ["sale", "claim", "payment", "address"] as const) {
   test(`a failure at the ${step} step leaves nothing behind`, async ({ page }) => {
     test.setTimeout(90_000);

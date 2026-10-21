@@ -86,6 +86,21 @@ function randomTransactionId(): string {
   return Array.from(bytes, (b) => TXN_ALPHABET[b % TXN_ALPHABET.length]).join("");
 }
 
+/**
+ * The ledger takes cash, transfer or pos. Phone builds from before July
+ * 2026 send the picker's labels ("Cash", "Bank Transfer", "POS", "Mobile
+ * Money"), and a queued sale keeps them after the app updates. Those are
+ * placed on the ledger's three; anything else is passed on as sent, and the
+ * ledger refuses it.
+ */
+function ledgerPaymentMethod(sent: unknown): string {
+  const m = String(sent ?? "").trim().toLowerCase();
+  if (m === "" || m === "cash") return "cash";
+  if (m === "pos") return "pos";
+  if (/transfer|bank|mobile/.test(m)) return "transfer";
+  return String(sent);
+}
+
 /** An account id is a uuid or it is not an account id. */
 const UUID_RE =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -623,7 +638,7 @@ Deno.serve(async (req) => {
       installmentData = {
         modelId: paymentModelId,
         initialAmount: initialAmt,
-        paymentMethod: initialPaymentMethod || "cash",
+        paymentMethod: ledgerPaymentMethod(initialPaymentMethod),
         proofImageId: safeInitialPaymentProofImageId,
         totalPaid: initialAmt,
         paymentStatus: initialAmt >= saleAmount ? "fully_paid" : initialAmt > 0 ? "partially_paid" : "partially_paid",
