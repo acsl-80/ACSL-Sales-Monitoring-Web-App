@@ -75,12 +75,15 @@ export async function deleteSale(
   const ownStockRow = sale.organization_id
     ? `sale_id.eq.${saleId},and(sale_id.is.null,organization_id.eq.${sale.organization_id})`
     : `sale_id.eq.${saleId}`;
+  let releasedIds: string[] = [];
   if (sale.stove_serial_no) {
-    const { error: stoveResetError } = await supabase
+    const { data: released, error: stoveResetError } = await supabase
       .from("stove_ids")
       .update({ sale_id: null, status: "available" })
       .eq("stove_id", sale.stove_serial_no)
-      .or(ownStockRow);
+      .or(ownStockRow)
+      .select("id");
+    releasedIds = (released ?? []).map((r: { id: string }) => r.id);
 
     if (stoveResetError) {
       console.warn("⚠️ Could not reset stove status:", stoveResetError.message);
@@ -96,13 +99,12 @@ export async function deleteSale(
   if (deleteError) {
     console.error("❌ Error deleting sale:", deleteError);
     // The stove was released a moment ago for a delete that did not happen;
-    // put it back so the sale keeps its stove.
-    if (sale.stove_serial_no) {
+    // put back exactly the rows released, so the sale keeps its stove.
+    if (releasedIds.length > 0) {
       await supabase
         .from("stove_ids")
         .update({ sale_id: saleId, status: "sold" })
-        .eq("stove_id", sale.stove_serial_no)
-        .eq("organization_id", sale.organization_id)
+        .in("id", releasedIds)
         .is("sale_id", null);
     }
     throw new Error(`Failed to delete sale: ${deleteError.message}`);
