@@ -13,10 +13,6 @@ serve(async (req) => {
   console.log("📅 Timestamp:", new Date().toISOString());
   console.log("🌐 Method:", req.method);
   console.log("🔗 URL:", req.url);
-  console.log(
-    "📋 Headers:",
-    JSON.stringify(Object.fromEntries(req.headers.entries()), null, 2)
-  );
   console.log("=".repeat(80));
 
   // Handle CORS preflight
