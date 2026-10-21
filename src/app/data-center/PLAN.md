@@ -453,3 +453,29 @@ new outcome vocabulary beyond the two rows; removing the verdict pills or
 the CHECK constraint; aligning the three dashboard definitions (Deferred);
 scorecard rows for the sheet months; realtime; reworking the corrections
 flow.
+
+## Phase 34: acting for Sales on sent-back records (approved 2026-10-22)
+
+His ask, verbatim, is in TASKS.md and D67. In short: the place to fix a
+sent-back record could not be found, and he wants to let anyone in the
+team act for the sales managers.
+
+**S1, findable.** A "Records to fix" card on Explore. The list filters by
+rep, partner and reason and searches serial, name and phone, all in SQL.
+A row opens the workspace; the stove record moves to a link inside it.
+The stove page links an open correction to its workspace. The workspace
+puts the fix panel first on a phone, says plainly when a fix has saved,
+and opens the next record waiting under the same filters.
+
+**S2, the grant.** `corrections.act_for_sales`, per person through
+`feature_grants` and per level through `data_center.act_for_sales_levels`.
+The corrections function treats a holder as it treats a standing
+recipient. Settings' send-back routing page shows the levels, edited by
+`grants.manage`, and lists who holds it by hand.
+
+Deploy list: data-center-corrections, data-center-read, data-center-admin.
+One migration (the levels table, audited).
+
+Non-goals: editing the sale's fields for a holder whose sales app role
+cannot edit a sale (S3, after retrofit slice D); notifications; changing
+how send-backs are routed; the review side of the flow.

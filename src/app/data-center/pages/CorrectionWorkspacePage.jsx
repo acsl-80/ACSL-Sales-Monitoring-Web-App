@@ -1,4 +1,4 @@
-import { useParams } from "@tanstack/react-router";
+import { useParams, useSearch } from "@tanstack/react-router";
 import DataCentreShell from "../components/DataCentreShell";
 import CorrectionWorkspace from "../features/corrections/CorrectionWorkspace";
 import { DATA_CENTER_FEATURES } from "../lib/features";
@@ -13,7 +13,8 @@ import { DATA_CENTER_FEATURES } from "../lib/features";
  */
 function Inner() {
   const { saleId } = useParams({ from: "/data-center/corrections_/$saleId" });
-  return <CorrectionWorkspace key={saleId} saleId={saleId} />;
+  const narrowing = useSearch({ from: "/data-center/corrections_/$saleId" });
+  return <CorrectionWorkspace key={saleId} saleId={saleId} narrowing={narrowing} />;
 }
 
 export default function CorrectionWorkspacePage() {
@@ -23,7 +24,11 @@ export default function CorrectionWorkspacePage() {
       description="What the call centre questioned is marked. Change it, say what you did, and it goes to the call centre for review."
       breadcrumb="Fix this record"
       area="call-centre"
-      feature={[DATA_CENTER_FEATURES.CORRECTIONS_FIX, DATA_CENTER_FEATURES.CALL_RECORDS_EDIT]}
+      feature={[
+        DATA_CENTER_FEATURES.CORRECTIONS_FIX,
+        DATA_CENTER_FEATURES.ACT_FOR_SALES,
+        DATA_CENTER_FEATURES.CALL_RECORDS_EDIT,
+      ]}
     >
       <Inner />
     </DataCentreShell>

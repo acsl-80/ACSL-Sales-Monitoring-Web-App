@@ -1246,12 +1246,29 @@ export type CorrectionRow = {
 
 export type CorrectionTab = "open" | "fixed" | "resolved" | "all";
 
+/** One choice in a list filter, with how many records in the tab carry it. */
+export type CorrectionFacet = { key: string; label: string; n: number };
+
+/** What the list can be narrowed by (D67); all applied in SQL. */
+export type CorrectionFilters = {
+  /** The rep's name, folded to lower case, as routing keys it. */
+  rep?: string | null;
+  partner?: string | null;
+  /** The reason's option id. */
+  reason?: string | null;
+  /** Serial, transaction id, customer name or phone. */
+  q?: string | null;
+};
+
 export type CorrectionsList = {
   rows: CorrectionRow[];
   counts: { open: number; fixed: number; resolved: number };
+  facets: { reps: CorrectionFacet[]; partners: CorrectionFacet[]; reasons: CorrectionFacet[] };
   tab: CorrectionTab;
   mine: boolean;
   seesEverything: boolean;
+  /** Acts for Sales by grant or level (D67); the server's own verdict. */
+  actsForSales: boolean;
   canReview: boolean;
   canFix: boolean;
   canEditSale: boolean;
@@ -1299,7 +1316,13 @@ export type CorrectionDetail = {
   phoneCheck: { heard: string | null; saved: string | null; matches: boolean | null } | null;
   catalogue: SaleFieldSpec[];
   reasonFields: Record<string, string[]>;
-  can: { fix: boolean; claim: boolean; review: boolean; withdraw: boolean; open: boolean; editSale: boolean };
+  can: {
+    fix: boolean; claim: boolean; review: boolean; withdraw: boolean; open: boolean; editSale: boolean;
+    /** Acting for Sales by grant or level rather than as the routed rep (D67). */
+    actForSales: boolean;
+    /** Routed to the caller's own account. */
+    mine: boolean;
+  };
 };
 
 /** What stands when the call centre heard one number and Sales saved another. */
@@ -1316,6 +1339,7 @@ export type WorkWaiting = {
   canFix: boolean;
   canReview: boolean;
   seesEverything: boolean;
+  actsForSales: boolean;
 };
 
 /**
@@ -1327,7 +1351,7 @@ export type WorkWaiting = {
  * router, a standing recipient, a super admin) may do a rep's part for them.
  */
 export const dataCenterCorrections = {
-  list: (opts: { tab?: CorrectionTab; mine?: boolean; limit?: number } = {}) =>
+  list: (opts: { tab?: CorrectionTab; mine?: boolean; limit?: number } & CorrectionFilters = {}) =>
     call<CorrectionsList>("data-center-corrections", "list", opts),
 
   detail: (saleId: string) =>
@@ -1491,6 +1515,13 @@ export type SendBackConfig = {
   candidates: { id: string; full_name: string; email: string | null; role: string }[];
   /** Whether the caller may change the routing; the server's own verdict. */
   canEdit?: boolean;
+  /** Who acts for Sales (D67): levels switched on, people given it by hand. */
+  actForSales: {
+    levels: string[];
+    holders: { user_id: string; full_name: string | null; email: string | null; access_role: string | null }[];
+    /** grants.manage; the server's own verdict. */
+    canEdit: boolean;
+  };
 };
 
 /** One row of public.sale_field_rules, as data-center-admin returns it. */
@@ -1524,6 +1555,14 @@ export const dataCenterAdmin = {
    * somebody on leave needs - they stop receiving without anybody having to
    * remember who was on the list before they left.
    */
+  /** Switch a whole access level on or off for acting for Sales (D67). grants.manage. */
+  actForSalesLevelSet: (accessRole: string, enabled: boolean) =>
+    call<{ accessRole: string; enabled: boolean }>(
+      "data-center-admin",
+      "act_for_sales_level_set",
+      { accessRole, enabled },
+    ),
+
   sendBackRecipientSet: (userId: string, enabled: boolean | null, note?: string) =>
     call<{ userId: string; removed?: boolean; is_enabled?: boolean }>(
       "data-center-admin",

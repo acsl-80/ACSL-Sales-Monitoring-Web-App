@@ -4,7 +4,7 @@ import StoveFinder from "./features/stove-record/StoveFinder";
 import { DATA_CENTER_FEATURES } from "./lib/features";
 import {
   BarChart3, PhoneCall, Handshake, Database, Upload, Settings2, Lock, ArrowRight,
-  TrendingUp,
+  TrendingUp, Undo2,
 } from "lucide-react";
 
 /**
@@ -42,6 +42,23 @@ const AREAS = [
     name: "Call Centre",
     icon: PhoneCall,
     blurb: "The verification queue, call outcomes, corrections and the assignment log.",
+  },
+  {
+    /*
+     * The records sent back to Sales, as a door of their own (D67).
+     *
+     * They were reachable only through the banner and two call-centre cards,
+     * and in seven weeks nobody on the Sales side fixed one. Whoever treats
+     * them (the rep, a standing recipient, anyone acting for Sales) or
+     * reviews them (the call centre) gets the card.
+     */
+    key: DATA_CENTER_FEATURES.CORRECTIONS_FIX,
+    altKeys: [DATA_CENTER_FEATURES.ACT_FOR_SALES, DATA_CENTER_FEATURES.CALL_RECORDS_EDIT],
+    href: "/data-center/corrections",
+    area: "call-centre",
+    name: "Records to fix",
+    icon: Undo2,
+    blurb: "Sent back by the call centre. Fix what is marked and send each one for review.",
   },
   {
     key: DATA_CENTER_FEATURES.RECORDS_VIEW,

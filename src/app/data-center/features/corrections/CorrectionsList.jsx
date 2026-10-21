@@ -1,11 +1,13 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
+import { useNavigate, useSearch } from "@tanstack/react-router";
 import Link from "@/compat/Link";
+import CorrectionFilters, { narrowingOf, queryOf } from "./CorrectionFilters";
 import { dataCenterCorrections, DataCenterError } from "../../lib/client";
 import { plural } from "../../lib/plural";
 import { dateOf } from "../../lib/when";
 import ExportButton from "../../components/ExportButton";
 import {
-  Loader2, AlertTriangle, Check, CircleAlert, Undo2, RotateCcw, PhoneOff, PhoneCall, ArrowRight,
+  Loader2, AlertTriangle, CircleAlert, Undo2, RotateCcw, PhoneOff, PhoneCall, ArrowRight,
 } from "lucide-react";
 
 /**
@@ -16,9 +18,12 @@ import {
  * which fields are disputed, who has it and how long it has waited, and the
  * action on the row is the one that moves the episode: Sales marks it fixed
  * and says what they did; the call centre closes it (ring again, or nothing
- * to ring) or sends it back again. The record itself opens from the serial number,
- * and from slice 2 from the workspace, where the sale is edited through the
- * sales app's own path.
+ * to ring) or sends it back again.
+ *
+ * Phase 34 (D67): the whole row opens the workspace, where every fix happens;
+ * the list's own note-only "Mark it fixed" is gone, because it was the one way
+ * to close a record without looking at the fields it questioned. The list
+ * narrows by rep, partner, reason and a search, all held in the URL.
  */
 
 const TABS = [
@@ -183,24 +188,10 @@ function NoteAction({ label, placeholder, submitLabel, icon: Icon, tone, onSubmi
 
 function RowActions({ row, data, reload }) {
   const saleId = row.sale_id;
-  const mayFix = data.canFix && (row.is_mine || data.seesEverything || row.assigned_to);
 
   if (row.state === "open") {
     return (
       <div className="flex flex-wrap items-center justify-end gap-1.5">
-        {mayFix && (
-          <NoteAction
-            label="Mark it fixed"
-            placeholder="What did you do? The call centre reads this before ringing again."
-            submitLabel="Send for review"
-            icon={Check}
-            tone="border border-(--dc-accent)/40 text-(--dc-accent) hover:bg-(--dc-accent-soft)"
-            onSubmit={async (note) => {
-              await dataCenterCorrections.fix(saleId, note);
-              reload();
-            }}
-          />
-        )}
         {data.canReview && (
           <NoteAction
             label="Withdraw"
@@ -262,17 +253,40 @@ function RowActions({ row, data, reload }) {
   return null;
 }
 
-export default function CorrectionsList({ initialTab = "open", initialMine = false }) {
-  const [tab, setTab] = useState(initialTab);
-  const [mine, setMine] = useState(initialMine);
+/** May this person fix the row from the workspace? The server decides again there. */
+function mayFix(row, data) {
+  return row.state === "open" && data.canFix && (row.is_mine || data.seesEverything || row.assigned_to);
+}
+
+export default function CorrectionsList() {
+  const search = useSearch({ from: "/data-center/corrections" });
+  const navigate = useNavigate();
+  const tab = search.tab ?? "open";
+  const mine = Boolean(search.mine);
+  const narrowing = narrowingOf(search);
+  const filtered = Boolean(search.rep || search.partner || search.reason || search.q);
   const [data, setData] = useState(null);
   const [error, setError] = useState(null);
   const [loading, setLoading] = useState(true);
 
+  const go = (patch) =>
+    navigate({ to: "/data-center/corrections", search: (prev) => ({ ...prev, ...patch }), replace: true });
+  const setTab = (next) => go({ tab: next === "open" ? undefined : next });
+  const setMine = (next) => go({ mine: next ? true : undefined });
+  const hrefFor = (row) => `/data-center/corrections/${encodeURIComponent(row.sale_id)}${queryOf(narrowing)}`;
+
   const load = useCallback(() => {
     setLoading(true);
     dataCenterCorrections
-      .list({ tab, mine, limit: 500 })
+      .list({
+        tab,
+        mine,
+        limit: 500,
+        rep: search.rep ?? null,
+        partner: search.partner ?? null,
+        reason: search.reason ?? null,
+        q: search.q ?? null,
+      })
       .then((r) => {
         setData(r);
         setError(null);
@@ -281,7 +295,7 @@ export default function CorrectionsList({ initialTab = "open", initialMine = fal
         setError(err instanceof DataCenterError ? err.message : "Could not load the corrections."),
       )
       .finally(() => setLoading(false));
-  }, [tab, mine]);
+  }, [tab, mine, search.rep, search.partner, search.reason, search.q]);
 
   useEffect(load, [load]);
 
@@ -336,6 +350,11 @@ export default function CorrectionsList({ initialTab = "open", initialMine = fal
           <span className="text-sm text-gray-500">
             waiting on Sales {counts.open}, awaiting review {counts.fixed}, closed {counts.resolved}
           </span>
+          {data.actsForSales && (
+            <span className="rounded-full bg-(--dc-accent-soft) px-2.5 py-0.5 text-xs font-medium text-(--dc-accent-strong)">
+              You can fix any of these for Sales
+            </span>
+          )}
           <div className="ml-auto flex flex-wrap items-center gap-2">
             {data.seesEverything && (
               <div className="inline-flex rounded-full border border-gray-300 p-0.5 text-xs font-medium">
@@ -387,15 +406,23 @@ export default function CorrectionsList({ initialTab = "open", initialMine = fal
           {loading && <Loader2 className="ml-auto mt-3 h-4 w-4 animate-spin text-gray-400" />}
         </div>
 
+        <CorrectionFilters key={search.q ?? ""} search={search} facets={data.facets ?? { reps: [], partners: [], reasons: [] }} />
+
         {rows.length === 0 ? (
           <div className="m-4 rounded-lg border border-dashed border-(--dc-accent)/40 bg-(--dc-accent-soft)/15 p-8 text-center">
             <p className="text-sm font-medium text-gray-800">
-              {tab === "open" && "Nothing is waiting on Sales."}
-              {tab === "fixed" && "Nothing is waiting for review."}
-              {tab === "resolved" && "Nothing has been closed yet."}
+              {filtered
+                ? "No record matches these filters."
+                : tab === "open"
+                ? "Nothing is waiting on Sales."
+                : tab === "fixed"
+                ? "Nothing is waiting for review."
+                : "Nothing has been closed yet."}
             </p>
             <p className="mt-1 text-sm text-gray-600">
-              {data.seesEverything || !mine
+              {filtered
+                ? "Remove a filter above to see more."
+                : data.seesEverything || !mine
                 ? "No record is in this state."
                 : "No record routed to you is in this state."}
             </p>
@@ -420,7 +447,16 @@ export default function CorrectionsList({ initialTab = "open", initialMine = fal
                 {rows.map((row) => {
                   const holder = whoHasIt(row);
                   return (
-                    <tr key={row.id} className="align-top hover:bg-(--dc-accent-soft)/40">
+                    <tr
+                      key={row.id}
+                      data-correction-row
+                      onClick={(e) => {
+                        // The row opens the record; its own links and buttons keep their job.
+                        if (e.target.closest("a, button, input, textarea, select")) return;
+                        navigate({ to: hrefFor(row) });
+                      }}
+                      className="cursor-pointer align-top hover:bg-(--dc-accent-soft)/40"
+                    >
                       <td className="px-3 py-2.5">
                         <div className="font-medium text-gray-900">{row.partner_name ?? "Unknown partner"}</div>
                         <div className="text-xs text-gray-500">{row.transfer_reference ?? "no consignment reference"}</div>
@@ -439,7 +475,7 @@ export default function CorrectionsList({ initialTab = "open", initialMine = fal
                       </td>
                       <td className="px-3 py-2.5">
                         <Link
-                          href={`/data-center/stove/${encodeURIComponent(row.stove_serial_no ?? "")}`}
+                          href={hrefFor(row)}
                           className="font-mono text-sm font-semibold text-(--dc-accent) underline decoration-(--dc-accent)/30 underline-offset-2 hover:decoration-(--dc-accent)"
                         >
                           {row.stove_serial_no ?? "no serial number"}
@@ -482,10 +518,10 @@ export default function CorrectionsList({ initialTab = "open", initialMine = fal
                       <td className="px-3 py-2.5">
                         <div className="flex flex-col items-end gap-1.5">
                           <Link
-                            href={`/data-center/corrections/${encodeURIComponent(row.sale_id)}`}
-                            className="inline-flex items-center gap-1 rounded-md bg-(--dc-accent) px-2.5 py-1 text-xs font-medium text-white transition hover:bg-(--dc-accent-strong)"
+                            href={hrefFor(row)}
+                            className="inline-flex items-center gap-1 whitespace-nowrap rounded-md px-2 py-1 text-xs font-semibold text-(--dc-accent) transition hover:bg-(--dc-accent-soft)"
                           >
-                            Open record <ArrowRight className="h-3 w-3" />
+                            {mayFix(row, data) ? "Fix it" : "Open"} <ArrowRight className="h-3 w-3" />
                           </Link>
                           <RowActions row={row} data={data} reload={load} />
                         </div>

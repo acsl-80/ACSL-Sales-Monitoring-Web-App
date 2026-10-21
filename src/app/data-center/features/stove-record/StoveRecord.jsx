@@ -1230,6 +1230,15 @@ export default function StoveRecord({ stoveId }) {
                 {e?.correction_note && (
                   <p className="mt-1 text-sm text-purple-900">{e.correction_note}</p>
                 )}
+                {s.sale_id && (
+                  <Link
+                    href={`/data-center/corrections/${encodeURIComponent(s.sale_id)}`}
+                    data-open-correction
+                    className="mt-2 inline-flex items-center gap-1 text-sm font-semibold text-purple-900 underline decoration-purple-400 underline-offset-2"
+                  >
+                    {s.correction_state === "resolved" ? "Open the correction" : "Open it to fix"}
+                  </Link>
+                )}
               </div>
             )}
           </>

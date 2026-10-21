@@ -939,3 +939,19 @@ Decided by him on 15 October (decision 2 in `docs/plans/phone-and-buyer-rule.md`
 The script uses the analysis's own gates and leaves a row's source and kind alone. Its note says the confirmation came from a verification call, not from an agent's confirm. Creditable counts rise by about the number it confirms at the next analysis run.
 
 This is a one-off for the backlog, not a standing rule. Ticking the register automatically when a call verifies a stove would be a change to the call form, and is not part of this.
+
+## D67. Anyone the team chooses can act for Sales on a sent-back record (2026-10-22)
+
+His words: "the correction surface is not clear or cannot be found ... I want to also be able to enable anyone within the team to act on behalf of the sales managers responsible, so its a function we can enable for a user, viewer, call center, editor, data manager".
+
+What production said on 22 October: 387 records open since 2 September, none ever claimed or fixed, no sale edited after its send-back, and the 14 closed ones all withdrawn by the call centre. The workspace existed (Phase 24); nothing led to it. The module had no door named for it, the list's obvious click (the serial number) opened the stove page, and the stove page named the correction without linking to it.
+
+Decided, and approved by him on 22 October:
+
+- **One new key, `corrections.act_for_sales`.** A holder may claim and fix any open record, whoever it is routed to, exactly as a standing recipient may. It is not `corrections.route`: acting on a record and deciding where records go are different jobs, and the second one moves everybody else's work.
+- **Given to a person or to a whole level.** A person through the existing feature grants. A level through `data_center.act_for_sales_levels`, a table of its own rather than a `workflow_config` row, because `config_set` lets `registry.manage` edit any setting and this is an access decision, which is `grants.manage`'s. Every level starts off; he turns them on.
+- **Read where it matters, not folded into `featuresFor`.** Only the corrections function enforces the key, and only the Data Center's own read reports it to the screen; both resolve it through one helper in `_shared/data-center-roles.ts`. Folding a level table into `featuresFor` would make every one of its nine callers read it or silently disagree.
+- **Who and for whom, on the episode.** The fix already stamps the person who saved it and, when they are not the routed rep, the rep's name as `fixed_on_behalf`. The list, the timeline and the export show both.
+- **One way to fix.** The list's inline "Mark it fixed" goes: every fix happens in the workspace, where the disputed fields are. A note-only fix from the list was the one path that could close a record without looking at it.
+- **Editing the sale's fields for a holder whose sales app role cannot edit a sale is not in this phase.** It goes through the sales app's own save path, which retrofit slice D is changing. A second write path here would carry a second copy of the phone and buyer rule. S3 waits for D.
+

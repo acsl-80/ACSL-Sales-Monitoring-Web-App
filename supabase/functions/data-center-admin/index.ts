@@ -94,6 +94,7 @@ const CHANGE_CATEGORY_SQL = `case cl.table_name
   when 'assignment_batches'  then 'assignment'
   when 'module_access'       then 'access'
   when 'feature_grants'      then 'access'
+  when 'act_for_sales_levels' then 'access'
   when 'call_agent_profiles' then 'access'
   when 'workflow_config'     then 'configuration'
   when 'option_lists'        then 'configuration'
@@ -757,9 +758,31 @@ serve(async (req) => {
             return { ...rep, account_can_see: Boolean(rep.user_id) && canSee };
           });
 
+          /*
+           * Who acts for Sales (D67): the levels switched on, and the people
+           * given it by hand. Shown beside the standing recipients because it
+           * is the same power, given by grant; changed only by grants.manage.
+           */
+          const levelsOn = await conn.queryObject<{ access_role: string }>({
+            text: `select access_role from data_center.act_for_sales_levels order by access_role`,
+          });
+          const holders = await conn.queryObject({
+            text: `select g.user_id::text, p.full_name, p.email, m.access_role
+                     from data_center.feature_grants g
+                     left join public.profiles p on p.id = g.user_id
+                     left join data_center.module_access m on m.user_id = g.user_id
+                    where g.feature_key = 'corrections.act_for_sales'
+                    order by p.full_name`,
+          });
+
           return json(
             {
               data: {
+                actForSales: {
+                  levels: levelsOn.rows.map((r) => r.access_role),
+                  holders: holders.rows,
+                  canEdit: canManageGrants,
+                },
                 recipients: recipients.rows,
                 reps: withAccess,
                 candidates: candidates.rows,
@@ -1148,6 +1171,41 @@ serve(async (req) => {
             }
           });
           return json({ data: { userId, featureKey, granted: body.granted === true } }, 200, cors);
+        }
+
+        /**
+         * Switch a whole level on or off for acting for Sales (D67).
+         *
+         * An access decision, so grants.manage, the same shoulder that gives
+         * the key to one person.
+         */
+        case "act_for_sales_level_set": {
+          if (!canManageGrants) {
+            return json(
+              { error: "This needs the grants.manage permission", code: "no_feature" },
+              403,
+              cors,
+            );
+          }
+          const level = String(body.accessRole ?? "");
+          if (!ROLE_FEATURES[level]) {
+            return json({ error: "Which level?", code: "bad_input" }, 400, cors);
+          }
+          await withActor(conn, callerId, async () => {
+            if (body.enabled) {
+              await conn.queryObject({
+                text: `insert into data_center.act_for_sales_levels (access_role, granted_by)
+                       values ($1, $2) on conflict (access_role) do nothing`,
+                args: [level, callerId],
+              });
+            } else {
+              await conn.queryObject({
+                text: `delete from data_center.act_for_sales_levels where access_role = $1`,
+                args: [level],
+              });
+            }
+          });
+          return json({ data: { accessRole: level, enabled: body.enabled === true } }, 200, cors);
         }
 
         default:

@@ -4,6 +4,17 @@ Flat, one line per slice, newest programme first. States: todo, spec red,
 green, in review, merged, live. The why lives in `decisions.md`; the evidence
 lives on each PR.
 
+## Phase 34, acting for Sales on sent-back records (his ask 2026-10-22)
+
+His words: "the correction surface is not clear or cannot be found, where you click the record the option to now edit with whatever missing information or information that we now need to change update, this surface is not there. I want to also be able to enable anyone within the team to act on behalf of the sales managers responsible, so its a function we can enable for a user, viewer, call center, editor, data manager ... make the surface, robust, simple and easy for these changes to be effected".
+
+Done when a person reaches every sent-back record from the banner, a chip or the record itself, sees why it came back, edits the named fields in place and sends it to review; anyone holding the new grant can do that for any rep, the server refuses everyone else, and each fix names who made it and for whom.
+
+Production on 2026-10-22: 387 open since 2 Sep, none claimed, none fixed, no sale edited after its send-back; 14 closed, all withdrawn by the call centre. Disputed: phone 244, other phone 207, serial 34, name 10, state 4, address 1.
+
+- [ ] S1 and S2 in one PR (D67). S1 findable: a "Records to fix" card on Explore, the list row opens the workspace (not the stove page), the stove record links to its correction, filters by rep, partner, reason and a search in SQL, a saved state and "next record" in the workspace, the fix panel first on a phone. S2 the grant `corrections.act_for_sales`, by person or by level (`data_center.act_for_sales_levels`, switched in Settings by grants.manage); a holder claims and fixes any open record and the fix names the actor and the rep. Spec `data-center-act-for-sales`. One migration. Deploy list: data-center-corrections, data-center-read, data-center-admin
+- [ ] S3 the edit for a grant holder: the disputed fields save through the sales app's one sale-save path, which accepts a holder of the grant on a sale with an open correction. Waits on retrofit slice D, which is changing that path
+
 ## Fix 2026-10-07, the sidebar's Data Center answer belongs to one person
 
 Found by the Codex review of Recovery, whose hook copied this one. Decision D64.
