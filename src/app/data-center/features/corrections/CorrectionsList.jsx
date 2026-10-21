@@ -453,7 +453,11 @@ export default function CorrectionsList() {
                       onClick={(e) => {
                         // The row opens the record; its own links and buttons keep their job.
                         if (e.target.closest("a, button, input, textarea, select")) return;
-                        navigate({ to: hrefFor(row) });
+                        navigate({
+                          to: "/data-center/corrections/$saleId",
+                          params: { saleId: row.sale_id },
+                          search: narrowing,
+                        });
                       }}
                       className="cursor-pointer align-top hover:bg-(--dc-accent-soft)/40"
                     >

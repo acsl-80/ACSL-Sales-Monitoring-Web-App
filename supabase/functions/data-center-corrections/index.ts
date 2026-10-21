@@ -254,7 +254,7 @@ serve(async (req) => {
         const repKey = text(body.rep, 120)?.toLowerCase() ?? null;
         const partner = text(body.partner, 200);
         const reasonId = text(body.reason, 40);
-        if (reasonId && !/^[0-9a-f-]{36}$/i.test(reasonId)) {
+        if (reasonId && !/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(reasonId)) {
           return json({ error: "reason must be an option id", code: "bad_input" }, 400, cors);
         }
         const q = text(body.q, 80);

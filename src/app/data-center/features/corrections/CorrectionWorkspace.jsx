@@ -75,7 +75,7 @@ export default function CorrectionWorkspace({ saleId, narrowing = {} }) {
         setNext({ busy: false, none: true });
         return;
       }
-      navigate({ to: `/data-center/corrections/${encodeURIComponent(id)}${queryOf(narrowing)}` });
+      navigate({ to: "/data-center/corrections/$saleId", params: { saleId: id }, search: narrowing });
     } catch {
       setNext({ busy: false, none: false });
       setError("Could not find the next record. Go back to the list.");
