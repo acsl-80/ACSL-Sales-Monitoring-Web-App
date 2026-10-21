@@ -7,7 +7,6 @@ export interface CredentialRecord {
   partner_name: string;
   email?: string;
   username?: string;
-  password: string;
   role?: string;
   organization_id: string;
   user_id: string;
@@ -59,7 +58,6 @@ export async function getAllCredentials(supabase: SupabaseClient): Promise<{
         partner_name: cred.partner_name,
         email: cred.email, // Always include email
         username: cred.username, // Always include username
-        password: cred.password,
         role: cred.role || "admin", // Include role, default to admin if not set
         organization_id: cred.organization_id,
         user_id: cred.user_id,
@@ -99,7 +97,7 @@ export async function getCredentialsByRole(
     const { data, error, count } = await supabase
       .from("credentials")
       .select(
-        "id, user_id, email, username, password, role, partner_name, created_at, updated_at",
+        "id, user_id, email, username, role, partner_name, created_at, updated_at",
         { count: "exact" }
       )
       .eq("role", role)
@@ -159,7 +157,6 @@ export async function getCredentialByPartnerId(
       partner_name: data.partner_name,
       email: data.email, // Always include email
       username: data.username, // Always include username
-      password: data.password,
       role: data.role || "admin", // Include role, default to admin if not set
       organization_id: data.organization_id,
       user_id: data.user_id,
@@ -214,7 +211,6 @@ export async function getCredentialByOrganizationId(
       partner_name: data.partner_name,
       email: data.email, // Always include email
       username: data.username, // Always include username
-      password: data.password,
       role: data.role || "admin", // Include role, default to admin if not set
       organization_id: data.organization_id,
       user_id: data.user_id,
@@ -241,7 +237,7 @@ export async function getCredentialByUserId(
   try {
     const { data, error } = await supabase
       .from("credentials")
-      .select("id, user_id, profile_id, email, username, password, role, partner_name, is_dummy_email, created_at, updated_at")
+      .select("id, user_id, profile_id, email, username, role, partner_name, is_dummy_email, created_at, updated_at")
       .eq("user_id", userId)
       .single();
 
@@ -257,7 +253,6 @@ export async function getCredentialByUserId(
         partner_name: data.partner_name,
         email: data.email,
         username: data.username,
-        password: data.password,
         role: data.role,
         user_id: data.user_id,
         is_dummy_email: data.is_dummy_email ?? false,

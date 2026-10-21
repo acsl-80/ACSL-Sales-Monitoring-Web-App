@@ -86,7 +86,6 @@ serve(async (req) => {
     console.log('✅ User is admin of organization:', adminProfile.organization_id);
 
     const body = await req.json();
-    console.log('📦 Request body:', body);
 
     const { email, password, full_name, phone } = body;
 

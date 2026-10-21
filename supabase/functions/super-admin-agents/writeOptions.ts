@@ -76,13 +76,14 @@ export async function createAgent(supabase: any, data: any, adminId: string, man
     })
     .eq("id", profile.id);
 
-  // Save credentials so they appear in the credentials management page
+  // The login record, without the password: it is shown once to whoever
+  // creates the account and never stored. A forgotten one is replaced by Reset.
   await supabase.from("credentials").insert({
     user_id: profile.id,
     profile_id: profile.id,
     email,
     username: email,
-    password: data.password,
+    password: null,
     partner_name: data.full_name.trim(),
     role,
     is_dummy_email: false,

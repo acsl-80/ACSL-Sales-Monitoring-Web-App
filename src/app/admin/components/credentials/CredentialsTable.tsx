@@ -16,7 +16,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { Eye, EyeOff, Copy, RefreshCw, Info, Loader2, ChevronLeft, ChevronRight, ChevronsLeft, ChevronsRight } from "lucide-react";
+import { Copy, RefreshCw, Info, Loader2, ChevronLeft, ChevronRight, ChevronsLeft, ChevronsRight } from "lucide-react";
 import { Credential } from "@/app/services/adminCredentialsService";
 import { formatDate as formatDateShared } from "@/app/utils/formatDate";
 
@@ -33,7 +33,6 @@ const CredentialsTable: React.FC<CredentialsTableProps> = ({
   onViewDetails,
   onResetPassword,
 }) => {
-  const [visiblePasswords, setVisiblePasswords] = useState<Set<string>>(new Set());
   const [copiedField, setCopiedField] = useState<string | null>(null);
 
   // Pagination
@@ -55,14 +54,6 @@ const CredentialsTable: React.FC<CredentialsTableProps> = ({
     return pages;
   };
 
-  const togglePasswordVisibility = (id: string) => {
-    setVisiblePasswords((prev) => {
-      const next = new Set(prev);
-      next.has(id) ? next.delete(id) : next.add(id);
-      return next;
-    });
-  };
-
   const copyToClipboard = async (text: string, field: string) => {
     try {
       await navigator.clipboard.writeText(text);
@@ -71,7 +62,6 @@ const CredentialsTable: React.FC<CredentialsTableProps> = ({
     } catch { /* ignore */ }
   };
 
-  const maskPassword = (password: string) => "•".repeat(Math.min(password.length, 12));
 
   const formatDate = (v: unknown) => formatDateShared(v);
 
@@ -131,9 +121,7 @@ const CredentialsTable: React.FC<CredentialsTableProps> = ({
               </TableRow>
             ) : (
               paged.map((cred, idx) => {
-                const isVisible = visiblePasswords.has(cred.partner_id);
                 const emailCopyId = `email-${cred.partner_id}`;
-                const pwdCopyId = `pwd-${cred.partner_id}`;
                 const loginValue = cred.is_dummy_email
                   ? cred.username ?? ""
                   : cred.email ?? cred.organizations?.email ?? "";
@@ -162,29 +150,9 @@ const CredentialsTable: React.FC<CredentialsTableProps> = ({
                       </div>
                     </TableCell>
 
-                    {/* Password */}
+                    {/* Password: never stored; Reset issues a new one, shown once */}
                     <TableCell>
-                      <div className="flex items-center gap-1.5">
-                        <span className="font-mono text-xs text-gray-700">
-                          {isVisible ? cred.password : maskPassword(cred.password)}
-                        </span>
-                        <button
-                          onClick={() => togglePasswordVisibility(cred.partner_id)}
-                          className="text-gray-400 hover:text-brand transition-colors flex-shrink-0"
-                          title={isVisible ? "Hide" : "Show"}
-                        >
-                          {isVisible ? <EyeOff className="h-3 w-3" /> : <Eye className="h-3 w-3" />}
-                        </button>
-                        <button
-                          onClick={() => copyToClipboard(cred.password, pwdCopyId)}
-                          className="text-gray-400 hover:text-brand transition-colors flex-shrink-0"
-                          title="Copy"
-                        >
-                          {copiedField === pwdCopyId
-                            ? <span className="text-[10px] text-green-600 font-bold">✓</span>
-                            : <Copy className="h-3 w-3" />}
-                        </button>
-                      </div>
+                      <span className="text-xs text-gray-400">Not stored · use Reset</span>
                     </TableCell>
 
                     {/* Type badge */}

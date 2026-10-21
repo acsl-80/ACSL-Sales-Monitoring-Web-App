@@ -86,12 +86,12 @@ export async function updateOrganizationPassword(
 
     console.log("✅ Auth password updated successfully");
 
-    // Step 4: Update password in credentials table (use service role to bypass RLS)
-    console.log("💾 Updating password in credentials table...");
+    // Step 4: The new password is never stored; clear any stored copy.
+    console.log("💾 Clearing the stored password in credentials...");
     const { error: updateCredError } = await adminClient
       .from("credentials")
       .update({
-        password: new_password,
+        password: null,
         updated_at: new Date().toISOString(),
       })
       .eq("partner_id", partner_id);
@@ -230,12 +230,13 @@ export async function resetOrganizationPassword(
 
     console.log("✅ Auth password updated successfully");
 
-    // Step 5: Update password in credentials table (use service role to bypass RLS)
-    console.log("💾 Updating password in credentials table...");
+    // Step 5: The new password is shown once in the reply and never stored;
+    // clear any stored copy.
+    console.log("💾 Clearing the stored password in credentials...");
     const { error: updateCredError } = await adminClient
       .from("credentials")
       .update({
-        password: newPassword,
+        password: null,
         updated_at: new Date().toISOString(),
       })
       .eq("partner_id", partnerId);
@@ -362,11 +363,19 @@ export async function resetAgentPassword(
       return { success: false, error: `Failed to update password: ${updateAuthError.message}` };
     }
 
-    // Update credentials table
+    // The new password is shown once in the reply and never stored; clear any
+    // stored copy.
     await supabase
       .from("credentials")
-      .update({ password: newPassword, updated_at: new Date().toISOString() })
+      .update({ password: null, updated_at: new Date().toISOString() })
       .eq("user_id", userId);
+
+    // A reset password is temporary: the user picks their own at next sign-in.
+    const { error: flagError } = await adminClient
+      .from("profiles")
+      .update({ has_changed_password: false })
+      .eq("id", userId);
+    if (flagError) console.warn("⚠️ Failed to update has_changed_password:", flagError.message);
 
     // Send email non-blocking
     sendPasswordResetEmail(supabase, credential.email, credential.partner_name || credential.username, newPassword);

@@ -3125,19 +3125,10 @@ export default function SuperAdminAgentsContent() {
                 : `Agent "${result.full_name}" updated`,
             });
             fetchAgents();
-            if (wasCreate && result.id) {
-              try {
-                const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
-                const token = await tokenManager.getValidToken();
-                const res = await fetch(`${supabaseUrl}/functions/v1/manage-credentials?user_id=${result.id}`, {
-                  headers: { Authorization: `Bearer ${token}` },
-                });
-                const json = await res.json();
-                if (json.success && json.data) {
-                  setNewAgentCredentials({ name: result.full_name, email: json.data.email, password: json.data.password });
-                  setShowNewCredentialModal(true);
-                }
-              } catch { /* non-blocking */ }
+            // Shown once, from the form: the password is not stored to fetch back.
+            if (wasCreate && result.id && result.initialPassword) {
+              setNewAgentCredentials({ name: result.full_name, email: result.email, password: result.initialPassword });
+              setShowNewCredentialModal(true);
             }
           }}
         />

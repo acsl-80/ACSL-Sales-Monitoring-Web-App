@@ -149,8 +149,6 @@ export async function handleRequest(
       console.log("🔐 Route matched: PUT /update-password (Reset Password)");
       const body = await req.json();
 
-      console.log("📋 Request body:", JSON.stringify(body, null, 2));
-
       // Validate required fields
       if (!body.partner_id || !body.super_admin_password) {
         console.error("❌ Missing required fields");
@@ -208,8 +206,7 @@ export async function handleRequest(
         );
       }
 
-      console.log("✅ Password reset successful!");
-      console.log(`🔑 Password ${passwordMode}: ${result.newPassword}`);
+      console.log(`✅ Password reset successful (${passwordMode})`);
 
       return withCors(
         new Response(

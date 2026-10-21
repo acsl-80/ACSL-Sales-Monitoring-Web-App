@@ -77,7 +77,11 @@ interface AgentFormModalProps {
   mode: "create" | "edit";
   agent?: AcslAgent;
   onClose: () => void;
-  onSuccess: (agent: AcslAgent) => void;
+  /**
+   * initialPassword is set on create only: the password just chosen, shown
+   * once by the caller. It is not stored anywhere to be fetched later.
+   */
+  onSuccess: (agent: AcslAgent & { initialPassword?: string }) => void;
 }
 
 // ── Shared compact field ───────────────────────────────────────────────────────
@@ -447,6 +451,7 @@ export default function AgentFormModal({
           ...newAgent,
           assigned_organizations_count: selectedDirectOrgIds.size,
           assigned_states_count: selectedStates.size,
+          initialPassword: password,
         });
       } else {
         const updates: Record<string, string> = {};

@@ -781,6 +781,7 @@ const AgentsProfilesContent = () => {
           setCredentialData(null);
         }}
         credential={credentialData}
+        canResetPassword={isSuperAdmin}
       />
 
       {/* States Assigned Modal */}

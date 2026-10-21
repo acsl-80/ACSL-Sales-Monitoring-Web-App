@@ -159,13 +159,14 @@ export async function createUser(
 
     console.log("✅ User created successfully:", profile.id);
 
-    // Save credentials to credentials table so super admin can view them later
+    // The login record, without the password: it is shown once to whoever
+    // creates the user and never stored. A forgotten one is replaced by Reset.
     const { error: credError } = await supabase.from("credentials").insert({
       user_id: profile.id,
       profile_id: profile.id,
       email: validatedData.email,
       username: validatedData.email,
-      password: password,
+      password: null,
       partner_name: validatedData.full_name,
       role: validatedData.role,
       is_dummy_email: false,

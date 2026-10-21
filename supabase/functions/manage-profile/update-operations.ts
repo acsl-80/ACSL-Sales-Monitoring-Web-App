@@ -223,7 +223,7 @@ export async function updateUserProfile(
     
     const { data: credential, error: credCheckError } = await adminClient
       .from("credentials")
-      .select("id, user_id, username, email, password")
+      .select("id, user_id, username, email")
       .eq("user_id", userId)
       .maybeSingle();
 
@@ -238,7 +238,6 @@ export async function updateUserProfile(
         user_id: credential.user_id,
         current_username: credential.username,
         current_email: credential.email,
-        current_password_length: credential.password ? credential.password.length : 0
       });
 
       const credUpdates: any = {
@@ -264,11 +263,11 @@ export async function updateUserProfile(
         console.log("  ❌ Email NOT being updated (value:", new_email, ")");
       }
 
+      // A changed password is never stored here. Clearing the column also
+      // drops any copy kept from before passwords stopped being stored.
       if (new_password && new_password.trim()) {
-        credUpdates.password = new_password.trim();
-        console.log("  ✅ Will update password: [length:", new_password.trim().length, "chars]");
-      } else {
-        console.log("  ❌ Password NOT being updated (value:", new_password, ")");
+        credUpdates.password = null;
+        console.log("  ✅ Password changed: stored copy cleared");
       }
 
       console.log("\n📦 Final credUpdates object:", JSON.stringify(credUpdates, null, 2));
@@ -296,23 +295,20 @@ export async function updateUserProfile(
           console.log("✅ New values:", {
             username: credUpdates.username || '[not changed]',
             email: credUpdates.email || '[not changed]',
-            password_length: credUpdates.password ? credUpdates.password.length : '[not changed]'
           });
           
           // Verify the update by reading back the record (also use adminClient)
           console.log("🔍 Verifying credentials update...");
           const { data: verifyData, error: verifyError } = await adminClient
             .from("credentials")
-            .select("username, email, password")
+            .select("username, email")
             .eq("user_id", userId)
             .single();
-          
+
           if (verifyData) {
             console.log("🔍 VERIFICATION - Current credentials record after update:", {
               username: verifyData.username,
               email: verifyData.email,
-              password_length: verifyData.password ? verifyData.password.length : 0,
-              password_matches: verifyData.password === credUpdates.password ? '✅ YES' : '❌ NO'
             });
           } else if (verifyError) {
             console.warn("⚠️ Could not verify update:", verifyError.message);

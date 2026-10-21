@@ -35,8 +35,6 @@ import {
   ChevronRight,
   ChevronsLeft,
   ChevronsRight,
-  Eye,
-  EyeOff,
   Download,
 } from "lucide-react";
 import { downloadTableAsCSV } from "@/utils/csvExportUtils";
@@ -84,13 +82,8 @@ const UserCredentialsSection = ({
   onCopy: (value: string, key: string) => void;
 }) => {
   const [search, setSearch] = useState("");
-  const [typeFilter, setTypeFilter] = useState("all"); // all | with-password | no-password
   const [currentPage, setCurrentPage] = useState(1);
   const [pageSize, setPageSize] = useState(10);
-  const [visiblePasswords, setVisiblePasswords] = useState<Set<string>>(new Set());
-
-  const togglePwd = (id: string) =>
-    setVisiblePasswords((prev) => { const next = new Set(prev); next.has(id) ? next.delete(id) : next.add(id); return next; });
 
   const filtered = useMemo(() => {
     let list = users;
@@ -101,10 +94,8 @@ const UserCredentialsSection = ({
         u.email.toLowerCase().includes(t)
       );
     }
-    if (typeFilter === "with-password") list = list.filter((u) => !!u.password);
-    if (typeFilter === "no-password") list = list.filter((u) => !u.password);
     return list;
-  }, [users, search, typeFilter]);
+  }, [users, search]);
 
   const totalRecords = filtered.length;
   const totalPages = Math.max(1, Math.ceil(totalRecords / pageSize));
@@ -121,8 +112,6 @@ const UserCredentialsSection = ({
     return pages;
   };
 
-  const withPwdCount = users.filter((u) => !!u.password).length;
-
   return (
     <div className="space-y-5">
       {/* Stats cards */}
@@ -134,26 +123,6 @@ const UserCredentialsSection = ({
               <p className="text-sm text-blue-600 font-medium">Total Users</p>
               <p className="text-xl font-bold text-blue-900">{users.length}</p>
               <p className="text-xs text-blue-500">In this group</p>
-            </div>
-          </div>
-        </div>
-        <div className="bg-green-50 border border-green-200 rounded-lg p-4">
-          <div className="flex items-center gap-3">
-            <div className="p-2 bg-green-100 rounded-lg"><Key className="h-5 w-5 text-green-700" /></div>
-            <div>
-              <p className="text-sm text-green-600 font-medium">With Password</p>
-              <p className="text-xl font-bold text-green-900">{withPwdCount}</p>
-              <p className="text-xs text-green-500">Credentials saved</p>
-            </div>
-          </div>
-        </div>
-        <div className="bg-amber-50 border border-amber-200 rounded-lg p-4">
-          <div className="flex items-center gap-3">
-            <div className="p-2 bg-amber-100 rounded-lg"><Shield className="h-5 w-5 text-amber-700" /></div>
-            <div>
-              <p className="text-sm text-amber-600 font-medium">No Password</p>
-              <p className="text-xl font-bold text-amber-900">{users.length - withPwdCount}</p>
-              <p className="text-xs text-amber-500">Not yet set</p>
             </div>
           </div>
         </div>
@@ -170,18 +139,8 @@ const UserCredentialsSection = ({
             className="pl-9 bg-white h-9 text-sm"
           />
         </div>
-        <Select value={typeFilter} onValueChange={(v) => { setTypeFilter(v); setCurrentPage(1); }}>
-          <SelectTrigger className="w-[160px] h-9 bg-white text-sm">
-            <SelectValue placeholder="All credentials" />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="all">All Credentials</SelectItem>
-            <SelectItem value="with-password">With Password</SelectItem>
-            <SelectItem value="no-password">No Password</SelectItem>
-          </SelectContent>
-        </Select>
-        {(search || typeFilter !== "all") && (
-          <Button onClick={() => { setSearch(""); setTypeFilter("all"); setCurrentPage(1); }} size="sm" variant="outline" className="h-9">
+        {search && (
+          <Button onClick={() => { setSearch(""); setCurrentPage(1); }} size="sm" variant="outline" className="h-9">
             <X className="h-4 w-4 mr-1" />Clear
           </Button>
         )}
@@ -273,21 +232,7 @@ const UserCredentialsSection = ({
                       </div>
                     </TableCell>
                     <TableCell>
-                      {u.password ? (
-                        <div className="flex items-center gap-1.5">
-                          <span className="font-mono text-xs text-gray-700 bg-gray-100 px-1.5 py-0.5 rounded">
-                            {visiblePasswords.has(u.id) ? u.password : "•".repeat(Math.min(u.password.length, 12))}
-                          </span>
-                          <button onClick={() => togglePwd(u.id)} className="text-gray-400 hover:text-brand">
-                            {visiblePasswords.has(u.id) ? <EyeOff className="h-3 w-3" /> : <Eye className="h-3 w-3" />}
-                          </button>
-                          <button onClick={() => onCopy(u.password!, `pwd-${u.id}`)} className="text-gray-400 hover:text-brand">
-                            {copiedField === `pwd-${u.id}` ? <Check className="h-3 w-3 text-green-600" /> : <Copy className="h-3 w-3" />}
-                          </button>
-                        </div>
-                      ) : (
-                        <span className="text-gray-400 text-xs">—</span>
-                      )}
+                      <span className="text-gray-400 text-xs">Not stored</span>
                     </TableCell>
                     <TableCell className="text-xs text-gray-600">{formatDate(u.created_at)}</TableCell>
                   </TableRow>

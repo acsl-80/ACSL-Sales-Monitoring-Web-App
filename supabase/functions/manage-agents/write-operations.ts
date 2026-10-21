@@ -159,13 +159,14 @@ export async function createAgent(
 
     console.log("✅ Agent created successfully:", profile.id);
 
-    // Store credentials so they can be retrieved later via manage-credentials
+    // The login record, without the password: it is shown once to whoever
+    // creates the agent and never stored. A forgotten one is replaced by Reset.
     await supabase.from("credentials").insert({
       user_id: profile.id,
       profile_id: profile.id,
       email: validatedData.email,
       username: validatedData.email,
-      password: validatedData.password,
+      password: null,
       partner_name: validatedData.full_name,
       role: profile.role ?? "partner_agent",
       is_dummy_email: false,

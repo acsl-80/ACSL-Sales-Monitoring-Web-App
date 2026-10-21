@@ -443,7 +443,8 @@ async function saveCredentials(
     partner_name: partnerName,
     email,
     username,
-    password,
+    // Never stored: a super admin issues the first password with Reset, shown once.
+    password: null,
     organization_id: organizationId,
     user_id: userId,
     profile_id: userId,
@@ -967,7 +968,7 @@ async function processOrganizationSync(
     result: {
       organization: { id: organization.id, partner_id: organization.partner_id, partner_name: organization.partner_name, action: existingOrg ? "updated" : "created" },
       user: userCreated
-        ? { created: true, username: userCredentials?.username, email: userCredentials?.isInternalEmail ? undefined : userCredentials?.email, password: userCredentials?.password, is_internal_email: userCredentials?.isInternalEmail, login_identifier: userCredentials?.username || userCredentials?.email }
+        ? { created: true, username: userCredentials?.username, email: userCredentials?.isInternalEmail ? undefined : userCredentials?.email, is_internal_email: userCredentials?.isInternalEmail, login_identifier: userCredentials?.username || userCredentials?.email }
         : { created: false, reason: existingOrg ? "Organization already exists" : "User creation failed" },
       stove_ids: stoveIdResults,
       sales_models: salesModelResult,

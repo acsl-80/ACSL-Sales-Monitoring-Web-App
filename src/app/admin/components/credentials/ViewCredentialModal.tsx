@@ -7,7 +7,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
-import { Copy, Eye, EyeOff, Check, Building2, Key, Shield, Calendar } from "lucide-react";
+import { Copy, Check, Building2, Key, Shield, Calendar } from "lucide-react";
 import { Credential } from "@/app/services/adminCredentialsService";
 import { formatDate as formatDateShared } from "@/app/utils/formatDate";
 
@@ -39,7 +39,6 @@ const ViewCredentialModal: React.FC<ViewCredentialModalProps> = ({
   onClose,
   credential,
 }) => {
-  const [showPassword, setShowPassword] = useState(false);
   const [copiedField, setCopiedField] = useState<string | null>(null);
 
   const copy = async (text: string, field: string) => {
@@ -91,32 +90,12 @@ const ViewCredentialModal: React.FC<ViewCredentialModalProps> = ({
                 </div>
               </div>
 
-              {/* Password */}
+              {/* Password: never stored */}
               <div className="space-y-0">
                 <p className="text-[10px] text-muted-foreground font-medium uppercase tracking-wide">Password</p>
-                <div className="flex items-center justify-between mt-0.5 bg-gray-50 border border-gray-200 rounded-md px-3 py-2">
-                  <span className="font-mono text-xs font-semibold text-brand tracking-widest">
-                    {showPassword ? credential.password : "•".repeat(Math.min((credential.password ?? "").length, 16))}
-                  </span>
-                  <div className="flex items-center gap-1">
-                    <button
-                      onClick={() => setShowPassword(!showPassword)}
-                      className="text-gray-400 hover:text-brand transition-colors"
-                      title={showPassword ? "Hide" : "Show"}
-                    >
-                      {showPassword ? <EyeOff className="h-3.5 w-3.5" /> : <Eye className="h-3.5 w-3.5" />}
-                    </button>
-                    <button
-                      onClick={() => copy(credential.password, "password")}
-                      className="text-gray-400 hover:text-brand transition-colors"
-                      title="Copy"
-                    >
-                      {copiedField === "password"
-                        ? <Check className="h-3.5 w-3.5 text-green-600" />
-                        : <Copy className="h-3.5 w-3.5" />}
-                    </button>
-                  </div>
-                </div>
+                <p className="mt-0.5 text-xs text-muted-foreground">
+                  Not stored. A super admin issues a new one with Reset on the Credentials page; it is shown once.
+                </p>
               </div>
             </div>
           </SectionCard>
@@ -189,7 +168,7 @@ const ViewCredentialModal: React.FC<ViewCredentialModalProps> = ({
                 variant="outline"
                 size="sm"
                 onClick={() => {
-                  const text = `Partner ID: ${credential.partner_id}\nPartner Name: ${credential.partner_name}\n${credential.is_dummy_email ? "Username" : "Email"}: ${loginValue}\nPassword: ${credential.password}`;
+                  const text = `Partner ID: ${credential.partner_id}\nPartner Name: ${credential.partner_name}\n${credential.is_dummy_email ? "Username" : "Email"}: ${loginValue}`;
                   copy(text, "all");
                 }}
                 className="w-full h-8 text-xs"

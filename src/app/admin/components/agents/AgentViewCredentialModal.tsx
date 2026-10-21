@@ -27,7 +27,8 @@ export interface AgentCredential {
   user_id?: string;
   email?: string;
   username?: string;
-  password: string;
+  /** Present only right after a reset in this modal: passwords are not stored. */
+  password?: string;
   role?: string;
   partner_name?: string;
   is_dummy_email?: boolean;
@@ -184,32 +185,39 @@ const AgentViewCredentialModal: React.FC<AgentViewCredentialModalProps> = ({
               <CopyBtn text={loginValue} field="login" />
             </div>
 
-            {/* Password */}
-            <div className="flex items-center justify-between py-1 border-b border-border/30 last:border-0">
-              <div>
+            {/* Password: shown once, right after a reset; never stored */}
+            {activeCredential.password ? (
+              <div className="flex items-center justify-between py-1 border-b border-border/30 last:border-0">
+                <div>
+                  <p className="text-[10px] text-muted-foreground uppercase tracking-wide">New password</p>
+                  <p className="text-sm font-mono font-medium">
+                    {showPassword ? activeCredential.password : "•".repeat(Math.min(activeCredential.password.length, 16))}
+                    <span className="ml-2 text-[10px] text-amber-700 font-sans">shown once: copy it now</span>
+                  </p>
+                </div>
+                <div className="flex items-center gap-1">
+                  <button
+                    onClick={() => setShowPassword((v) => !v)}
+                    className="p-1 rounded hover:bg-muted transition-colors"
+                    title={showPassword ? "Hide" : "Show"}
+                  >
+                    {showPassword ? (
+                      <EyeOff className="h-3.5 w-3.5 text-muted-foreground" />
+                    ) : (
+                      <Eye className="h-3.5 w-3.5 text-muted-foreground" />
+                    )}
+                  </button>
+                  <CopyBtn text={activeCredential.password} field="password" />
+                </div>
+              </div>
+            ) : (
+              <div className="py-1 border-b border-border/30 last:border-0">
                 <p className="text-[10px] text-muted-foreground uppercase tracking-wide">Password</p>
-                <p className="text-sm font-mono font-medium">
-                  {showPassword ? activeCredential.password : "•".repeat(Math.min(activeCredential.password.length, 16))}
-                  {resetSuccess && (
-                    <span className="ml-2 text-[10px] text-green-600 font-sans">(updated)</span>
-                  )}
+                <p className="text-xs text-muted-foreground">
+                  Not stored. {canResetPassword ? "Use Reset Password below to issue a new one." : "A super admin can issue a new one with Reset."}
                 </p>
               </div>
-              <div className="flex items-center gap-1">
-                <button
-                  onClick={() => setShowPassword((v) => !v)}
-                  className="p-1 rounded hover:bg-muted transition-colors"
-                  title={showPassword ? "Hide" : "Show"}
-                >
-                  {showPassword ? (
-                    <EyeOff className="h-3.5 w-3.5 text-muted-foreground" />
-                  ) : (
-                    <Eye className="h-3.5 w-3.5 text-muted-foreground" />
-                  )}
-                </button>
-                <CopyBtn text={activeCredential.password} field="password" />
-              </div>
-            </div>
+            )}
 
             {/* Role */}
             {activeCredential.role && (
@@ -239,7 +247,9 @@ const AgentViewCredentialModal: React.FC<AgentViewCredentialModalProps> = ({
             className="w-full"
             onClick={() =>
               copy(
-                `Login: ${loginValue}\nPassword: ${activeCredential.password}`,
+                activeCredential.password
+                  ? `Login: ${loginValue}\nPassword: ${activeCredential.password}`
+                  : `Login: ${loginValue}`,
                 "all"
               )
             }
