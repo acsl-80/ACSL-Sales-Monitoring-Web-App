@@ -955,6 +955,18 @@ Decided, and approved by him on 22 October:
 - **One way to fix.** The list's inline "Mark it fixed" goes: every fix happens in the workspace, where the disputed fields are. A note-only fix from the list was the one path that could close a record without looking at it.
 - **Editing the sale's fields for a holder whose sales app role cannot edit a sale is not in this phase.** It goes through the sales app's own save path, which retrofit slice D is changing. A second write path here would carry a second copy of the phone and buyer rule. S3 waits for D.
 
+## D68. A fix says who reviews it, and a card counts what was corrected and resolved (2026-10-22)
+
+His words, after Phase 34 went live: "the correction says send for review, who holds the review step, it is not clear on the app", then "make it clear and there be a card that shows how many have been resolved, in this case, one which have been corrected and then how many have been resolved".
+
+Who reviews was never a person. The review action asks for `call_records.edit`, so anyone whose level or grant carries it can close a fix: on 22 October the eight call-centre editors and three data managers, plus the super admins. Nothing routes a review; the first of them to open it decides. That stays as it is. What changes is that the app says so:
+
+- **Before the button.** The fix panel says the call centre reviews it next, on its Awaiting review list, how many people can pick it up, and what they can do; "Who reviews" opens the names. Super admins are left out of the names and named as a group, because the list is for knowing whose desk it lands on.
+- **After the save, and on the timeline.** The saved state says the same in one line, and a fixed episode's timeline reads "Awaiting review by the call centre" until someone closes it, then names who did and what they chose, as it already did.
+- **The card.** Three figures above the list, in the call-centre board's tiles: waiting on Sales; corrected by Sales, with how many still await review; resolved, split into after a correction and withdrawn. Each opens its tab. They count the whole list the reader may see, as the tab counts do, from the same one-pass query.
+
+Named reviewers per record were offered and not chosen; that would be a routing change, planned separately if he wants it.
+
 ## D69. A search on Records to fix says where a stove is when it is not there (2026-10-22)
 
 His words: "the following stove Ids - 101093799, 101080308, 101076284 partner solar sisters, were supposed to be fix, but there are not appearing when a search is done to now edit the records, also on the records fix page, when you try to type in the search bar ... it does not let you type, it jumps as soon as you type a character", and "check root cause, fix holistically, find how far it extends".

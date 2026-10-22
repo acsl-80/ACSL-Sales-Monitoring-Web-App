@@ -129,7 +129,8 @@ test("the rep sees the disputed phone marked, saves a new one, and the episode a
         { timeout: 30_000, message: "update-sale should carry the new phone and the episode should read fixed" },
       )
       .toBe(`${newPhone}:fixed`);
-    await expect(page.getByText("Awaiting review")).toBeVisible({ timeout: 20_000 });
+    // The state pill; the timeline now also says "Awaiting review by the call centre" (D68).
+    await expect(page.getByText("Awaiting review", { exact: true })).toBeVisible({ timeout: 20_000 });
   } finally {
     await branchSql(`update public.sales set phone = ${originalPhone ? `'${originalPhone}'` : "null"} where id = '${sale!.sale_id}'`);
     await restore();

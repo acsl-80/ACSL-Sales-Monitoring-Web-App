@@ -218,9 +218,10 @@ export default function CorrectionWorkspace({ saleId, narrowing = {} }) {
           <div className="min-w-0 flex-1">
             <p className="text-sm font-semibold text-gray-900">Sent for review</p>
             <p className="text-sm text-gray-700">
-              {next.none
-                ? "That was the last record waiting in this list."
-                : "The call centre checks it before ringing again. The next record is one click away."}
+              It is on the call centre&apos;s Awaiting review list
+              {data.reviewers?.count ? `, where any of its ${data.reviewers.count} reviewers can pick it up` : ""}.
+              They ring the buyer again, close it, or send it back with a note.
+              {next.none ? " That was the last record waiting in this list." : ""}
             </p>
           </div>
           {next.none ? (
@@ -263,6 +264,7 @@ export default function CorrectionWorkspace({ saleId, narrowing = {} }) {
               disputed={disputed}
               canEditSale={data.can.editSale}
               onlyNote={serialDisputed && disputed.size === 1}
+              reviewers={data.reviewers}
               onSaved={() => {
                 setSaved(true);
                 load();

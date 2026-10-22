@@ -69,7 +69,7 @@ function Control({ field, value, onChange, disputed, input }) {
   );
 }
 
-export default function SaleEditPanel({ saleId, sale, disputed, canEditSale, onlyNote = false, onSaved }) {
+export default function SaleEditPanel({ saleId, sale, disputed, canEditSale, onlyNote = false, reviewers = null, onSaved }) {
   const initial = useMemo(() => toForm(sale), [sale]);
   const [form, setForm] = useState(initial);
   const [note, setNote] = useState("");
@@ -176,6 +176,25 @@ export default function SaleEditPanel({ saleId, sale, disputed, canEditSale, onl
           </p>
         )}
         {error && <p className="rounded-md bg-red-50 px-3 py-2 text-xs text-red-700">{error}</p>}
+        {/*
+          Where it goes next, said before the button (D68). Nobody is routed a
+          review: it lands on the call centre's Awaiting review list and the
+          first reviewer to open it decides.
+        */}
+        <div data-review-next className="rounded-md border border-gray-200 bg-gray-50 px-3 py-2 text-xs text-gray-700">
+          <p>
+            <span className="font-semibold text-gray-900">Next, the call centre reviews it.</span>{" "}
+            It goes on their Awaiting review list
+            {reviewers?.count ? `, where any of ${reviewers.count} reviewers can pick it up` : ""}. They ring
+            the buyer again, close it, or send it back to you with a note.
+          </p>
+          {reviewers?.names?.length > 0 && (
+            <details className="mt-1">
+              <summary className="cursor-pointer font-medium text-(--dc-accent)">Who reviews</summary>
+              <p className="mt-1 text-gray-700">{reviewers.names.join(", ")}, and the super admins.</p>
+            </details>
+          )}
+        </div>
         <div className="flex flex-col gap-2">
           <button
             type="button"

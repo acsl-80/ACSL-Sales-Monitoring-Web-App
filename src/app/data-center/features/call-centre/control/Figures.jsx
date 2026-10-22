@@ -18,7 +18,7 @@ import { whenOf } from "../../../lib/when";
  * `data-board-tile` and the value in the second span are the contract the
  * board spec reads; kept from the tiles this replaces.
  */
-function Figure({ label, value, sub, href, tone, big = false }) {
+export function Figure({ label, value, sub, href, tone, big = false }) {
   const tones = {
     sold: "bg-(image:--dc-fig-sold)",
     verified: "bg-(image:--dc-fig-verified)",

@@ -60,8 +60,38 @@ async function freshSales(n: number): Promise<Sale[]> {
   return rows;
 }
 
+/** The six columns the corrections mirror writes onto a call record. */
+const MIRROR = [
+  "correction_requested_at", "correction_requested_by", "correction_reason_id",
+  "correction_note", "correction_resolved_at", "correction_resolved_by",
+];
+
+/**
+ * Hold a call record's mirror columns, and return the way back. Inserting an
+ * episode makes the mirror trigger write onto an existing call record, and
+ * deleting the episode does not undo it.
+ */
+async function holdMirror(saleId: string) {
+  const [row] = await branchSql<{ snap: unknown }>(
+    `select jsonb_build_object(${MIRROR.map((c) => `'${c}', cr.${c}`).join(", ")}) as snap
+       from data_center.call_records cr where cr.sale_id = '${saleId}'`,
+  );
+  return async () => {
+    if (!row) return;
+    const json = JSON.stringify(row.snap).replace(/'/g, "''");
+    await branchSql(
+      `update data_center.call_records cr
+          set (${MIRROR.join(", ")}) =
+              (select ${MIRROR.map((c) => `r.${c}`).join(", ")}
+                 from jsonb_populate_record(null::data_center.call_records, '${json}'::jsonb) r)
+        where cr.sale_id = '${saleId}'`,
+    );
+  };
+}
+
 /** One open episode per sale, routed to the ACSL agent's account; returns the undo. */
 async function sendBack(sales: Sale[]) {
+  const restores = await Promise.all(sales.map((s) => (s.had_call_record ? holdMirror(s.sale_id) : null)));
   for (const sale of sales) {
     const repKey = sale.sales_rep.toLowerCase().replace(/'/g, "''");
     await branchSql(
@@ -72,10 +102,12 @@ async function sendBack(sales: Sale[]) {
     );
   }
   return async () => {
-    for (const sale of sales) {
+    for (const [i, sale] of sales.entries()) {
       await branchSql(`delete from data_center.corrections where sale_id = '${sale.sale_id}'`).catch(() => {});
       if (!sale.had_call_record) {
         await branchSql(`delete from data_center.call_records where sale_id = '${sale.sale_id}'`).catch(() => {});
+      } else {
+        await restores[i]?.().catch(() => {});
       }
     }
   };
