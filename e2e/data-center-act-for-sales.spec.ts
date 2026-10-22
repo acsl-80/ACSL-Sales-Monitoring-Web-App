@@ -172,6 +172,15 @@ test("the record is found from Explore, opened from its row, saved, and the list
   const [first, second] = sales;
   try {
     await signIn(page, USERS.manager);
+
+    // Both are open and share a rep, so narrowed by the rep the second record
+    // skips to the first, and the rep filter goes with it.
+    const repKey = encodeURIComponent(second.sales_rep.toLowerCase());
+    await page.goto(`/data-center/corrections/${second.sale_id}?rep=${repKey}`);
+    await expect(page.getByRole("heading", { name: "Fix this record" })).toBeVisible({ timeout: 30_000 });
+    await page.getByRole("button", { name: "Skip to next" }).click();
+    await expect(page).toHaveURL(new RegExp(`/data-center/corrections/${first.sale_id}\\?.*rep=`), { timeout: 30_000 });
+
     await page.goto("/data-center");
     await page.getByRole("link", { name: "Open Records to fix" }).click();
     await expect(page.getByRole("heading", { name: "Records to fix" })).toBeVisible({ timeout: 30_000 });
@@ -205,15 +214,6 @@ test("the record is found from Explore, opened from its row, saved, and the list
     // The list was narrowed to this one record, so there is no next.
     await saved.getByRole("button", { name: "Next record" }).click();
     await expect(saved).toContainText("That was the last record waiting in this list", { timeout: 30_000 });
-
-    // Narrowed by the rep instead, the second record has somewhere to go, and
-    // the rep filter goes with it.
-    const repKey = encodeURIComponent(second.sales_rep.toLowerCase());
-    await page.goto(`/data-center/corrections/${second.sale_id}?rep=${repKey}`);
-    await expect(page.getByRole("heading", { name: "Fix this record" })).toBeVisible({ timeout: 30_000 });
-    await page.getByRole("button", { name: "Skip to next" }).click();
-    await expect(page).toHaveURL(/\/data-center\/corrections\/[0-9a-f-]{36}\?.*rep=/, { timeout: 30_000 });
-    expect(page.url()).not.toContain(second.sale_id);
   } finally {
     await undo();
     await access.restore();
@@ -245,14 +245,15 @@ test("Settings switches a level on and off for acting for Sales", async ({ page 
     await expect(card).toBeVisible({ timeout: 30_000 });
     const viewer = card.getByLabel("Every viewer");
     await expect(viewer).not.toBeChecked();
-    await viewer.check();
+    // The box follows the server: it changes once the switch is saved.
+    await viewer.click();
     await expect
       .poll(async () => (await branchSql<{ n: number }>(
         `select count(*)::int as n from data_center.act_for_sales_levels where access_role = 'viewer'`,
       ))[0].n, { timeout: 20_000 })
       .toBe(1);
     await expect(card.getByLabel("Every viewer")).toBeChecked({ timeout: 20_000 });
-    await card.getByLabel("Every viewer").uncheck();
+    await card.getByLabel("Every viewer").click();
     await expect
       .poll(async () => (await branchSql<{ n: number }>(
         `select count(*)::int as n from data_center.act_for_sales_levels`,

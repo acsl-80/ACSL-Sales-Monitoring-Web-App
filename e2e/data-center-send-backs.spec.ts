@@ -210,16 +210,18 @@ test.describe("the loop closes", () => {
     });
 
     // The stove ID is a link into the record, because the list is a way in
-    // rather than a report.
+    // rather than a report. Since D67 it opens the fix workspace, where every
+    // fix happens; the stove record is a link inside it.
     const link = page.getByRole("link", { name: row.stove_serial_no });
     await expect(link.first()).toBeVisible({ timeout: 20_000 });
     await expect(link.first()).toHaveAttribute(
       "href",
-      new RegExp(`/data-center/stove/${row.stove_serial_no}`),
+      new RegExp(`/data-center/corrections/${row.sale_id}`),
     );
 
-    // And saying it is fixed is offered right there, without opening the record.
-    await expect(page.getByRole("button", { name: /Mark it fixed/ }).first()).toBeVisible();
+    // And the list offers no fix of its own: a note-only fix from here closed
+    // a record without looking at the fields it questioned (D67).
+    await expect(page.getByRole("button", { name: /Mark it fixed/ })).toHaveCount(0);
 
     // Phase 24: the list is told in the three states a correction moves
     // through, and the record sits in the first of them.

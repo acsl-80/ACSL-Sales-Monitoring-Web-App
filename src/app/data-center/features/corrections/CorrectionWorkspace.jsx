@@ -142,7 +142,8 @@ export default function CorrectionWorkspace({ saleId, narrowing = {} }) {
 
   const record = data.record ?? {};
   const serialDisputed = disputed.has("stove_serial_no");
-  const showEdit = data.can.fix && newest.state === "open";
+  // Once saved the panel goes at once, not when the reload lands.
+  const showEdit = data.can.fix && newest.state === "open" && !saved;
   // Fixing for somebody else is said before the save, not only after it (D67).
   const actingFor = showEdit && !data.can.mine ? newest.sales_rep ?? newest.rep_account_name ?? null : null;
   const nextButton = (filled) => (
@@ -170,8 +171,9 @@ export default function CorrectionWorkspace({ saleId, narrowing = {} }) {
         >
           <ArrowLeft className="h-4 w-4" /> Records to fix
         </Link>
-        <div className="min-w-0 flex-1">
-          <h2 className="truncate text-lg font-semibold text-gray-900">
+        {/* A full row of its own on a phone, so the serial is never cut short. */}
+        <div className="min-w-0 basis-full sm:basis-0 sm:flex-1">
+          <h2 className="text-lg font-semibold text-gray-900 sm:truncate">
             <span className="font-mono">{record.stove_serial_no ?? newest.stove_serial_no ?? "no serial number"}</span>
             <span className="font-normal text-gray-500"> at </span>
             {record.partner_name ?? newest.partner_name ?? "unknown partner"}
@@ -267,7 +269,7 @@ export default function CorrectionWorkspace({ saleId, narrowing = {} }) {
               }}
             />
           )}
-          {!showEdit && newest.state === "open" && (
+          {!showEdit && !saved && newest.state === "open" && (
             <div className="rounded-xl border border-dashed border-(--dc-accent)/40 bg-(--dc-accent-soft)/15 p-4 text-sm text-gray-700">
               This record is waiting on Sales. It is routed to{" "}
               {newest.rep_account_name ?? "the standing recipients"}; only they, or somebody who sees everything, can save the fix.
