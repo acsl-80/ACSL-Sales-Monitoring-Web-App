@@ -38,9 +38,39 @@ async function freshSales(n: number): Promise<Sale[]> {
   return rows;
 }
 
+/** The six columns the corrections mirror writes onto a call record. */
+const MIRROR = [
+  "correction_requested_at", "correction_requested_by", "correction_reason_id",
+  "correction_note", "correction_resolved_at", "correction_resolved_by",
+];
+
+/**
+ * Hold a call record's mirror columns, and return the way back. Inserting an
+ * episode makes the mirror trigger write onto an existing call record, and
+ * deleting the episode does not undo it.
+ */
+async function holdMirror(saleId: string) {
+  const [row] = await branchSql<{ snap: unknown }>(
+    `select jsonb_build_object(${MIRROR.map((c) => `'${c}', cr.${c}`).join(", ")}) as snap
+       from data_center.call_records cr where cr.sale_id = '${saleId}'`,
+  );
+  return async () => {
+    if (!row) return;
+    const json = JSON.stringify(row.snap).replace(/'/g, "''");
+    await branchSql(
+      `update data_center.call_records cr
+          set (${MIRROR.join(", ")}) =
+              (select ${MIRROR.map((c) => `r.${c}`).join(", ")}
+                 from jsonb_populate_record(null::data_center.call_records, '${json}'::jsonb) r)
+        where cr.sale_id = '${saleId}'`,
+    );
+  };
+}
+
 /** One episode per sale: open, corrected and awaiting review, resolved after a fix, withdrawn. */
 async function arrange(sales: Sale[]) {
   const [open, fixed, resolved, withdrawn] = sales;
+  const restores = await Promise.all(sales.map((s) => (s.had_call_record ? holdMirror(s.sale_id) : null)));
   const ep = (id: string, rest: string) =>
     branchSql(
       `insert into data_center.corrections (sale_id, seq, state, note, opened_at, disputed_fields,
@@ -52,10 +82,12 @@ async function arrange(sales: Sale[]) {
   await ep(resolved.sale_id, `'resolved', 'e2e: resolved', now(), '{phone}', now(), 'e2e: corrected', now(), 'recall'`);
   await ep(withdrawn.sale_id, `'resolved', 'e2e: withdrawn', now(), '{phone}', null, null, now(), 'withdrawn'`);
   return async () => {
-    for (const s of sales) {
+    for (const [i, s] of sales.entries()) {
       await branchSql(`delete from data_center.corrections where sale_id = '${s.sale_id}'`).catch(() => {});
       if (!s.had_call_record) {
         await branchSql(`delete from data_center.call_records where sale_id = '${s.sale_id}'`).catch(() => {});
+      } else {
+        await restores[i]?.().catch(() => {});
       }
     }
   };
@@ -99,6 +131,7 @@ test("the fix screen names who reviews, and the timeline says it waits on them",
   const sales = await freshSales(4);
   const undo = await arrange(sales);
   const [open, fixed] = sales;
+  // All four are arranged so the states match the first test; two are read.
   try {
     await signIn(page, USERS.admin);
     const detail = await callEdgeFunction(page, "data-center-corrections", { action: "detail", saleId: open.sale_id });
