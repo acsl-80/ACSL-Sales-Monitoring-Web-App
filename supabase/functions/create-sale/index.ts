@@ -86,6 +86,21 @@ function randomTransactionId(): string {
   return Array.from(bytes, (b) => TXN_ALPHABET[b % TXN_ALPHABET.length]).join("");
 }
 
+/**
+ * The ledger takes cash, transfer or pos. Phone builds from before July
+ * 2026 send the picker's labels ("Cash", "Bank Transfer", "POS", "Mobile
+ * Money"), and a queued sale keeps them after the app updates. Those are
+ * placed on the ledger's three; anything else is passed on as sent, and the
+ * ledger refuses it.
+ */
+function ledgerPaymentMethod(sent: unknown): string {
+  const m = String(sent ?? "").trim().toLowerCase();
+  if (m === "" || m === "cash") return "cash";
+  if (m === "pos") return "pos";
+  if (/transfer|bank|mobile/.test(m)) return "transfer";
+  return String(sent);
+}
+
 /** An account id is a uuid or it is not an account id. */
 const UUID_RE =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -112,9 +127,9 @@ Deno.serve(async (req) => {
   );
   /*
    * The server's own client, with no caller attached. It makes every write
-   * to addresses, sales, stove_ids and installment_payments: the buyer's
-   * address, the sale itself, the stove claim, undoing this function's own
-   * sale when the claim does not happen, and the first instalment. The caller has been authenticated and the
+   * to addresses, sales, stove_ids and installment_payments, through one
+   * call to create_sale_tx: the buyer's address, the sale itself, the stove
+   * claim and the first instalment, in one transaction. The caller has been authenticated and the
    * organisation resolved from their profile or checked against their
    * assignments before any of them runs, and created_by and recorded_by are
    * set from that caller, so the sale history still names them.
@@ -623,7 +638,7 @@ Deno.serve(async (req) => {
       installmentData = {
         modelId: paymentModelId,
         initialAmount: initialAmt,
-        paymentMethod: initialPaymentMethod || "cash",
+        paymentMethod: ledgerPaymentMethod(initialPaymentMethod),
         proofImageId: safeInitialPaymentProofImageId,
         totalPaid: initialAmt,
         paymentStatus: initialAmt >= saleAmount ? "fully_paid" : initialAmt > 0 ? "partially_paid" : "partially_paid",
@@ -758,34 +773,21 @@ Deno.serve(async (req) => {
       }
     }
 
-    // ── Insert address ────────────────────────────────────────────────────────
-    console.log("📍 Inserting address:", addressData);
+    // ── Save the sale ─────────────────────────────────────────────────────────
+    // The address, the sale, the claim on the stove and the first instalment
+    // are written by one database function in one transaction
+    // (20261022090000_create_sale_in_one_transaction.sql). Either all of them
+    // exist afterwards or none does. Written as four requests, a failure
+    // partway left an address no sale pointed to, or a sale whose first
+    // payment was never recorded while the caller was told it saved.
+    //
     // As the server: since 20260926170000 only super admins may insert into
-    // addresses, so an address written as the caller was refused for every
-    // other role, and the sale with it ("Address save failed").
-    const { data: address, error: addressError } = await server
-      .from("addresses")
-      .insert([
-        {
-          full_address: addressData?.fullAddress,
-          street: addressData?.street,
-          city: addressData?.city,
-          state: addressData?.state,
-          country: addressData?.country,
-          latitude: addressData?.latitude,
-          longitude: addressData?.longitude,
-        },
-      ])
-      .select()
-      .maybeSingle();
+    // addresses, stove rows are written by the server only since
+    // 20260924234000, and the function is the service role's alone. The
+    // caller has been authenticated and the organisation resolved before
+    // this point, and created_by and recorded_by name that caller.
+    console.log("📍 Inserting address:", addressData);
 
-    if (addressError || !address) {
-      console.error("❌ Address save failed:", addressError);
-      return jsonError("Address save failed", 500);
-    }
-    console.log("🏡 Address inserted:", address.id);
-
-    // ── Insert sale ───────────────────────────────────────────────────────────
     // The three choices come from the registry (slice F3b). A value, a label,
     // an older value or free text is placed on the list where it can be; what
     // cannot be placed keeps its words in the note column.
@@ -796,177 +798,115 @@ Deno.serve(async (req) => {
 
     // The status is the trigger's to set: update_sale_status() applies
     // public.calculate_sale_status, which reads public.sale_field_rules.
-    console.log("📝 Inserting main sale");
-    const { data: saleInsertData, error: saleError } = await server
-      .from("sales")
-      .insert([
-        {
-          transaction_id: saleTransactionId,
-          stove_serial_no: stoveSerialNo,
-          sales_date: salesDate,
-          contact_person: contactPerson,
-          contact_phone: contactPhone,
-          end_user_name: endUserNameJoined,
-          // Written only when a part actually arrived. A caller sending the
-          // joined name alone leaves these to the trigger, which splits it by
-          // rule and says so in name_split_source.
-          ...(endUserFirstNameClean || endUserSurnameClean
-            ? {
-              end_user_first_name: endUserFirstNameClean,
-              end_user_surname: endUserSurnameClean,
-            }
-            : {}),
-          selling_agent_name: sellingAgentName,
-          selling_agent_user_id: sellingAgentUserId,
-          aka,
-          state_backup: stateBackup,
-          lga_backup: lgaBackup,
-          phone,
-          other_phone: otherPhone,
-          partner_name: partnerName,
-          retailer_branch: retailerBranch || null,
-          amount: saleAmount,
-          signature,
-          created_by: userId,
-          organization_id: organizationId,
-          address_id: address.id,
-          stove_image_id: safeStoveImageId,
-          agreement_image_id: safeAgreementImageId,
-          is_installment: !!installmentData,
-          payment_model_id: installmentData?.modelId || null,
-          // total_paid always reflects what was actually collected, for both
-          // installment and outright sales — never the sale price.
-          total_paid: installmentData ? installmentData.totalPaid : outrightPaid,
-          // Outright sales are always fully paid (coerced above); only
-          // installments can land here partially paid.
-          payment_status: installmentData ? installmentData.paymentStatus : "fully_paid",
-          pot_quantity: potQuantity ?? null,
-          heat_retention_device: heatRetentionDevice ?? false,
-          previous_stove_type: stoveChoice.value,
-          // The description as typed, or the words nothing could place; a placed
-          // value carries no note, so nothing is orphaned behind it.
-          previous_stove_other: previousStoveOther || (stoveChoice.value === null ? stoveChoice.note : null) || null,
-          meals_per_day: mealsPerDay || null,
-          cooking_fuel_source: fuelChoice.value,
-          cooking_fuel_source_note: fuelChoice.note,
-          cooking_location: locationChoice.value,
-          cooking_location_note: locationChoice.note,
-          terms_accepted: termsAccepted ?? null,
-        },
-      ])
-      .select("id, status")
-      .maybeSingle();
-
-    if (saleError || !saleInsertData?.id) {
-      console.error("❌ Sales insert failed:", saleError);
-      return jsonError("Sales save failed", 500);
-    }
-
-    const saleId = saleInsertData.id;
-    // The verdict the trigger wrote, returned to the caller as before.
-    const saleStatus = (saleInsertData as { status?: string }).status ?? "incomplete";
-    console.log("✅ Sale inserted:", saleId);
-
-    // ── Claim the stove ───────────────────────────────────────────────────────
-    //
-    // The `status <> sold` filter is what makes this a claim rather than an
-    // announcement, and it is the whole fix.
-    //
-    // Without it the sequence was: read the stove's status, insert the sale,
-    // then mark the stove sold unconditionally. Two people selling the same
-    // stove at the same moment both read `available`, both inserted a sale, and
-    // the second overwrote the first's sale_id. One stove, two sales, and
-    // stock remembering only one of them. Reproduced with two concurrent
-    // requests before this change.
-    //
-    // Now the filter is evaluated by Postgres as part of the UPDATE, so exactly
-    // one of the two can match. The other gets zero rows back and undoes its
-    // own sale below.
-    //
-    // `neq("sold")` rather than `eq("available")` on purpose: it mirrors the
-    // precondition already checked above, so a stove in some future status
-    // that is not `sold` keeps behaving exactly as it does today.
-    const { data: claimedStoves, error: stoveUpdateError } = await server
-      .from("stove_ids")
-      .update({ status: "sold", sale_id: saleId })
-      .eq("stove_id", stoveSerialNo)
-      .eq("organization_id", organizationId)
-      .neq("status", "sold")
-      .select("stove_id");
-
-    /*
-     * A sale whose stove was not claimed is removed, whatever the reason.
-     *
-     * Nothing references it yet: the stove was never linked, and installment
-     * payments are recorded after this point. Nor does it leave a history:
-     * sales_history cascades away with the sale, and the delete trigger writes
-     * a row only when it can name an actor, which the server cannot give it.
-     * That was as true of the old rollback as of this one. The warning logged
-     * below is the record that a sale was made and undone.
-     * This used to run only when another sale won the race; a claim that
-     * errored returned 500 and left the sale standing, which is how the
-     * sandbox collected seven stoveless sales in one morning (D62). It runs
-     * as the server because undoing this function's own insert is not a
-     * decision the caller's rights should be able to refuse.
-     */
-    const undoSale = async (why: string) => {
-      console.warn(`⚠️ ${why} Rolling back sale ${saleId}.`);
-      const { error: rollbackError } = await server
-        .from("sales")
-        .delete()
-        .eq("id", saleId);
-      if (rollbackError) {
-        // Worth shouting about: a sale with no stove is now sitting in the
-        // table. The caller still gets told their sale did not go through,
-        // which is the true answer.
-        console.error(
-          "❌ Could not roll back the orphaned sale:",
-          saleId,
-          rollbackError.message
-        );
-      }
-    };
-
-    if (stoveUpdateError) {
-      console.error("❌ Failed to update stove_ids:", stoveUpdateError);
-      await undoSale(`The claim on stove ${stoveSerialNo} failed.`);
-      return jsonError("Failed to update stove_ids", 500);
-    }
-
-    if (!claimedStoves || claimedStoves.length === 0) {
-      // Somebody claimed this stove between the check above and here, so the
-      // sale just inserted would be a second sale for a stove that already
-      // has one.
-      await undoSale(`Stove ${stoveSerialNo} was claimed by another sale first.`);
-      return jsonError(
-        `Stove serial number "${stoveSerialNo}" was sold by someone else moments ago. Please choose another stove.`,
-        409
-      );
-    }
-
-    console.log("✅ Sales saved and stove_ids updated with sale_id:", saleId);
-
-    // ── Record initial installment payment (if any) ─────────────────────────
-    if (installmentData && installmentData.initialAmount > 0) {
-      console.log("💰 Recording initial installment payment:", installmentData.initialAmount);
-      const { error: paymentError } = await server
-        .from("installment_payments")
-        .insert({
-          sale_id: saleId,
+    console.log("📝 Saving the sale in one transaction (create_sale_tx)");
+    const { data: saved, error: saveError } = await server.rpc("create_sale_tx", {
+      _address: {
+        full_address: addressData?.fullAddress,
+        street: addressData?.street,
+        city: addressData?.city,
+        state: addressData?.state,
+        country: addressData?.country,
+        latitude: addressData?.latitude,
+        longitude: addressData?.longitude,
+      },
+      _sale: {
+        transaction_id: saleTransactionId,
+        stove_serial_no: stoveSerialNo,
+        sales_date: salesDate,
+        contact_person: contactPerson,
+        contact_phone: contactPhone,
+        end_user_name: endUserNameJoined,
+        // Written only when a part actually arrived. A caller sending the
+        // joined name alone leaves these to the trigger, which splits it by
+        // rule and says so in name_split_source.
+        ...(endUserFirstNameClean || endUserSurnameClean
+          ? {
+            end_user_first_name: endUserFirstNameClean,
+            end_user_surname: endUserSurnameClean,
+          }
+          : {}),
+        selling_agent_name: sellingAgentName,
+        selling_agent_user_id: sellingAgentUserId,
+        aka,
+        state_backup: stateBackup,
+        lga_backup: lgaBackup,
+        phone,
+        other_phone: otherPhone,
+        partner_name: partnerName,
+        retailer_branch: retailerBranch || null,
+        amount: saleAmount,
+        signature,
+        created_by: userId,
+        organization_id: organizationId,
+        stove_image_id: safeStoveImageId,
+        agreement_image_id: safeAgreementImageId,
+        is_installment: !!installmentData,
+        payment_model_id: installmentData?.modelId || null,
+        // total_paid always reflects what was actually collected, for both
+        // installment and outright sales — never the sale price.
+        total_paid: installmentData ? installmentData.totalPaid : outrightPaid,
+        // Outright sales are always fully paid (coerced above); only
+        // installments can land here partially paid.
+        payment_status: installmentData ? installmentData.paymentStatus : "fully_paid",
+        pot_quantity: potQuantity ?? null,
+        heat_retention_device: heatRetentionDevice ?? false,
+        previous_stove_type: stoveChoice.value,
+        // The description as typed, or the words nothing could place; a placed
+        // value carries no note, so nothing is orphaned behind it.
+        previous_stove_other: previousStoveOther || (stoveChoice.value === null ? stoveChoice.note : null) || null,
+        meals_per_day: mealsPerDay || null,
+        cooking_fuel_source: fuelChoice.value,
+        cooking_fuel_source_note: fuelChoice.note,
+        cooking_location: locationChoice.value,
+        cooking_location_note: locationChoice.note,
+        terms_accepted: termsAccepted ?? null,
+      },
+      // The first instalment, when one was paid. Its failure now fails the
+      // sale: total_paid above already counts it, so a sale saved without it
+      // disagreed with its own payment ledger.
+      _payment: installmentData && installmentData.initialAmount > 0
+        ? {
           amount: installmentData.initialAmount,
           payment_method: installmentData.paymentMethod,
           proof_image_id: installmentData.proofImageId,
           recorded_by: userId,
           payment_date: salesDate || new Date().toISOString().split("T")[0],
           notes: "Initial down payment",
-        });
+        }
+        : null,
+    });
 
-      if (paymentError) {
-        console.error("⚠️ Initial payment insert failed:", paymentError.message);
-      } else {
-        console.log("✅ Initial installment payment recorded");
+    if (saveError || !saved?.sale_id) {
+      // The stove went to another sale between the check above and the save.
+      // Nothing was written.
+      if (saveError?.code === "SC409") {
+        console.warn(`⚠️ Stove ${stoveSerialNo} was claimed by another sale first. Nothing saved.`);
+        return jsonError(
+          `Stove serial number "${stoveSerialNo}" was sold by someone else moments ago. Please choose another stove.`,
+          409
+        );
       }
+      const step = String(saveError?.hint ?? "").replace(/^step:/, "");
+      console.error(`❌ Sale not saved (step: ${step || "unknown"}):`, saveError);
+      if (step === "address") return jsonError("Address save failed", 500);
+      if (step === "claim") return jsonError("Failed to update stove_ids", 500);
+      if (step === "payment") {
+        // A refused payment row (an unknown method or proof image) is the
+        // caller's to fix, so the phone shows it with Edit.
+        const fixable = /^2[23]/.test(String(saveError?.code ?? ""));
+        return jsonError(
+          "Not saved: the first payment could not be recorded. Check the payment details and save again.",
+          fixable ? 400 : 500,
+        );
+      }
+      return jsonError("Sales save failed", 500);
     }
+
+    const saleId: string = saved.sale_id;
+    // The verdict the trigger wrote, returned to the caller as before.
+    const saleStatus: string = saved.status ?? "incomplete";
+    console.log("✅ Sales saved and stove_ids updated with sale_id:", saleId);
+    if (saved.payment_id) console.log("✅ Initial installment payment recorded");
 
     /*
      * The call centre's register (Phase 4, decision 1 of 2026-10-15). A sale
