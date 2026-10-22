@@ -17,8 +17,15 @@ export type CorrectionsNarrowing = {
   mine?: boolean;
 };
 
-const short = (v: unknown, max: number) =>
-  typeof v === "string" && v.trim() ? v.trim().slice(0, max) : undefined;
+/*
+ * The router's default parser reads `?q=101093799` as JSON, so a stove ID in a
+ * link arrives as a number. Every stove ID is digits, and dropping it lost the
+ * search from every link that carried one (D69).
+ */
+const short = (v: unknown, max: number) => {
+  const t = typeof v === "number" && Number.isFinite(v) ? String(v) : v;
+  return typeof t === "string" && t.trim() ? t.trim().slice(0, max) : undefined;
+};
 
 export const narrowingFrom = (search: Record<string, unknown>): CorrectionsNarrowing => ({
   rep: short(search.rep, 120),

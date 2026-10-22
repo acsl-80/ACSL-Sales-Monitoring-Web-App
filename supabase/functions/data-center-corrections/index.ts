@@ -308,6 +308,30 @@ serve(async (req) => {
             args,
           });
           /*
+           * A search reads every tab, not only the one that is open. Searching
+           * "Waiting on Sales" for a record somebody already fixed said "No
+           * record matches", which reads as "it is not in the system". Each
+           * tab now carries how many of its records match, so the screen can
+           * say where they are.
+           *
+           * $1 is read by `visible` only in the routed view; the trailing
+           * test keeps it read in every view (an unread bound value is a
+           * protocol error).
+           */
+          const matched = narrow.length
+            ? await conn.queryObject<{ state: string; n: number }>({
+              text: `select c.state, count(*)::int as n
+                       from data_center.v_corrections c
+                      where ${visible} and ${narrowed} and c.is_archived is not true
+                        and $1::uuid is not null
+                      group by c.state`,
+              args,
+            })
+            : null;
+          const matches = matched ? { open: 0, fixed: 0, resolved: 0 } as Record<string, number> : null;
+          for (const row of matched?.rows ?? []) matches![row.state] = row.n;
+
+          /*
            * What the filters can offer: every rep, partner and reason in this
            * tab and this view, with how many each holds, ignoring the filters
            * themselves so a choice never empties its own list. One pass.
@@ -357,30 +381,6 @@ serve(async (req) => {
                       group by 1 order by 2 desc limit 50`,
             })
             : { rows: [] };
-          /*
-           * A search reads every tab, not only the one that is open. Searching
-           * "Waiting on Sales" for a record somebody already fixed said "No
-           * record matches", which reads as "it is not in the system". Each
-           * tab now carries how many of its records match, so the screen can
-           * say where they are.
-           *
-           * $1 is read by `visible` only in the routed view; the trailing
-           * test keeps it read in every view (an unread bound value is a
-           * protocol error).
-           */
-          const matched = narrow.length
-            ? await conn.queryObject<{ state: string; n: number }>({
-              text: `select c.state, count(*)::int as n
-                       from data_center.v_corrections c
-                      where ${visible} and ${narrowed} and c.is_archived is not true
-                        and $1::uuid is not null
-                      group by c.state`,
-              args,
-            })
-            : null;
-          const matches = matched ? { open: 0, fixed: 0, resolved: 0 } as Record<string, number> : null;
-          for (const row of matched?.rows ?? []) matches![row.state] = row.n;
-
           const tally: Record<string, number> = { open: 0, fixed: 0, resolved: 0 };
           for (const row of counts.rows) tally[row.state] = row.n;
           return json({

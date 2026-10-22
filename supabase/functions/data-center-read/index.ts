@@ -3043,6 +3043,10 @@ serve(async (req) => {
                               exists (select 1 from public.sales s
                                        where upper(s.stove_serial_no) = upper(sb.stove_id)
                                          and s.is_archived is not true) as sold,
+                              -- Import rows name files and reasons: only for a stove
+                              -- whose transfer the caller's scope admitted, not for
+                              -- one that passes because it has no transfer at all.
+                              case when f.transfer_id is null then '[]'::json else
                               (select coalesce(json_agg(i order by i.uploaded_at desc), '[]'::json) from (
                                  select ba.filename, r.row_number, r.status, ba.state as batch_state,
                                         ba.uploaded_at::text,
@@ -3051,7 +3055,7 @@ serve(async (req) => {
                                    join data_center.import_batches ba on ba.id = r.batch_id
                                   where upper(r.stove_serial_no) = upper(sb.stove_id)
                                      or upper(r.corrected_serial) = upper(sb.stove_id)
-                                  order by ba.uploaded_at desc limit 5) i) as imports
+                                  order by ba.uploaded_at desc limit 5) i) end as imports
                          from public.stove_ids_base sb
                          left join data_center.v_transfer_stoves b on b.stove_id = sb.stove_id
                          left join data_center.transfer_funnel f on f.transfer_id = b.transfer_id

@@ -458,7 +458,12 @@ export default function CorrectionsList() {
                 ))}
               </div>
             )}
-            {elsewhere.length === 0 && search.q && <StoveWhereabouts query={search.q} />}
+            {/* Only when the search is the whole narrowing: under a rep, a partner
+                or "routed to me", a stove sent back to somebody else would read
+                as never sent back. */}
+            {elsewhere.length === 0 && search.q && !search.rep && !search.partner && !search.reason && !data.mine && (
+              <StoveWhereabouts query={search.q} />
+            )}
             {elsewhere.length === 0 && (
               <p className="mt-1 text-sm text-gray-600">
                 {filtered

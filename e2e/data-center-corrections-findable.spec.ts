@@ -90,7 +90,8 @@ test("the search box keeps the cursor and every character, and the page does not
     const box = page.getByLabel("Search");
     await box.click();
     await box.pressSequentially(sale.stove_serial_no, { delay: 450 });
-    await expect(page).toHaveURL(new RegExp(`q=${sale.stove_serial_no}`), { timeout: 10_000 });
+    // A digits-only value is written JSON-quoted (q=%22...%22).
+    await expect(page).toHaveURL(new RegExp(`q=(%22)?${sale.stove_serial_no}`), { timeout: 10_000 });
     await expect(box).toBeFocused();
     await expect(box).toHaveValue(sale.stove_serial_no);
     await expect(rows(page).filter({ hasText: sale.stove_serial_no })).toHaveCount(1, { timeout: 30_000 });
@@ -140,10 +141,12 @@ test("a stove that is not on the list says where it is", async ({ page }) => {
   // A sale never sent back.
   const sold = await freshSale();
 
-  // A stove in stock with no sale, given an import row stopped on an exception
-  // in a committed file: the shape of 101093799 on production.
+  // A stove in stock on a transfer, with no sale, given an import row stopped
+  // on an exception in a committed file: the shape of 101093799 on production.
+  // Digits only, as every stove ID is, so the link below carries a number.
   const [stock] = await branchSql<{ stove_id: string }>(
     `select sb.stove_id from public.stove_ids_base sb
+       join data_center.v_transfer_stoves b on b.stove_id = sb.stove_id
       where sb.status = 'available' and sb.is_archived is not true and sb.stove_id ~ '^[0-9]+$'
         and not exists (select 1 from public.sales s where upper(s.stove_serial_no) = upper(sb.stove_id))
         and not exists (select 1 from data_center.import_rows r where r.stove_serial_no = sb.stove_id)
@@ -168,6 +171,13 @@ test("a stove that is not on the list says where it is", async ({ page }) => {
     await expect(where).toContainText("e2e-whereabouts.csv, row 7");
     await expect(where).toContainText("stopped on an exception (file committed)");
     await expect(where).toContainText("e2e: the partner is not assigned this sales model");
+    // Under another filter it says nothing: the stove could be sent back to
+    // somebody that filter hides.
+    await page.goto(`/data-center/corrections?q=${stock.stove_id}&partner=e2e-no-such-partner`);
+    await expect(page.getByText("No record matches these filters.")).toBeVisible({ timeout: 30_000 });
+    await expect(page.locator("[data-whereabouts]")).toHaveCount(0);
+
+    await page.goto(`/data-center/corrections?q=${stock.stove_id}`);
     await where.getByRole("link", { name: "Open the stove record" }).click();
     await expect(page).toHaveURL(new RegExp(`/data-center/stove/${stock.stove_id}`), { timeout: 30_000 });
 
