@@ -1,6 +1,8 @@
+import { useEffect, useState } from "react";
 import Link from "@/compat/Link";
 import { useFeature } from "../../lib/access";
 import { DATA_CENTER_FEATURES } from "../../lib/features";
+import { dataCenterClient } from "../../lib/client";
 import { dateOf } from "../../lib/when";
 import { ArrowRight, MapPin } from "lucide-react";
 
@@ -12,6 +14,9 @@ import { ArrowRight, MapPin } from "lucide-react";
  * import stopped on an exception and so never became a sale, or a sale
  * nobody sent back. "No record matches" read as "the record is gone". This
  * says where it is and what has to happen before it can be worked here.
+ *
+ * It asks the stove search, which holds records.view and the stove page's
+ * scope, so it says nothing the stove page would not.
  */
 
 const BATCH_WORD = {
@@ -32,27 +37,47 @@ function importLine(i) {
   return `${where}: ${i.status} (${batch}).`;
 }
 
-export default function StoveWhereabouts({ where }) {
+// A stove ID has digits and no spaces; a name or a phone with spaces is not one.
+const looksLikeStoveId = (q) => /\d/.test(q) && !/\s/.test(q) && q.length >= 3;
+
+export default function StoveWhereabouts({ query }) {
   const { can } = useFeature();
-  const { serial, stock, sale, imports } = where;
-  const stoveId = stock?.stove_id ?? serial;
-  const canOpenStove = can(DATA_CENTER_FEATURES.RECORDS_VIEW) && (stock || sale || imports.length > 0);
+  const allowed = can(DATA_CENTER_FEATURES.RECORDS_VIEW) && looksLikeStoveId(query);
+  const [found, setFound] = useState(null);
+
+  useEffect(() => {
+    setFound(null);
+    if (!allowed) return undefined;
+    let live = true;
+    dataCenterClient
+      .stoveSearch(query, { whereabouts: true })
+      .then((r) => live && setFound(r))
+      .catch(() => live && setFound(null));
+    return () => {
+      live = false;
+    };
+  }, [query, allowed]);
+
+  if (!found) return null;
+  if (found.kind === "stove" && !found.whereabouts) return null;
+
+  const where = found.whereabouts;
   const canBench = can(DATA_CENTER_FEATURES.DIGITISATION_WORK);
+  const imports = where?.imports ?? [];
   const stopped = imports.find((i) => i.status !== "committed" && i.reason);
 
   let headline;
   let detail = null;
-  if (sale) {
-    headline = `Stove ${stoveId} is a sale the call centre has not sent back, so it is not on this list.`;
-    detail = `${sale.end_user_name ?? "No name on the sale"}${stock?.partner_name ? `, ${stock.partner_name}` : ""}.`;
+  if (!where) {
+    headline = `Nothing sent back matches "${query}", and no stove has that ID.`;
+  } else if (where.sold) {
+    headline = `Stove ${where.stove_id} is a sale the call centre has not sent back, so it is not on this list.`;
   } else if (imports.length > 0) {
-    headline = `Stove ${stoveId} has no sale yet, so there is nothing here to fix.`;
+    headline = `Stove ${where.stove_id} has no sale yet, so there is nothing here to fix.`;
     detail = "Its receipt was imported but did not become a sale. It has to become one before the call centre can ring it or send it back.";
-  } else if (stock) {
-    headline = `Stove ${stoveId} is in stock${stock.partner_name ? ` for ${stock.partner_name}` : ""} with no sale and no import.`;
-    detail = "Its receipt has not been typed yet.";
   } else {
-    headline = `Nothing sent back matches "${serial}", and no stove has that ID.`;
+    headline = `Stove ${where.stove_id} is in stock${where.partner_name ? ` for ${where.partner_name}` : ""} with no sale and no import.`;
+    detail = "Its receipt has not been typed yet.";
   }
 
   return (
@@ -72,17 +97,15 @@ export default function StoveWhereabouts({ where }) {
       {stopped && (
         <p className="mt-2 ml-6 rounded border border-red-200 bg-red-50 px-2 py-1.5 text-xs text-red-800">{stopped.reason}</p>
       )}
-      {(canOpenStove || (canBench && !sale && stock)) && (
+      {where && (
         <div className="mt-3 flex flex-wrap gap-2 pl-6">
-          {canOpenStove && (
-            <Link
-              href={`/data-center/stove/${encodeURIComponent(stoveId)}`}
-              className="inline-flex items-center gap-1 rounded-md bg-(--dc-accent) px-3 py-1.5 text-sm font-medium text-white hover:bg-(--dc-accent-strong)"
-            >
-              Open the stove record <ArrowRight className="h-3.5 w-3.5" />
-            </Link>
-          )}
-          {canBench && !sale && stock && (
+          <Link
+            href={`/data-center/stove/${encodeURIComponent(where.stove_id)}`}
+            className="inline-flex items-center gap-1 rounded-md bg-(--dc-accent) px-3 py-1.5 text-sm font-medium text-white hover:bg-(--dc-accent-strong)"
+          >
+            Open the stove record <ArrowRight className="h-3.5 w-3.5" />
+          </Link>
+          {canBench && !where.sold && (
             <Link
               href="/data-center/import?mode=bench"
               className="inline-flex items-center gap-1 rounded-md border border-(--dc-accent)/40 px-3 py-1.5 text-sm font-medium text-(--dc-accent) hover:bg-(--dc-accent-soft)"

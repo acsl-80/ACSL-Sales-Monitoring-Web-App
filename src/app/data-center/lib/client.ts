@@ -713,8 +713,8 @@ export const dataCenterClient = {
    * answer and the caller should navigate straight to it; anything else is a
    * shortlist.
    */
-  stoveSearch: (query: string) =>
-    call<StoveSearchResult>("data-center-read", "stove_search", { query }),
+  stoveSearch: (query: string, opts: { whereabouts?: boolean } = {}) =>
+    call<StoveSearchResult>("data-center-read", "stove_search", { query, ...opts }),
 
   /**
    * Every phone number carrying more than one stove, with the records.
@@ -875,6 +875,8 @@ export type StoveSearchResult = {
   /** "stove" is an exact hit and should be opened, not listed. */
   kind: "stove" | "matches" | "none";
   stoveId: string | null;
+  /** Only on an exact hit, and only when asked for. */
+  whereabouts?: StoveWhereabouts | null;
   transfers: {
     transfer_id: string;
     transaction_id: string;
@@ -1275,14 +1277,17 @@ export type CorrectionsList = {
   unrouted: { sales_rep: string; waiting: number }[];
   /** Under a filter, how many records in each tab match it (D69); null unfiltered. */
   matches: { open: number; fixed: number; resolved: number } | null;
-  /** Where a searched stove is when nothing sent back matches (D69). */
-  whereabouts: StoveWhereabouts | null;
 };
 
+/**
+ * Where an exact stove stands, asked for by Records to fix when nothing sent
+ * back matches it (D69). Null when the stove is outside the caller's scope.
+ */
 export type StoveWhereabouts = {
-  serial: string;
-  stock: { stove_id: string; status: string | null; archived: boolean | null; partner_name: string | null } | null;
-  sale: { sale_id: string; end_user_name: string | null } | null;
+  stove_id: string;
+  status: string | null;
+  partner_name: string | null;
+  sold: boolean;
   imports: {
     filename: string | null;
     row_number: number | null;

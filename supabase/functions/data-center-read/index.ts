@@ -3030,13 +3030,44 @@ serve(async (req) => {
             args: [raw],
           });
           if (exact.rows.length > 0) {
+            const stoveId = (exact.rows[0] as { stove_id: string }).stove_id;
+            /*
+             * Where the stove stands, for Records to fix when nothing sent back
+             * matches it (D69): a sale or not, and every import row that named
+             * it. Under the stove page's own scope, so it says nothing the
+             * stove page would not; outside it, nothing at all.
+             */
+            const whereabouts = (body as { whereabouts?: boolean }).whereabouts === true
+              ? (await connection.queryObject({
+                text: `select sb.stove_id, sb.status, f.partner_name,
+                              exists (select 1 from public.sales s
+                                       where upper(s.stove_serial_no) = upper(sb.stove_id)
+                                         and s.is_archived is not true) as sold,
+                              (select coalesce(json_agg(i order by i.uploaded_at desc), '[]'::json) from (
+                                 select ba.filename, r.row_number, r.status, ba.state as batch_state,
+                                        ba.uploaded_at::text,
+                                        coalesce(r.exception_reason, r.rejection_reason) as reason
+                                   from data_center.import_rows r
+                                   join data_center.import_batches ba on ba.id = r.batch_id
+                                  where upper(r.stove_serial_no) = upper(sb.stove_id)
+                                     or upper(r.corrected_serial) = upper(sb.stove_id)
+                                  order by ba.uploaded_at desc limit 5) i) as imports
+                         from public.stove_ids_base sb
+                         left join data_center.v_transfer_stoves b on b.stove_id = sb.stove_id
+                         left join data_center.transfer_funnel f on f.transfer_id = b.transfer_id
+                        where sb.stove_id = $1 and (f.transfer_id is null or ${scope.sql})
+                        limit 1`,
+                args: [stoveId, ...scope.args],
+              })).rows[0] ?? null
+              : undefined;
             return json(
               {
                 data: {
                   kind: "stove",
-                  stoveId: (exact.rows[0] as { stove_id: string }).stove_id,
+                  stoveId,
                   stoves: [],
                   transfers: [],
+                  ...(whereabouts === undefined ? {} : { whereabouts }),
                 },
               },
               200,

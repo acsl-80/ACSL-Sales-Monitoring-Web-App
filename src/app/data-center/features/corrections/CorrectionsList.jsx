@@ -458,8 +458,8 @@ export default function CorrectionsList() {
                 ))}
               </div>
             )}
-            {elsewhere.length === 0 && data.whereabouts && <StoveWhereabouts where={data.whereabouts} />}
-            {elsewhere.length === 0 && !data.whereabouts && (
+            {elsewhere.length === 0 && search.q && <StoveWhereabouts query={search.q} />}
+            {elsewhere.length === 0 && (
               <p className="mt-1 text-sm text-gray-600">
                 {filtered
                   ? "Remove a filter above to see more."

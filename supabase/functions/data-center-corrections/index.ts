@@ -381,43 +381,6 @@ serve(async (req) => {
           const matches = matched ? { open: 0, fixed: 0, resolved: 0 } as Record<string, number> : null;
           for (const row of matched?.rows ?? []) matches![row.state] = row.n;
 
-          /*
-           * Nothing sent back matches a stove ID: say where that stove is.
-           * Most such searches are for a receipt that never became a sale (an
-           * import row that stopped on an exception) or a sale the call centre
-           * never sent back, and neither belongs on this list. Only for those
-           * who see every send-back: the answer names a partner.
-           */
-          const searchedTotal = matches ? matches.open + matches.fixed + matches.resolved : 0;
-          const whereabouts = q && seesEverything && matches && searchedTotal === 0
-            ? (await conn.queryObject<{
-              stock: { stove_id: string; status: string | null; archived: boolean | null; partner_name: string | null } | null;
-              sale: { sale_id: string; end_user_name: string | null } | null;
-              imports: {
-                filename: string | null; row_number: number | null; status: string;
-                batch_state: string; uploaded_at: string; reason: string | null;
-              }[];
-            }>({
-              text: `select
-                       (select json_build_object('stove_id', sb.stove_id, 'status', sb.status,
-                                                 'archived', sb.is_archived, 'partner_name', o.partner_name)
-                          from public.stove_ids_base sb
-                          left join public.organizations o on o.id = sb.organization_id
-                         where upper(sb.stove_id) = upper($1) limit 1) as stock,
-                       (select json_build_object('sale_id', s.id::text, 'end_user_name', s.end_user_name)
-                          from public.sales s
-                         where upper(s.stove_serial_no) = upper($1) and s.is_archived is not true
-                         order by s.created_at desc limit 1) as sale,
-                       (select coalesce(json_agg(i order by i.uploaded_at desc), '[]'::json) from (
-                          select b.filename, r.row_number, r.status, b.state as batch_state,
-                                 b.uploaded_at::text, coalesce(r.exception_reason, r.rejection_reason) as reason
-                            from data_center.import_rows r
-                            join data_center.import_batches b on b.id = r.batch_id
-                           where upper(r.stove_serial_no) = upper($1) or upper(r.corrected_serial) = upper($1)
-                           order by b.uploaded_at desc limit 5) i) as imports`,
-              args: [q],
-            })).rows[0] ?? null
-            : null;
           const tally: Record<string, number> = { open: 0, fixed: 0, resolved: 0 };
           for (const row of counts.rows) tally[row.state] = row.n;
           return json({
@@ -434,7 +397,6 @@ serve(async (req) => {
               canEditSale,
               unrouted: unrouted.rows,
               matches,
-              whereabouts: whereabouts ? { serial: q, ...whereabouts } : null,
             },
           }, 200, cors);
         });
