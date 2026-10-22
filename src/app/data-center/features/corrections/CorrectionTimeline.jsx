@@ -66,6 +66,10 @@ export default function CorrectionTimeline({ episodes }) {
                   {e.reviewed_by_name ? ` by ${e.reviewed_by_name}` : ""}: {OUTCOME_WORD[e.review_outcome] ?? e.review_outcome}
                   {e.review_note ? ` ("${e.review_note}")` : ""}
                 </Row>
+              ) : e.fixed_at ? (
+                <Row dot="bg-gray-300">
+                  <span className="text-gray-500">Awaiting review by the call centre, on its Awaiting review list</span>
+                </Row>
               ) : (
                 <Row dot="bg-gray-300"><span className="text-gray-400">Closed</span></Row>
               )}

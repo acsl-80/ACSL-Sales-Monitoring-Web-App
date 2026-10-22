@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { useNavigate, useSearch } from "@tanstack/react-router";
 import Link from "@/compat/Link";
 import CorrectionFilters, { narrowingOf, queryOf } from "./CorrectionFilters";
+import CorrectionFigures from "./CorrectionFigures";
 import { dataCenterCorrections, DataCenterError } from "../../lib/client";
 import { plural } from "../../lib/plural";
 import { dateOf } from "../../lib/when";
@@ -112,7 +113,7 @@ function ageOf(iso) {
 
 function whoHasIt(row) {
   if (row.state === "fixed") {
-    return `Fixed by ${row.fixed_by_name ?? "somebody"}${row.fixed_on_behalf ? ` for ${row.fixed_on_behalf}` : ""}`;
+    return `Fixed by ${row.fixed_by_name ?? "somebody"}${row.fixed_on_behalf ? ` for ${row.fixed_on_behalf}` : ""}, awaiting the call centre`;
   }
   if (row.state === "resolved") {
     return `${OUTCOME_WORD[row.review_outcome] ?? "closed"}${row.reviewed_by_name ? ` by ${row.reviewed_by_name}` : ""}`;
@@ -323,6 +324,8 @@ export default function CorrectionsList() {
 
   return (
     <div className="space-y-4">
+      <CorrectionFigures counts={counts} outcomes={data.outcomes} narrowing={narrowing} />
+
       {data.seesEverything && data.unrouted.length > 0 && (
         <div className="flex flex-wrap items-start gap-2 rounded-xl border border-amber-300 bg-amber-50 px-4 py-3">
           <CircleAlert className="mt-0.5 h-4 w-4 shrink-0 text-amber-600" />

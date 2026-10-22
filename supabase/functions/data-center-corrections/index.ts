@@ -28,7 +28,7 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.39.3";
 import { withConnection, withReadConnection, type PoolClient } from "../_shared/data-center-db.ts";
-import { ACT_FOR_SALES_LEVELS_SQL, actsForSales, featuresFor } from "../_shared/data-center-roles.ts";
+import { ACT_FOR_SALES_LEVELS_SQL, ROLE_FEATURES, actsForSales, featuresFor } from "../_shared/data-center-roles.ts";
 import { SALE_FIELDS } from "../_shared/sale-fields.ts";
 import {
   CorrectionError,
@@ -215,6 +215,33 @@ serve(async (req) => {
       return Boolean(r.rows[0]?.ok);
     };
 
+    /**
+     * Who reviews a fix (D68): every active account whose level or grant
+     * carries call_records.edit, which is the key the review action asks for.
+     * Nobody is routed a review; the first of them to open it decides. Super
+     * admins can review too and are left out of the names, which are for the
+     * person sending a fix to know whose list it lands on.
+     */
+    const reviewersOf = async (conn: PoolClient) => {
+      const levels = Object.entries(ROLE_FEATURES)
+        .filter(([, keys]) => keys.includes("call_records.edit"))
+        .map(([level]) => level);
+      const r = await conn.queryObject<{ full_name: string | null }>({
+        text: `select p.full_name
+                 from data_center.module_access m
+                 join public.profiles p on p.id = m.user_id
+                where coalesce(p.status, 'active') = 'active'
+                  and p.role <> 'super_admin'
+                  and (m.access_role = any($1::text[])
+                       or exists (select 1 from data_center.feature_grants g
+                                   where g.user_id = m.user_id and g.feature_key = 'call_records.edit'))
+                order by p.full_name`,
+        args: [levels],
+      });
+      const names = r.rows.map((row) => row.full_name).filter((n): n is string => Boolean(n));
+      return { count: names.length, names };
+    };
+
     /** One transaction with the actor stamped, so the audit trigger knows who. */
     const transact = async <T>(work: (conn: PoolClient) => Promise<T>): Promise<T> =>
       await withConnection(async (conn) => {
@@ -330,11 +357,22 @@ serve(async (req) => {
           };
           // The parameter is bound only when the predicate names it: a bound
           // value the statement never reads is a protocol error, not a no-op.
-          const counts = await conn.queryObject<{ state: string; n: number }>({
-            text: `select c.state, count(*)::int as n
+          /*
+           * The tabs' counts, plus the card above them (D68): how many Sales
+           * corrected, and how the closed ones closed. One pass with FILTER.
+           */
+          const counts = await conn.queryObject<{
+            open: number; fixed: number; resolved: number;
+            corrected: number; resolved_after_fix: number; withdrawn: number;
+          }>({
+            text: `select count(*) filter (where c.state = 'open')::int as open,
+                          count(*) filter (where c.state = 'fixed')::int as fixed,
+                          count(*) filter (where c.state = 'resolved')::int as resolved,
+                          count(*) filter (where c.fixed_at is not null)::int as corrected,
+                          count(*) filter (where c.state = 'resolved' and c.fixed_at is not null)::int as resolved_after_fix,
+                          count(*) filter (where c.state = 'resolved' and c.review_outcome = 'withdrawn')::int as withdrawn
                      from data_center.v_corrections c
-                    where ${visible} and c.is_archived is not true
-                    group by c.state`,
+                    where ${visible} and c.is_archived is not true`,
             args: mine ? [userId] : [],
           });
           const unrouted = seesEverything
@@ -346,12 +384,18 @@ serve(async (req) => {
                       group by 1 order by 2 desc limit 50`,
             })
             : { rows: [] };
-          const tally: Record<string, number> = { open: 0, fixed: 0, resolved: 0 };
-          for (const row of counts.rows) tally[row.state] = row.n;
+          const c0 = counts.rows[0];
+          const tally = { open: c0?.open ?? 0, fixed: c0?.fixed ?? 0, resolved: c0?.resolved ?? 0 };
+          const outcomes = {
+            corrected: c0?.corrected ?? 0,
+            resolvedAfterFix: c0?.resolved_after_fix ?? 0,
+            withdrawn: c0?.withdrawn ?? 0,
+          };
           return json({
             data: {
               rows: rows.rows,
               counts: tally,
+              outcomes,
               facets,
               tab,
               mine,
@@ -469,6 +513,7 @@ serve(async (req) => {
                     where s.id = $1`,
             args: [saleId],
           });
+          const reviewers = await reviewersOf(conn);
           const newest = episodes.rows[0] as { state?: string; current_rep_user_id?: string | null } | undefined;
           const routedToMe = Boolean(newest && newest.current_rep_user_id === userId);
           return json({
@@ -483,6 +528,7 @@ serve(async (req) => {
               phoneCheck: phoneCheck.rows[0] ?? null,
               catalogue: SALE_FIELDS,
               reasonFields: reasonMap.rows[0]?.value ?? {},
+              reviewers,
               can: {
                 fix: canFix && newest?.state === "open" && (routedToMe || seesEverything),
                 claim: canFix && newest?.state === "open" && (routedToMe || seesEverything),

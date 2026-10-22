@@ -1263,6 +1263,8 @@ export type CorrectionFilters = {
 export type CorrectionsList = {
   rows: CorrectionRow[];
   counts: { open: number; fixed: number; resolved: number };
+  /** The card above the tabs (D68): what Sales corrected, and how the closed ones closed. */
+  outcomes: { corrected: number; resolvedAfterFix: number; withdrawn: number };
   facets: { reps: CorrectionFacet[]; partners: CorrectionFacet[]; reasons: CorrectionFacet[] };
   tab: CorrectionTab;
   mine: boolean;
@@ -1316,6 +1318,8 @@ export type CorrectionDetail = {
   phoneCheck: { heard: string | null; saved: string | null; matches: boolean | null } | null;
   catalogue: SaleFieldSpec[];
   reasonFields: Record<string, string[]>;
+  /** Whose Awaiting review list a fix lands on (D68): everyone who records call outcomes, super admins aside. */
+  reviewers: { count: number; names: string[] };
   can: {
     fix: boolean; claim: boolean; review: boolean; withdraw: boolean; open: boolean; editSale: boolean;
     /** Acting for Sales by grant or level rather than as the routed rep (D67). */
