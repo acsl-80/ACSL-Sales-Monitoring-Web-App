@@ -114,6 +114,13 @@ test("a phone in any form and the TR reference find the record", async ({ page }
     await page.goto(`/data-center/corrections?q=${encodeURIComponent(international)}`);
     await expect(rows(page).filter({ hasText: sale.stove_serial_no })).toHaveCount(1, { timeout: 30_000 });
 
+    // Digits alone in a link reach the page as a number (the router parses
+    // JSON), as every production stove ID does. The filter must survive it.
+    const digits = sale.phone.slice(1);
+    await page.goto(`/data-center/corrections?q=${digits}`);
+    await expect(page.getByRole("button", { name: `Remove filter: "${digits}"` })).toBeVisible({ timeout: 30_000 });
+    await expect(rows(page).filter({ hasText: sale.stove_serial_no })).toHaveCount(1, { timeout: 30_000 });
+
     await page.goto(`/data-center/corrections?q=${encodeURIComponent(sale.transfer_reference)}`);
     await expect(rows(page).filter({ hasText: sale.stove_serial_no })).toHaveCount(1, { timeout: 30_000 });
   } finally {
@@ -143,11 +150,10 @@ test("a stove that is not on the list says where it is", async ({ page }) => {
 
   // A stove in stock on a transfer, with no sale, given an import row stopped
   // on an exception in a committed file: the shape of 101093799 on production.
-  // Digits only, as every stove ID is, so the link below carries a number.
   const [stock] = await branchSql<{ stove_id: string }>(
     `select sb.stove_id from public.stove_ids_base sb
        join data_center.v_transfer_stoves b on b.stove_id = sb.stove_id
-      where sb.status = 'available' and sb.is_archived is not true and sb.stove_id ~ '^[0-9]+$'
+      where sb.status = 'available' and sb.is_archived is not true
         and not exists (select 1 from public.sales s where upper(s.stove_serial_no) = upper(sb.stove_id))
         and not exists (select 1 from data_center.import_rows r where r.stove_serial_no = sb.stove_id)
       order by sb.stove_id limit 1`,
