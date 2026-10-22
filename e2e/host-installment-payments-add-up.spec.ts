@@ -149,7 +149,7 @@ test("two payments that each fit the balance cannot both be taken", async ({ pag
   const statuses = replies.map((r) => r.status);
   expect(statuses.filter((s) => s === 200).length, `one accepted: ${statuses}`).toBe(1);
   expect(statuses.filter((s) => s === 400).length, `one refused: ${statuses}`).toBe(1);
-  expect(replies.find((r) => r.status === 400)?.message ?? "").toMatch(/exceeds remaining balance (500)/);
+  expect(replies.find((r) => r.status === 400)?.message ?? "").toMatch(/exceeds remaining balance \(500\)/);
   const after = await ledger(saleId);
   expect(Number(after.total_paid)).toBe(41500);
   expect(Number(after.ledger)).toBe(41500);
