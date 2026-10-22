@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useNavigate } from "@tanstack/react-router";
 import { SearchableSelect } from "@/components/ui/searchable-select";
 import Field from "../../components/Field";
@@ -37,6 +37,8 @@ export function queryOf(narrowing) {
 export default function CorrectionFilters({ search, facets }) {
   const navigate = useNavigate();
   const [text, setText] = useState(search.q ?? "");
+  // The q this box last wrote, so its own write is not mistaken for back.
+  const written = useRef(search.q ?? "");
 
   const set = (patch) =>
     navigate({
@@ -47,14 +49,31 @@ export default function CorrectionFilters({ search, facets }) {
         return next;
       },
       replace: true,
+      // Narrowing the list is not a new page: the page stays where it was.
+      resetScroll: false,
     });
 
   // The search box writes to the URL once typing pauses, not on every key.
   useEffect(() => {
     if ((search.q ?? "") === text.trim()) return undefined;
-    const t = setTimeout(() => set({ q: text.trim() }), 350);
+    const t = setTimeout(() => {
+      written.current = text.trim();
+      set({ q: text.trim() });
+    }, 350);
     return () => clearTimeout(t);
   }, [text]);
+
+  /*
+   * Back, forward or a link change q under the box: the box follows. The list
+   * used to remount this whole bar on every change of q to get the same
+   * effect, which took the cursor out of the box each time typing paused.
+   */
+  useEffect(() => {
+    const q = search.q ?? "";
+    if (q === written.current) return;
+    written.current = q;
+    setText(q);
+  }, [search.q]);
 
   const label = (list, key) => list.find((f) => f.key === key)?.label ?? key;
   const active = [
@@ -80,7 +99,7 @@ export default function CorrectionFilters({ search, facets }) {
               type="text"
               value={text}
               onChange={(e) => setText(e.target.value)}
-              placeholder="Serial, transaction, name or phone"
+              placeholder="Serial, TR reference, name or phone"
               className="w-full rounded-md border border-gray-300 bg-white py-1.5 pl-8 pr-3 text-sm focus:border-(--dc-accent) focus:outline-none"
             />
           </div>

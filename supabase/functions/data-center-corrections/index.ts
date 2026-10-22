@@ -282,8 +282,19 @@ serve(async (req) => {
           if (q) {
             // The searched text is literal: its own % and _ match themselves.
             const like = p(`%${q.replace(/[\\%_]/g, (m) => "\\" + m)}%`);
+            /*
+             * A phone is typed the way it was heard: +234 803 ..., 0803-...,
+             * spaces anywhere. Its last ten digits against the stored number's
+             * digits find it whichever way either was written. The consignment
+             * reference (TR-...) is searched too: the import file and the ERP
+             * call it the transaction id.
+             */
+            const digits = q.replace(/\D/g, "");
+            const phone = digits.length >= 7 ? p(`%${digits.slice(-10)}%`) : null;
             narrow.push(`(c.stove_serial_no ilike ${like} or c.transaction_id ilike ${like}
-                          or c.end_user_name ilike ${like} or c.phone ilike ${like})`);
+                          or c.transfer_reference ilike ${like}
+                          or c.end_user_name ilike ${like} or c.phone ilike ${like}
+                          ${phone ? `or regexp_replace(coalesce(c.phone, ''), '\\D', '', 'g') like ${phone}` : ""})`);
           }
           const narrowed = narrow.length ? narrow.join(" and ") : "true";
 
@@ -346,6 +357,67 @@ serve(async (req) => {
                       group by 1 order by 2 desc limit 50`,
             })
             : { rows: [] };
+          /*
+           * A search reads every tab, not only the one that is open. Searching
+           * "Waiting on Sales" for a record somebody already fixed said "No
+           * record matches", which reads as "it is not in the system". Each
+           * tab now carries how many of its records match, so the screen can
+           * say where they are.
+           *
+           * $1 is read by `visible` only in the routed view; the trailing
+           * test keeps it read in every view (an unread bound value is a
+           * protocol error).
+           */
+          const matched = narrow.length
+            ? await conn.queryObject<{ state: string; n: number }>({
+              text: `select c.state, count(*)::int as n
+                       from data_center.v_corrections c
+                      where ${visible} and ${narrowed} and c.is_archived is not true
+                        and $1::uuid is not null
+                      group by c.state`,
+              args,
+            })
+            : null;
+          const matches = matched ? { open: 0, fixed: 0, resolved: 0 } as Record<string, number> : null;
+          for (const row of matched?.rows ?? []) matches![row.state] = row.n;
+
+          /*
+           * Nothing sent back matches a stove ID: say where that stove is.
+           * Most such searches are for a receipt that never became a sale (an
+           * import row that stopped on an exception) or a sale the call centre
+           * never sent back, and neither belongs on this list. Only for those
+           * who see every send-back: the answer names a partner.
+           */
+          const searchedTotal = matches ? matches.open + matches.fixed + matches.resolved : 0;
+          const whereabouts = q && seesEverything && matches && searchedTotal === 0
+            ? (await conn.queryObject<{
+              stock: { stove_id: string; status: string | null; archived: boolean | null; partner_name: string | null } | null;
+              sale: { sale_id: string; end_user_name: string | null } | null;
+              imports: {
+                filename: string | null; row_number: number | null; status: string;
+                batch_state: string; uploaded_at: string; reason: string | null;
+              }[];
+            }>({
+              text: `select
+                       (select json_build_object('stove_id', sb.stove_id, 'status', sb.status,
+                                                 'archived', sb.is_archived, 'partner_name', o.partner_name)
+                          from public.stove_ids_base sb
+                          left join public.organizations o on o.id = sb.organization_id
+                         where upper(sb.stove_id) = upper($1) limit 1) as stock,
+                       (select json_build_object('sale_id', s.id::text, 'end_user_name', s.end_user_name)
+                          from public.sales s
+                         where upper(s.stove_serial_no) = upper($1) and s.is_archived is not true
+                         order by s.created_at desc limit 1) as sale,
+                       (select coalesce(json_agg(i order by i.uploaded_at desc), '[]'::json) from (
+                          select b.filename, r.row_number, r.status, b.state as batch_state,
+                                 b.uploaded_at::text, coalesce(r.exception_reason, r.rejection_reason) as reason
+                            from data_center.import_rows r
+                            join data_center.import_batches b on b.id = r.batch_id
+                           where upper(r.stove_serial_no) = upper($1) or upper(r.corrected_serial) = upper($1)
+                           order by b.uploaded_at desc limit 5) i) as imports`,
+              args: [q],
+            })).rows[0] ?? null
+            : null;
           const tally: Record<string, number> = { open: 0, fixed: 0, resolved: 0 };
           for (const row of counts.rows) tally[row.state] = row.n;
           return json({
@@ -361,6 +433,8 @@ serve(async (req) => {
               canFix,
               canEditSale,
               unrouted: unrouted.rows,
+              matches,
+              whereabouts: whereabouts ? { serial: q, ...whereabouts } : null,
             },
           }, 200, cors);
         });

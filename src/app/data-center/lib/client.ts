@@ -1273,6 +1273,24 @@ export type CorrectionsList = {
   canFix: boolean;
   canEditSale: boolean;
   unrouted: { sales_rep: string; waiting: number }[];
+  /** Under a filter, how many records in each tab match it (D69); null unfiltered. */
+  matches: { open: number; fixed: number; resolved: number } | null;
+  /** Where a searched stove is when nothing sent back matches (D69). */
+  whereabouts: StoveWhereabouts | null;
+};
+
+export type StoveWhereabouts = {
+  serial: string;
+  stock: { stove_id: string; status: string | null; archived: boolean | null; partner_name: string | null } | null;
+  sale: { sale_id: string; end_user_name: string | null } | null;
+  imports: {
+    filename: string | null;
+    row_number: number | null;
+    status: string;
+    batch_state: string;
+    uploaded_at: string;
+    reason: string | null;
+  }[];
 };
 
 export type SaleFieldSpec = {

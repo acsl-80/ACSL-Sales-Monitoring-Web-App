@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate, useSearch } from "@tanstack/react-router";
 import Link from "@/compat/Link";
 import CorrectionFilters, { narrowingOf, queryOf } from "./CorrectionFilters";
@@ -9,6 +9,7 @@ import ExportButton from "../../components/ExportButton";
 import {
   Loader2, AlertTriangle, CircleAlert, Undo2, RotateCcw, PhoneOff, PhoneCall, ArrowRight,
 } from "lucide-react";
+import StoveWhereabouts from "./StoveWhereabouts";
 
 /**
  * Everything the call centre sent back, in the three states a correction
@@ -270,12 +271,21 @@ export default function CorrectionsList() {
   const [loading, setLoading] = useState(true);
 
   const go = (patch) =>
-    navigate({ to: "/data-center/corrections", search: (prev) => ({ ...prev, ...patch }), replace: true });
+    navigate({
+      to: "/data-center/corrections",
+      search: (prev) => ({ ...prev, ...patch }),
+      replace: true,
+      resetScroll: false,
+    });
   const setTab = (next) => go({ tab: next === "open" ? undefined : next });
   const setMine = (next) => go({ mine: next ? true : undefined });
   const hrefFor = (row) => `/data-center/corrections/${encodeURIComponent(row.sale_id)}${queryOf(narrowing)}`;
 
+  // Only the newest request may paint: a slow answer for "1010" must not land
+  // over the answer for "101093799" that came back first.
+  const latest = useRef(0);
   const load = useCallback(() => {
+    const ticket = ++latest.current;
     setLoading(true);
     dataCenterCorrections
       .list({
@@ -288,19 +298,27 @@ export default function CorrectionsList() {
         q: search.q ?? null,
       })
       .then((r) => {
+        if (ticket !== latest.current) return;
         setData(r);
         setError(null);
       })
-      .catch((err) =>
-        setError(err instanceof DataCenterError ? err.message : "Could not load the corrections."),
-      )
-      .finally(() => setLoading(false));
+      .catch((err) => {
+        if (ticket !== latest.current) return;
+        setError(err instanceof DataCenterError ? err.message : "Could not load the corrections.");
+      })
+      .finally(() => {
+        if (ticket === latest.current) setLoading(false);
+      });
   }, [tab, mine, search.rep, search.partner, search.reason, search.q]);
 
   useEffect(load, [load]);
 
   const rows = data?.rows ?? [];
   const counts = data?.counts ?? { open: 0, fixed: 0, resolved: 0 };
+  // Under a filter, each tab counts what matches in it (D69), so a record
+  // fixed already is found from "Waiting on Sales" too.
+  const matches = filtered ? data?.matches ?? null : null;
+  const elsewhere = matches ? TABS.filter((t) => t.key !== tab && matches[t.key] > 0) : [];
   const partners = useMemo(() => new Set(rows.map((r) => r.partner_name ?? "")).size, [rows]);
   const reps = useMemo(() => new Set(rows.map((r) => r.sales_rep ?? "")).size, [rows]);
 
@@ -400,18 +418,25 @@ export default function CorrectionsList() {
               }`}
             >
               {t.label}
-              <span className={`rounded-full px-2 py-0.5 text-xs tabular-nums ${t.tone}`}>{counts[t.key] ?? 0}</span>
+              <span
+                className={`rounded-full px-2 py-0.5 text-xs tabular-nums ${t.tone}`}
+                title={matches ? `${matches[t.key] ?? 0} of ${counts[t.key] ?? 0} match` : undefined}
+              >
+                {matches ? `${matches[t.key] ?? 0} of ${counts[t.key] ?? 0}` : counts[t.key] ?? 0}
+              </span>
             </button>
           ))}
           {loading && <Loader2 className="ml-auto mt-3 h-4 w-4 animate-spin text-gray-400" />}
         </div>
 
-        <CorrectionFilters key={search.q ?? ""} search={search} facets={data.facets ?? { reps: [], partners: [], reasons: [] }} />
+        <CorrectionFilters search={search} facets={data.facets ?? { reps: [], partners: [], reasons: [] }} />
 
         {rows.length === 0 ? (
           <div className="m-4 rounded-lg border border-dashed border-(--dc-accent)/40 bg-(--dc-accent-soft)/15 p-8 text-center">
             <p className="text-sm font-medium text-gray-800">
-              {filtered
+              {filtered && elsewhere.length > 0
+                ? `Nothing in ${TABS.find((t) => t.key === tab).label} matches.`
+                : filtered
                 ? "No record matches these filters."
                 : tab === "open"
                 ? "Nothing is waiting on Sales."
@@ -419,13 +444,30 @@ export default function CorrectionsList() {
                 ? "Nothing is waiting for review."
                 : "Nothing has been closed yet."}
             </p>
-            <p className="mt-1 text-sm text-gray-600">
-              {filtered
-                ? "Remove a filter above to see more."
-                : data.seesEverything || !mine
-                ? "No record is in this state."
-                : "No record routed to you is in this state."}
-            </p>
+            {elsewhere.length > 0 && (
+              <div className="mt-3 flex flex-wrap justify-center gap-2">
+                {elsewhere.map((t) => (
+                  <button
+                    key={t.key}
+                    type="button"
+                    onClick={() => setTab(t.key)}
+                    className="inline-flex items-center gap-1 rounded-md bg-(--dc-accent) px-3 py-1.5 text-sm font-medium text-white hover:bg-(--dc-accent-strong)"
+                  >
+                    {plural(matches[t.key], "match", "matches")} in {t.label} <ArrowRight className="h-3.5 w-3.5" />
+                  </button>
+                ))}
+              </div>
+            )}
+            {elsewhere.length === 0 && data.whereabouts && <StoveWhereabouts where={data.whereabouts} />}
+            {elsewhere.length === 0 && !data.whereabouts && (
+              <p className="mt-1 text-sm text-gray-600">
+                {filtered
+                  ? "Remove a filter above to see more."
+                  : data.seesEverything || !mine
+                  ? "No record is in this state."
+                  : "No record routed to you is in this state."}
+              </p>
+            )}
           </div>
         ) : (
           <div className="overflow-x-auto">

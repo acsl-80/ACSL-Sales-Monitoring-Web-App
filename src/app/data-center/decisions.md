@@ -955,3 +955,20 @@ Decided, and approved by him on 22 October:
 - **One way to fix.** The list's inline "Mark it fixed" goes: every fix happens in the workspace, where the disputed fields are. A note-only fix from the list was the one path that could close a record without looking at it.
 - **Editing the sale's fields for a holder whose sales app role cannot edit a sale is not in this phase.** It goes through the sales app's own save path, which retrofit slice D is changing. A second write path here would carry a second copy of the phone and buyer rule. S3 waits for D.
 
+## D69. A search on Records to fix says where a stove is when it is not there (2026-10-22)
+
+His words: "the following stove Ids - 101093799, 101080308, 101076284 partner solar sisters, were supposed to be fix, but there are not appearing when a search is done to now edit the records, also on the records fix page, when you try to type in the search bar ... it does not let you type, it jumps as soon as you type a character", and "check root cause, fix holistically, find how far it extends".
+
+What production said on 22 October:
+
+- **The jump.** The list keyed its filter bar on the URL's `q`, so each time the typed text reached the URL (350 ms after a key) React threw the bar away and built a new one, and the cursor left the box. The URL write also reset the page's scroll.
+- **The three stoves were never on this list.** 101093799 and 101080308 are import rows in the 1 September file (`digitisation-import-983-rows.csv`) that stopped on an exception, "partner is not assigned the Hakimi Sales Model", and never became sales; their stock still reads available. 101076284 became a sale from that file and has never been called or sent back. Records to fix holds only sales the call centre sent back, so no search there could find any of them, and the page said only "No record matches these filters".
+- **How far it extends.** 637 exception rows sit in committed files with no sale; 236 of them are the sales model refusal, 121 of those on Solar Sister's five accounts. Every one of those partners still holds only its own model (Direct Community Engagement, Institutions, Direct Community), so checking the file again changes nothing until somebody decides. The search also missed a phone typed as +234 and any TR reference.
+
+Decided:
+
+- **The search reads every tab.** Each tab says how many of its records match, and an empty tab names where the matches are with a button to them. A record fixed already is found from "Waiting on Sales".
+- **A phone matches by its last ten digits, and the TR reference is searched.** The receipt, the ERP and the import all call the consignment the transaction id.
+- **When nothing sent back matches, the page says where the stove is**: an import row that stopped and why, a sale never sent back, in stock with nothing typed, or no stove by that ID, with a door to the stove record and, for a stove with no sale, to the bench. Only for those who see every send-back, because the answer names a partner.
+- **Not decided here: the stranded exceptions.** A committed file cannot be committed again, and resolving an exception there only changes the serial. Whether those receipts take the partner's own model on the bench, or the partners are given the model in the ERP, is his call.
+
