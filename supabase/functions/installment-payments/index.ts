@@ -230,37 +230,32 @@ async function recordPayment(
     );
   }
 
-  // Insert the payment record
-  const { data: payment, error: insertError } = await supabase
-    .from("installment_payments")
-    .insert({
-      sale_id: saleId,
-      amount,
-      payment_method,
-      proof_image_id: proof_image_id || null,
-      proof_image_url: proof_image_url || null,
-      notes: notes?.trim() || null,
-      recorded_by: userId,
-      payment_date: payment_date || new Date().toISOString().split("T")[0],
-    })
-    .select()
-    .single();
+  // The payment and the sale's new total are written together, under a lock
+  // on the sale (20261022100000_record_installment_payment.sql). Read here,
+  // added here and written back, two payments recorded at the same moment
+  // counted as one, and two that each fitted the balance could together pay
+  // more than the sale amount. The checks above answer the common case
+  // quickly; the function checks again under the lock.
+  const { data: recorded, error: recordError } = await supabase.rpc("record_installment_payment", {
+    _sale_id: saleId,
+    _amount: amount,
+    _payment_method: payment_method,
+    _recorded_by: userId,
+    _payment_date: payment_date || new Date().toISOString().split("T")[0],
+    _proof_image_id: proof_image_id || null,
+    _proof_image_url: proof_image_url || null,
+    _notes: notes?.trim() || null,
+  });
 
-  if (insertError) throw new Error(`Database error: ${insertError.message}`);
+  if (recordError) {
+    if (recordError.code === "IP400") throw new Error(`validation: ${recordError.message}`);
+    if (recordError.code === "IP404") throw new Error("Sale not found");
+    throw new Error(`Database error: ${recordError.message}`);
+  }
 
-  // Update sales totals
-  const newTotalPaid = currentTotalPaid + amount;
-  const newPaymentStatus = newTotalPaid >= totalAmount ? "fully_paid" : "partially_paid";
-
-  const { error: updateError } = await supabase
-    .from("sales")
-    .update({
-      total_paid: newTotalPaid,
-      payment_status: newPaymentStatus,
-    })
-    .eq("id", saleId);
-
-  if (updateError) throw new Error(`Database error: ${updateError.message}`);
+  const payment = recorded.payment;
+  const newTotalPaid = Number(recorded.total_paid);
+  const newPaymentStatus: string = recorded.payment_status;
 
   console.log(
     `✅ Payment recorded: ₦${amount}. Total paid: ₦${newTotalPaid}/${totalAmount}. Status: ${newPaymentStatus}`
@@ -272,7 +267,7 @@ async function recordPayment(
     updated_sale: {
       total_paid: newTotalPaid,
       payment_status: newPaymentStatus,
-      remaining: totalAmount - newTotalPaid,
+      remaining: Number(recorded.remaining),
     },
   };
 }
