@@ -3,6 +3,7 @@ import { SearchableSelect } from "@/components/ui/searchable-select";
 import { dataCenterAdmin, DataCenterError } from "../../lib/client";
 import { plural } from "../../lib/plural";
 import Pagination from "../../components/Pagination";
+import ActForSales from "./ActForSales";
 import { usePaged } from "../../lib/usePaged";
 import {
   Loader2, AlertTriangle, UserPlus, X, Search, Link2, Link2Off, Check,
@@ -161,6 +162,9 @@ export default function SendBackRouting() {
           {notice}
         </p>
       )}
+
+      {/* ---------------------------------------------- acting for Sales (D67) */}
+      <ActForSales config={data.actForSales} busy={busy} act={act} />
 
       {/* ------------------------------------------------------- recipients */}
       <section className="overflow-hidden rounded-xl border border-gray-200 border-t-[3px] border-t-(--dc-accent) bg-white shadow-sm">

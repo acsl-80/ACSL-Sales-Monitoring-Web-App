@@ -65,6 +65,16 @@ export type FeatureKey =
    */
   | "corrections.route"
   /**
+   * Act for Sales on any record sent back, whoever it is routed to.
+   *
+   * Claim it, fix it, send it for review, exactly as a standing recipient
+   * may. Not `corrections.route`: acting on a record and deciding where
+   * records go are different jobs (D67). Implied by no level here; a person
+   * holds it through `feature_grants`, a whole level through
+   * `data_center.act_for_sales_levels`, read by `actsForSales` below.
+   */
+  | "corrections.act_for_sales"
+  /**
    * Read the Analysis area.
    *
    * Its own key rather than `dashboard.view`, which every level holds. The
@@ -173,3 +183,25 @@ export function featuresFor(
   if (!accessRole) return [...new Set(grants)];
   return [...new Set([...(ROLE_FEATURES[accessRole] ?? []), ...grants])];
 }
+
+/**
+ * Whether a caller may act for Sales on sent-back records (D67).
+ *
+ * Their own features (level plus personal grants), or their level switched
+ * on in `data_center.act_for_sales_levels`. Kept out of `featuresFor` on
+ * purpose: only the corrections function enforces this key and only the
+ * module's own read reports it, and folding a table into `featuresFor` would
+ * make every caller read it or disagree in silence.
+ */
+export function actsForSales(
+  accessRole: string | null,
+  features: readonly string[],
+  levelsOn: readonly string[],
+): boolean {
+  return features.includes("corrections.act_for_sales") ||
+    (accessRole !== null && levelsOn.includes(accessRole));
+}
+
+/** The levels switched on, as a scalar subquery for an access read. */
+export const ACT_FOR_SALES_LEVELS_SQL =
+  `coalesce((select array_agg(l.access_role) from data_center.act_for_sales_levels l), '{}')`;

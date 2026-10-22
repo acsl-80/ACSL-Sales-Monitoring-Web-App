@@ -1,5 +1,6 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { lazy } from "react";
+import { narrowingFrom, type CorrectionsNarrowing } from "@/app/data-center/lib/correctionsSearch";
 
 const Page = lazy(() => import("@/app/data-center/pages/CorrectionWorkspacePage"));
 
@@ -9,5 +10,8 @@ const Page = lazy(() => import("@/app/data-center/pages/CorrectionWorkspacePage"
  * send-back can be handed to somebody as a link.
  */
 export const Route = createFileRoute("/data-center/corrections_/$saleId")({
+  // The list's narrowing travels with the record, so "next record" walks the
+  // same list the person opened it from (D67).
+  validateSearch: (search: Record<string, unknown>): CorrectionsNarrowing => narrowingFrom(search),
   component: Page,
 });

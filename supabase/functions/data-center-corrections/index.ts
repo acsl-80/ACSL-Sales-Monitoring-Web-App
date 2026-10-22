@@ -22,12 +22,13 @@
 //
 // "Route" means the episode is routed to the caller (the rep's account or
 // their delegate), or the caller sees everything: a super admin, a holder of
-// corrections.route, or an enabled standing recipient.
+// corrections.route, an enabled standing recipient, or somebody who acts for
+// Sales (corrections.act_for_sales, by person or by level; D67).
 
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.39.3";
 import { withConnection, withReadConnection, type PoolClient } from "../_shared/data-center-db.ts";
-import { featuresFor } from "../_shared/data-center-roles.ts";
+import { ACT_FOR_SALES_LEVELS_SQL, actsForSales, featuresFor } from "../_shared/data-center-roles.ts";
 import { SALE_FIELDS } from "../_shared/sale-fields.ts";
 import {
   CorrectionError,
@@ -138,8 +139,11 @@ serve(async (req) => {
 
     // Entry, features and standing, resolved once per request.
     const access = await withReadConnection(async (conn) => {
-      const r = await conn.queryObject<{ access_role: string | null; keys: string[]; standing: boolean }>({
+      const r = await conn.queryObject<{
+        access_role: string | null; keys: string[]; standing: boolean; levels_on: string[];
+      }>({
         text: `select m.access_role,
+                      ${ACT_FOR_SALES_LEVELS_SQL} as levels_on,
                       coalesce((select array_agg(g.feature_key) from data_center.feature_grants g
                                  where g.user_id = $1), '{}') as keys,
                       exists (select 1 from data_center.send_back_recipients r
@@ -149,22 +153,29 @@ serve(async (req) => {
         args: [userId],
       });
       const row = r.rows[0];
+      const role = row?.access_role ?? null;
+      const features = role ? featuresFor(role, row.keys) : [];
       return {
-        role: row?.access_role ?? null,
-        features: row?.access_role ? featuresFor(row.access_role, row.keys) : [],
+        role,
+        features,
         standing: Boolean(row?.standing),
+        // Only with a way into the module: a grant row outlives a revoked level.
+        actsForSales: role !== null && actsForSales(role, features, row?.levels_on ?? []),
       };
     });
     if (!superAdmin && access.role === null && !access.standing) {
       return json({ error: "No Data Center access", code: "no_access" }, 403, cors);
     }
     const can = (key: string) => superAdmin || access.features.includes(key);
-    const canFix = can("corrections.fix") || access.standing;
+    // Acting for Sales is a standing recipient's power given by grant (D67).
+    const actsForSalesHere = superAdmin || access.actsForSales;
+    const canFix = can("corrections.fix") || access.standing || actsForSalesHere;
     const canReview = can("call_records.edit");
-    const seesEverything = superAdmin || access.standing || can("corrections.route");
+    const seesEverything = superAdmin || access.standing || can("corrections.route") || actsForSalesHere;
 
     const requireAny = (...keys: string[]) =>
-      keys.some((k) => can(k)) || (keys.includes("corrections.fix") && access.standing)
+      keys.some((k) => can(k)) ||
+        (keys.includes("corrections.fix") && (access.standing || actsForSalesHere))
         ? null
         : json({ error: "Not permitted", code: "no_feature" }, 403, cors);
 
@@ -179,6 +190,10 @@ serve(async (req) => {
       note?: string | null;
       outcome?: string;
       phone?: string | null;
+      rep?: string | null;
+      partner?: string | null;
+      reason?: string | null;
+      q?: string | null;
     } = {};
     try {
       body = await req.json();
@@ -226,6 +241,24 @@ serve(async (req) => {
         const mine = body.mine === true || !seesEverything;
         const limit = Math.min(Math.max(Number(body.limit) || 200, 1), 500);
 
+        /*
+         * Narrowing, in SQL (D67). The rep is the folded ERP name, the same key
+         * routing uses; the partner is the name on the record; the reason is
+         * the option id; `q` matches the serial, the transaction id, the
+         * customer's name and the phone the sale carries.
+         */
+        const text = (v: unknown, max: number) => {
+          const t = typeof v === "string" ? v.trim() : "";
+          return t ? t.slice(0, max) : null;
+        };
+        const repKey = text(body.rep, 120)?.toLowerCase() ?? null;
+        const partner = text(body.partner, 200);
+        const reasonId = text(body.reason, 40);
+        if (reasonId && !/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(reasonId)) {
+          return json({ error: "reason must be an option id", code: "bad_input" }, 400, cors);
+        }
+        const q = text(body.q, 80);
+
         return await withReadConnection(async (conn) => {
           const visible = mine
             ? `(c.current_rep_user_id = $1 or c.assigned_to = $1 or c.fixed_by = $1)`
@@ -237,15 +270,64 @@ serve(async (req) => {
             ? "c.reviewed_at desc"
             : "c.opened_at desc";
 
+          const args: unknown[] = [userId];
+          const p = (v: unknown) => {
+            args.push(v);
+            return `$${args.length}`;
+          };
+          const narrow: string[] = [];
+          if (repKey) narrow.push(`lower(trim(coalesce(c.sales_rep, ''))) = ${p(repKey)}`);
+          if (partner) narrow.push(`c.partner_name = ${p(partner)}`);
+          if (reasonId) narrow.push(`c.reason_id = ${p(reasonId)}::uuid`);
+          if (q) {
+            // The searched text is literal: its own % and _ match themselves.
+            const like = p(`%${q.replace(/[\\%_]/g, (m) => "\\" + m)}%`);
+            narrow.push(`(c.stove_serial_no ilike ${like} or c.transaction_id ilike ${like}
+                          or c.end_user_name ilike ${like} or c.phone ilike ${like})`);
+          }
+          const narrowed = narrow.length ? narrow.join(" and ") : "true";
+
           const rows = await conn.queryObject({
             text: `select ${ROW_COLUMNS},
                           (c.current_rep_user_id = $1) as is_mine
                      from data_center.v_corrections c
-                    where ${stateWhere} and ${visible} and c.is_archived is not true
-                    order by ${order}
+                    where ${stateWhere} and ${visible} and ${narrowed} and c.is_archived is not true
+                    order by ${order}, c.sale_id
                     limit ${limit}`,
-            args: [userId],
+            args,
           });
+          /*
+           * What the filters can offer: every rep, partner and reason in this
+           * tab and this view, with how many each holds, ignoring the filters
+           * themselves so a choice never empties its own list. One pass.
+           */
+          const facetRows = await conn.queryObject<{
+            sales_rep: string | null; partner_name: string | null;
+            reason_id: string | null; reason_label: string | null; n: number;
+          }>({
+            text: `select c.sales_rep, c.partner_name, c.reason_id::text, c.reason_label, count(*)::int as n
+                     from data_center.v_corrections c
+                    where ${stateWhere} and ${visible} and c.is_archived is not true
+                    group by 1, 2, 3, 4`,
+            args: mine ? [userId] : [],
+          });
+          const facet = (key: (r: typeof facetRows.rows[number]) => [string, string] | null) => {
+            const m = new Map<string, { key: string; label: string; n: number }>();
+            for (const r of facetRows.rows) {
+              const k = key(r);
+              if (!k) continue;
+              const cur = m.get(k[0]) ?? { key: k[0], label: k[1], n: 0 };
+              cur.n += r.n;
+              m.set(k[0], cur);
+            }
+            return [...m.values()].sort((a, b) => b.n - a.n || a.label.localeCompare(b.label));
+          };
+          const facets = {
+            reps: facet((r) => r.sales_rep?.trim()
+              ? [r.sales_rep.trim().toLowerCase(), r.sales_rep.trim()] : null),
+            partners: facet((r) => r.partner_name ? [r.partner_name, r.partner_name] : null),
+            reasons: facet((r) => r.reason_id ? [r.reason_id, r.reason_label ?? "No reason given"] : null),
+          };
           // The parameter is bound only when the predicate names it: a bound
           // value the statement never reads is a protocol error, not a no-op.
           const counts = await conn.queryObject<{ state: string; n: number }>({
@@ -270,9 +352,11 @@ serve(async (req) => {
             data: {
               rows: rows.rows,
               counts: tally,
+              facets,
               tab,
               mine,
               seesEverything,
+              actsForSales: actsForSalesHere,
               canReview,
               canFix,
               canEditSale,
@@ -406,6 +490,9 @@ serve(async (req) => {
                 withdraw: canReview && newest?.state !== undefined && newest?.state !== "resolved",
                 open: canReview && (!newest || newest.state === "resolved"),
                 editSale: canEditSale,
+                actForSales: actsForSalesHere,
+                /** Routed to the caller's own account, so nobody is acted for. */
+                mine: routedToMe,
               },
             },
           }, 200, cors);
@@ -494,6 +581,7 @@ serve(async (req) => {
               canFix,
               canReview,
               seesEverything,
+              actsForSales: actsForSalesHere,
             },
           }, 200, cors);
         });

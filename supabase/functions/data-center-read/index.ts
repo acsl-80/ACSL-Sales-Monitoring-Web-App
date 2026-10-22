@@ -21,7 +21,7 @@ import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.39.3";
 import { resolveAssignedOrgIds } from "../_shared/resolveAssignedOrgIds.ts";
 import { withReadConnection } from "../_shared/data-center-db.ts";
-import { featuresFor } from "../_shared/data-center-roles.ts";
+import { ACT_FOR_SALES_LEVELS_SQL, actsForSales, featuresFor } from "../_shared/data-center-roles.ts";
 import {
   BadRequest,
   buildRecordsQuery,
@@ -214,21 +214,30 @@ async function resolveAccess(userId: string): Promise<{
     const result = await connection.queryObject<{
       access_role: string | null;
       feature_keys: string[] | null;
+      levels_on: string[] | null;
     }>({
       text: `select
                (select access_role from data_center.module_access where user_id = $1) as access_role,
                (select coalesce(array_agg(feature_key), '{}')
-                  from data_center.feature_grants where user_id = $1) as feature_keys`,
+                  from data_center.feature_grants where user_id = $1) as feature_keys,
+               ${ACT_FOR_SALES_LEVELS_SQL} as levels_on`,
       args: [userId],
     });
     const accessRole = result.rows[0]?.access_role ?? null;
     const grants = { rows: (result.rows[0]?.feature_keys ?? []).map((feature_key) => ({ feature_key })) };
 
     // Union of what the level implies and what was granted individually.
-    return {
-      accessRole,
-      features: featuresFor(accessRole, grants.rows.map((r) => r.feature_key)),
-    };
+    const features = featuresFor(accessRole, grants.rows.map((r) => r.feature_key));
+    // A level switched on to act for Sales reports the key too, so the screen
+    // offers what the corrections function will allow (D67).
+    if (
+      accessRole &&
+      !features.includes("corrections.act_for_sales") &&
+      actsForSales(accessRole, features, result.rows[0]?.levels_on ?? [])
+    ) {
+      features.push("corrections.act_for_sales");
+    }
+    return { accessRole, features };
   });
 }
 

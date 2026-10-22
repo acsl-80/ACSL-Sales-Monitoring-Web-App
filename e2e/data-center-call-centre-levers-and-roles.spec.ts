@@ -288,8 +288,10 @@ test("a sales rep can close a send-back routed to them, note and all", async ({ 
     await expect(page.getByRole("heading", { name: "Records to fix" })).toBeVisible({ timeout: 30_000 });
     const link = page.getByRole("link", { name: e.stove_serial_no });
     await expect(link, "the sent-back record should be listed for the sales rep").toBeVisible({ timeout: 20_000 });
-    await page.getByRole("button", { name: /Mark it fixed/ }).first().click();
-    await page.getByPlaceholder(/What did you do\?/).fill(note);
+    // Since D67 every fix happens in the workspace the row opens.
+    await link.click();
+    await expect(page.getByRole("heading", { name: "Fix this record" })).toBeVisible({ timeout: 30_000 });
+    await page.getByLabel(/What did you change/).fill(note);
     await page.getByRole("button", { name: "Send for review" }).click();
 
     /*
